@@ -1,0 +1,6 @@
+# Azure Functions Python worker
+azure-functions>=1.18.0
+
+# JSON Schema validation — used to validate inbound batch request bodies.
+# Pin to a version range compatible with the Azure Functions Python runtime.
+jsonschema>=4.21.0,<5.0.0

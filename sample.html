@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sample system</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --bg1:#ffffff;--bg2:#f5f5f3;--bg3:#eeede8;
+  --txt1:#1a1a19;--txt2:#6b6a65;--txt3:#b0aea7;
+  --bdr:rgba(0,0,0,0.12);--r8:8px;--r12:12px;
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg1:#1e1e1c;--bg2:#2a2a28;--bg3:#323230;
+  --txt1:#e8e6de;--txt2:#9c9a92;--txt3:#6b6a65;
+  --bdr:rgba(255,255,255,0.10);
+}}
+body{background:var(--bg3);margin:0;padding:1.5rem;color:var(--txt1)}
+.card{background:var(--bg1);border:0.5px solid var(--bdr);border-radius:var(--r12);
+  padding:1rem 1.25rem;max-width:900px;margin:0 auto 1rem}
+.header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:22px;font-weight:500;margin:0}
+.sub{font-size:14px;color:var(--txt2);margin:0}
+.badge{display:inline-block;font-size:11px;font-weight:500;padding:2px 9px;
+  border-radius:var(--r8);margin:2px 2px 2px 0}
+.zone-green{background:#e1f5ee;color:#085041}
+.zone-amber{background:#faeeda;color:#633806}
+.zone-red{background:#fcebeb;color:#791f1f}
+.trade{background:#faece7;color:#712b13}
+.b-gray{background:#f1efe8;color:#444441}
+.section-title{font-size:13px;font-weight:500;color:var(--txt2);
+  margin:16px 0 8px;text-transform:uppercase;letter-spacing:0.05em}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:4px 6px;color:var(--txt2);font-weight:500;
+  border-bottom:1px solid var(--bdr)}
+td{padding:3px 6px;border-bottom:0.5px solid var(--bdr);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,"Cascadia Code","Fira Mono",monospace}
+.profile{color:var(--txt1)}
+.type-gg{color:#1a5fa8}
+.type-inh{color:#085041;font-weight:500}
+.type-terr{color:var(--txt2)}
+.type-belt{color:var(--txt3)}
+.type-empty{color:var(--txt3)}
+.mw-row td{background:var(--bg2);font-weight:500}
+.mw-note{font-size:11px;color:#085041}
+.moon-row td{color:var(--txt2);font-size:11px;background:var(--bg1)}
+.moon-type{padding-left:24px}
+.moon-idx{color:var(--txt3)}
+.zone-boiling{color:#791f1f;font-weight:500}
+.zone-hot{color:#633806;font-weight:500}
+.zone-temperate{color:#085041;font-weight:500}
+.zone-cold{color:#0c447c}
+.zone-frozen{color:var(--txt3)}
+.mw-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+@media(max-width:600px){.mw-grid{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--bg2);border-radius:var(--r8);padding:10px 12px}
+.sl{font-size:11px;color:var(--txt2);margin:0 0 2px}
+.sv{font-size:14px;font-weight:500;margin:0}
+.ss{font-size:11px;color:var(--txt2);margin:2px 0 0}
+.trade-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.trade-lbl{font-size:12px;color:var(--txt2)}
+.no-val{font-size:13px;color:var(--txt2);margin:0}
+details summary{font-size:12px;color:var(--txt2);cursor:pointer;padding:4px 0;margin-top:12px}
+pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
+  white-space:pre-wrap;line-height:1.6;margin:8px 0 0}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <h1>Sample system</h1>
+    <p class="sub mono">M2 V</p>
+    <span class="badge b-gray">8.00 Gyr</span>
+    <span class="badge b-gray">10 worlds</span>
+  </div>
+
+  <div class="section-title">Stars</div>
+  <table>
+    <thead><tr><th>Desig</th><th>Class</th><th>Mass</th>
+    <th>Temp</th><th>Lum</th><th>Orbit</th></tr></thead>
+    <tbody><tr><td class="mono">A</td><td>M2 V</td><td class="mono">0.36 M☉</td><td class="mono">3,420 K</td><td class="mono">0.0308 L☉</td><td></td></tr></tbody>
+  </table>
+
+  <div class="section-title">Orbital survey  ·  detail included</div>
+  <table>
+    <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th>
+    <th>Type</th><th>Profile</th><th>Zone</th><th></th></tr></thead>
+    <tbody><tr class="mw-row"><td class="mono">A</td><td class="mono">1</td><td class="mono">0.03</td><td class="mono">0.200</td><td class="type-inh">terrestrial</td><td class="mono profile">A489632-E</td><td class="zone-frozen">frozen</td><td class="mw-note"> ← mainworld</td></tr><tr class=""><td class="mono">A</td><td class="mono">2</td><td class="mono">0.04</td><td class="mono">0.200</td><td class="type-gg">gas_giant</td><td class="mono profile">GS4</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m1</td><td colspan="3" class="moon-type">moon 1 — ring</td><td class="mono profile">R01</td><td></td><td></td></tr><tr class=""><td class="mono">A</td><td class="mono">3</td><td class="mono">0.05</td><td class="mono">0.200</td><td class="type-gg">gas_giant</td><td class="mono profile">GM7</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m1</td><td colspan="3" class="moon-type">moon 1 — ring</td><td class="mono profile">R01</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m2</td><td colspan="3" class="moon-type">moon 2 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m3</td><td colspan="3" class="moon-type">moon 3 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m4</td><td colspan="3" class="moon-type">moon 4 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m5</td><td colspan="3" class="moon-type">moon 5 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m6</td><td colspan="3" class="moon-type">moon 6 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m7</td><td colspan="3" class="moon-type">moon 7 — size 1</td><td class="mono profile">Y100000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m8</td><td colspan="3" class="moon-type">moon 8 — size 1</td><td class="mono profile">G100165-D</td><td></td><td></td></tr><tr class=""><td class="mono">A</td><td class="mono">4</td><td class="mono">0.06</td><td class="mono">0.200</td><td class="type-inh">terrestrial</td><td class="mono profile">H783115-D</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr><tr class=""><td class="mono">A</td><td class="mono">5</td><td class="mono">0.07</td><td class="mono">0.200</td><td class="type-gg">gas_giant</td><td class="mono profile">GM7</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m1</td><td colspan="3" class="moon-type">moon 1 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m2</td><td colspan="3" class="moon-type">moon 2 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m3</td><td colspan="3" class="moon-type">moon 3 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m4</td><td colspan="3" class="moon-type">moon 4 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m5</td><td colspan="3" class="moon-type">moon 5 — size 6</td><td class="mono profile">H696105-D</td><td></td><td></td></tr><tr class=""><td class="mono">A</td><td class="mono">6</td><td class="mono">0.08</td><td class="mono">0.200</td><td class="type-inh">terrestrial</td><td class="mono profile">G953200-D</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr><tr class=""><td class="mono">A</td><td class="mono">7</td><td class="mono">0.09</td><td class="mono">0.200</td><td class="type-inh">terrestrial</td><td class="mono profile">Y510122-D</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr><tr class=""><td class="mono">A</td><td class="mono">8</td><td class="mono">0.10</td><td class="mono">0.200</td><td class="type-gg">gas_giant</td><td class="mono profile">GM7</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr><tr class="moon-row"><td></td><td class="mono moon-idx">↳ m1</td><td colspan="3" class="moon-type">moon 1 — size S</td><td class="mono profile">YS00000-0</td><td></td><td></td></tr><tr class=""><td class="mono">A</td><td class="mono">9</td><td class="mono">0.11</td><td class="mono">0.200</td><td class="type-gg">gas_giant</td><td class="mono profile">GS5</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr><tr class=""><td class="mono">A</td><td class="mono">10</td><td class="mono">0.12</td><td class="mono">0.200</td><td class="type-inh">terrestrial</td><td class="mono profile">Y59A131-D</td><td class="zone-frozen">frozen</td><td class="mw-note"></td></tr></tbody>
+  </table>
+
+  
+  <div class="section-title">Mainworld — Sample</div>
+  <div class="mw-grid">
+    <div class="stat"><p class="sl">UWP</p>
+      <p class="sv mono">A489632-E</p>
+      <p class="ss"><span class="badge zone-green">Green zone</span></p></div>
+    <div class="stat"><p class="sl">Starport A</p>
+      <p class="sv">Excellent</p></div>
+    <div class="stat"><p class="sl">Size 4</p>
+      <p class="sv">6400 km</p></div>
+    <div class="stat"><p class="sl">Atmosphere 8</p>
+      <p class="sv">Dense</p></div>
+    <div class="stat"><p class="sl">Temperature</p>
+      <p class="sv">Cold</p></div>
+    <div class="stat"><p class="sl">Hydrographics 9</p>
+      <p class="sv">Almost entirely water (86-95%)</p></div>
+    <div class="stat"><p class="sl">Population 6</p>
+      <p class="sv">TL E</p></div>
+    <div class="stat"><p class="sl">Government 3</p>
+      <p class="sv">Self-Perpetuating Oligarchy</p></div>
+    <div class="stat"><p class="sl">Law Level</p>
+      <p class="sv">2</p></div>
+  </div>
+  <div class="trade-row"><span class="trade-lbl">Trade codes</span><span class="badge trade">Ht</span><span class="badge trade">Ni</span></div>
+
+  <details>
+    <summary>Raw JSON</summary>
+    <pre>{
+  &quot;star_count&quot;: 1,
+  &quot;age_gyr&quot;: 8.0,
+  &quot;stars&quot;: [
+    {
+      &quot;designation&quot;: &quot;A&quot;,
+      &quot;role&quot;: &quot;primary&quot;,
+      &quot;classification&quot;: &quot;M2 V&quot;,
+      &quot;spectral_type&quot;: &quot;M&quot;,
+      &quot;subtype&quot;: 2,
+      &quot;luminosity_class&quot;: &quot;V&quot;,
+      &quot;mass_solar&quot;: 0.364,
+      &quot;temperature_k&quot;: 3420,
+      &quot;diameter_solar&quot;: 0.5,
+      &quot;luminosity_solar&quot;: 0.0308,
+      &quot;orbit_number&quot;: 0.0,
+      &quot;orbit_au&quot;: 0.0,
+      &quot;age_gyr&quot;: 8.0,
+      &quot;ms_lifespan_gyr&quot;: 125.1,
+      &quot;colour&quot;: &quot;Orange-Red&quot;,
+      &quot;special_notes&quot;: &quot;&quot;
+    }
+  ],
+  &quot;orbits&quot;: {
+    &quot;gas_giant_count&quot;: 5,
+    &quot;belt_count&quot;: 0,
+    &quot;terrestrial_count&quot;: 5,
+    &quot;total_worlds&quot;: 10,
+    &quot;empty_orbits&quot;: 0,
+    &quot;star_zones&quot;: {
+      &quot;A&quot;: {
+        &quot;mao&quot;: 0.02,
+        &quot;hzco&quot;: 0.0,
+        &quot;hz_inner&quot;: 0.02,
+        &quot;hz_outer&quot;: 1.0
+      }
+    },
+    &quot;orbits&quot;: [
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.03,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 1,
+        &quot;world_type&quot;: &quot;terrestrial&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.03,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: true,
+        &quot;notes&quot;: &quot;in HZ&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;489&quot;,
+          &quot;population&quot;: 6,
+          &quot;government&quot;: 3,
+          &quot;law_level&quot;: 2,
+          &quot;tech_level&quot;: 14,
+          &quot;spaceport&quot;: &quot;A&quot;,
+          &quot;inhabited&quot;: true,
+          &quot;profile&quot;: &quot;A489632-E&quot;,
+          &quot;moons_str&quot;: &quot;—&quot;,
+          &quot;moons&quot;: []
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.04,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 2,
+        &quot;world_type&quot;: &quot;gas_giant&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.04,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;GS4&quot;,
+          &quot;population&quot;: 0,
+          &quot;government&quot;: 0,
+          &quot;law_level&quot;: 0,
+          &quot;tech_level&quot;: 0,
+          &quot;spaceport&quot;: &quot;-&quot;,
+          &quot;inhabited&quot;: false,
+          &quot;profile&quot;: &quot;GS4&quot;,
+          &quot;moons_str&quot;: &quot;R01&quot;,
+          &quot;moons&quot;: [
+            {
+              &quot;size&quot;: &quot;R&quot;,
+              &quot;is_ring&quot;: true,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;ring_count&quot;: 1
+            }
+          ]
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.05,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 3,
+        &quot;world_type&quot;: &quot;gas_giant&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.05,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;GM7&quot;,
+          &quot;population&quot;: 0,
+          &quot;government&quot;: 0,
+          &quot;law_level&quot;: 0,
+          &quot;tech_level&quot;: 0,
+          &quot;spaceport&quot;: &quot;-&quot;,
+          &quot;inhabited&quot;: false,
+          &quot;profile&quot;: &quot;GM7&quot;,
+          &quot;moons_str&quot;: &quot;R01, S, S, S, S, S, 1, 1&quot;,
+          &quot;moons&quot;: [
+            {
+              &quot;size&quot;: &quot;R&quot;,
+              &quot;is_ring&quot;: true,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;ring_count&quot;: 1
+            },
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;1&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;100&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;Y100000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;1&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;100&quot;,
+                &quot;population&quot;: 1,
+                &quot;government&quot;: 6,
+                &quot;law_level&quot;: 5,
+                &quot;tech_level&quot;: 13,
+                &quot;spaceport&quot;: &quot;G&quot;,
+                &quot;inhabited&quot;: true,
+                &quot;profile&quot;: &quot;G100165-D&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            }
+          ]
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.06,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 4,
+        &quot;world_type&quot;: &quot;terrestrial&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.06,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;783&quot;,
+          &quot;population&quot;: 1,
+          &quot;government&quot;: 1,
+          &quot;law_level&quot;: 5,
+          &quot;tech_level&quot;: 13,
+          &quot;spaceport&quot;: &quot;H&quot;,
+          &quot;inhabited&quot;: true,
+          &quot;profile&quot;: &quot;H783115-D&quot;,
+          &quot;moons_str&quot;: &quot;—&quot;,
+          &quot;moons&quot;: []
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.07,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 5,
+        &quot;world_type&quot;: &quot;gas_giant&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.07,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;GM7&quot;,
+          &quot;population&quot;: 0,
+          &quot;government&quot;: 0,
+          &quot;law_level&quot;: 0,
+          &quot;tech_level&quot;: 0,
+          &quot;spaceport&quot;: &quot;-&quot;,
+          &quot;inhabited&quot;: false,
+          &quot;profile&quot;: &quot;GM7&quot;,
+          &quot;moons_str&quot;: &quot;S, S, S, S, 6&quot;,
+          &quot;moons&quot;: [
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            },
+            {
+              &quot;size&quot;: &quot;6&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;696&quot;,
+                &quot;population&quot;: 1,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 5,
+                &quot;tech_level&quot;: 13,
+                &quot;spaceport&quot;: &quot;H&quot;,
+                &quot;inhabited&quot;: true,
+                &quot;profile&quot;: &quot;H696105-D&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            }
+          ]
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.08,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 6,
+        &quot;world_type&quot;: &quot;terrestrial&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.08,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;953&quot;,
+          &quot;population&quot;: 2,
+          &quot;government&quot;: 0,
+          &quot;law_level&quot;: 0,
+          &quot;tech_level&quot;: 13,
+          &quot;spaceport&quot;: &quot;G&quot;,
+          &quot;inhabited&quot;: true,
+          &quot;profile&quot;: &quot;G953200-D&quot;,
+          &quot;moons_str&quot;: &quot;—&quot;,
+          &quot;moons&quot;: []
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.09,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 7,
+        &quot;world_type&quot;: &quot;terrestrial&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.09,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;510&quot;,
+          &quot;population&quot;: 1,
+          &quot;government&quot;: 2,
+          &quot;law_level&quot;: 2,
+          &quot;tech_level&quot;: 13,
+          &quot;spaceport&quot;: &quot;Y&quot;,
+          &quot;inhabited&quot;: true,
+          &quot;profile&quot;: &quot;Y510122-D&quot;,
+          &quot;moons_str&quot;: &quot;—&quot;,
+          &quot;moons&quot;: []
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.1,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 8,
+        &quot;world_type&quot;: &quot;gas_giant&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.1,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;GM7&quot;,
+          &quot;population&quot;: 0,
+          &quot;government&quot;: 0,
+          &quot;law_level&quot;: 0,
+          &quot;tech_level&quot;: 0,
+          &quot;spaceport&quot;: &quot;-&quot;,
+          &quot;inhabited&quot;: false,
+          &quot;profile&quot;: &quot;GM7&quot;,
+          &quot;moons_str&quot;: &quot;S&quot;,
+          &quot;moons&quot;: [
+            {
+              &quot;size&quot;: &quot;S&quot;,
+              &quot;is_ring&quot;: false,
+              &quot;is_gas_giant_moon&quot;: false,
+              &quot;detail&quot;: {
+                &quot;sah&quot;: &quot;S00&quot;,
+                &quot;population&quot;: 0,
+                &quot;government&quot;: 0,
+                &quot;law_level&quot;: 0,
+                &quot;tech_level&quot;: 0,
+                &quot;spaceport&quot;: &quot;-&quot;,
+                &quot;inhabited&quot;: false,
+                &quot;profile&quot;: &quot;YS00000-0&quot;,
+                &quot;moons_str&quot;: &quot;—&quot;,
+                &quot;moons&quot;: []
+              }
+            }
+          ]
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.11,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 9,
+        &quot;world_type&quot;: &quot;gas_giant&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.11,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;GS5&quot;,
+          &quot;population&quot;: 0,
+          &quot;government&quot;: 0,
+          &quot;law_level&quot;: 0,
+          &quot;tech_level&quot;: 0,
+          &quot;spaceport&quot;: &quot;-&quot;,
+          &quot;inhabited&quot;: false,
+          &quot;profile&quot;: &quot;GS5&quot;,
+          &quot;moons_str&quot;: &quot;—&quot;,
+          &quot;moons&quot;: []
+        }
+      },
+      {
+        &quot;star&quot;: &quot;A&quot;,
+        &quot;orbit_number&quot;: 0.12,
+        &quot;orbit_au&quot;: 0.2,
+        &quot;slot_index&quot;: 10,
+        &quot;world_type&quot;: &quot;terrestrial&quot;,
+        &quot;is_habitable_zone&quot;: true,
+        &quot;hz_deviation&quot;: 0.12,
+        &quot;temperature_zone&quot;: &quot;frozen&quot;,
+        &quot;is_mainworld_candidate&quot;: false,
+        &quot;notes&quot;: &quot;&quot;,
+        &quot;detail&quot;: {
+          &quot;sah&quot;: &quot;59A&quot;,
+          &quot;population&quot;: 1,
+          &quot;government&quot;: 3,
+          &quot;law_level&quot;: 1,
+          &quot;tech_level&quot;: 13,
+          &quot;spaceport&quot;: &quot;Y&quot;,
+          &quot;inhabited&quot;: true,
+          &quot;profile&quot;: &quot;Y59A131-D&quot;,
+          &quot;moons_str&quot;: &quot;—&quot;,
+          &quot;moons&quot;: []
+        }
+      }
+    ],
+    &quot;mainworld_orbit&quot;: {
+      &quot;star&quot;: &quot;A&quot;,
+      &quot;orbit_number&quot;: 0.03,
+      &quot;orbit_au&quot;: 0.2,
+      &quot;slot_index&quot;: 1,
+      &quot;world_type&quot;: &quot;terrestrial&quot;,
+      &quot;is_habitable_zone&quot;: true,
+      &quot;hz_deviation&quot;: 0.03,
+      &quot;temperature_zone&quot;: &quot;frozen&quot;,
+      &quot;is_mainworld_candidate&quot;: true,
+      &quot;notes&quot;: &quot;in HZ&quot;,
+      &quot;detail&quot;: {
+        &quot;sah&quot;: &quot;489&quot;,
+        &quot;population&quot;: 6,
+        &quot;government&quot;: 3,
+        &quot;law_level&quot;: 2,
+        &quot;tech_level&quot;: 14,
+        &quot;spaceport&quot;: &quot;A&quot;,
+        &quot;inhabited&quot;: true,
+        &quot;profile&quot;: &quot;A489632-E&quot;,
+        &quot;moons_str&quot;: &quot;—&quot;,
+        &quot;moons&quot;: []
+      }
+    }
+  },
+  &quot;mainworld&quot;: {
+    &quot;name&quot;: &quot;Sample&quot;,
+    &quot;uwp&quot;: &quot;A489632-E&quot;,
+    &quot;starport&quot;: {
+      &quot;code&quot;: &quot;A&quot;,
+      &quot;description&quot;: &quot;Excellent (Refined fuel, full shipyard, repair)&quot;
+    },
+    &quot;size&quot;: {
+      &quot;code&quot;: 4,
+      &quot;diameter_km&quot;: &quot;6,400&quot;,
+      &quot;surface_gravity&quot;: &quot;0.35G&quot;
+    },
+    &quot;atmosphere&quot;: {
+      &quot;code&quot;: 8,
+      &quot;name&quot;: &quot;Dense&quot;,
+      &quot;survival_gear&quot;: &quot;None&quot;
+    },
+    &quot;temperature&quot;: &quot;Cold&quot;,
+    &quot;hydrographics&quot;: {
+      &quot;code&quot;: 9,
+      &quot;description&quot;: &quot;Almost entirely water (86-95%)&quot;
+    },
+    &quot;population&quot;: {
+      &quot;code&quot;: 6,
+      &quot;range&quot;: &quot;Millions&quot;
+    },
+    &quot;government&quot;: {
+      &quot;code&quot;: 3,
+      &quot;name&quot;: &quot;Self-Perpetuating Oligarchy&quot;
+    },
+    &quot;law_level&quot;: 2,
+    &quot;tech_level&quot;: 14,
+    &quot;has_gas_giant&quot;: true,
+    &quot;gas_giant_count&quot;: 5,
+    &quot;belt_count&quot;: 0,
+    &quot;population_multiplier&quot;: 8,
+    &quot;pbg&quot;: &quot;805&quot;,
+    &quot;bases&quot;: [
+      &quot;H&quot;,
+      &quot;S&quot;
+    ],
+    &quot;trade_codes&quot;: [
+      &quot;Ht&quot;,
+      &quot;Ni&quot;
+    ],
+    &quot;travel_zone&quot;: &quot;Green&quot;,
+    &quot;notes&quot;: [
+      &quot;Orbits Star A at Orbit# 0.03 (0.200 AU). HZ deviation +0.03 → base temperature raw roll 2.&quot;
+    ]
+  }
+}</pre>
+  </details>
+</div>
+</body>
+</html>

@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/traveller_world_schema.json",
+  "title": "Traveller Mainworld",
+  "description": "A generated mainworld record produced by traveller_world_gen.py, following the Traveller 2022 Core Rulebook Universe Creation rules (pp. 248-261).",
+  "type": "object",
+  "required": [
+    "name",
+    "uwp",
+    "starport",
+    "size",
+    "atmosphere",
+    "temperature",
+    "hydrographics",
+    "population",
+    "government",
+    "law_level",
+    "tech_level",
+    "has_gas_giant",
+    "bases",
+    "trade_codes",
+    "travel_zone",
+    "notes",
+    "population_multiplier",
+    "belt_count",
+    "gas_giant_count",
+    "pbg"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The world's name as provided to the generator.",
+      "examples": [
+        "Cogri",
+        "Mora",
+        "World-1"
+      ]
+    },
+    "uwp": {
+      "type": "string",
+      "pattern": "^[ABCDEX][0-9A-G]{6}-[0-9A-G]$",
+      "description": "Universal World Profile string. Format: Starport + Size + Atmosphere + Hydrographics + Population + Government + Law – TechLevel, all in Traveller hexadecimal (0–9, A–G).",
+      "examples": [
+        "CA6A643-9",
+        "A867A69-F",
+        "X000000-0"
+      ]
+    },
+    "starport": {
+      "type": "object",
+      "description": "Starport classification and facilities.",
+      "required": [
+        "code",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "A",
+            "B",
+            "C",
+            "D",
+            "E",
+            "X"
+          ],
+          "description": "Starport class. A = Excellent … E = Frontier, X = No Starport."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable summary of facilities available at this starport class."
+        }
+      }
+    },
+    "size": {
+      "type": "object",
+      "description": "Physical size of the world.",
+      "required": [
+        "code",
+        "diameter_km",
+        "surface_gravity"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Size code (0 = asteroid / orbital complex; 8 ≈ Earth; 10 = large world)."
+        },
+        "diameter_km": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Approximate equatorial diameter as a human-readable string (e.g. '12,800' or '<1,000')."
+        },
+        "surface_gravity": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Approximate surface gravity as a human-readable string (e.g. '1.00G', 'negligible')."
+        }
+      }
+    },
+    "atmosphere": {
+      "type": "object",
+      "description": "Atmospheric composition and pressure.",
+      "required": [
+        "code",
+        "name",
+        "survival_gear"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15,
+          "description": "Atmosphere code (0 = None; 6 = Standard/Earth-like; 11 = Corrosive; etc.)."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Descriptive name for the atmosphere type (e.g. 'Standard', 'Insidious')."
+        },
+        "survival_gear": {
+          "type": "string",
+          "description": "Minimum survival gear required for unprotected exposure (e.g. 'Vacc Suit', 'Filter', 'None')."
+        }
+      }
+    },
+    "temperature": {
+      "type": "string",
+      "enum": [
+        "Frozen",
+        "Cold",
+        "Temperate",
+        "Hot",
+        "Boiling"
+      ],
+      "description": "World temperature band, derived from a 2D roll modified by the atmosphere code."
+    },
+    "hydrographics": {
+      "type": "object",
+      "description": "Surface liquid coverage.",
+      "required": [
+        "code",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Hydrographics code (0 = Desert / 0-5% liquid; 10 = Waterworld / 96-100%)."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable description of surface liquid coverage."
+        }
+      }
+    },
+    "population": {
+      "type": "object",
+      "description": "Intelligent population count.",
+      "required": [
+        "code",
+        "range"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 12,
+          "description": "Population code. The population magnitude is roughly 10^code (e.g. 6 = millions)."
+        },
+        "range": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable population range (e.g. 'Billions', 'None', 'Hundreds of thousands')."
+        }
+      }
+    },
+    "government": {
+      "type": "object",
+      "description": "Type of ruling government.",
+      "required": [
+        "code",
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 15,
+          "description": "Government code (0 = None/Anarchy; 4 = Representative Democracy; 13 = Religious Dictatorship; etc.)."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Government type name (e.g. 'Civil Service Bureaucracy', 'Balkanisation')."
+        }
+      }
+    },
+    "law_level": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Law Level (0 = no restrictions; higher values ban progressively more weapons and activities). No upper bound is enforced — high-government worlds can produce very high values."
+    },
+    "tech_level": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Technology Level (0 = Stone Age; 8 = present-day Earth; 15 = bleeding edge of Charted Space technology)."
+    },
+    "has_gas_giant": {
+      "type": "boolean",
+      "description": "Whether the system contains at least one gas giant, enabling fuel skimming."
+    },
+    "bases": {
+      "type": "array",
+      "description": "Sorted list of base codes present in the system. Each letter represents one base type.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "C",
+          "H",
+          "M",
+          "N",
+          "S"
+        ],
+        "description": "Base type code: C = Corsair, H = Highport, M = Military, N = Naval, S = Scout."
+      },
+      "uniqueItems": true,
+      "examples": [
+        [
+          "N",
+          "S"
+        ],
+        [
+          "H"
+        ],
+        []
+      ]
+    },
+    "trade_codes": {
+      "type": "array",
+      "description": "Sorted list of trade classification codes assigned to the world based on its characteristics.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "Ag",
+          "As",
+          "Ba",
+          "De",
+          "Fl",
+          "Ga",
+          "Hi",
+          "Ht",
+          "Ic",
+          "In",
+          "Lo",
+          "Lt",
+          "Na",
+          "Ni",
+          "Po",
+          "Ri",
+          "Va",
+          "Wa"
+        ],
+        "description": "Trade code: Ag=Agricultural, As=Asteroid, Ba=Barren, De=Desert, Fl=Fluid Oceans, Ga=Garden, Hi=High Population, Ht=High Tech, Ic=Ice-Capped, In=Industrial, Lo=Low Population, Lt=Low Tech, Na=Non-Agricultural, Ni=Non-Industrial, Po=Poor, Ri=Rich, Va=Vacuum, Wa=Waterworld."
+      },
+      "uniqueItems": true,
+      "examples": [
+        [
+          "Ag",
+          "Ni"
+        ],
+        [
+          "Hi",
+          "In"
+        ],
+        []
+      ]
+    },
+    "travel_zone": {
+      "type": "string",
+      "enum": [
+        "Green",
+        "Amber",
+        "Red"
+      ],
+      "description": "Travel advisory zone. Green = safe; Amber = caution advised (hazardous environment or unstable government); Red = interdicted (referee-assigned only)."
+    },
+    "notes": {
+      "type": "array",
+      "description": "Referee notes generated during world creation, such as warnings about Tech Level being below the minimum needed to maintain the atmosphere.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "examples": [
+        [
+          "TL 2 is below the minimum TL 8 needed to maintain Atmosphere 0 (None). Population may be doomed."
+        ]
+      ]
+    },
+    "population_multiplier": {
+      "type": "integer",
+      "description": "Population multiplier (P digit) from the World Builder's Handbook. Refines the population code to one significant figure: a Population 6 world with P=3 has approximately 3,000,000 inhabitants. Range 1-9 for inhabited worlds; 0 for uninhabited worlds (Population 0).",
+      "minimum": 0,
+      "maximum": 9
+    },
+    "belt_count": {
+      "type": "integer",
+      "description": "Number of planetoid belts in the system, from the World Builder's Handbook. A Size 0 mainworld (asteroid) contributes +1 to this count via the continuation method. Minimum 0.",
+      "minimum": 0
+    },
+    "gas_giant_count": {
+      "type": "integer",
+      "description": "Number of gas giants in the system. 0 if no gas giants are present. Generated from the World Builder's Handbook Gas Giant Quantity table when has_gas_giant is true; always 0 when has_gas_giant is false.",
+      "minimum": 0
+    },
+    "pbg": {
+      "type": "string",
+      "description": "PBG string encoding Population multiplier, Belt count, and Gas giant count as a three-character string (e.g. '312' = P3, 1 belt, 2 gas giants). Each digit uses standard Traveller notation. Format introduced in MegaTraveller and used on Travellermap.com.",
+      "pattern": "^[0-9][0-9][0-9A-G]$"
+    }
+  },
+  "$defs": {
+    "world_array": {
+      "title": "Traveller Mainworld Array",
+      "description": "An array of mainworld records, as produced when --count > 1 is passed to traveller_world_gen.py.",
+      "type": "array",
+      "items": {
+        "$ref": "#"
+      },
+      "minItems": 1
+    }
+  }
+}

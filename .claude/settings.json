@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.venv/bin/pylint traveller_map_fetch.py shared/helpers.py function_app.py)",
+      "Bash(SSL_CERT_FILE=/etc/ssl/cert.pem .venv/bin/python traveller_map_fetch.py --name Tavonni --sector \"Spinward Marches\" --seed 42 --format text)"
+    ]
+  }
+}

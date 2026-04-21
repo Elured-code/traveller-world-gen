@@ -1,0 +1,56 @@
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ────────────────────────────────────────────────────
+.venv/
+.venv-1/
+venv/
+env/
+ENV/
+
+# ── Testing ─────────────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Azure Functions ─────────────────────────────────────────────────────────
+# local.settings.json contains secrets (storage connection strings, keys).
+# A safe template is provided as local.settings.json.example — copy and fill in.
+local.settings.json
+# Azure Functions publish artefacts
+.python_packages/
+.funcignore
+
+# ── Editors ─────────────────────────────────────────────────────────────────
+# .vscode/ is committed — contains recommended extensions and workspace settings
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Generated outputs ───────────────────────────────────────────────────────
+# The examples/ directory contains generated HTML cards for illustration.
+# Regenerate with: python traveller_world_gen.py --name <name> --html
+examples/*.html
+
+# ── Claude Code context ─────────────────────────────────────────────────────
+# Project context document for Claude Code import — contains session history
+# and internal development notes not intended for the public repository.
+.context/
