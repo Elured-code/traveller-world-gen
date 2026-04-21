@@ -54,3 +54,4 @@ examples/*.html
 # Project context document for Claude Code import — contains session history
 # and internal development notes not intended for the public repository.
 .context/
+.claude/
