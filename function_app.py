@@ -125,6 +125,7 @@ The human author reviewed, directed, and is responsible for the code.
 
 import logging
 import urllib.error
+from typing import Optional
 
 # All endpoint handlers deliberately catch Exception broadly so that any
 # unexpected generation error returns a structured 500 rather than crashing.
@@ -487,10 +488,10 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
 # ===========================================================================
 
 def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    name: str,
-    sector: str,
-    hex_pos: str,
-    seed,
+    name: Optional[str],
+    sector: Optional[str],
+    hex_pos: Optional[str],
+    seed: Optional[int],
     want_detail: bool,
     fmt: str,
 ) -> func.HttpResponse:

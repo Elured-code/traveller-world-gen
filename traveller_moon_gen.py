@@ -92,6 +92,7 @@ class Moon:
     is_ring: bool = False
     is_gas_giant_moon: bool = False  # True if moon is itself a small GG
     detail: Optional["WorldDetail"] = None  # full SAH+social, populated later
+    _ring_count: int = field(default=1, init=False, repr=False)  # collapsed ring count
 
     @property
     def size_str(self) -> str:

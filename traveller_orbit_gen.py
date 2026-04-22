@@ -95,7 +95,12 @@ MAO_TABLE: Dict[Tuple[str, int, str], float] = {
 }
 
 
-def _interp(spectral, subtype, lum_class, table):
+def _interp(
+    spectral: str,
+    subtype: int,
+    lum_class: str,
+    table: Dict[Tuple[str, int, str], float],
+) -> float:
     anchors = [0,5,9] if spectral == "M" else [0,5]
     for i in range(len(anchors)-1):
         lo, hi = anchors[i], anchors[i+1]

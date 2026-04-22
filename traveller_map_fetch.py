@@ -84,7 +84,7 @@ from traveller_stellar_gen import (
     _secondary_orbit,
     _star_properties,
 )
-from traveller_orbit_gen import generate_orbits
+from traveller_orbit_gen import SystemOrbits, generate_orbits
 from traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
 from traveller_world_gen import World
 from traveller_world_detail import attach_detail
@@ -237,6 +237,8 @@ def _fetch_world_json(
 
     # Resolve name → hex if needed
     if not hex_pos:
+        if not name:
+            raise ValueError("Supply name or hex_pos (both require sector).")
         hex_pos = _name_to_hex(name, sector, timeout=timeout)
 
     encoded_sector = urllib.parse.quote(sector, safe="")
@@ -506,7 +508,7 @@ def reconstruct_world(map_data: MapWorldData) -> World:
 # Full pipeline
 # ---------------------------------------------------------------------------
 
-def _reconcile_orbit_types(orbits: "SystemOrbits",
+def _reconcile_orbit_types(orbits: SystemOrbits,
                             canonical_gg: int,
                             canonical_belt: int) -> None:
     """
@@ -530,7 +532,7 @@ def _reconcile_orbit_types(orbits: "SystemOrbits",
         o.world_type = wtype
 
 
-def _recount_orbit_metadata(orbits: "SystemOrbits") -> None:
+def _recount_orbit_metadata(orbits: SystemOrbits) -> None:
     """Update SystemOrbits count fields from the actual orbit list."""
     orbits.gas_giant_count   = sum(1 for o in orbits.orbits if o.world_type == "gas_giant")
     orbits.belt_count        = sum(1 for o in orbits.orbits if o.world_type == "belt")

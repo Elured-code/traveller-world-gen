@@ -316,7 +316,7 @@ class WorldDetail:
 
     def __init__(self, sah: str, population: int = 0, government: int = 0,
                  law_level: int = 0, tech_level: int = 0, spaceport: str = "-",
-                 moons: list | None = None):
+                 moons: list[Moon] | None = None):
         self.sah        = sah
         self.population = population
         self.government = government
@@ -411,7 +411,7 @@ def _moons_for(detail: WorldDetail, orbit_number: float) -> list:
 
 
 def _moon_detail(
-    moon,
+    moon: Moon,
     hz_deviation: float,
     hzco: float,
     orbit_number: float,
@@ -438,8 +438,6 @@ def _moon_detail(
       Same pipeline as orbital secondary worlds — population roll, TL viability
       check, government, law, tech level, spaceport.
     """
-    from traveller_moon_gen import Moon
-
     # ── Physical ──────────────────────────────────────────────────────────
     if moon.is_ring:
         return WorldDetail(sah="R00")
