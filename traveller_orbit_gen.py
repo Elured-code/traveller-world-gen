@@ -467,7 +467,14 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
         # spread unit, preventing outer slots from piling up at the ceiling.
         avail = max_o - mao
         max_spread = avail / max(total_slots + n_total_stars, 1)
-        spread = max(0.01, min(spread, max_spread))
+        # Minimum spread: when baseline_num is large the formula above collapses
+        # to HZCO/total_slots (~0.4 for a G star with 8 worlds), pinning all
+        # slots near the inner system.  Enforce a floor so worlds span at least
+        # half the available range.
+        min_spread = avail / max(total_slots * 2, 1)
+        spread = max(min_spread, min(spread, max_spread))
+        spread = min(spread, max_spread)
+        spread = max(0.01, spread)
 
         # Place slots (WBH p.48-49)
         # Inner Slot Orbit# = (MAO + Spread) + (2D-7) × Spread/10
@@ -477,7 +484,9 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
         current = max(mao, current)
         for _ in range(total_slots):
             current = max(mao, min(current, max_o))
-            if slots and current <= slots[-1] * 1.1:
+            # Additive gap check (was multiplicative `* 1.1`, which triggered
+            # constantly once orbit# exceeded spread/0.1 and halved every step).
+            if slots and current - slots[-1] < spread * 0.4:
                 current = min(slots[-1] + spread * 0.5, max_o)
             # Stop if we cannot advance past the last slot (at ceiling)
             if slots and round(current, 2) == round(slots[-1], 2):
