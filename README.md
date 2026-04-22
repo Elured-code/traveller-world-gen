@@ -482,7 +482,9 @@ pytest tests/ -v
 
 ## Generation rules implemented
 
-All steps follow the Traveller 2022 Core Rulebook exactly.
+### Core Rulebook (CRB pp. 248–261) — mainworld generation
+
+All 13 steps follow the Traveller 2022 Core Rulebook exactly.
 
 | Step | Characteristic | Formula |
 |------|---------------|---------|
@@ -499,6 +501,88 @@ All steps follow the Traveller 2022 Core Rulebook exactly.
 | 11 | Gas Giant | 2D ≤ 9 → present |
 | 12 | Trade Codes | Table lookup (all 18 codes) |
 | 13 | Travel Zone | Amber if Atm ≥ 10, Gov 0/7/10, or Law 0/9+ |
+
+When a mainworld is generated in orbital context (system endpoints), step 3 is
+replaced by `generate_temperature_from_orbit()`, which derives temperature from
+the world's HZ deviation rather than a random roll.
+
+---
+
+### World Builder's Handbook (WBH Sept 2023) — stellar and system generation
+
+#### Stellar generation (pp. 14–29)
+
+| Procedure | Details |
+|-----------|---------|
+| Primary star type | Spectral class (O B A F G K M) and luminosity class (Ia Ib II III IV V VI) rolled from WBH tables; Brown Dwarfs and White Dwarfs handled |
+| Star properties | Mass, temperature, diameter, and luminosity interpolated from WBH lookup tables by spectral type and subtype (0–9) |
+| System age | Rolled for primary; constrained by main-sequence lifespan; shared across all stars |
+| Multiple stars | Close, Near, and Far secondaries; tight Companion pairs (e.g. Aa/Ab) |
+| Non-primary typing | Random, Lesser, Sibling, or Twin procedure; mass ordering enforced (`candidate.mass < parent.mass`) |
+| Non-primary properties | Same interpolation tables as primary |
+
+#### Orbit placement (pp. 36–51)
+
+| Step | Procedure | Details |
+|------|-----------|---------|
+| World counts | Gas giants, belts, terrestrials | 2D rolls with DMs for luminosity class |
+| Empty orbits | Step 4 | 2D roll; result > 9 → that many empty slots added |
+| MAO | Minimum Allowable Orbit# | Interpolated from WBH table by spectral type, subtype, and luminosity class |
+| HZCO | Habitable Zone Centre Orbit# | `√(combined luminosity) × 3.0` |
+| Baseline number | Step 3 | 2D + DMs for luminosity class, companion presence, world count |
+| Baseline orbit | Step 3a/3b/3c | 3a: HZ world present; 3b: cold system (all worlds beyond HZ); 3c: hot system (all worlds inside HZ) |
+| Spread | Step 5 | `(baseline_orbit − MAO) / baseline_num`; floored and capped by available range |
+| Slot placement | Step 6 | `MAO + spread + (2D−7)×spread/10` per slot; additive gap check |
+| World type assignment | Step 8 | Pool of gas giants → belts → terrestrials placed into slots; remainder as terrestrial |
+| Mainworld selection | Step 9 | Scored by HZ proximity, temperature zone, world type, and star role |
+
+Multiple-star systems allocate worlds to each star proportionally by available
+orbital range. Primary star's `max_o` is reduced to `companion.orbit_number − 1.0`
+when a Close/Near/Far secondary is present.
+
+#### Secondary world detail (pp. 55–77, 162–163)
+
+| Procedure | Details |
+|-----------|---------|
+| SAH profile | Size, Atmosphere, Hydrographics rolled for every non-mainworld orbit slot and significant moon |
+| Population cap | `mainworld.population − 1D` rolled once per system; applied as a ceiling to all secondary worlds and moons |
+| TL viability check | `minimal_sustainable_TL(atmosphere) > mainworld_TL` → uninhabited regardless of population roll |
+| Government | Dependent procedure (WBH Case 1): 1D on Secondary World Government table |
+| Law Level | 1D−3 + Government |
+| Tech Level | 1D−1 + Population DM |
+| Spaceport | Y/H/G/F scale (not the CRB A–X starport scale) |
+| Gas giants | Never directly inhabited; moons may be |
+| Belt SAH | Fixed at `000`; atmosphere 0 used for TL viability check (TL ≥ 8 required) |
+
+#### Moon generation (pp. 55–57)
+
+| Procedure | Details |
+|-----------|---------|
+| Quantity | Size 1–2: 1D−5; Size 3–9: 2D−8; Size A–F: 2D−6; Small GG: 3D−7; Medium/Large GG: 4D−6; DM−1 per die if Orbit# < 1.0 |
+| Result = 0 | One significant ring (R) instead of moons |
+| Terrestrial moon sizing | 1D picks range: 1–3 → size S; 4–5 → D3−1 (0=ring); 6 → (parent−1) − 1D |
+| Gas giant moon sizing | 1D picks range: 1–3 → size S; 4–5 → D3−1; 6 → special table (1D: 1–3→1D, 4–5→2D−2, 6→2D+4) |
+| Twin/near-twin check | If moon size = parent−2: roll 2D; 2 → near-twin (parent−1), 12 → twin (parent) |
+| Moon size cap | Moon cannot exceed parent size |
+| Ring consolidation | Multiple rings on one planet collapsed to a single R0N entry |
+| Moon SAH and social | Full secondary world procedure using parent orbit's HZ deviation |
+
+#### Not yet implemented
+
+The following WBH procedures are explicitly out of scope:
+
+| Feature | WBH pages |
+|---------|-----------|
+| Anomalous orbits (random, eccentric, inclined, retrograde, trojan) | pp. 49–50 |
+| Orbital eccentricity | p. 51 |
+| Orbital periods | — |
+| Moon orbit placement (Hill sphere, Roche limit, PD distances) | pp. 74–77 |
+| Moon orbit adjacency DMs (3 of 4 conditions require eccentricity data) | p. 56 |
+| Secondary world independent government (Case 2) | p. 162 |
+| Secondary world classifications (Colony, Freeport, Mining, etc.) | p. 163 |
+| World physical detail beyond SAH (density, gravity, seismic stress, etc.) | pp. 74–130 |
+| Belt physical detail (span, composition, bulk, resource rating) | pp. 131–133 |
+| Post-stellar special circumstances (neutron stars, black holes, pulsars) | pp. 219+ |
 
 ---
 
