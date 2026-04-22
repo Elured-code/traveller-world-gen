@@ -345,10 +345,11 @@ structure (secondary world positions, moons) is procedurally generated.
 **`sector` is always required** — many world names exist in multiple sectors.
 Identify the world by `name` + `sector`, or by `sector` + `hex`.
 
-Returns `400 MISSING_PARAM` if sector is omitted, `404 NOT_FOUND` if the world
-cannot be found on TravellerMap, or `502 UPSTREAM_ERROR` if TravellerMap is
-unreachable. Supports the same `detail` and `format` parameters as the system
-endpoints.
+Returns `400 MISSING_PARAM` if sector is omitted, `400 INVALID_HEX` if `hex`
+is present but not a valid 4-digit hex position (e.g. `1910`), `404 NOT_FOUND`
+if the world cannot be found on TravellerMap, or `502 UPSTREAM_ERROR` if
+TravellerMap is unreachable. Supports the same `detail` and `format`
+parameters as the system endpoints.
 
 ### The `detail` parameter
 
@@ -433,7 +434,7 @@ curl "https://traveller-world-gen.azurewebsites.net/api/system/Mora?detail=true&
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRAVELLER_MAX_BATCH_SIZE` | `20` | Maximum worlds per batch request |
+| `TRAVELLER_MAX_BATCH_SIZE` | `20` | Maximum worlds per batch request (accepted range: 1–1000) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | _(empty)_ | Application Insights telemetry |
 
 ---
