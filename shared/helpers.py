@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import random
+import re
 from typing import Any, Optional, Tuple
 
 import azure.functions as func
@@ -43,12 +44,17 @@ logger = logging.getLogger(__name__)
 # the limit can be adjusted in Azure App Settings without redeploying.
 DEFAULT_MAX_BATCH = 20
 
+_MAX_BATCH_UPPER = 1000
+
 def max_batch_size() -> int:
     """Return the maximum allowed batch size, from env or default."""
     try:
-        return int(os.environ.get("TRAVELLER_MAX_BATCH_SIZE", DEFAULT_MAX_BATCH))
-    except ValueError:
-        return DEFAULT_MAX_BATCH
+        size = int(os.environ.get("TRAVELLER_MAX_BATCH_SIZE", DEFAULT_MAX_BATCH))
+        if 1 <= size <= _MAX_BATCH_UPPER:
+            return size
+    except (ValueError, OverflowError):
+        pass
+    return DEFAULT_MAX_BATCH
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +115,7 @@ ERR_INVALID_SEED       = "INVALID_SEED"
 ERR_INVALID_COUNT      = "INVALID_COUNT"
 ERR_COUNT_TOO_LARGE    = "COUNT_TOO_LARGE"
 ERR_INVALID_BODY       = "INVALID_BODY"
+ERR_INVALID_HEX        = "INVALID_HEX"
 ERR_NAME_TOO_LONG      = "NAME_TOO_LONG"
 ERR_MISSING_PARAM      = "MISSING_PARAM"
 ERR_NOT_FOUND          = "NOT_FOUND"
@@ -317,6 +324,33 @@ def parse_sector(
             ERR_INVALID_BODY,
         )
     return sector, None
+
+
+_HEX_RE = re.compile(r"^[0-9A-Fa-f]{4}$")
+
+
+def parse_hex_pos(
+    req: func.HttpRequest,
+    body: Optional[dict] = None,
+) -> Tuple[Optional[str], Optional[func.HttpResponse]]:
+    """Extract and validate the optional hex-position parameter.
+
+    Accepts ?hex=... in the query string or {"hex": "..."} in the body.
+    Valid format: exactly four hex digits, e.g. "1910" or "0204".
+
+    Returns:
+        (hex_str, None)    if valid or absent.
+        (None, error_resp) if present but not a valid 4-digit hex position.
+    """
+    hex_pos = req.params.get("hex", "").strip() or None
+    if not hex_pos and body and isinstance(body, dict):
+        hex_pos = str(body.get("hex", "")).strip() or None
+    if hex_pos and not _HEX_RE.match(hex_pos):
+        return None, error(
+            "'hex' must be a 4-digit hex grid position (e.g. '1910').",
+            ERR_INVALID_HEX,
+        )
+    return hex_pos, None
 
 
 def apply_seed(seed: Optional[int]) -> None:

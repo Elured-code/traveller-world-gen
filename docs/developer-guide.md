@@ -396,14 +396,14 @@ class Moon:
     is_ring: bool = False
     is_gas_giant_moon: bool = False  # moon is itself a small gas giant
     detail: Optional[WorldDetail] = None  # populated by attach_detail()
-    # _ring_count: int  # informal attribute set on ring Moons by _consolidate()
+    _ring_count: int    # field(default=1, init=False) — set by _consolidate()
 
     # properties: .size_str, __repr__
 ```
 
 **Quantity DM:** The only DM currently applied is `DM-1 per dice` when `orbit_number < 1.0`. Other adjacency conditions (companion-induced MAO, Close/Near star exclusion zone proximity) require eccentricity data that is not yet generated, so they are omitted.
 
-**Ring consolidation:** Multiple rings rolled for a single planet are merged into one `Moon(is_ring=True)` with `_ring_count` set to the total. The display string for two rings is `R02`. This attribute is informal (not in `__slots__` or `__init__`) and set by `_consolidate()`.
+**Ring consolidation:** Multiple rings rolled for a single planet are merged into one `Moon(is_ring=True)` with `_ring_count` set to the total. The display string for two rings is `R02`. `_ring_count` is declared as `field(default=1, init=False)` in the dataclass so it is a known field for type checkers, even though it is not accepted by `__init__`.
 
 **Moon detail generation** (`_moon_detail()` in `traveller_world_detail.py`): Uses the **parent planet's HZ deviation**, not the moon's own position, because moons share their parent's orbital distance from the star. Size S and size 0–1 moons automatically receive atmosphere 0 and hydrographics 0 (too small to retain atmosphere). Size 2+ moons go through the full `generate_atmosphere` / `generate_hydrographics` pipeline.
 
@@ -432,9 +432,13 @@ Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` e
 
 **`parse_format(req)` helper** (`shared/helpers.py`): Extracts the `format` parameter from query string or JSON body. Returns one of `"json"` (default), `"html"`, or `"text"`. Used by `/api/system/full` and the map endpoints.
 
+**`parse_hex_pos(req, body=None)` helper** (`shared/helpers.py`): Extracts and validates the optional `hex` query/body parameter. Accepts a 4-digit hex position matching `[0-9A-Fa-f]{4}` (e.g. `"1910"`). Returns `(hex_str, None)` if valid or absent; returns `(None, error_response)` with error code `INVALID_HEX` if the value is present but wrongly formatted. Used by both map/system endpoints.
+
+**`max_batch_size()` helper** (`shared/helpers.py`): Reads `TRAVELLER_MAX_BATCH_SIZE` from the environment and returns it as an integer, falling back to `DEFAULT_MAX_BATCH = 20` on parse failure. The returned value is bounds-checked to `1–1000`; values outside that range are silently replaced with the default.
+
 **`/api/system/full` behaviour:** Calls `generate_full_system()` then unconditionally calls `attach_detail()`. No `detail` parameter is accepted or needed. The `format` parameter then controls serialisation: `to_dict()` for JSON, `to_html(detail_attached=True)` for HTML, `summary()` for text.
 
-**`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). Supports `detail` and `format` identically to the system endpoints.
+**`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). The `URLError` handler logs the upstream detail server-side but returns only a generic message to the caller. Supports `detail` and `format` identically to the system endpoints.
 
 ---
 
@@ -564,6 +568,14 @@ Three bugs were found and fixed during a formal compliance audit of `traveller_o
 **Step 6 — outermost orbit exceeds max_o (low severity).** The clamp `current = min(current, max_o)` was applied at the start of each loop iteration, but after the spacing-fallback branch could push `current` above `max_o`. Fixed by clamping before appending and also clamping the fallback path. Post-fix: 0 violations in 10,000 systems.
 
 **Non-primary star mass ordering (separate fix).** Early versions compared non-primary star types using only the spectral letter (e.g., both M0 V and M7 V are "M"), but mass varies significantly within a spectral type. Fixed to compare `candidate.mass > parent.mass` directly.
+
+**Orbit spread range — inner-system clustering (medium severity).** Two interacting bugs caused all worlds to cluster near the inner system regardless of the star type or system size.
+
+*Bug 1 — missing minimum spread:* When `baseline_num` is close to `total_slots` (as in the normal Step 3a path), the formula `spread = (baseline_orbit - mao) / baseline_num` collapses to approximately `HZCO / total_slots`. For a G-type star with 8 worlds this gives spread ≈ 0.4, placing every world within Orbit# 3.5 (≈ 1.5 AU) regardless of the available range.
+
+*Bug 2 — multiplicative gap check:* The slot-spacing fallback `if current <= slots[-1] * 1.1` triggered continuously for any orbit number above `spread / 0.1` (e.g., beyond Orbit# 4 with spread 0.4), halving the effective spacing on every outer step.
+
+Fixed by adding `min_spread = avail / max(total_slots * 2, 1)` as a floor so that worlds always span at least half the available range, and by changing the gap check to additive: `if current - slots[-1] < spread * 0.4`. Post-fix: single-star systems routinely place worlds from ≈ 0.5 AU to 20+ AU; binary systems are correctly limited by their companion orbit geometry.
 
 ---
 

@@ -9,6 +9,7 @@
     "APPLICATIONINSIGHTS_CONNECTION_STRING": ""
   },
   "Host": {
-    "CORS": "*"
+    "CORS": "*",
+    "_CORS_NOTE": "Replace '*' with your specific origin(s) before production deployment, e.g. 'https://yourdomain.com'"
   }
 }

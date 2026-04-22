@@ -141,8 +141,8 @@ from traveller_map_fetch import generate_system_from_map
 from shared.helpers import (
     ok, error,
     ERR_INVALID_BODY, ERR_INTERNAL, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
-    apply_seed, parse_count, parse_detail, parse_format, parse_name, parse_seed,
-    parse_sector,
+    apply_seed, parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
+    parse_seed, parse_sector,
 )
 
 logger = logging.getLogger(__name__)
@@ -507,7 +507,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
     except urllib.error.URLError as exc:
         logger.error("TravellerMap upstream error: %s", exc)
         return error(
-            f"Could not reach TravellerMap: {exc.reason}",
+            "Could not reach the upstream data source. Please try again later.",
             ERR_UPSTREAM, status_code=502,
         )
     except Exception as exc:
@@ -576,14 +576,14 @@ def generate_map_system(req: func.HttpRequest) -> func.HttpResponse:
     sector, err = parse_sector(req)
     if err:
         return err
-    hex_pos = req.params.get("hex", "").strip() or None
-    if not hex_pos:
-        try:
-            body = req.get_json()
-            if isinstance(body, dict):
-                hex_pos = str(body.get("hex", "")).strip() or None
-        except (ValueError, TypeError):
-            pass
+    try:
+        body = req.get_json()
+        body = body if isinstance(body, dict) else None
+    except (ValueError, TypeError):
+        body = None
+    hex_pos, err = parse_hex_pos(req, body)
+    if err:
+        return err
     if not sector:
         return error(
             "The 'sector' parameter is required to avoid same-name ambiguity.",
@@ -636,7 +636,9 @@ def generate_named_map_system(req: func.HttpRequest) -> func.HttpResponse:
             "The 'sector' query parameter is required to avoid same-name ambiguity.",
             ERR_MISSING_PARAM,
         )
-    hex_pos = req.params.get("hex", "").strip() or None
+    hex_pos, err = parse_hex_pos(req)
+    if err:
+        return err
     want_detail = parse_detail(req)
     fmt = parse_format(req)
     return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt)
