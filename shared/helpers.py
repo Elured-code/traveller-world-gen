@@ -353,6 +353,48 @@ def parse_hex_pos(
     return hex_pos, None
 
 
+def parse_world_json(
+    req: func.HttpRequest,
+) -> Tuple[Optional[dict], Optional[func.HttpResponse]]:
+    """Extract and validate a mainworld JSON object from the request body.
+
+    The body must be a JSON object in the shape produced by World.to_dict().
+    Minimal required fields: 'name' plus either 'uwp' or the individual
+    characteristic sub-objects ('size', 'atmosphere', 'hydrographics',
+    'population').
+
+    Returns:
+        (world_dict, None)   if valid.
+        (None, error_resp)   if absent or invalid.
+    """
+    if not req.get_body():
+        return None, error(
+            "Request body is required and must be a mainworld JSON object.",
+            ERR_INVALID_BODY,
+        )
+    try:
+        data = req.get_json()
+    except (ValueError, TypeError):
+        return None, error("Request body is not valid JSON.", ERR_INVALID_BODY)
+
+    if not isinstance(data, dict):
+        return None, error(
+            "Request body must be a JSON object (mainworld data).",
+            ERR_INVALID_BODY,
+        )
+
+    has_uwp = "uwp" in data
+    has_breakdown = all(k in data for k in ("size", "atmosphere", "hydrographics", "population"))
+    if not has_uwp and not has_breakdown:
+        return None, error(
+            "Request body must include 'uwp' or the individual world "
+            "characteristic fields (size, atmosphere, hydrographics, population).",
+            ERR_INVALID_BODY,
+        )
+
+    return data, None
+
+
 def apply_seed(seed: Optional[int]) -> None:
     """Seed the global random state if a seed was requested.
 

@@ -388,6 +388,48 @@ class World:
         """
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "World":
+        """Reconstruct a World from a dict produced by to_dict().
+
+        Handles both the nested form produced by to_dict() (where 'starport',
+        'size', 'atmosphere', 'hydrographics', 'population', and 'government'
+        are sub-objects with a 'code' key) and flat forms where the value is
+        the code directly.  Missing fields receive safe defaults.
+        """
+        def _int(val: object, default: int = 0) -> int:
+            try:
+                return int(val)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return default
+
+        def _code(field: object) -> object:
+            """Return field['code'] when field is a dict, else field itself."""
+            return field.get("code") if isinstance(field, dict) else field
+
+        gas_giant_count = _int(_code(d.get("gas_giant_count", 0)))
+
+        return cls(
+            name=str(d.get("name", "Unknown")),
+            starport=str(_code(d.get("starport", "X")) or "X"),
+            size=_int(_code(d.get("size", 0))),
+            atmosphere=_int(_code(d.get("atmosphere", 0))),
+            temperature=str(d.get("temperature", "Temperate")),
+            hydrographics=_int(_code(d.get("hydrographics", 0))),
+            population=_int(_code(d.get("population", 0))),
+            government=_int(_code(d.get("government", 0))),
+            law_level=_int(d.get("law_level", 0)),
+            tech_level=_int(d.get("tech_level", 0)),
+            has_gas_giant=gas_giant_count > 0,
+            gas_giant_count=gas_giant_count,
+            belt_count=_int(d.get("belt_count", 0)),
+            population_multiplier=_int(d.get("population_multiplier", 0)),
+            bases=list(d.get("bases", [])),
+            trade_codes=list(d.get("trade_codes", [])),
+            travel_zone=str(d.get("travel_zone", "Green")),
+            notes=list(d.get("notes", [])),
+        )
+
     # ------------------------------------------------------------------
     # HTML display card
     # ------------------------------------------------------------------
