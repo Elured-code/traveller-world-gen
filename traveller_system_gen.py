@@ -650,6 +650,72 @@ def generate_full_system(
     )
 
 
+def generate_system_from_world(
+    world: World,
+    seed: Optional[int] = None,
+) -> TravellerSystem:
+    """
+    Generate a complete Traveller star system around an existing mainworld.
+
+    The world's UWP, bases, trade codes, and PBG values are preserved
+    exactly. New stellar data and orbital structure are generated
+    procedurally. The mainworld's temperature is recalculated from its
+    assigned orbital position to remain consistent with the host star's
+    habitable zone.
+
+    The canonical UWP is stamped on the mainworld orbit slot so the
+    HTML/JSON output always shows the correct profile, following the same
+    pattern used for TravellerMap canonical systems.
+
+    Args:
+        world: An existing World object (e.g. from World.from_dict()).
+        seed:  Optional RNG seed for reproducible stellar/orbital generation.
+
+    Returns:
+        A TravellerSystem with the supplied world placed as the mainworld.
+    """
+    if seed is not None:
+        random.seed(seed)
+
+    stellar = generate_stellar_data()
+    orbits = generate_orbits(stellar)
+
+    # Reconcile PBG: honour the world's canonical gas giant and belt counts
+    # rather than the freshly generated orbit counts.
+    orbits.gas_giant_count = world.gas_giant_count
+    orbits.belt_count = world.belt_count
+
+    mw_orbit = orbits.mainworld_orbit
+
+    if mw_orbit is not None:
+        # Stamp canonical UWP on the orbit slot (mirrors TravellerMap path).
+        mw_orbit.canonical_profile = world.uwp()
+
+        # Recalculate temperature from orbital position ("orbital temperature,
+        # not random" design rule — the JSON value is discarded).
+        hzco = orbits.star_hzco.get(mw_orbit.star_designation, 1.0)
+        world.temperature = generate_temperature_from_orbit(
+            atmosphere=world.atmosphere,
+            hz_deviation=mw_orbit.hz_deviation,
+            hzco=hzco,
+            orbit=mw_orbit.orbit_number,
+        )
+        world.notes.append(
+            f"System generated from existing mainworld UWP {world.uwp()}. "
+            f"Placed at Star {mw_orbit.star_designation} Orbit# "
+            f"{mw_orbit.orbit_number:.2f} ({mw_orbit.orbit_au:.3f} AU), "
+            f"HZ deviation {mw_orbit.hz_deviation:+.2f}; "
+            f"temperature recalculated as {world.temperature}."
+        )
+
+    return TravellerSystem(
+        stellar_system=stellar,
+        system_orbits=orbits,
+        mainworld=world,
+        mainworld_orbit=mw_orbit,
+    )
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------

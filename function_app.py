@@ -48,6 +48,13 @@ GET/POST /api/map/system
 GET  /api/map/system/{name}
     Same as above; world name from URL path.
 
+POST /api/system/from-world
+    Generate a full star system around an existing mainworld JSON object.
+    The world's UWP and PBG are preserved; stellar data and orbital structure
+    are generated procedurally. Temperature is recalculated from orbital position.
+    Body: mainworld JSON (from any world or system endpoint).
+    Parameters: seed, detail, format.
+
 The 'detail' parameter
 ----------------------
 All system endpoints accept an optional boolean 'detail' parameter
@@ -133,8 +140,8 @@ from typing import Optional
 
 import azure.functions as func
 
-from traveller_world_gen import generate_world
-from traveller_system_gen import generate_full_system
+from traveller_world_gen import World, generate_world
+from traveller_system_gen import generate_full_system, generate_system_from_world
 from traveller_world_detail import attach_detail
 from traveller_map_fetch import generate_system_from_map
 
@@ -142,7 +149,7 @@ from shared.helpers import (
     ok, error,
     ERR_INVALID_BODY, ERR_INTERNAL, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
     apply_seed, parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
-    parse_seed, parse_sector,
+    parse_seed, parse_sector, parse_world_json,
 )
 
 logger = logging.getLogger(__name__)
@@ -538,6 +545,75 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
             status_code=200,
             mimetype="text/plain",
             charset="utf-8",
+        )
+    return ok(system.to_dict())
+
+
+# ===========================================================================
+# Endpoint 14:  POST /api/system/from-world
+# ===========================================================================
+
+@app.route(route="system/from-world", methods=["POST"])
+def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpResponse:
+    """Generate a full star system around an existing mainworld.
+
+    The request body must be a mainworld JSON object (as returned by any
+    world or system endpoint). The world's UWP, bases, trade codes, and PBG
+    values are preserved. New stellar data and orbital structure are generated
+    procedurally. Temperature is recalculated from the assigned orbital
+    position to remain consistent with the host star's habitable zone.
+
+    Parameters (body + query string)
+    ---------------------------------
+    <world JSON>   required   Mainworld object from a previous generation call.
+    seed           int, opt   RNG seed for stellar/orbital generation.
+    detail         bool, opt  Attach secondary world profiles (attach_detail).
+    format         str, opt   'json' (default) | 'html' | 'text'.
+
+    Returns
+    -------
+    200  TravellerSystem JSON/HTML/text with the supplied world as mainworld.
+    400  INVALID_BODY / INVALID_SEED
+    500  INTERNAL_ERROR
+    """
+    logger.info("generate_system_from_existing_world called")
+    world_dict, err = parse_world_json(req)
+    if err or world_dict is None:
+        return err or error("Missing world data.", ERR_INVALID_BODY)
+    seed, err = parse_seed(req)
+    if err:
+        return err
+    want_detail = parse_detail(req)
+    fmt = parse_format(req)
+    try:
+        world = World.from_dict(world_dict)
+        system = generate_system_from_world(world, seed=seed)
+        if want_detail:
+            attach_detail(system)
+    except Exception as exc:
+        logger.exception("Error generating system from world: %s", exc)
+        return error(
+            "An unexpected error occurred while generating the system.",
+            ERR_INTERNAL, status_code=500,
+        )
+    mw = system.mainworld
+    logger.info(
+        "Generated system from world name=%s stars=%d worlds=%d detail=%s uwp=%s",
+        mw.name if mw else "?",
+        len(system.stellar_system.stars),
+        system.system_orbits.total_worlds,
+        want_detail,
+        mw.uwp() if mw else "—",
+    )
+    if fmt == "html":
+        return func.HttpResponse(
+            body=system.to_html(detail_attached=want_detail),
+            status_code=200, mimetype="text/html", charset="utf-8",
+        )
+    if fmt == "text":
+        return func.HttpResponse(
+            body=system.summary(),
+            status_code=200, mimetype="text/plain", charset="utf-8",
         )
     return ok(system.to_dict())
 
