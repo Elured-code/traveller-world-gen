@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import json
 import random
+import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -578,8 +579,9 @@ def generate_system_from_map(
     # Step 1: fetch canonical data — mainworld is taken directly from this
     map_data = fetch_world_data(name=name, sector=sector, hex_pos=hex_pos)
 
-    if seed is not None:
-        random.seed(seed)
+    if seed is None:
+        seed = secrets.randbelow(2 ** 31)
+    random.seed(seed)
 
     # Step 2: canonical stellar system (types fixed, orbit positions random)
     stellar = reconstruct_star_system(map_data.stars_str)

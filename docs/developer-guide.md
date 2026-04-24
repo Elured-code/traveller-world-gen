@@ -56,7 +56,7 @@ traveller-world-gen/
 ├── shared/
 │   └── helpers.py              # Request parsing, response builders, error codes
 ├── gen-ui/
-│   ├── app.py                  # GTK4 desktop UI — mainworld generation, HTML card output, save to JSON/text/HTML
+│   ├── app.py                  # GTK4 desktop UI — mainworld generation working; system generation controls present but not yet wired (under construction)
 │   ├── README.md               # Setup and usage notes
 │   └── requirements.txt        # Dependency notes (Homebrew) and HTML rendering constraints
 │

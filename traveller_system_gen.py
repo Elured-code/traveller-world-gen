@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import random
+import secrets
 from dataclasses import dataclass
 from typing import Optional
 
@@ -618,8 +619,9 @@ def generate_full_system(
     Returns:
         A TravellerSystem containing stellar data, orbits, and mainworld.
     """
-    if seed is not None:
-        random.seed(seed)
+    if seed is None:
+        seed = secrets.randbelow(2 ** 31)
+    random.seed(seed)
 
     # Step 1: Stars
     stellar = generate_stellar_data()
@@ -674,8 +676,9 @@ def generate_system_from_world(
     Returns:
         A TravellerSystem with the supplied world placed as the mainworld.
     """
-    if seed is not None:
-        random.seed(seed)
+    if seed is None:
+        seed = secrets.randbelow(2 ** 31)
+    random.seed(seed)
 
     stellar = generate_stellar_data()
     orbits = generate_orbits(stellar)

@@ -503,10 +503,10 @@ class World:
         def row(label: str, value: str, danger: bool = False) -> str:
             """Render one label/value detail row."""
             val_style = (
-                'style="font-size:13px;font-weight:500;'
+                'style="font-size:13px;font-weight:500;text-align:right;'
                 'color:var(--color-text-danger,#c0392b)"'
                 if danger
-                else 'style="font-size:13px;font-weight:500"'
+                else 'style="font-size:13px;font-weight:500;text-align:right"'
             )
             return (
                 f'<div class="detail-row">'
@@ -696,7 +696,7 @@ class World:
     border-bottom: 0.5px solid var(--color-border);
   }}
   .detail-row:last-child {{ border-bottom: none; }}
-  .row-label {{ font-size:13px; color:var(--color-text-secondary); }}
+  .row-label {{ font-size:13px; color:var(--color-text-secondary); flex-shrink:0; margin-right:8px; }}
   .trade-row {{
     display: flex;
     align-items: center;

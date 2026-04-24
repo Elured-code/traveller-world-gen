@@ -179,7 +179,7 @@ WORLD_TOP_LEVEL_KEYS = {
     "name", "uwp", "starport", "size", "atmosphere", "temperature",
     "hydrographics", "population", "government", "law_level", "tech_level",
     "has_gas_giant", "gas_giant_count", "belt_count", "population_multiplier",
-    "pbg", "bases", "trade_codes", "travel_zone", "notes",
+    "pbg", "bases", "trade_codes", "travel_zone", "notes", "seed",
 }
 
 
