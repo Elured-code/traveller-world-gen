@@ -36,7 +36,7 @@ HTML display card.
 - TravellerMap integration — fetch canonical UWP + stellar data from travellermap.com and generate a full procedural system
 - `World.from_dict()` deserialiser — reconstruct a World from a previous JSON response and feed it into a new system generation
 - JSON Schema for the world output format (`traveller_world_schema.json`)
-- GTK4 desktop UI skeleton (`gen-ui/app.py`)
+- GTK4 desktop UI (`gen-ui/app.py`) — generates mainworlds, auto-opens the HTML card in the default browser, and saves world data in JSON, text, or HTML format via a native file dialog
 
 ---
 
@@ -66,9 +66,11 @@ traveller-world-gen/
 ├── local.settings.json.example     # Local development settings template
 │                                   # (copy to local.settings.json — not committed)
 │
-│  GTK4 Desktop UI (work in progress)
+│  GTK4 Desktop UI
 ├── gen-ui/
-│   └── app.py                      # GTK4 application skeleton (PyGObject / Homebrew Python)
+│   ├── app.py                      # GTK4 mainworld generator — HTML card output, save to JSON/text/HTML
+│   ├── README.md                   # Setup and usage notes
+│   └── requirements.txt            # Dependency notes (Homebrew) and HTML rendering constraints
 │
 │  Tests
 ├── tests/
