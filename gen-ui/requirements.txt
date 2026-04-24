@@ -1,0 +1,12 @@
+# GTK4 UI dependencies
+#
+# PyGObject (gi) is not available via pip on macOS.
+# Install via Homebrew:
+#
+#   brew install pygobject3 gtk4
+#
+# Then run the app with the Homebrew Python interpreter:
+#
+#   $(brew --prefix)/bin/python3 gen-ui/app.py
+#
+# PyGObject>=3.42.0

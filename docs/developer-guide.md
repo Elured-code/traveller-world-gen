@@ -52,9 +52,11 @@ traveller-world-gen/
 ├── traveller_map_fetch.py      # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
 ├── traveller_world_schema.json # JSON Schema (draft 2020-12) for World.to_dict()
 │
-├── function_app.py             # Azure Functions HTTP endpoints (12 routes)
+├── function_app.py             # Azure Functions HTTP endpoints (13 routes)
 ├── shared/
 │   └── helpers.py              # Request parsing, response builders, error codes
+├── gen-ui/
+│   └── app.py                  # GTK4 desktop UI skeleton (PyGObject)
 │
 ├── tests/
 │   ├── test_traveller_world_gen.py   # Unit tests — mainworld generation
@@ -105,6 +107,24 @@ attach_detail(system)              →  optional secondary detail
 ```
 
 `generate_full_system()` in `traveller_system_gen.py` is the main entry point for most callers. It calls the stellar and orbit generators internally, then constructs the mainworld using `generate_mainworld_at_orbit()`. Calling `attach_detail()` afterwards populates secondary world and moon data; this is a separate step because it is expensive and not always needed.
+
+For systems built from an existing mainworld JSON, a separate path is provided:
+
+```
+World.from_dict(world_dict)        →  World  (UWP/PBG preserved, no dice)
+       ↓
+generate_system_from_world(world, seed)
+       ↓
+generate_stellar_data()            →  StarSystem  (fresh procedural)
+generate_orbits()                  →  SystemOrbits (fresh procedural)
+PBG reconciliation                 →  overrides orbit gas/belt counts with world values
+canonical_profile stamped          →  mainworld orbit slot gets world.uwp()
+generate_temperature_from_orbit()  →  temperature recalculated from new orbital HZ deviation
+       ↓
+TravellerSystem  (assembled)
+       ↓  (optional)
+attach_detail()
+```
 
 **RNG state is global.** All modules use `random.seed()` / `random.randint()` directly. The seed is set once at the top of `generate_full_system()` when a seed is provided, and every subsequent roll in the pipeline consumes from that same RNG sequence. This means the order of calls matters: adding or removing any roll anywhere in the pipeline will shift all subsequent results for a given seed.
 
@@ -225,6 +245,11 @@ The integration layer. Imports from all three other generation modules.
 
 ```python
 system: TravellerSystem = generate_full_system(name: str = "Unknown", seed: int = None)
+
+system: TravellerSystem = generate_system_from_world(world: World, seed: int = None)
+# Generates fresh stellar data and orbits around an existing World object.
+# Preserves UWP and PBG; recalculates temperature from the assigned orbital position.
+# Stamps canonical_profile on the mainworld orbit slot (same as TravellerMap path).
 ```
 
 **Key dataclass:**
@@ -303,6 +328,8 @@ class World:
     notes: List[str]
     # methods: .uwp(), .summary(), .to_dict(), .to_json(), .to_html()
 ```
+
+**`World.from_dict(d)`** reconstructs a `World` from the dict produced by `to_dict()`. It handles both the nested form (`starport: {code: "A", ...}`) and flat forms where the value is the code directly. Missing fields receive safe defaults. Used by `generate_system_from_world()` and the `/api/system/from-world` endpoint.
 
 **eHex encoding:** Traveller uses a base-17 encoding for UWP digits above 9: 10=A, 11=B … 16=G. The `to_hex(value)` helper handles this throughout. Size S (sub-size-1) moons use the string `"S"` in code but this does not appear in standard UWP strings.
 
@@ -427,18 +454,23 @@ The Azure Functions REST API layer. Not required for local use of the generation
 | GET/POST | `/api/system/full` | Complete system — all secondary worlds and moons always attached; selectable `format` |
 | GET/POST | `/api/map/system` | TravellerMap world — canonical UWP; procedural orbits |
 | GET | `/api/map/system/{name}` | Same; name from URL |
+| POST | `/api/system/from-world` | Full system around an existing mainworld JSON; UWP/PBG preserved |
 
-Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` endpoints return `text/html; charset=utf-8`. `/api/system/full` and `/api/map/system` with `format=text` return `text/plain; charset=utf-8`.
+Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` endpoints return `text/html; charset=utf-8`. `/api/system/full`, `/api/map/system`, and `/api/system/from-world` with `format=text` return `text/plain; charset=utf-8`.
 
-**`parse_format(req)` helper** (`shared/helpers.py`): Extracts the `format` parameter from query string or JSON body. Returns one of `"json"` (default), `"html"`, or `"text"`. Used by `/api/system/full` and the map endpoints.
+**`parse_format(req)` helper** (`shared/helpers.py`): Extracts the `format` parameter from query string or JSON body. Returns one of `"json"` (default), `"html"`, or `"text"`. Used by `/api/system/full`, the map endpoints, and `/api/system/from-world`.
 
 **`parse_hex_pos(req, body=None)` helper** (`shared/helpers.py`): Extracts and validates the optional `hex` query/body parameter. Accepts a 4-digit hex position matching `[0-9A-Fa-f]{4}` (e.g. `"1910"`). Returns `(hex_str, None)` if valid or absent; returns `(None, error_response)` with error code `INVALID_HEX` if the value is present but wrongly formatted. Used by both map/system endpoints.
+
+**`parse_world_json(req)` helper** (`shared/helpers.py`): Extracts and validates a mainworld JSON object from the request body. The body must be a dict containing at minimum `uwp` or the characteristic sub-fields (`size`, `atmosphere`, `hydrographics`, `population`). Returns `(dict, None)` if valid; `(None, error_response)` with code `INVALID_BODY` if the body is absent, not JSON, or missing required fields. Used exclusively by `/api/system/from-world`.
 
 **`max_batch_size()` helper** (`shared/helpers.py`): Reads `TRAVELLER_MAX_BATCH_SIZE` from the environment and returns it as an integer, falling back to `DEFAULT_MAX_BATCH = 20` on parse failure. The returned value is bounds-checked to `1–1000`; values outside that range are silently replaced with the default.
 
 **`/api/system/full` behaviour:** Calls `generate_full_system()` then unconditionally calls `attach_detail()`. No `detail` parameter is accepted or needed. The `format` parameter then controls serialisation: `to_dict()` for JSON, `to_html(detail_attached=True)` for HTML, `summary()` for text.
 
 **`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). The `URLError` handler logs the upstream detail server-side but returns only a generic message to the caller. Supports `detail` and `format` identically to the system endpoints.
+
+**`/api/system/from-world` behaviour:** Calls `parse_world_json()` to validate the body, reconstructs a `World` via `World.from_dict()`, then calls `generate_system_from_world()`. PBG counts from the world are reconciled into the generated `SystemOrbits`. The mainworld orbit slot receives `canonical_profile = world.uwp()`. Temperature is recalculated from orbital HZ deviation — the temperature in the input JSON is discarded. Supports `detail` and `format` identically to the system endpoints. Returns `400 INVALID_BODY` if the body is missing or malformed.
 
 ---
 

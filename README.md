@@ -32,9 +32,11 @@ HTML display card.
 - Complete UWP output, all 18 trade codes, all Amber zone triggers
 - Verified TL era labels (Primitive → High Stellar) against pp. 6–7
 - Three output formats: text summary, JSON, standalone HTML card
-- REST API via Azure Functions (12 endpoints: 5 mainworld + 5 system + 2 TravellerMap, JSON + HTML + plain-text responses)
+- REST API via Azure Functions (13 endpoints: 5 mainworld + 6 system + 2 TravellerMap, JSON + HTML + plain-text responses)
 - TravellerMap integration — fetch canonical UWP + stellar data from travellermap.com and generate a full procedural system
+- `World.from_dict()` deserialiser — reconstruct a World from a previous JSON response and feed it into a new system generation
 - JSON Schema for the world output format (`traveller_world_schema.json`)
+- GTK4 desktop UI skeleton (`gen-ui/app.py`)
 
 ---
 
@@ -56,13 +58,17 @@ traveller-world-gen/
 ├── traveller_world_schema.json     # JSON Schema (draft 2020-12) for World.to_dict()
 │
 │  Azure Functions API
-├── function_app.py                 # All HTTP endpoints (12 routes, v2 model)
+├── function_app.py                 # All HTTP endpoints (13 routes, v2 model)
 ├── shared/
 │   └── helpers.py                  # Request parsing & response helpers
 ├── host.json                       # Azure Functions host configuration
 ├── requirements.txt                # Python dependencies
 ├── local.settings.json.example     # Local development settings template
 │                                   # (copy to local.settings.json — not committed)
+│
+│  GTK4 Desktop UI (work in progress)
+├── gen-ui/
+│   └── app.py                      # GTK4 application skeleton (PyGObject / Homebrew Python)
 │
 │  Tests
 ├── tests/
@@ -73,7 +79,7 @@ traveller-world-gen/
 │
 │  Documentation
 ├── docs/
-│   ├── AZURE_DEPLOYMENT.md         # Full REST API reference (all 12 endpoints)
+│   ├── AZURE_DEPLOYMENT.md         # Full REST API reference (all 13 endpoints)
 │   ├── developer-guide.md          # Architecture, module reference, compliance notes
 │   └── VSCODE.md                   # VS Code + Claude shared environment setup
 │
@@ -238,6 +244,24 @@ print(system.mainworld.uwp())     # e.g. "C473574-8"
 print(system.mainworld_orbit.orbit_number)  # e.g. 3.0
 ```
 
+### System from an existing mainworld
+
+```python
+from traveller_world_gen import World
+from traveller_system_gen import generate_system_from_world
+
+# Reconstruct a World from a previously generated (or API-returned) JSON dict
+world = World.from_dict(world_dict)    # tolerates nested or flat code forms
+
+# Generate a full star system around it — UWP and PBG are preserved exactly;
+# stellar data and orbits are fresh procedural output;
+# temperature is recalculated from the assigned orbital position
+system = generate_system_from_world(world, seed=99)
+print(system.mainworld.uwp())          # original UWP preserved
+print(system.mainworld.temperature)    # recalculated from new orbit
+print(system.mainworld_orbit.canonical_profile)  # canonical UWP stamped on orbit slot
+```
+
 ### System from TravellerMap canonical data
 
 ```python
@@ -289,7 +313,7 @@ world = generate_world(name="Regina")
 
 ## REST API (Azure Functions)
 
-The API exposes twelve HTTP endpoints across three groups.
+The API exposes thirteen HTTP endpoints across three groups.
 
 ### Mainworld endpoints — CRB generation only
 
@@ -311,6 +335,7 @@ The API exposes twelve HTTP endpoints across three groups.
 | `GET`  | `/api/system/{name}/card` | Standalone HTML system card |
 | `GET`  | `/api/system/full` | Complete system with all secondary worlds and moons |
 | `POST` | `/api/system/full` | Complete system with all secondary worlds and moons (JSON body) |
+| `POST` | `/api/system/from-world` | Full system around an existing mainworld JSON; UWP/PBG preserved |
 
 ### TravellerMap endpoints — canonical UWP + procedural orbital structure
 
@@ -394,6 +419,12 @@ curl "http://localhost:7071/api/map/system?name=Regina&sector=Spinward+Marches&s
 curl "http://localhost:7071/api/map/system/Mora?sector=Spinward+Marches&seed=7&detail=true"
 curl "http://localhost:7071/api/map/system?sector=Spinward+Marches&hex=1910&format=html" \
      -o regina.html
+
+# System from existing mainworld JSON — UWP/PBG preserved; fresh stellar + orbital generation
+WORLD=$(curl -s "http://localhost:7071/api/world?name=Cogri&seed=42")
+curl -X POST "http://localhost:7071/api/system/from-world" \
+     -H "Content-Type: application/json" \
+     -d "$WORLD"
 
 # Batch of worlds
 curl -X POST "http://localhost:7071/api/worlds" \
