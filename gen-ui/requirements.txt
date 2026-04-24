@@ -10,3 +10,19 @@
 #   $(brew --prefix)/bin/python3 gen-ui/app.py
 #
 # PyGObject>=3.42.0
+
+# HTML rendering
+#
+# The app displays generated world cards as HTML using world.to_html().
+# On macOS, WebKitGTK is not available (its dependencies — systemd, wayland,
+# wpebackend-fdo — are Linux-only), so the HTML is written to a temp file
+# and opened in the system default browser via Gio.AppInfo.launch_default_for_uri.
+#
+# On Linux, WebKitGTK can be installed to embed the HTML card directly in the
+# app window:
+#
+#   sudo apt install gir1.2-webkit-6.0   # Debian/Ubuntu
+#   brew install webkitgtk               # Linux Homebrew
+#
+# If WebKit is available, require_version("WebKit", "6.0") and use
+# WebKit.WebView.load_html(html, "file:///") as the results widget.
