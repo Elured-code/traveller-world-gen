@@ -28,6 +28,7 @@ The human author reviewed, directed, and is responsible for the code.
 
 import os
 import random
+import secrets
 import sys
 import tempfile
 
@@ -77,9 +78,10 @@ _FORMATS = [
 class AppWindow(Gtk.ApplicationWindow):
     def __init__(self, app: Gtk.Application) -> None:
         super().__init__(application=app, title="Traveller World Generator")
-        self.set_default_size(560, 360)
+        self.set_default_size(720, 420)
         self._html_path: str | None = None
         self._current_world: object | None = None
+        self._seed_auto: bool = False   # True when seed field was auto-filled
         self._apply_css()
         self._build_ui()
 
@@ -102,9 +104,17 @@ class AppWindow(Gtk.ApplicationWindow):
 
         root.append(self._build_controls())
 
+        opt_sep = Gtk.Separator()
+        opt_sep.set_margin_top(8)
+        opt_sep.set_margin_bottom(8)
+        root.append(opt_sep)
+
+        root.append(self._build_source_row())
+        root.append(self._build_options_row())
+
         sep = Gtk.Separator()
-        sep.set_margin_top(10)
-        sep.set_margin_bottom(10)
+        sep.set_margin_top(8)
+        sep.set_margin_bottom(8)
         root.append(sep)
 
         self._status_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -130,7 +140,12 @@ class AppWindow(Gtk.ApplicationWindow):
         self._seed_entry.set_placeholder_text("Integer (optional)")
         self._seed_entry.set_width_chars(14)
         self._seed_entry.connect("activate", self._on_generate)
+        self._seed_entry.connect("changed", self._on_seed_changed)
         row.append(self._seed_entry)
+
+        clear_btn = Gtk.Button(label="New Seed")
+        clear_btn.connect("clicked", self._on_clear_seed)
+        row.append(clear_btn)
 
         btn = Gtk.Button(label="Generate")
         btn.add_css_class("suggested-action")
@@ -139,20 +154,93 @@ class AppWindow(Gtk.ApplicationWindow):
 
         return row
 
+    def _build_source_row(self) -> Gtk.Box:
+        """Source selection: Procedural vs TravellerMap with sector/hex fields."""
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+
+        # Radio group — Procedural / TravellerMap
+        self._radio_procedural = Gtk.CheckButton(label="Procedural")
+        self._radio_procedural.set_active(True)
+        row.append(self._radio_procedural)
+
+        self._radio_travellermap = Gtk.CheckButton(label="TravellerMap")
+        self._radio_travellermap.set_group(self._radio_procedural)
+        row.append(self._radio_travellermap)
+
+        vsep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        vsep.set_margin_start(4)
+        vsep.set_margin_end(4)
+        row.append(vsep)
+
+        row.append(Gtk.Label(label="Sector:"))
+        self._sector_entry = Gtk.Entry()
+        self._sector_entry.set_placeholder_text("e.g. Spinward Marches")
+        self._sector_entry.set_width_chars(20)
+        row.append(self._sector_entry)
+
+        row.append(Gtk.Label(label="Hex:"))
+        self._hex_entry = Gtk.Entry()
+        self._hex_entry.set_placeholder_text("e.g. 1910")
+        self._hex_entry.set_width_chars(6)
+        row.append(self._hex_entry)
+
+        return row
+
+    def _build_options_row(self) -> Gtk.Box:
+        """Generation options: mode, detail, and output format."""
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+
+        # Generation mode checkboxes
+        self._check_full_system = Gtk.CheckButton(label="Full system")
+        row.append(self._check_full_system)
+
+        self._check_attach_detail = Gtk.CheckButton(label="Attach detail")
+        row.append(self._check_attach_detail)
+
+        vsep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        vsep.set_margin_start(4)
+        vsep.set_margin_end(4)
+        row.append(vsep)
+
+        row.append(Gtk.Label(label="Format:"))
+        self._gen_format_dropdown = Gtk.DropDown(
+            model=Gtk.StringList.new(["HTML", "JSON", "Text"])
+        )
+        self._gen_format_dropdown.set_selected(0)
+        row.append(self._gen_format_dropdown)
+
+        return row
+
     # ------------------------------------------------------------------
     # Event handlers
     # ------------------------------------------------------------------
+
+    def _on_clear_seed(self, _widget: object) -> None:
+        self._seed_auto = False
+        self._seed_entry.set_text(str(secrets.randbelow(2 ** 31)))
+
+    def _on_seed_changed(self, _widget: object) -> None:
+        if not self._seed_auto:
+            return
+        # User edited the field — treat whatever is now typed as intentional.
+        self._seed_auto = False
 
     def _on_generate(self, _widget: object) -> None:
         name = self._name_entry.get_text().strip() or "Unknown"
         seed_raw = self._seed_entry.get_text().strip()
 
-        if seed_raw:
+        if seed_raw and not self._seed_auto:
             try:
-                random.seed(int(seed_raw))
+                seed = int(seed_raw)
             except ValueError:
                 self._show_error("Seed must be an integer.")
                 return
+        else:
+            seed = secrets.randbelow(2 ** 31)
+
+        random.seed(seed)
+        self._seed_auto = True
+        self._seed_entry.set_text(str(seed))
 
         world = generate_world(name)
         self._current_world = world

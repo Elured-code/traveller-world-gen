@@ -176,14 +176,16 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
                      ERR_INTERNAL, status_code=500)
     logger.info("Generated world UWP=%s name=%s", world.uwp(), world.name)
-    return ok(world.to_dict())
+    d = world.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -206,14 +208,16 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
                      ERR_INTERNAL, status_code=500)
     logger.info("Generated world UWP=%s name=%s", world.uwp(), world.name)
-    return ok(world.to_dict())
+    d = world.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -256,16 +260,19 @@ def generate_world_batch(req: func.HttpRequest) -> func.HttpResponse:
         return err
 
     try:
-        apply_seed(seed)
-        worlds = [generate_world(name=f"{prefix}{i+1}").to_dict()
-                  for i in range(count)]
+        seed = apply_seed(seed)
+        worlds = []
+        for i in range(count):
+            d = generate_world(name=f"{prefix}{i+1}").to_dict()
+            d["seed"] = seed
+            worlds.append(d)
     except Exception as exc:
         logger.exception("Error generating batch: %s", exc)
         return error("An unexpected error occurred while generating the world batch.",
                      ERR_INTERNAL, status_code=500)
 
     logger.info("Generated batch count=%d prefix=%s", count, prefix)
-    return ok({"count": count, "worlds": worlds})
+    return ok({"count": count, "seed": seed, "worlds": worlds})
 
 
 # ===========================================================================
@@ -288,7 +295,7 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
         html = world.to_html()
     except Exception as exc:
@@ -332,7 +339,7 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
@@ -345,7 +352,9 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
                 name, len(system.stellar_system.stars),
                 system.system_orbits.total_worlds, want_detail,
                 mw.uwp() if mw else "—")
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -369,7 +378,7 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
@@ -382,7 +391,9 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
                 name, len(system.stellar_system.stars),
                 system.system_orbits.total_worlds, want_detail,
                 mw.uwp() if mw else "—")
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -423,7 +434,7 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
         return err
     fmt = parse_format(req)
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         attach_detail(system)
     except Exception as exc:
@@ -451,7 +462,9 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="text/plain",
             charset="utf-8",
         )
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 @app.route(route="system/{name}/card", methods=["GET"])
@@ -474,7 +487,7 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
@@ -503,6 +516,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
     fmt: str,
 ) -> func.HttpResponse:
     """Shared implementation for both map/system endpoint variants."""
+    seed = apply_seed(seed)
     try:
         system = generate_system_from_map(
             name=name, sector=sector, hex_pos=hex_pos,
@@ -546,7 +560,9 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
             mimetype="text/plain",
             charset="utf-8",
         )
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -586,6 +602,7 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
     want_detail = parse_detail(req)
     fmt = parse_format(req)
     try:
+        seed = apply_seed(seed)
         world = World.from_dict(world_dict)
         system = generate_system_from_world(world, seed=seed)
         if want_detail:
@@ -615,7 +632,9 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
             body=system.summary(),
             status_code=200, mimetype="text/plain", charset="utf-8",
         )
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 @app.route(route="map/system", methods=["GET", "POST"])

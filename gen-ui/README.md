@@ -8,7 +8,9 @@ HTML card in the system default browser.
 
 ## Status
 
-Working — mainworld generation with HTML card output.
+Under construction. Mainworld generation with HTML card output is working.
+System generation controls (full system, attach detail, TravellerMap source,
+output format) are present in the UI but not yet wired to generation logic.
 
 ---
 
