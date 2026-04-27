@@ -97,25 +97,22 @@ def hz_deviation_to_raw_roll(
 
     The raw roll is the 2D result BEFORE atmosphere DMs are applied.
     A raw roll of 7 corresponds to the HZCO itself (deviation 0).
-    Negative deviation (closer = hotter) lowers the raw roll.
-    Positive deviation (further = colder) raises the raw roll.
+    Negative deviation (closer = hotter) raises the raw roll toward Boiling.
+    Positive deviation (further = colder) lowers the raw roll toward Frozen.
 
-    For sub-Orbit#1 positions (WBH p.42) the effective deviation is
-    scaled by dividing by the smaller of HZCO or the world's Orbit#.
+    The hzco and orbit parameters are retained for API compatibility but are
+    no longer used; the WBH HZ Regions table (p.46) is applied directly to
+    the unscaled orbit# deviation.  Sub-Orbit#1 scaling was removed because
+    it conflicts with is_habitable_zone (which uses the unscaled deviation) and
+    produces absurd results for dim stars (HZCO ≈ 0 amplified 50×).
 
     Returns an int in range 2-12 (clamped).
     """
-    # Scale deviation for sub-Orbit#1 positions
-    if hzco < 1.0 or orbit < 1.0:
-        denom = max(min(hzco, orbit), 0.01)
-        eff_dev = hz_deviation / denom
-    else:
-        eff_dev = hz_deviation
-
-    # Map deviation to raw roll via the HZ Regions table
+    # Map deviation to raw roll via the HZ Regions table (WBH p.46)
     # HZCO = raw roll 7 (deviation 0)
     # Each 0.1 Orbit# away from HZCO shifts the raw roll by ~1
-    # Exact boundaries from WBH table:
+    eff_dev = hz_deviation
+
     if eff_dev >= 1.1:
         raw = 2        # Frozen
     elif eff_dev >= 1.0:
