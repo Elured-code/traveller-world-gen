@@ -43,6 +43,7 @@ from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
 from traveller_system_gen import generate_full_system  # noqa: E402
+from traveller_world_detail import attach_detail as _attach_detail  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
     STARPORT_FACILITY_DETAIL,
     STARPORT_QUALITY_LABEL,
@@ -78,6 +79,7 @@ label.tc-badge     { background-color: #faece7; color: #712b13;
 .table-cell   { font-size: 10pt; }
 .table-mw     { font-size: 10pt; font-weight: bold; }
 .table-dim    { font-size: 10pt; }
+.table-moon   { font-size: 9pt; color: #888888; }
 """
 
 _ZONE_CLASS = {"Green": "zone-green", "Amber": "zone-amber", "Red": "zone-red"}
@@ -109,6 +111,18 @@ _BASE_FULL = {
     "N": "N — Naval", "S": "S — Scout",   "M": "M — Military",
     "H": "H — Highport", "C": "C — Corsair",
 }
+
+
+def _orbit_profile(orbit: object) -> str:
+    """Short profile string for an orbit slot in the detail table."""
+    cp = getattr(orbit, "canonical_profile", None)
+    if cp:
+        return cp
+    detail = getattr(orbit, "detail", None)
+    if detail is None:
+        return "—"
+    return detail.profile  # type: ignore[attr-defined]
+
 
 
 def _tl_era(tl: int) -> str:
@@ -152,6 +166,7 @@ class AppWindow(Gtk.ApplicationWindow):
         self._html_path: str | None = None
         self._current_world: object | None = None
         self._current_system: object | None = None
+        self._detail_attached: bool = False
         self._seed_auto: bool = False   # True when seed field was auto-filled
         self._apply_css()
         self._build_ui()
@@ -294,9 +309,11 @@ class AppWindow(Gtk.ApplicationWindow):
 
         # Generation mode checkboxes
         self._check_full_system = Gtk.CheckButton(label="Full system")
+        self._check_full_system.connect("notify::active", self._on_full_system_toggled)
         row.append(self._check_full_system)
 
         self._check_attach_detail = Gtk.CheckButton(label="Attach detail")
+        self._check_attach_detail.set_sensitive(False)
         row.append(self._check_attach_detail)
 
         vsep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
@@ -327,6 +344,12 @@ class AppWindow(Gtk.ApplicationWindow):
         # User edited the field — treat whatever is now typed as intentional.
         self._seed_auto = False
 
+    def _on_full_system_toggled(self, _widget: object, _param: object) -> None:
+        active = self._check_full_system.get_active()
+        self._check_attach_detail.set_sensitive(active)
+        if not active:
+            self._check_attach_detail.set_active(False)
+
     def _on_source_toggled(self, _widget: object, _param: object) -> None:
         procedural = self._radio_procedural.get_active()
         self._sector_entry.set_sensitive(not procedural)
@@ -351,6 +374,7 @@ class AppWindow(Gtk.ApplicationWindow):
         self._seed_entry.set_text(str(seed))
 
         full_system = self._check_full_system.get_active()
+        attach_detail_flag = full_system and self._check_attach_detail.get_active()
 
         if self._radio_travellermap.get_active():
             sector = self._sector_entry.get_text().strip()
@@ -362,11 +386,11 @@ class AppWindow(Gtk.ApplicationWindow):
             if not search_name and not hex_pos:
                 self._show_error("Enter a world name or hex for TravellerMap lookup.")
                 return
-            self._do_travellermap_generation(sector, search_name, hex_pos, seed, full_system)
+            self._do_travellermap_generation(sector, search_name, hex_pos, seed, full_system, attach_detail_flag)
         else:
             if full_system:
                 system = generate_full_system(name, seed=seed)
-                self._finish_system_generation(system)
+                self._finish_system_generation(system, attach_detail_flag)
             else:
                 world = generate_world(name)
                 self._finish_generation(world)
@@ -378,6 +402,7 @@ class AppWindow(Gtk.ApplicationWindow):
         hex_pos: "str | None",
         seed: int,
         full_system: bool = False,
+        attach_detail_flag: bool = False,
     ) -> None:
         try:
             system = generate_system_from_map(
@@ -387,13 +412,13 @@ class AppWindow(Gtk.ApplicationWindow):
                 seed=seed,
             )
         except AmbiguousWorldError as exc:
-            self._show_disambiguation_dialog(exc, seed, full_system)
+            self._show_disambiguation_dialog(exc, seed, full_system, attach_detail_flag)
             return
         except (ValueError, LookupError, ConnectionError) as exc:
             self._show_error(str(exc))
             return
         if full_system:
-            self._finish_system_generation(system)
+            self._finish_system_generation(system, attach_detail_flag)
         else:
             world = system.mainworld
             if world is None:
@@ -409,16 +434,20 @@ class AppWindow(Gtk.ApplicationWindow):
             self._html_path = path
         self._show_summary(world)
 
-    def _finish_system_generation(self, system: object) -> None:
+    def _finish_system_generation(self, system: object, attach_detail_flag: bool = False) -> None:
         self._current_system = system
         self._current_world = system.mainworld  # type: ignore[attr-defined]
-        path = self._write_html(system.to_html(detail_attached=False))  # type: ignore[attr-defined]
+        if attach_detail_flag:
+            _attach_detail(system)  # type: ignore[arg-type]
+        self._detail_attached = attach_detail_flag
+        path = self._write_html(system.to_html(detail_attached=attach_detail_flag))  # type: ignore[attr-defined]
         if path is not None:
             self._html_path = path
         self._show_system_summary(system)
 
     def _show_disambiguation_dialog(
-        self, error: AmbiguousWorldError, seed: int, full_system: bool = False
+        self, error: AmbiguousWorldError, seed: int,
+        full_system: bool = False, attach_detail_flag: bool = False,
     ) -> None:
         dialog = Gtk.Window()
         dialog.set_title("Ambiguous World Name")
@@ -472,7 +501,7 @@ class AppWindow(Gtk.ApplicationWindow):
             dialog.close()
             if selected:
                 self._do_travellermap_generation(
-                    error.sector, None, selected, seed, full_system
+                    error.sector, None, selected, seed, full_system, attach_detail_flag
                 )
 
         ok_btn.connect("clicked", _on_ok)
@@ -530,7 +559,7 @@ class AppWindow(Gtk.ApplicationWindow):
             content = obj.summary()                             # type: ignore[attr-defined]
         else:
             if self._current_system is not None:
-                content = obj.to_html(detail_attached=False)    # type: ignore[attr-defined]
+                content = obj.to_html(detail_attached=self._detail_attached)  # type: ignore[attr-defined]
             else:
                 content = obj.to_html()                         # type: ignore[attr-defined]
 
@@ -611,7 +640,7 @@ class AppWindow(Gtk.ApplicationWindow):
         card.set_margin_end(2)
 
         stellar_card = self._build_stellar_card(system)
-        orbits_card = self._build_orbits_card(system)
+        orbits_card = self._build_orbits_card(system, detail_attached=self._detail_attached)
         card.append(stellar_card)
         card.append(orbits_card)
 
@@ -740,8 +769,8 @@ class AppWindow(Gtk.ApplicationWindow):
         frame.set_child(grid)
         return frame
 
-    def _build_orbits_card(self, system: object) -> Gtk.Frame:
-        """Orbits table: Star | Orbit# | AU | Type | HZ | Temp Zone."""
+    def _build_orbits_card(self, system: object, detail_attached: bool = False) -> Gtk.Frame:
+        """Orbits table; with detail: includes moon sub-rows per orbit."""
         frame = Gtk.Frame(label="System Orbits")
         grid = Gtk.Grid()
         grid.set_row_spacing(3)
@@ -751,36 +780,101 @@ class AppWindow(Gtk.ApplicationWindow):
         grid.set_margin_start(10)
         grid.set_margin_end(10)
 
-        headers = ["Star", "Orbit#", "AU", "Type", "HZ", "Temp Zone"]
+        if detail_attached:
+            headers = ["Star", "Orbit#", "AU", "Type", "Profile", "Codes", "HZ", "Zone"]
+            start_cols = {0, 3, 4, 5, 6, 7}
+        else:
+            headers = ["Star", "Orbit#", "AU", "Type", "HZ", "Zone"]
+            start_cols = {0, 3, 4, 5}
+
         for col, hdr in enumerate(headers):
             lbl = Gtk.Label(label=hdr)
             lbl.add_css_class("table-header")
-            lbl.set_halign(Gtk.Align.START if col in (0, 3, 4, 5) else Gtk.Align.END)
+            lbl.set_halign(Gtk.Align.START if col in start_cols else Gtk.Align.END)
             grid.attach(lbl, col, 0, 1, 1)
 
-        orbits = system.system_orbits.orbits          # type: ignore[attr-defined]
+        orbits = system.system_orbits.orbits             # type: ignore[attr-defined]
         mw_orbit = system.system_orbits.mainworld_orbit  # type: ignore[attr-defined]
 
-        for row, orbit in enumerate(orbits, start=1):
+        grid_row = 1
+        for orbit in orbits:
             is_mw = (orbit is mw_orbit)
             is_empty = orbit.world_type == "empty"
             css = "table-mw" if is_mw else ("table-dim" if is_empty else "table-cell")
             hz_str = "★ HZ" if orbit.is_habitable_zone else ""
             type_str = _WORLD_TYPE_LABEL.get(orbit.world_type, orbit.world_type)
             zone_str = orbit.temperature_zone.capitalize()
-            cells = [
-                (orbit.star_designation,         Gtk.Align.START),
-                (f"{orbit.orbit_number:.2f}",    Gtk.Align.END),
-                (f"{orbit.orbit_au:.3f}",        Gtk.Align.END),
-                (type_str,                       Gtk.Align.START),
-                (hz_str,                         Gtk.Align.START),
-                (zone_str,                       Gtk.Align.START),
-            ]
+
+            if detail_attached:
+                detail = getattr(orbit, "detail", None)
+                profile_str = _orbit_profile(orbit)
+                codes_str = ""
+                if is_mw:
+                    codes_str = " ".join(
+                        getattr(system.mainworld, "trade_codes", [])  # type: ignore[attr-defined]
+                    )
+                elif detail is not None and not detail.is_gas_giant:  # type: ignore[attr-defined]
+                    codes_str = " ".join(detail.trade_codes)           # type: ignore[attr-defined]
+                cells: list[tuple[str, Gtk.Align]] = [
+                    (orbit.star_designation,         Gtk.Align.START),
+                    (f"{orbit.orbit_number:.2f}",    Gtk.Align.END),
+                    (f"{orbit.orbit_au:.3f}",        Gtk.Align.END),
+                    (type_str,                       Gtk.Align.START),
+                    (profile_str,                    Gtk.Align.START),
+                    (codes_str,                      Gtk.Align.START),
+                    (hz_str,                         Gtk.Align.START),
+                    (zone_str,                       Gtk.Align.START),
+                ]
+            else:
+                detail = None
+                cells = [
+                    (orbit.star_designation,         Gtk.Align.START),
+                    (f"{orbit.orbit_number:.2f}",    Gtk.Align.END),
+                    (f"{orbit.orbit_au:.3f}",        Gtk.Align.END),
+                    (type_str,                       Gtk.Align.START),
+                    (hz_str,                         Gtk.Align.START),
+                    (zone_str,                       Gtk.Align.START),
+                ]
+
             for col, (text, align) in enumerate(cells):
                 lbl = Gtk.Label(label=text)
                 lbl.add_css_class(css)
                 lbl.set_halign(align)
-                grid.attach(lbl, col, row, 1, 1)
+                grid.attach(lbl, col, grid_row, 1, 1)
+            grid_row += 1
+
+            # Moon sub-rows when detail is attached
+            if detail_attached and detail is not None:
+                for mi, moon in enumerate(detail.moons or [], 1):  # type: ignore[attr-defined]
+                    if moon.is_ring:
+                        ring_count = getattr(moon, "_ring_count", 1)
+                        moon_profile = f"R{ring_count:02d}"
+                        moon_type = "ring"
+                        moon_codes = ""
+                    elif moon.detail is not None:
+                        moon_profile = moon.detail.profile
+                        moon_type = f"size {moon.size_str}"
+                        moon_codes = " ".join(moon.detail.trade_codes)
+                    else:
+                        moon_profile = f"size {moon.size_str}"
+                        moon_type = f"size {moon.size_str}"
+                        moon_codes = ""
+                    moon_cells = [
+                        ("",                   Gtk.Align.START),
+                        (f"↳ m{mi}",           Gtk.Align.END),
+                        ("",                   Gtk.Align.START),
+                        (moon_type,            Gtk.Align.START),
+                        (moon_profile,         Gtk.Align.START),
+                        (moon_codes,           Gtk.Align.START),
+                        ("",                   Gtk.Align.START),
+                        ("",                   Gtk.Align.START),
+                    ]
+                    for col, (text, align) in enumerate(moon_cells):
+                        lbl = Gtk.Label(label=text)
+                        lbl.add_css_class("table-moon")
+                        lbl.set_halign(align)
+                        grid.attach(lbl, col, grid_row, 1, 1)
+                    grid_row += 1
 
         frame.set_child(grid)
         return frame
