@@ -41,6 +41,7 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
+from traveller_map_fetch import generate_system_from_map  # noqa: E402
 from traveller_world_gen import generate_world  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -155,12 +156,13 @@ class AppWindow(Gtk.ApplicationWindow):
         return row
 
     def _build_source_row(self) -> Gtk.Box:
-        """Source selection: Procedural vs TravellerMap with sector/hex fields."""
+        """Source selection: Procedural vs TravellerMap with sector/name/hex fields."""
         row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
 
         # Radio group — Procedural / TravellerMap
         self._radio_procedural = Gtk.CheckButton(label="Procedural")
         self._radio_procedural.set_active(True)
+        self._radio_procedural.connect("notify::active", self._on_source_toggled)
         row.append(self._radio_procedural)
 
         self._radio_travellermap = Gtk.CheckButton(label="TravellerMap")
@@ -178,11 +180,23 @@ class AppWindow(Gtk.ApplicationWindow):
         self._sector_entry.set_width_chars(20)
         row.append(self._sector_entry)
 
+        row.append(Gtk.Label(label="Name:"))
+        self._tm_name_entry = Gtk.Entry()
+        self._tm_name_entry.set_placeholder_text("e.g. Regina")
+        self._tm_name_entry.set_width_chars(14)
+        self._tm_name_entry.connect("activate", self._on_generate)
+        row.append(self._tm_name_entry)
+
         row.append(Gtk.Label(label="Hex:"))
         self._hex_entry = Gtk.Entry()
         self._hex_entry.set_placeholder_text("e.g. 1910")
         self._hex_entry.set_width_chars(6)
+        self._hex_entry.connect("activate", self._on_generate)
         row.append(self._hex_entry)
+
+        self._sector_entry.set_sensitive(False)
+        self._tm_name_entry.set_sensitive(False)
+        self._hex_entry.set_sensitive(False)
 
         return row
 
@@ -225,6 +239,12 @@ class AppWindow(Gtk.ApplicationWindow):
         # User edited the field — treat whatever is now typed as intentional.
         self._seed_auto = False
 
+    def _on_source_toggled(self, _widget: object, _param: object) -> None:
+        procedural = self._radio_procedural.get_active()
+        self._sector_entry.set_sensitive(not procedural)
+        self._tm_name_entry.set_sensitive(not procedural)
+        self._hex_entry.set_sensitive(not procedural)
+
     def _on_generate(self, _widget: object) -> None:
         name = self._name_entry.get_text().strip() or "Unknown"
         seed_raw = self._seed_entry.get_text().strip()
@@ -242,7 +262,33 @@ class AppWindow(Gtk.ApplicationWindow):
         self._seed_auto = True
         self._seed_entry.set_text(str(seed))
 
-        world = generate_world(name)
+        if self._radio_travellermap.get_active():
+            sector = self._sector_entry.get_text().strip()
+            search_name = self._tm_name_entry.get_text().strip() or None
+            hex_pos = self._hex_entry.get_text().strip() or None
+            if not sector:
+                self._show_error("Sector is required for TravellerMap lookup.")
+                return
+            if not search_name and not hex_pos:
+                self._show_error("Enter a world name or hex for TravellerMap lookup.")
+                return
+            try:
+                system = generate_system_from_map(
+                    name=search_name,
+                    sector=sector,
+                    hex_pos=hex_pos,
+                    seed=seed,
+                )
+            except (ValueError, LookupError, ConnectionError) as exc:
+                self._show_error(str(exc))
+                return
+            world = system.mainworld
+            if world is None:
+                self._show_error("TravellerMap lookup returned no mainworld.")
+                return
+        else:
+            world = generate_world(name)
+
         self._current_world = world
 
         path = self._write_html(world.to_html())
