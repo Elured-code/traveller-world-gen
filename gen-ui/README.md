@@ -1,16 +1,16 @@
 # Traveller World Generator — GTK4 UI
 
 A desktop GUI for the Traveller World Generator, built with GTK4 and PyGObject.
-Generates mainworlds using the CRB rules and displays the result as a styled
-HTML card in the system default browser.
+Generates mainworlds (procedural or from TravellerMap) and displays the result
+as a styled HTML card in the system default browser.
 
 ---
 
 ## Status
 
-Under construction. Mainworld generation with HTML card output is working.
-System generation controls (full system, attach detail, TravellerMap source,
-output format) are present in the UI but not yet wired to generation logic.
+Procedural mainworld generation and TravellerMap mainworld lookup are both
+working. System generation controls (full system, attach detail, output format)
+are present in the UI but not yet wired to generation logic.
 
 ---
 
@@ -52,9 +52,31 @@ $(brew --prefix)/bin/python3 gen-ui/app.py
 
 ## Usage
 
-1. Enter an optional world name in the **Name** field (defaults to `Unknown`).
-2. Enter an optional integer **Seed** for reproducible results.
-3. Click **Generate** or press Enter.
+### Procedural generation
+
+1. Select **Procedural** (default).
+2. Enter an optional world name in the **Name** field (defaults to `Unknown`).
+3. Enter an optional integer **Seed** for reproducible results, or click
+   **New Seed** to randomise.
+4. Click **Generate** or press Enter.
+
+### TravellerMap lookup
+
+1. Select **TravellerMap**.
+2. Enter the **Sector** name (required — many world names appear in multiple
+   sectors).
+3. Enter the world **Name** to search, or the **Hex** position (e.g. `1910`)
+   for a direct lookup. Providing a hex bypasses name search entirely and
+   avoids ambiguity.
+4. Click **Generate** or press Enter.
+
+If the name matches more than one world in the sector a disambiguation dialog
+lists all candidates with their hex positions; select one and click **OK**.
+
+The canonical world name from TravellerMap is used in the result regardless of
+what was typed in the Name field.
+
+### After generation
 
 The GTK window shows a compact summary — world name, UWP, travel zone badge,
 trade codes, and bases. The full styled HTML card opens automatically in the
@@ -62,6 +84,20 @@ default browser. Use **Reopen HTML Card** to bring it back if the tab is closed.
 
 Each Generate call replaces the previous temp file; old files are not
 accumulated.
+
+---
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| Enter (in any field) | Generate |
+| Cmd+Q / Ctrl+Q | Quit |
+| Cmd+W / Ctrl+W | Close window |
+
+> **macOS note:** GTK4's Quartz backend maps `<primary>` to Control, not
+> Command. Both `<meta>` (Command) and `<primary>` (Control) are registered,
+> so both variants work.
 
 ---
 
@@ -100,12 +136,30 @@ See `requirements.txt` for details.
 
 ## Architecture
 
-The UI is a standard GTK4 `Gtk.Application` / `Gtk.ApplicationWindow`. The
-control panel (name, seed, generate button) sits at the top of the window. The
-status panel below updates after each generation with a compact world summary.
+The UI is a standard GTK4 `Gtk.Application` / `Gtk.ApplicationWindow`. Three
+control rows sit at the top of the window:
 
-The generation backend (`traveller_world_gen.py`) is imported directly from the
-parent directory — no subprocess or HTTP calls are needed.
+1. **Controls row** — Name, Seed, New Seed button, Generate button
+2. **Source row** — Procedural / TravellerMap radio buttons; Sector, Name, and
+   Hex fields (Sector/Name/Hex are insensitive when Procedural is active)
+3. **Options row** — Full system / Attach detail checkboxes; Format dropdown
+   (not yet wired)
+
+The status panel below updates after each generation with a compact world
+summary, Reopen and Save actions.
+
+### TravellerMap path
+
+`generate_system_from_map()` in `traveller_map_fetch.py` is called directly.
+When a name search returns multiple exact matches in the same sector,
+`AmbiguousWorldError` is raised and caught in `_do_travellermap_generation()`,
+which opens a modal disambiguation dialog. Selecting a candidate retries with
+its hex position, bypassing name resolution.
+
+### Procedural path
+
+`generate_world()` in `traveller_world_gen.py` is imported directly — no
+subprocess or HTTP calls are needed.
 
 ---
 

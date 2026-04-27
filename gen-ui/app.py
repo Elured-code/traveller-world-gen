@@ -41,7 +41,7 @@ gi.require_version("Gdk", "4.0")
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
-from traveller_map_fetch import generate_system_from_map  # noqa: E402
+from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
 from traveller_world_gen import generate_world  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -174,25 +174,43 @@ class AppWindow(Gtk.ApplicationWindow):
         vsep.set_margin_end(4)
         row.append(vsep)
 
-        row.append(Gtk.Label(label="Sector:"))
+        sector_lbl = Gtk.Label(label="Sector:")
+        sector_lbl.set_valign(Gtk.Align.CENTER)
+        row.append(sector_lbl)
         self._sector_entry = Gtk.Entry()
         self._sector_entry.set_placeholder_text("e.g. Spinward Marches")
         self._sector_entry.set_width_chars(20)
+        self._sector_entry.set_valign(Gtk.Align.CENTER)
         row.append(self._sector_entry)
 
-        row.append(Gtk.Label(label="Name:"))
+        # Grid keeps Name/Hex label column the same width so entries left-align.
+        name_hex_grid = Gtk.Grid()
+        name_hex_grid.set_row_spacing(4)
+        name_hex_grid.set_column_spacing(6)
+
+        name_lbl = Gtk.Label(label="Name:")
+        name_lbl.set_halign(Gtk.Align.END)
         self._tm_name_entry = Gtk.Entry()
         self._tm_name_entry.set_placeholder_text("e.g. Regina")
         self._tm_name_entry.set_width_chars(14)
         self._tm_name_entry.connect("activate", self._on_generate)
-        row.append(self._tm_name_entry)
+        name_hex_grid.attach(name_lbl, 0, 0, 1, 1)
+        name_hex_grid.attach(self._tm_name_entry, 1, 0, 1, 1)
 
-        row.append(Gtk.Label(label="Hex:"))
+        hex_lbl = Gtk.Label(label="Hex:")
+        hex_lbl.set_halign(Gtk.Align.END)
         self._hex_entry = Gtk.Entry()
         self._hex_entry.set_placeholder_text("e.g. 1910")
         self._hex_entry.set_width_chars(6)
         self._hex_entry.connect("activate", self._on_generate)
-        row.append(self._hex_entry)
+        optional_lbl = Gtk.Label(label="Optional")
+        optional_lbl.add_css_class("hint-label")
+        optional_lbl.add_css_class("dim-label")
+        name_hex_grid.attach(hex_lbl, 0, 1, 1, 1)
+        name_hex_grid.attach(self._hex_entry, 1, 1, 1, 1)
+        name_hex_grid.attach(optional_lbl, 2, 1, 1, 1)
+
+        row.append(name_hex_grid)
 
         self._sector_entry.set_sensitive(False)
         self._tm_name_entry.set_sensitive(False)
@@ -272,32 +290,111 @@ class AppWindow(Gtk.ApplicationWindow):
             if not search_name and not hex_pos:
                 self._show_error("Enter a world name or hex for TravellerMap lookup.")
                 return
-            try:
-                system = generate_system_from_map(
-                    name=search_name,
-                    sector=sector,
-                    hex_pos=hex_pos,
-                    seed=seed,
-                )
-            except (ValueError, LookupError, ConnectionError) as exc:
-                self._show_error(str(exc))
-                return
-            world = system.mainworld
-            if world is None:
-                self._show_error("TravellerMap lookup returned no mainworld.")
-                return
+            self._do_travellermap_generation(sector, search_name, hex_pos, seed)
         else:
             world = generate_world(name)
+            self._finish_generation(world)
 
+    def _do_travellermap_generation(
+        self,
+        sector: str,
+        search_name: "str | None",
+        hex_pos: "str | None",
+        seed: int,
+    ) -> None:
+        try:
+            system = generate_system_from_map(
+                name=search_name,
+                sector=sector,
+                hex_pos=hex_pos,
+                seed=seed,
+            )
+        except AmbiguousWorldError as exc:
+            self._show_disambiguation_dialog(exc, seed)
+            return
+        except (ValueError, LookupError, ConnectionError) as exc:
+            self._show_error(str(exc))
+            return
+        world = system.mainworld
+        if world is None:
+            self._show_error("TravellerMap lookup returned no mainworld.")
+            return
+        self._finish_generation(world)
+
+    def _finish_generation(self, world: object) -> None:
         self._current_world = world
-
-        path = self._write_html(world.to_html())
+        path = self._write_html(world.to_html())  # type: ignore[attr-defined]
         if path is None:
             self._show_error("Could not write HTML output file.")
             return
         self._html_path = path
         self._show_summary(world)
         self._open_in_browser(path)
+
+    def _show_disambiguation_dialog(
+        self, error: AmbiguousWorldError, seed: int
+    ) -> None:
+        dialog = Gtk.Window()
+        dialog.set_title("Ambiguous World Name")
+        dialog.set_modal(True)
+        dialog.set_transient_for(self)
+        dialog.set_resizable(False)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.set_margin_top(16)
+        box.set_margin_bottom(16)
+        box.set_margin_start(16)
+        box.set_margin_end(16)
+
+        lbl = Gtk.Label(
+            label=f"Multiple worlds named '{error.name}' found in {error.sector}."
+                  f"\nSelect one:"
+        )
+        lbl.set_halign(Gtk.Align.START)
+        box.append(lbl)
+
+        first_radio: "Gtk.CheckButton | None" = None
+        radios: "list[tuple[Gtk.CheckButton, str]]" = []
+        for world_name, hex_code in error.candidates:
+            radio = Gtk.CheckButton(label=f"{world_name}  —  hex {hex_code}")
+            if first_radio is None:
+                first_radio = radio
+                radio.set_active(True)
+            else:
+                radio.set_group(first_radio)
+            radios.append((radio, hex_code))
+            box.append(radio)
+
+        sep = Gtk.Separator()
+        sep.set_margin_top(4)
+        box.append(sep)
+
+        btn_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        btn_row.set_halign(Gtk.Align.END)
+
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.connect("clicked", lambda _: dialog.close())
+        btn_row.append(cancel_btn)
+
+        ok_btn = Gtk.Button(label="OK")
+        ok_btn.add_css_class("suggested-action")
+
+        def _on_ok(_btn: object) -> None:
+            selected = next(
+                (h for radio, h in radios if radio.get_active()), None
+            )
+            dialog.close()
+            if selected:
+                self._do_travellermap_generation(
+                    error.sector, None, selected, seed
+                )
+
+        ok_btn.connect("clicked", _on_ok)
+        btn_row.append(ok_btn)
+        box.append(btn_row)
+
+        dialog.set_child(box)
+        dialog.present()
 
     def _on_save_clicked(self, _btn: object) -> None:
         if self._current_world is None:
@@ -482,6 +579,20 @@ class App(Gtk.Application):
             application_id="com.example.traveller-world-gen",
             flags=Gio.ApplicationFlags.DEFAULT_FLAGS,
         )
+        # Connect to the startup signal rather than overriding do_startup.
+        # Overriding do_startup in PyGObject does not satisfy GLib's C-level
+        # chain-up check even when super() is called, causing a segfault.
+        self.connect("startup", self._on_startup)
+
+    def _on_startup(self, _app: object) -> None:
+        # On macOS with GTK4's Quartz backend, <primary> maps to Control, not
+        # Command. The Command key is <meta>. Both are registered so Ctrl and
+        # Cmd variants work. Alt+F4 on Windows is handled by the window manager.
+        quit_action = Gio.SimpleAction.new("quit", None)
+        quit_action.connect("activate", lambda *_: self.quit())
+        self.add_action(quit_action)
+        self.set_accels_for_action("app.quit", ["<primary>q", "<meta>q"])
+        self.set_accels_for_action("window.close", ["<primary>w", "<meta>w"])
 
     def do_activate(self) -> None:
         win = self.props.active_window
