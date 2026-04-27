@@ -42,24 +42,42 @@ gi.require_version("Gtk", "4.0")
 from gi.repository import Gdk, Gio, Gtk  # noqa: E402
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
-from traveller_world_gen import generate_world  # noqa: E402
+from traveller_system_gen import generate_full_system  # noqa: E402
+from traveller_world_gen import (  # noqa: E402
+    STARPORT_FACILITY_DETAIL,
+    STARPORT_QUALITY_LABEL,
+    generate_world,
+    to_hex as _to_hex,
+)
 
 # ---------------------------------------------------------------------------
 # CSS
 # ---------------------------------------------------------------------------
 
 _CSS = b"""
-.zone-green  { background-color: #27ae60; color: white;
-               padding: 2px 10px; border-radius: 4px; }
-.zone-amber  { background-color: #e67e22; color: white;
-               padding: 2px 10px; border-radius: 4px; }
-.zone-red    { background-color: #c0392b; color: white;
-               padding: 2px 10px; border-radius: 4px; }
-.uwp-label   { font-family: monospace; font-size: 18pt; font-weight: bold; }
-.world-name  { font-size: 16pt; font-weight: bold; }
-.trade-codes { font-family: monospace; font-size: 11pt; }
-.error-label { color: #c0392b; font-weight: bold; }
-.hint-label  { font-style: italic; }
+.zone-green   { background-color: #27ae60; color: white;
+                padding: 2px 10px; border-radius: 4px; }
+.zone-amber   { background-color: #e67e22; color: white;
+                padding: 2px 10px; border-radius: 4px; }
+.zone-red     { background-color: #c0392b; color: white;
+                padding: 2px 10px; border-radius: 4px; }
+.uwp-label    { font-family: monospace; font-size: 18pt; font-weight: bold; }
+.world-name   { font-size: 16pt; font-weight: bold; }
+.trade-codes  { font-family: monospace; font-size: 11pt; }
+.error-label  { color: #c0392b; font-weight: bold; }
+.hint-label   { font-style: italic; }
+.stat-value   { font-size: 13pt; font-weight: bold; }
+.stat-sub     { font-size: 9pt; }
+.section-label{ font-size: 9pt; font-weight: bold; }
+.row-label    { font-size: 10pt; }
+.row-value    { font-size: 10pt; font-weight: bold; }
+label.danger-value { font-size: 10pt; font-weight: bold; color: #c0392b; }
+label.tc-badge     { background-color: #faece7; color: #712b13;
+                     padding: 2px 8px; border-radius: 4px; font-size: 10pt; }
+.table-header { font-size: 9pt; font-weight: bold; }
+.table-cell   { font-size: 10pt; }
+.table-mw     { font-size: 10pt; font-weight: bold; }
+.table-dim    { font-size: 10pt; }
 """
 
 _ZONE_CLASS = {"Green": "zone-green", "Amber": "zone-amber", "Red": "zone-red"}
@@ -71,6 +89,57 @@ _FORMATS = [
     ("HTML",  "html"),
 ]
 
+_WORLD_TYPE_LABEL = {
+    "gas_giant":   "Gas Giant",
+    "terrestrial": "Terrestrial",
+    "belt":        "Belt",
+    "empty":       "Empty",
+}
+
+_TRADE_CODE_FULL = {
+    "Ag": "Agricultural",   "As": "Asteroid",      "Ba": "Barren",
+    "De": "Desert",         "Fl": "Fluid Oceans",   "Ga": "Garden",
+    "Hi": "High Pop.",      "Ht": "High Tech",      "Ic": "Ice-Capped",
+    "In": "Industrial",     "Lo": "Low Pop.",       "Lt": "Low Tech",
+    "Na": "Non-Ag.",        "Ni": "Non-Industrial", "Po": "Poor",
+    "Ri": "Rich",           "Va": "Vacuum",         "Wa": "Waterworld",
+}
+
+_BASE_FULL = {
+    "N": "N — Naval", "S": "S — Scout",   "M": "M — Military",
+    "H": "H — Highport", "C": "C — Corsair",
+}
+
+
+def _tl_era(tl: int) -> str:
+    if tl <= 3:  return "Primitive"
+    if tl <= 6:  return "Industrial"
+    if tl <= 9:  return "Pre-Stellar"
+    if tl <= 11: return "Early Stellar"
+    if tl <= 14: return "Average Stellar"
+    return "High Stellar"
+
+
+def _detail_row(label_text: str, value_text: str, danger: bool = False) -> Gtk.Box:
+    """One label/value row for the Physical and Society detail cards."""
+    row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    row.set_margin_top(2)
+    row.set_margin_bottom(2)
+    lbl = Gtk.Label(label=label_text)
+    lbl.add_css_class("row-label")
+    lbl.set_halign(Gtk.Align.START)
+    lbl.set_hexpand(True)
+    val = Gtk.Label(label=value_text)
+    val.add_css_class("danger-value" if danger else "row-value")
+    val.set_halign(Gtk.Align.END)
+    val.set_xalign(1.0)
+    val.set_justify(Gtk.Justification.RIGHT)
+    val.set_wrap(True)
+    val.set_max_width_chars(22)
+    row.append(lbl)
+    row.append(val)
+    return row
+
 # ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
@@ -79,9 +148,10 @@ _FORMATS = [
 class AppWindow(Gtk.ApplicationWindow):
     def __init__(self, app: Gtk.Application) -> None:
         super().__init__(application=app, title="Traveller World Generator")
-        self.set_default_size(720, 420)
+        self.set_default_size(800, 620)
         self._html_path: str | None = None
         self._current_world: object | None = None
+        self._current_system: object | None = None
         self._seed_auto: bool = False   # True when seed field was auto-filled
         self._apply_css()
         self._build_ui()
@@ -280,6 +350,8 @@ class AppWindow(Gtk.ApplicationWindow):
         self._seed_auto = True
         self._seed_entry.set_text(str(seed))
 
+        full_system = self._check_full_system.get_active()
+
         if self._radio_travellermap.get_active():
             sector = self._sector_entry.get_text().strip()
             search_name = self._tm_name_entry.get_text().strip() or None
@@ -290,10 +362,14 @@ class AppWindow(Gtk.ApplicationWindow):
             if not search_name and not hex_pos:
                 self._show_error("Enter a world name or hex for TravellerMap lookup.")
                 return
-            self._do_travellermap_generation(sector, search_name, hex_pos, seed)
+            self._do_travellermap_generation(sector, search_name, hex_pos, seed, full_system)
         else:
-            world = generate_world(name)
-            self._finish_generation(world)
+            if full_system:
+                system = generate_full_system(name, seed=seed)
+                self._finish_system_generation(system)
+            else:
+                world = generate_world(name)
+                self._finish_generation(world)
 
     def _do_travellermap_generation(
         self,
@@ -301,6 +377,7 @@ class AppWindow(Gtk.ApplicationWindow):
         search_name: "str | None",
         hex_pos: "str | None",
         seed: int,
+        full_system: bool = False,
     ) -> None:
         try:
             system = generate_system_from_map(
@@ -310,29 +387,38 @@ class AppWindow(Gtk.ApplicationWindow):
                 seed=seed,
             )
         except AmbiguousWorldError as exc:
-            self._show_disambiguation_dialog(exc, seed)
+            self._show_disambiguation_dialog(exc, seed, full_system)
             return
         except (ValueError, LookupError, ConnectionError) as exc:
             self._show_error(str(exc))
             return
-        world = system.mainworld
-        if world is None:
-            self._show_error("TravellerMap lookup returned no mainworld.")
-            return
-        self._finish_generation(world)
+        if full_system:
+            self._finish_system_generation(system)
+        else:
+            world = system.mainworld
+            if world is None:
+                self._show_error("TravellerMap lookup returned no mainworld.")
+                return
+            self._finish_generation(world)
 
     def _finish_generation(self, world: object) -> None:
+        self._current_system = None
         self._current_world = world
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
-        if path is None:
-            self._show_error("Could not write HTML output file.")
-            return
-        self._html_path = path
+        if path is not None:
+            self._html_path = path
         self._show_summary(world)
-        self._open_in_browser(path)
+
+    def _finish_system_generation(self, system: object) -> None:
+        self._current_system = system
+        self._current_world = system.mainworld  # type: ignore[attr-defined]
+        path = self._write_html(system.to_html(detail_attached=False))  # type: ignore[attr-defined]
+        if path is not None:
+            self._html_path = path
+        self._show_system_summary(system)
 
     def _show_disambiguation_dialog(
-        self, error: AmbiguousWorldError, seed: int
+        self, error: AmbiguousWorldError, seed: int, full_system: bool = False
     ) -> None:
         dialog = Gtk.Window()
         dialog.set_title("Ambiguous World Name")
@@ -386,7 +472,7 @@ class AppWindow(Gtk.ApplicationWindow):
             dialog.close()
             if selected:
                 self._do_travellermap_generation(
-                    error.sector, None, selected, seed
+                    error.sector, None, selected, seed, full_system
                 )
 
         ok_btn.connect("clicked", _on_ok)
@@ -397,17 +483,17 @@ class AppWindow(Gtk.ApplicationWindow):
         dialog.present()
 
     def _on_save_clicked(self, _btn: object) -> None:
-        if self._current_world is None:
+        obj = self._current_system or self._current_world
+        if obj is None:
             return
 
         idx = self._format_dropdown.get_selected()
         label, ext = _FORMATS[idx]
 
-        safe_name = (
-            getattr(self._current_world, "name", "world")
-            .replace(" ", "-")
-            .lower()
-        )
+        base_name = getattr(self._current_world, "name", None) or "world"
+        if self._current_system is not None:
+            base_name = base_name + "-system"
+        safe_name = base_name.replace(" ", "-").lower()
 
         filters = Gio.ListStore.new(Gtk.FileFilter)
         ff = Gtk.FileFilter()
@@ -431,18 +517,22 @@ class AppWindow(Gtk.ApplicationWindow):
         if gfile is None:
             return
         path = gfile.get_path()
-        if path is None or self._current_world is None:
+        obj = self._current_system or self._current_world
+        if path is None or obj is None:
             return
 
         idx = self._format_dropdown.get_selected()
         _, ext = _FORMATS[idx]
 
         if ext == "json":
-            content = self._current_world.to_json()       # type: ignore[attr-defined]
+            content = obj.to_json()                             # type: ignore[attr-defined]
         elif ext == "txt":
-            content = self._current_world.summary()       # type: ignore[attr-defined]
+            content = obj.summary()                             # type: ignore[attr-defined]
         else:
-            content = self._current_world.to_html()       # type: ignore[attr-defined]
+            if self._current_system is not None:
+                content = obj.to_html(detail_attached=False)    # type: ignore[attr-defined]
+            else:
+                content = obj.to_html()                         # type: ignore[attr-defined]
 
         try:
             with open(path, "w", encoding="utf-8") as fh:
@@ -498,74 +588,402 @@ class AppWindow(Gtk.ApplicationWindow):
         lbl.set_vexpand(True)
         self._status_box.append(lbl)
 
-    def _show_summary(self, world: object) -> None:
+    def _show_system_summary(self, system: object) -> None:
         self._clear_status()
+        mw = system.mainworld  # type: ignore[attr-defined]
 
-        # Name + UWP + travel zone
-        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        header.set_halign(Gtk.Align.CENTER)
-        header.set_valign(Gtk.Align.CENTER)
-        header.set_vexpand(True)
-
-        name_lbl = Gtk.Label(label=world.name)  # type: ignore[attr-defined]
-        name_lbl.add_css_class("world-name")
-        header.append(name_lbl)
-
-        uwp_lbl = Gtk.Label(label=world.uwp())  # type: ignore[attr-defined]
-        uwp_lbl.add_css_class("uwp-label")
-        header.append(uwp_lbl)
-
-        zone_lbl = Gtk.Label(label=f"  {world.travel_zone}  ")  # type: ignore[attr-defined]
-        zone_lbl.add_css_class(_ZONE_CLASS.get(world.travel_zone, "zone-green"))  # type: ignore[attr-defined]
-        zone_lbl.set_valign(Gtk.Align.CENTER)
-        header.append(zone_lbl)
-
+        header, orbit_switch = self._build_system_summary_header(system)
         self._status_box.append(header)
 
-        # Trade codes + bases
-        tc = "  ".join(world.trade_codes) if world.trade_codes else "—"  # type: ignore[attr-defined]
-        bases = "  ".join(world.bases) if world.bases else "—"           # type: ignore[attr-defined]
-        detail = Gtk.Label(label=f"Trade codes: {tc}     Bases: {bases}")
-        detail.add_css_class("trade-codes")
-        detail.set_halign(Gtk.Align.CENTER)
-        self._status_box.append(detail)
+        sep = Gtk.Separator()
+        sep.set_margin_top(6)
+        sep.set_margin_bottom(6)
+        self._status_box.append(sep)
 
-        # Action row: Reopen + Save as
-        action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
-        action_row.set_halign(Gtk.Align.CENTER)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
-        reopen_btn = Gtk.Button(label="Reopen HTML Card")
-        reopen_btn.connect(
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card.set_margin_top(4)
+        card.set_margin_bottom(4)
+        card.set_margin_start(2)
+        card.set_margin_end(2)
+
+        stellar_card = self._build_stellar_card(system)
+        orbits_card = self._build_orbits_card(system)
+        card.append(stellar_card)
+        card.append(orbits_card)
+
+        if mw is not None:
+            mw_frame = Gtk.Frame(label="Mainworld")
+            mw_frame.set_child(self._build_world_card(mw))
+            card.append(mw_frame)
+
+        def _on_orbit_switch(switch: Gtk.Switch, _param: object) -> None:
+            visible = switch.get_active()
+            stellar_card.set_visible(visible)
+            orbits_card.set_visible(visible)
+
+        orbit_switch.connect("notify::active", _on_orbit_switch)
+
+        scroll.set_child(card)
+        self._status_box.append(scroll)
+
+    def _build_system_summary_header(
+        self, system: object
+    ) -> "tuple[Gtk.Box, Gtk.Switch]":
+        """Header bar for full-system view: world info, Stellar & Orbits switch, actions."""
+        mw = system.mainworld  # type: ignore[attr-defined]
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        if mw is not None:
+            name_lbl = Gtk.Label(label=mw.name)
+            name_lbl.add_css_class("world-name")
+            bar.append(name_lbl)
+
+            uwp_lbl = Gtk.Label(label=mw.uwp())
+            uwp_lbl.add_css_class("uwp-label")
+            bar.append(uwp_lbl)
+
+            zone_lbl = Gtk.Label(label=f"  {mw.travel_zone}  ")
+            zone_lbl.add_css_class(_ZONE_CLASS.get(mw.travel_zone, "zone-green"))
+            zone_lbl.set_valign(Gtk.Align.CENTER)
+            bar.append(zone_lbl)
+        else:
+            stars = system.stellar_system.stars  # type: ignore[attr-defined]
+            lbl = Gtk.Label(label=f"System — {len(stars)} star(s)")
+            lbl.add_css_class("world-name")
+            bar.append(lbl)
+
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        bar.append(spacer)
+
+        switch_lbl = Gtk.Label(label="Stellar && Orbits")
+        switch_lbl.add_css_class("hint-label")
+        bar.append(switch_lbl)
+
+        orbit_switch = Gtk.Switch()
+        orbit_switch.set_active(True)
+        orbit_switch.set_valign(Gtk.Align.CENTER)
+        bar.append(orbit_switch)
+
+        vsep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        vsep.set_margin_start(6)
+        vsep.set_margin_end(6)
+        bar.append(vsep)
+
+        bar.append(self._build_action_buttons())
+        return bar, orbit_switch
+
+    def _build_action_buttons(self) -> Gtk.Box:
+        """Open in Browser + Save as dropdown + Save button."""
+        box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        open_btn = Gtk.Button(label="Open in Browser")
+        open_btn.connect(
             "clicked",
             lambda _: self._open_in_browser(self._html_path)  # type: ignore[arg-type]
             if self._html_path else None,
         )
-        action_row.append(reopen_btn)
-
-        sep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
-        sep.set_margin_start(4)
-        sep.set_margin_end(4)
-        action_row.append(sep)
-
-        action_row.append(Gtk.Label(label="Save as:"))
-
+        box.append(open_btn)
+        vsep = Gtk.Separator(orientation=Gtk.Orientation.VERTICAL)
+        vsep.set_margin_start(4)
+        vsep.set_margin_end(4)
+        box.append(vsep)
+        box.append(Gtk.Label(label="Save as:"))
         self._format_dropdown = Gtk.DropDown(
-            model=Gtk.StringList.new([label for label, _ in _FORMATS])
+            model=Gtk.StringList.new([lbl for lbl, _ in _FORMATS])
         )
         self._format_dropdown.set_selected(0)
-        action_row.append(self._format_dropdown)
-
+        box.append(self._format_dropdown)
         save_btn = Gtk.Button(label="Save…")
         save_btn.connect("clicked", self._on_save_clicked)
-        action_row.append(save_btn)
+        box.append(save_btn)
+        return box
 
-        self._status_box.append(action_row)
+    def _build_stellar_card(self, system: object) -> Gtk.Frame:
+        """Stars table: Designation | Classification | Mass | Temp | Luminosity | Orbit AU."""
+        frame = Gtk.Frame(label="Stellar System")
+        grid = Gtk.Grid()
+        grid.set_row_spacing(4)
+        grid.set_column_spacing(16)
+        grid.set_margin_top(6)
+        grid.set_margin_bottom(8)
+        grid.set_margin_start(10)
+        grid.set_margin_end(10)
 
-        hint = Gtk.Label(label="HTML card opened in default browser")
-        hint.add_css_class("hint-label")
-        hint.add_css_class("dim-label")
-        hint.set_halign(Gtk.Align.CENTER)
-        self._status_box.append(hint)
+        headers = ["Desig", "Type", "Mass (M☉)", "Temp (K)", "Lum (L☉)", "Orbit (AU)"]
+        for col, hdr in enumerate(headers):
+            lbl = Gtk.Label(label=hdr)
+            lbl.add_css_class("table-header")
+            lbl.set_halign(Gtk.Align.START if col < 2 else Gtk.Align.END)
+            grid.attach(lbl, col, 0, 1, 1)
+
+        stars = system.stellar_system.stars  # type: ignore[attr-defined]
+        for row, star in enumerate(stars, start=1):
+            orbit_str = f"{star.orbit_au:.3f}" if star.orbit_au else "—"
+            cells = [
+                (star.designation,                   Gtk.Align.START),
+                (star.classification(),              Gtk.Align.START),
+                (f"{star.mass:.3f}",                 Gtk.Align.END),
+                (f"{star.temperature:,}",            Gtk.Align.END),
+                (f"{star.luminosity:.4f}",           Gtk.Align.END),
+                (orbit_str,                          Gtk.Align.END),
+            ]
+            for col, (text, align) in enumerate(cells):
+                lbl = Gtk.Label(label=text)
+                lbl.add_css_class("table-cell")
+                lbl.set_halign(align)
+                grid.attach(lbl, col, row, 1, 1)
+
+        frame.set_child(grid)
+        return frame
+
+    def _build_orbits_card(self, system: object) -> Gtk.Frame:
+        """Orbits table: Star | Orbit# | AU | Type | HZ | Temp Zone."""
+        frame = Gtk.Frame(label="System Orbits")
+        grid = Gtk.Grid()
+        grid.set_row_spacing(3)
+        grid.set_column_spacing(14)
+        grid.set_margin_top(6)
+        grid.set_margin_bottom(8)
+        grid.set_margin_start(10)
+        grid.set_margin_end(10)
+
+        headers = ["Star", "Orbit#", "AU", "Type", "HZ", "Temp Zone"]
+        for col, hdr in enumerate(headers):
+            lbl = Gtk.Label(label=hdr)
+            lbl.add_css_class("table-header")
+            lbl.set_halign(Gtk.Align.START if col in (0, 3, 4, 5) else Gtk.Align.END)
+            grid.attach(lbl, col, 0, 1, 1)
+
+        orbits = system.system_orbits.orbits          # type: ignore[attr-defined]
+        mw_orbit = system.system_orbits.mainworld_orbit  # type: ignore[attr-defined]
+
+        for row, orbit in enumerate(orbits, start=1):
+            is_mw = (orbit is mw_orbit)
+            is_empty = orbit.world_type == "empty"
+            css = "table-mw" if is_mw else ("table-dim" if is_empty else "table-cell")
+            hz_str = "★ HZ" if orbit.is_habitable_zone else ""
+            type_str = _WORLD_TYPE_LABEL.get(orbit.world_type, orbit.world_type)
+            zone_str = orbit.temperature_zone.capitalize()
+            cells = [
+                (orbit.star_designation,         Gtk.Align.START),
+                (f"{orbit.orbit_number:.2f}",    Gtk.Align.END),
+                (f"{orbit.orbit_au:.3f}",        Gtk.Align.END),
+                (type_str,                       Gtk.Align.START),
+                (hz_str,                         Gtk.Align.START),
+                (zone_str,                       Gtk.Align.START),
+            ]
+            for col, (text, align) in enumerate(cells):
+                lbl = Gtk.Label(label=text)
+                lbl.add_css_class(css)
+                lbl.set_halign(align)
+                grid.attach(lbl, col, row, 1, 1)
+
+        frame.set_child(grid)
+        return frame
+
+    def _show_summary(self, world: object) -> None:
+        self._clear_status()
+        self._status_box.append(self._build_summary_header(world))
+        sep = Gtk.Separator()
+        sep.set_margin_top(6)
+        sep.set_margin_bottom(6)
+        self._status_box.append(sep)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_vexpand(True)
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_child(self._build_world_card(world))
+        self._status_box.append(scroll)
+
+    def _build_summary_header(self, world: object) -> Gtk.Box:
+        """Fixed header bar: name, UWP, zone badge, spacer, actions."""
+        bar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        name_lbl = Gtk.Label(label=world.name)  # type: ignore[attr-defined]
+        name_lbl.add_css_class("world-name")
+        bar.append(name_lbl)
+
+        uwp_lbl = Gtk.Label(label=world.uwp())  # type: ignore[attr-defined]
+        uwp_lbl.add_css_class("uwp-label")
+        bar.append(uwp_lbl)
+
+        zone_lbl = Gtk.Label(label=f"  {world.travel_zone}  ")  # type: ignore[attr-defined]
+        zone_lbl.add_css_class(_ZONE_CLASS.get(world.travel_zone, "zone-green"))  # type: ignore[attr-defined]
+        zone_lbl.set_valign(Gtk.Align.CENTER)
+        bar.append(zone_lbl)
+
+        spacer = Gtk.Box()
+        spacer.set_hexpand(True)
+        bar.append(spacer)
+
+        bar.append(self._build_action_buttons())
+        return bar
+
+    def _build_world_card(self, world: object) -> Gtk.Box:
+        """Scrollable card: stat boxes + Physical/Society cards + trade codes + notes."""
+        w = world
+        d = w.to_dict()  # type: ignore[attr-defined]
+
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        card.set_margin_top(4)
+        card.set_margin_bottom(4)
+        card.set_margin_start(2)
+        card.set_margin_end(2)
+
+        card.append(self._build_stat_row(w, d))
+        card.append(self._build_detail_cards(w, d))
+        card.append(self._build_trade_codes(w))
+        notes = self._build_notes(w)
+        if notes:
+            card.append(notes)
+        return card
+
+    def _build_stat_row(self, w: object, d: dict) -> Gtk.Box:
+        """Three equal-width stat boxes: Starport | Size | Tech Level."""
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        row.set_homogeneous(True)
+
+        def stat_frame(title: str, value: str, subtitle: str) -> Gtk.Frame:
+            frame = Gtk.Frame(label=title)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            box.set_margin_top(4)
+            box.set_margin_bottom(6)
+            box.set_margin_start(8)
+            box.set_margin_end(8)
+            v = Gtk.Label(label=value)
+            v.add_css_class("stat-value")
+            v.set_halign(Gtk.Align.START)
+            v.set_wrap(True)
+            s = Gtk.Label(label=subtitle)
+            s.add_css_class("stat-sub")
+            s.add_css_class("dim-label")
+            s.set_halign(Gtk.Align.START)
+            s.set_wrap(True)
+            box.append(v)
+            box.append(s)
+            frame.set_child(box)
+            return frame
+
+        sp = w.starport  # type: ignore[attr-defined]
+        row.append(stat_frame(
+            "Starport",
+            f"{sp} — {STARPORT_QUALITY_LABEL.get(sp, '?')}",
+            STARPORT_FACILITY_DETAIL.get(sp, ""),
+        ))
+        row.append(stat_frame(
+            "Size",
+            f"{_to_hex(w.size)} — {d['size']['diameter_km']} km",  # type: ignore[attr-defined]
+            f"Gravity: {d['size']['surface_gravity']}",
+        ))
+        row.append(stat_frame(
+            "Tech Level",
+            _to_hex(w.tech_level),  # type: ignore[attr-defined]
+            _tl_era(w.tech_level),  # type: ignore[attr-defined]
+        ))
+        return row
+
+    def _build_detail_cards(self, w: object, d: dict) -> Gtk.Box:
+        """Side-by-side Physical and Society detail cards."""
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+
+        # Physical
+        phys = Gtk.Frame(label="Physical")
+        phys.set_hexpand(True)
+        pb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        pb.set_margin_top(4)
+        pb.set_margin_bottom(6)
+        pb.set_margin_start(8)
+        pb.set_margin_end(8)
+        gear = d["atmosphere"]["survival_gear"]
+        gear_danger = gear not in ("None", "Varies")
+        for lbl, val, danger in [
+            ("Atmosphere",      f"{_to_hex(w.atmosphere)} — {d['atmosphere']['name']}", False),  # type: ignore[attr-defined]
+            ("Survival gear",   gear,                                                    gear_danger),
+            ("Temperature",     w.temperature,                                           False),   # type: ignore[attr-defined]
+            ("Hydrographics",   f"{_to_hex(w.hydrographics)} — {d['hydrographics']['description'].split(' (')[0]}", False),  # type: ignore[attr-defined]
+            ("Gas giants",      str(w.gas_giant_count) if w.has_gas_giant else "None",  False),   # type: ignore[attr-defined]
+            ("Planetoid belts", str(w.belt_count),                                      False),   # type: ignore[attr-defined]
+            ("PBG",             f"{w.population_multiplier}{w.belt_count}{w.gas_giant_count}", False),  # type: ignore[attr-defined]
+        ]:
+            pb.append(_detail_row(lbl, val, danger))
+        phys.set_child(pb)
+        row.append(phys)
+
+        # Society
+        soc = Gtk.Frame(label="Society")
+        soc.set_hexpand(True)
+        sb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        sb.set_margin_top(4)
+        sb.set_margin_bottom(6)
+        sb.set_margin_start(8)
+        sb.set_margin_end(8)
+        pop_str = f"{_to_hex(w.population)} — {d['population']['range']}"  # type: ignore[attr-defined]
+        if w.population > 0:  # type: ignore[attr-defined]
+            pop_str += f"  (P={w.population_multiplier})"  # type: ignore[attr-defined]
+        bases_str = "  ".join(_BASE_FULL.get(b, b) for b in w.bases) or "None"  # type: ignore[attr-defined]
+        for lbl, val in [
+            ("Population", pop_str),
+            ("Government", f"{_to_hex(w.government)} — {d['government']['name']}"),  # type: ignore[attr-defined]
+            ("Law level",  _to_hex(w.law_level)),  # type: ignore[attr-defined]
+            ("Bases",      bases_str),
+        ]:
+            sb.append(_detail_row(lbl, val))
+        soc.set_child(sb)
+        row.append(soc)
+
+        return row
+
+    def _build_trade_codes(self, w: object) -> Gtk.Box:
+        """Trade code badges in a flow layout."""
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+
+        hdr = Gtk.Label(label="Trade codes")
+        hdr.add_css_class("section-label")
+        hdr.set_halign(Gtk.Align.START)
+        box.append(hdr)
+
+        flow = Gtk.FlowBox()
+        flow.set_selection_mode(Gtk.SelectionMode.NONE)
+        flow.set_max_children_per_line(12)
+        flow.set_row_spacing(4)
+        flow.set_column_spacing(4)
+
+        if w.trade_codes:  # type: ignore[attr-defined]
+            for tc in w.trade_codes:  # type: ignore[attr-defined]
+                badge = Gtk.Label(label=f"{tc} — {_TRADE_CODE_FULL.get(tc, tc)}")
+                badge.add_css_class("tc-badge")
+                badge.set_margin_top(2)
+                badge.set_margin_bottom(2)
+                flow.append(badge)
+        else:
+            none_lbl = Gtk.Label(label="None")
+            none_lbl.add_css_class("dim-label")
+            flow.append(none_lbl)
+
+        box.append(flow)
+        return box
+
+    def _build_notes(self, w: object) -> "Gtk.Frame | None":
+        """Notes frame, or None if there are no notes."""
+        if not w.notes:  # type: ignore[attr-defined]
+            return None
+        frame = Gtk.Frame(label="Notes")
+        nb = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        nb.set_margin_top(4)
+        nb.set_margin_bottom(6)
+        nb.set_margin_start(8)
+        nb.set_margin_end(8)
+        for note in w.notes:  # type: ignore[attr-defined]
+            lbl = Gtk.Label(label=f"• {note}")
+            lbl.add_css_class("stat-sub")
+            lbl.set_halign(Gtk.Align.START)
+            lbl.set_wrap(True)
+            nb.append(lbl)
+        frame.set_child(nb)
+        return frame
 
 
 # ---------------------------------------------------------------------------
