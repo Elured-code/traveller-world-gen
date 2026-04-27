@@ -2,15 +2,15 @@
 
 A desktop GUI for the Traveller World Generator, built with GTK4 and PyGObject.
 Generates mainworlds (procedural or from TravellerMap) and displays the result
-as a styled HTML card in the system default browser.
+as a native GTK4 widget card inside the application window.
 
 ---
 
 ## Status
 
-Procedural mainworld generation and TravellerMap mainworld lookup are both
-working. System generation controls (full system, attach detail, output format)
-are present in the UI but not yet wired to generation logic.
+Procedural mainworld generation, TravellerMap mainworld lookup, and full system
+generation are all working and displayed in-app using native GTK4 widgets.
+The Attach detail checkbox is present in the UI but not yet wired.
 
 ---
 
@@ -58,7 +58,8 @@ $(brew --prefix)/bin/python3 gen-ui/app.py
 2. Enter an optional world name in the **Name** field (defaults to `Unknown`).
 3. Enter an optional integer **Seed** for reproducible results, or click
    **New Seed** to randomise.
-4. Click **Generate** or press Enter.
+4. Optionally check **Full system** to generate stellar and orbit data.
+5. Click **Generate** or press Enter.
 
 ### TravellerMap lookup
 
@@ -68,7 +69,8 @@ $(brew --prefix)/bin/python3 gen-ui/app.py
 3. Enter the world **Name** to search, or the **Hex** position (e.g. `1910`)
    for a direct lookup. Providing a hex bypasses name search entirely and
    avoids ambiguity.
-4. Click **Generate** or press Enter.
+4. Optionally check **Full system**.
+5. Click **Generate** or press Enter.
 
 If the name matches more than one world in the sector a disambiguation dialog
 lists all candidates with their hex positions; select one and click **OK**.
@@ -78,11 +80,31 @@ what was typed in the Name field.
 
 ### After generation
 
-The GTK window shows a compact summary — world name, UWP, travel zone badge,
-trade codes, and bases. The full styled HTML card opens automatically in the
-default browser. Use **Reopen HTML Card** to bring it back if the tab is closed.
+The GTK window shows a scrollable world card with:
 
-Each Generate call replaces the previous temp file; old files are not
+- **Header bar** — world name, UWP (monospace), travel zone badge
+- **Stat boxes** — Starport (quality + facilities), Size (diameter + gravity),
+  Tech Level (hex value + era)
+- **Physical card** — Atmosphere, Survival gear, Temperature, Hydrographics,
+  Gas giants, Planetoid belts, PBG
+- **Society card** — Population (with multiplier), Government, Law level, Bases
+- **Trade code badges** — full name beside each code
+- **Notes** — any generation notes
+
+When **Full system** is checked, the card also includes:
+
+- **Stellar System table** — Designation, Classification, Mass (M☉), Temp (K),
+  Luminosity (L☉), Orbit (AU) for every star
+- **System Orbits table** — Star, Orbit#, AU, Type, HZ marker, Temp Zone for
+  every orbit slot; mainworld row is bold, empty orbits are dimmed
+
+A **Stellar & Orbits** toggle switch in the header hides/shows the stellar and
+orbit tables without regenerating.
+
+Use **Open in Browser** to view the full styled HTML card in the default browser.
+Use **Save…** with the format dropdown to save as JSON, Text, or HTML.
+
+Each Generate call replaces the previous temp HTML file; old files are not
 accumulated.
 
 ---
@@ -103,19 +125,21 @@ accumulated.
 
 ## HTML output
 
-The HTML card is produced by `World.to_html()` in `traveller_world_gen.py`. It
-is a self-contained page with embedded CSS, dark mode support, and all world
-characteristics laid out as a formatted card.
+The HTML card is produced by `World.to_html()` (mainworld only) or
+`TravellerSystem.to_html(detail_attached=False)` (full system) in the
+respective generation modules. It is a self-contained page with embedded CSS,
+dark mode support, and all world characteristics laid out as a formatted card.
 
-### Why the browser, not in-app?
+### Why native widgets instead of in-app HTML?
 
 WebKitGTK (the GTK4 HTML renderer) requires Linux. Its dependencies —
 `systemd`, `wayland`, `wpebackend-fdo` — are not available on macOS, so
-`brew install webkitgtk` fails. The HTML is therefore opened via
-`Gio.AppInfo.launch_default_for_uri` in the system default browser.
+`brew install webkitgtk` fails. The in-app card is therefore built from native
+GTK4 widgets (`Gtk.Frame`, `Gtk.Grid`, `Gtk.FlowBox`, `Gtk.ScrolledWindow`).
+The HTML representation is still available via **Open in Browser** and **Save…**.
 
 On Linux, WebKitGTK can be installed and the app could be updated to embed the
-card directly:
+HTML card directly:
 
 ```bash
 sudo apt install gir1.2-webkit-6.0   # Debian/Ubuntu
@@ -143,10 +167,35 @@ control rows sit at the top of the window:
 2. **Source row** — Procedural / TravellerMap radio buttons; Sector, Name, and
    Hex fields (Sector/Name/Hex are insensitive when Procedural is active)
 3. **Options row** — Full system / Attach detail checkboxes; Format dropdown
-   (not yet wired)
+   (Attach detail not yet wired)
 
-The status panel below updates after each generation with a compact world
-summary, Reopen and Save actions.
+The status panel below the separator fills the remaining window height and
+updates after each generation.
+
+### Mainworld-only path
+
+`_finish_generation(world)` calls `_show_summary(world)`, which builds:
+- `_build_summary_header(world)` — fixed header bar with name/UWP/zone and
+  action buttons
+- `_build_world_card(world)` inside a `Gtk.ScrolledWindow`
+
+`_build_world_card` composes: `_build_stat_row`, `_build_detail_cards`,
+`_build_trade_codes`, `_build_notes`.
+
+### Full system path
+
+`_finish_system_generation(system)` calls `_show_system_summary(system)`, which
+builds:
+- `_build_system_summary_header(system)` — returns `(header_bar, orbit_switch)`;
+  header shows world name/UWP/zone, Stellar & Orbits toggle switch, and action
+  buttons
+- `_build_stellar_card(system)` — `Gtk.Frame` + `Gtk.Grid` stars table
+- `_build_orbits_card(system)` — `Gtk.Frame` + `Gtk.Grid` orbits table
+- Optional mainworld `Gtk.Frame` wrapping `_build_world_card(world)`, all inside
+  a `Gtk.ScrolledWindow`
+
+The `notify::active` signal on the switch calls `set_visible()` on both the
+stellar and orbits cards.
 
 ### TravellerMap path
 
@@ -155,11 +204,6 @@ When a name search returns multiple exact matches in the same sector,
 `AmbiguousWorldError` is raised and caught in `_do_travellermap_generation()`,
 which opens a modal disambiguation dialog. Selecting a candidate retries with
 its hex position, bypassing name resolution.
-
-### Procedural path
-
-`generate_world()` in `traveller_world_gen.py` is imported directly — no
-subprocess or HTTP calls are needed.
 
 ---
 
