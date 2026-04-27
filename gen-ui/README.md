@@ -8,9 +8,9 @@ as a native GTK4 widget card inside the application window.
 
 ## Status
 
-Procedural mainworld generation, TravellerMap mainworld lookup, and full system
-generation are all working and displayed in-app using native GTK4 widgets.
-The Attach detail checkbox is present in the UI but not yet wired.
+Procedural mainworld generation, TravellerMap mainworld lookup, full system
+generation, and attach detail are all working and displayed in-app using native
+GTK4 widgets.
 
 ---
 
@@ -101,6 +101,15 @@ When **Full system** is checked, the card also includes:
 A **Stellar & Orbits** toggle switch in the header hides/shows the stellar and
 orbit tables without regenerating.
 
+When **Full system** and **Attach detail** are both checked, the System Orbits
+table gains extra columns and moon sub-rows:
+
+- **Additional columns** — Profile (UWP or gas giant SAH), Trade codes
+- **Moon sub-rows** — indented below each orbit slot; show type, profile (ring
+  count as `R{n}`, or UWP if detailed, or size code), and any trade codes
+- **Mainworld** is treated as a satellite when its orbit is a gas giant, and a
+  note is shown in the world card recording the host giant and orbit
+
 Use **Open in Browser** to view the full styled HTML card in the default browser.
 Use **Save…** with the format dropdown to save as JSON, Text, or HTML.
 
@@ -167,7 +176,7 @@ control rows sit at the top of the window:
 2. **Source row** — Procedural / TravellerMap radio buttons; Sector, Name, and
    Hex fields (Sector/Name/Hex are insensitive when Procedural is active)
 3. **Options row** — Full system / Attach detail checkboxes; Format dropdown
-   (Attach detail not yet wired)
+   (Attach detail is only sensitive when Full system is checked)
 
 The status panel below the separator fills the remaining window height and
 updates after each generation.
@@ -184,18 +193,23 @@ updates after each generation.
 
 ### Full system path
 
-`_finish_system_generation(system)` calls `_show_system_summary(system)`, which
-builds:
+`_finish_system_generation(system, attach_detail_flag)` optionally calls
+`attach_detail(system)` when the Attach detail checkbox is active, sets
+`self._detail_attached`, then calls `_show_system_summary(system)`, which builds:
 - `_build_system_summary_header(system)` — returns `(header_bar, orbit_switch)`;
   header shows world name/UWP/zone, Stellar & Orbits toggle switch, and action
   buttons
 - `_build_stellar_card(system)` — `Gtk.Frame` + `Gtk.Grid` stars table
-- `_build_orbits_card(system)` — `Gtk.Frame` + `Gtk.Grid` orbits table
+- `_build_orbits_card(system, detail_attached)` — `Gtk.Frame` + `Gtk.Grid`
+  orbits table; when `detail_attached=True`, adds Profile and Codes columns and
+  inserts moon sub-rows using a free-running `grid_row` counter (required because
+  moon rows are interleaved with orbit rows dynamically)
 - Optional mainworld `Gtk.Frame` wrapping `_build_world_card(world)`, all inside
   a `Gtk.ScrolledWindow`
 
 The `notify::active` signal on the switch calls `set_visible()` on both the
-stellar and orbits cards.
+stellar and orbits cards. `self._detail_attached` is used by `_on_save_finish()`
+to pass the correct `detail_attached` flag to `to_html()`.
 
 ### TravellerMap path
 

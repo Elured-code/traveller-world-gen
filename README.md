@@ -36,7 +36,7 @@ HTML display card.
 - TravellerMap integration — fetch canonical UWP + stellar data from travellermap.com and generate a full procedural system
 - `World.from_dict()` deserialiser — reconstruct a World from a previous JSON response and feed it into a new system generation
 - JSON Schema for the world output format (`traveller_world_schema.json`)
-- GTK4 desktop UI (`gen-ui/app.py`) — mainworld generation working; system generation controls (full system, attach detail, TravellerMap source) present but not yet wired up (under construction)
+- GTK4 desktop UI (`gen-ui/app.py`) — full native desktop application: procedural mainworld and full system generation, TravellerMap lookup with disambiguation, in-app world card and stellar/orbit tables, attach detail (secondary world SAH + moon sub-rows), save to JSON/HTML/text, open in browser
 
 ---
 
@@ -68,8 +68,8 @@ traveller-world-gen/
 │
 │  GTK4 Desktop UI
 ├── gen-ui/
-│   ├── app.py                      # GTK4 UI — mainworld generation working; system generation under construction
-│   ├── README.md                   # Setup and usage notes
+│   ├── app.py                      # GTK4 desktop UI — fully working
+│   ├── README.md                   # Setup, usage, and keyboard shortcut reference
 │   └── requirements.txt            # Dependency notes (Homebrew) and HTML rendering constraints
 │
 │  Tests
@@ -484,7 +484,7 @@ pytest tests/ -v
 
 ### What is tested
 
-**`test_traveller_world_gen.py`** (342 tests, 26 classes)
+**`test_traveller_world_gen.py`** (414 tests, 27 classes)
 
 - All dice helper functions and clamp behaviour
 - Traveller hex digit conversion (0–9, A–G)
@@ -501,6 +501,8 @@ pytest tests/ -v
   (requires `pip install jsonschema`)
 - Integration tests: range bounds, uninhabited world invariants,
   seed reproducibility
+- `TestGasGiantOrbitSlot` — `gg_sah` field on `OrbitSlot`, `_gg_diameter()`
+  helper, satellite size constraint, satellite note in mainworld record
 
 **`test_function_app.py`** (98 tests, 15 classes)
 
@@ -537,7 +539,9 @@ All 13 steps follow the Traveller 2022 Core Rulebook exactly.
 
 When a mainworld is generated in orbital context (system endpoints), step 3 is
 replaced by `generate_temperature_from_orbit()`, which derives temperature from
-the world's HZ deviation rather than a random roll.
+the world's HZ deviation rather than a random roll. When the mainworld orbit is a
+gas giant, the mainworld is generated as a satellite: size is clamped to
+`[1, gg_diameter−1]` (WBH p.57) and a note is added to the world record.
 
 ---
 

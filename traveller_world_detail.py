@@ -557,8 +557,12 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:
                 )
 
         elif orbit.world_type == "gas_giant":
-            # Gas giants: never directly inhabited (moons are out of scope)
-            sah = _gas_giant_sah(host.spectral_type, host.lum_class)
+            # Gas giants: never directly inhabited (moons are out of scope).
+            # Reuse the SAH rolled at orbit-gen time if available so the
+            # diameter seen here matches the mainworld satellite size constraint.
+            existing_sah = getattr(orbit, "gg_sah", "")
+            sah = (existing_sah if existing_sah
+                   else _gas_giant_sah(host.spectral_type, host.lum_class))
             result[key] = WorldDetail(sah=sah)
 
         else:

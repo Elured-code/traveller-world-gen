@@ -150,6 +150,28 @@ def _temp_zone(deviation: float, hzco: float, orbit: float) -> str:  # pylint: d
     else:                  return "boiling"
 
 
+_GG_EHEX = "0123456789ABCDEFGHIJ"
+
+
+def _gg_sah_roll(spectral: str, lum_class: str) -> str:
+    """Roll gas giant SAH (WBH p.55): GS#, GM#, or GL# with a hex diameter digit."""
+    dm = 0
+    if spectral == "BD" or lum_class == "VI" or (spectral == "M" and lum_class == "V"):
+        dm = -1
+    cat = random.randint(1, 6) + dm
+    if cat <= 2:
+        d3a = (random.randint(1, 6) + 1) // 2
+        d3b = (random.randint(1, 6) + 1) // 2
+        diameter = d3a + d3b            # 2-6
+        return f"GS{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
+    if cat <= 4:
+        diameter = random.randint(1, 6) + 6  # 7-12
+        return f"GM{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
+    # WBH p.55 GL: 2D+6 → 8-18
+    diameter = random.randint(1, 6) + random.randint(1, 6) + 6
+    return f"GL{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
+
+
 @dataclass
 class OrbitSlot:
     star_designation: str
@@ -163,6 +185,7 @@ class OrbitSlot:
     is_mainworld_candidate: bool = False
     notes: str = ""
     canonical_profile: str = ""  # UWP set when mainworld comes from canonical data
+    gg_sah: str = ""             # gas giant SAH rolled at orbit gen time (e.g. "GM9")
 
     def to_dict(self) -> dict:
         d = {
@@ -179,6 +202,8 @@ class OrbitSlot:
         }
         if self.canonical_profile:
             d["canonical_profile"] = self.canonical_profile
+        if self.gg_sah:
+            d["gg_sah"] = self.gg_sah
         # Include secondary world / satellite detail if attach_detail() has run
         detail = getattr(self, "detail", None)
         if detail is not None:
@@ -502,11 +527,15 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
                 wtype = pool[pool_idx]; pool_idx += 1
             else:
                 wtype = "terrestrial"
+            slot_gg_sah = (
+                _gg_sah_roll(star.spectral_type, star.lum_class)
+                if wtype == "gas_giant" else ""
+            )
             result.orbits.append(OrbitSlot(
                 star_designation=d, orbit_number=on, orbit_au=au,
                 slot_index=si+1, world_type=wtype,
                 is_habitable_zone=in_hz, hz_deviation=round(dev,3),
-                temperature_zone=tz,
+                temperature_zone=tz, gg_sah=slot_gg_sah,
             ))
 
     result.orbits.sort(key=lambda o: (o.star_designation, o.orbit_au))

@@ -56,8 +56,8 @@ traveller-world-gen/
 ├── shared/
 │   └── helpers.py              # Request parsing, response builders, error codes
 ├── gen-ui/
-│   ├── app.py                  # GTK4 desktop UI — mainworld generation working; system generation controls present but not yet wired (under construction)
-│   ├── README.md               # Setup and usage notes
+│   ├── app.py                  # GTK4 desktop UI — fully working
+│   ├── README.md               # Setup, usage, and keyboard shortcut reference
 │   └── requirements.txt        # Dependency notes (Homebrew) and HTML rendering constraints
 │
 ├── tests/
@@ -212,6 +212,8 @@ class OrbitSlot:
     notes: str
     canonical_profile: str  # set by generate_system_from_map() — canonical UWP of the
                             # mainworld placed here; takes display priority over detail.profile
+    gg_sah: str             # gas giant SAH rolled at orbit-gen time (e.g. "GM9");
+                            # empty string for non-gas-giant slots
     # Attached after generate_system_detail():
     detail: Optional[WorldDetail]  # set by attach_detail()
 
@@ -265,6 +267,8 @@ class TravellerSystem:
     mainworld_orbit: Optional[OrbitSlot]
     # methods: .to_dict(), .to_json(), .summary(), .to_html(detail_attached)
 ```
+
+**Gas giant mainworld (WBH p.57):** When the selected mainworld orbit is a gas giant, `generate_mainworld_at_orbit()` generates the mainworld as a satellite of that giant rather than the giant itself. The helper `_gg_diameter(gg_sah: str) -> int` decodes the eHex diameter digit from the gas giant's `gg_sah` string (e.g. `"GM9"` → 9 Terran diameters). The satellite's size is clamped to `min(max(generate_size(), 1), gg_diameter - 1)`. A note recording the host giant's SAH and orbital position is appended to `world.notes`. The `gg_sah` value used here was rolled at orbit-gen time and stored in `OrbitSlot.gg_sah`, so there is no second SAH roll.
 
 **Temperature integration (WBH p.46–47):** This module implements the critical link between orbital position and world temperature. Rather than rolling temperature randomly as in the standalone CRB procedure, `generate_temperature_from_orbit()` converts an orbit's HZ deviation to the raw 2D roll that the CRB temperature table expects, then applies atmosphere DMs. The mapping:
 
@@ -391,7 +395,7 @@ class WorldDetail:
 | 6–9        | 0         | No special equipment |
 | A+         | 8         | Hostile environment suit |
 
-**Gas giants** are never directly inhabited. Their moons can be.
+**Gas giants** are never directly inhabited. Their moons can be. The gas giant's SAH is read from `orbit.gg_sah` when available (set at orbit-gen time by `_gg_sah_roll()`), so the diameter seen in the detail table is consistent with the satellite size constraint applied when the mainworld was generated. If `orbit.gg_sah` is empty (legacy data), a fresh SAH is rolled as a fallback.
 
 **Belts** use atmosphere 0 for the TL viability check, so they are only inhabited when the mainworld TL ≥ 8.
 
@@ -589,11 +593,13 @@ python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detai
 
 **Secondary world government defaults to dependent (Case 1).** The WBH provides two government procedures for secondary worlds: dependent (roll 1D on the Secondary World Government table) and independent (roll 2D-7 + Population). The current implementation uses the dependent (Case 1) table for all secondary worlds. This is the most common case and keeps the social generation self-contained without requiring Referee input about political independence.
 
+**Gas giant SAH is rolled at orbit-gen time.** `_gg_sah_roll()` in `traveller_orbit_gen.py` rolls and stores the gas giant SAH (GS/GM/GL + diameter digit) in `OrbitSlot.gg_sah` during `generate_orbits()`. This solves two problems: (1) `generate_mainworld_at_orbit()` needs the gas giant diameter to constrain satellite size, but importing `traveller_world_detail` would create a circular import; (2) the SAH value must be the same whether it is accessed for satellite sizing (in system_gen) or for the detail table (in world_detail), so it must be rolled once and shared. Inlining the roll in orbit_gen avoids the circular import and ensures consistency. The RNG sequence shifts for any system that contains a gas giant — an unavoidable consequence of inserting new dice rolls earlier in the pipeline.
+
 ---
 
 ## 6. Compliance audit history
 
-Three bugs were found and fixed during a formal compliance audit of `traveller_orbit_gen.py` against WBH pp. 44–51.
+The bugs below were found during development and testing and corrected. Each entry notes the severity, root cause, and post-fix verification.
 
 **Step 3b — cold system baseline formula (high severity).** The original code computed `baseline_orbit = anchor + abs(baseline_num) + total_slots * 0.1 + var`. The WBH formula is `HZCO − baseline_number + Total Worlds + (2D−7)/10`, which adds Total Worlds as whole Orbit# units. Multiplying by 0.1 compressed an 8-world system's outward shift from 8.0 Orbit# down to 0.8 Orbit#. Post-fix: 97.8% → 0% genuine violations. Fixed in `generate_orbits()`, Step 3b branch.
 
@@ -610,6 +616,10 @@ Three bugs were found and fixed during a formal compliance audit of `traveller_o
 *Bug 2 — multiplicative gap check:* The slot-spacing fallback `if current <= slots[-1] * 1.1` triggered continuously for any orbit number above `spread / 0.1` (e.g., beyond Orbit# 4 with spread 0.4), halving the effective spacing on every outer step.
 
 Fixed by adding `min_spread = avail / max(total_slots * 2, 1)` as a floor so that worlds always span at least half the available range, and by changing the gap check to additive: `if current - slots[-1] < spread * 0.4`. Post-fix: single-star systems routinely place worlds from ≈ 0.5 AU to 20+ AU; binary systems are correctly limited by their companion orbit geometry.
+
+**Sub-Orbit#1 deviation scaling amplifies temperature errors for dim stars (high severity).** `hz_deviation_to_raw_roll()` in `traveller_system_gen.py` and `_temp_zone()` in `traveller_orbit_gen.py` both applied a scaling formula `eff_dev = hz_deviation / min(hzco, orbit)` for positions below Orbit#1. This was intended to scale deviations that occur on a compressed sub-AU orbit scale. However, `is_habitable_zone` used the unscaled deviation (`|dev| <= 1.0`), so worlds were classified as being in the HZ based on unscaled deviation, yet had their temperature computed from an inflated deviation. For dim M-type stars where HZCO rounds to approximately 0.000, the denominator collapsed to 0.01, amplifying deviations by up to 50×. Statistical test over 2,000 systems confirmed 22% of HZ mainworlds were assigned Frozen temperatures — 0% is the correct result for worlds at exactly the HZCO. Fix: the scaling was removed from both functions. The WBH HZ Regions table (p.46) is defined in terms of orbit# deviation directly, with no secondary scaling. Post-fix: 0% frozen-in-HZ from orbital position; HZ mainworld distribution is approximately 50% Temperate, 30% Cold, 20% Hot after atmosphere DMs.
+
+**Gas giant mainworld generates terrestrial UWP instead of satellite UWP (medium severity).** `generate_mainworld_at_orbit()` had a `"belt"` branch but no `"gas_giant"` branch. When the selected mainworld orbit was a gas giant, generation fell through to the terrestrial path, rolling size 0–10 freely — including sizes 8–10 that are impossible for any moon, and with no relation to the host giant's size. Statistical analysis over 1,000 systems confirmed 13.8% were affected. Fix: `_gg_sah_roll()` was inlined in `traveller_orbit_gen.py` to roll and store the gas giant SAH in `OrbitSlot.gg_sah` during `generate_orbits()`. A new gas giant branch in `generate_mainworld_at_orbit()` treats the mainworld as a satellite: size is clamped to `[1, gg_diameter − 1]` (WBH p.57), with normal atmosphere/temperature/hydrographics generation and a satellite note appended to the world. `traveller_world_detail.py` reuses `orbit.gg_sah` rather than re-rolling. The RNG sequence shifts for all systems containing a gas giant (unavoidable new dice at orbit-gen time).
 
 ---
 
