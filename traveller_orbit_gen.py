@@ -142,17 +142,12 @@ def get_hzco(star: Star, combined_lum: Optional[float] = None) -> float:
     return _au_to_orbit(hzco_au)
 
 
-def _temp_zone(deviation: float, hzco: float, orbit: float) -> str:
-    if hzco < 1.0 or orbit < 1.0:
-        denom = max(min(hzco, orbit), 0.01)
-        dev = deviation / denom
-    else:
-        dev = deviation
-    if dev >= 1.0:   return "frozen"
-    elif dev >= 0.2: return "cold"
-    elif dev >= -0.2:return "temperate"
-    elif dev >= -1.0:return "hot"
-    else:            return "boiling"
+def _temp_zone(deviation: float, hzco: float, orbit: float) -> str:  # pylint: disable=unused-argument
+    if deviation >= 1.0:   return "frozen"
+    elif deviation >= 0.2: return "cold"
+    elif deviation >= -0.2:return "temperate"
+    elif deviation >= -1.0:return "hot"
+    else:                  return "boiling"
 
 
 @dataclass
