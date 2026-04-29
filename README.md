@@ -190,16 +190,19 @@ python traveller_world_gen.py --count 5
 Draw a star system as a visual orbit diagram with arc zones (one per star) and an orbit table.
 
 ```bash
-# Procedurally generated system (random seed)
+# Procedurally generated system (random seed, dark background)
 python system_map.py --name Ardenne --out /tmp/ardenne_map.svg
 
 # With a fixed seed for reproducibility
 python system_map.py --name Ardenne --seed 1000 --out /tmp/ardenne_map.svg
 
+# With white background (light theme) instead of dark
+python system_map.py --name Ardenne --seed 1000 --white-bg --out /tmp/ardenne_light.svg
+
 # For multi-star systems, increase canvas width so tables have room
 python system_map.py --name Trinary --seed 5555 --width 2400 --out /tmp/trinary_map.svg
 
-# Default: random seed, name "Unnamed", output to /tmp/traveller_system_map.svg
+# Default: random seed, name "Unnamed", output to /tmp/traveller_system_map.svg, dark background
 python system_map.py
 ```
 
