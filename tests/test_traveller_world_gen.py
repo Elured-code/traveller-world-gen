@@ -3044,3 +3044,36 @@ class TestGasGiantOrbitSlot:
                 assert "gg_sah" in d, "gg_sah missing from gas giant to_dict()"
             else:
                 assert "gg_sah" not in d, "gg_sah present in non-gas-giant to_dict()"
+
+
+class TestOrbitToAu:
+    """Orbit# to AU conversion — verifies the flat-region bug (0.5:0.2) is gone."""
+
+    def test_sub_half_orbit_increases_with_orbit_number(self):
+        from traveller_stellar_gen import _orbit_to_au
+        # Orbit# 0.1 must be farther than Orbit# 0.0 and closer than Orbit# 0.5
+        assert _orbit_to_au(0.0) < _orbit_to_au(0.1) < _orbit_to_au(0.5)
+
+    def test_orbit_0_is_0_2_au(self):
+        from traveller_stellar_gen import _orbit_to_au
+        assert _orbit_to_au(0.0) == pytest.approx(0.2)
+
+    def test_orbit_half_is_0_3_au(self):
+        from traveller_stellar_gen import _orbit_to_au
+        assert _orbit_to_au(0.5) == pytest.approx(0.3)
+
+    def test_orbit_1_is_0_4_au(self):
+        from traveller_stellar_gen import _orbit_to_au
+        assert _orbit_to_au(1.0) == pytest.approx(0.4)
+
+    def test_roundtrip_sub_1(self):
+        from traveller_stellar_gen import _orbit_to_au
+        from traveller_orbit_gen import _au_to_orbit
+        for on in (0.1, 0.2, 0.3, 0.4, 0.5, 0.65):
+            assert _au_to_orbit(_orbit_to_au(on)) == pytest.approx(on, abs=0.01)
+
+    def test_companion_orbits_are_not_all_identical(self):
+        # Companion orbit numbers 0.05–0.65 must produce distinct AU values.
+        from traveller_stellar_gen import _orbit_to_au
+        aus = {_orbit_to_au(on) for on in (0.05, 0.1, 0.3, 0.5, 0.65)}
+        assert len(aus) == 5, f"expected 5 distinct AU values, got {aus}"
