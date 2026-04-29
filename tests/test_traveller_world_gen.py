@@ -522,14 +522,34 @@ class TestAssignTradeCodes:
     """Tests for assign_trade_codes() — every code, including boundaries."""
 
     # ------------------------------------------------------------------
-    # Agricultural (Ag): Size 4-9, Atm 4-8, Hydro 5-7
+    # Agricultural (Ag): Atm 4-9, Hyd 4-8, Pop 5-7  (CRB p.260)
     # ------------------------------------------------------------------
     def test_ag_assigned_when_criteria_met(self):
         codes = assign_trade_codes(6, 6, 6, 5, 4, 4, 8)
         assert "Ag" in codes
 
-    def test_ag_not_assigned_with_wrong_hydro(self):
-        codes = assign_trade_codes(6, 6, 4, 5, 4, 4, 8)  # hydro=4 is outside 5-7
+    def test_ag_assigned_at_atm9_hyd4(self):
+        codes = assign_trade_codes(6, 9, 4, 6, 4, 4, 8)  # atm=9, hyd=4 both in range
+        assert "Ag" in codes
+
+    def test_ag_not_assigned_when_uninhabited(self):
+        codes = assign_trade_codes(6, 6, 6, 0, 0, 0, 0)  # population=0
+        assert "Ag" not in codes
+
+    def test_ag_not_assigned_with_pop_too_low(self):
+        codes = assign_trade_codes(6, 6, 6, 4, 4, 4, 8)  # population=4 outside 5-7
+        assert "Ag" not in codes
+
+    def test_ag_not_assigned_with_pop_too_high(self):
+        codes = assign_trade_codes(6, 6, 6, 8, 4, 4, 8)  # population=8 outside 5-7
+        assert "Ag" not in codes
+
+    def test_ag_not_assigned_with_hydro_too_low(self):
+        codes = assign_trade_codes(6, 6, 3, 5, 4, 4, 8)  # hyd=3 outside 4-8
+        assert "Ag" not in codes
+
+    def test_ag_not_assigned_with_atm_too_high(self):
+        codes = assign_trade_codes(6, 10, 6, 5, 4, 4, 8)  # atm=10 outside 4-9
         assert "Ag" not in codes
 
     # ------------------------------------------------------------------

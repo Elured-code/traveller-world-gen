@@ -1198,8 +1198,8 @@ def assign_trade_codes(size: int, atmosphere: int, hydrographics: int,
     """
     codes = []
 
-    # Agricultural (Ag): arable worlds with reasonable water and population
-    if (4 <= size <= 9 and 4 <= atmosphere <= 8 and 5 <= hydrographics <= 7):
+    # Agricultural (Ag): Atm 4-9, Hyd 4-8, Pop 5-7  (CRB p.260)
+    if (4 <= atmosphere <= 9 and 4 <= hydrographics <= 8 and 5 <= population <= 7):
         codes.append("Ag")
 
     # Asteroid (As): tiny, airless, dry
