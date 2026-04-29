@@ -32,6 +32,7 @@ HTML display card.
 - Complete UWP output, all 18 trade codes, all Amber zone triggers
 - Verified TL era labels (Primitive → High Stellar) against pp. 6–7
 - Three output formats: text summary, JSON, standalone HTML card
+- **SVG system maps** — visual orbit diagrams with arc zones per star, log-scale AU radii, and orbit data tables
 - REST API via Azure Functions (13 endpoints: 5 mainworld + 6 system + 2 TravellerMap, JSON + HTML + plain-text responses)
 - TravellerMap integration — fetch canonical UWP + stellar data from travellermap.com and generate a full procedural system
 - `World.from_dict()` deserialiser — reconstruct a World from a previous JSON response and feed it into a new system generation
@@ -53,6 +54,9 @@ traveller-world-gen/
 ├── traveller_world_detail.py       # Secondary world SAH/social + satellite detail
 ├── traveller_moon_gen.py           # Significant moon sizing and profiles
 ├── traveller_map_fetch.py          # TravellerMap integration: fetch UWP + stellar, reconstruct system
+│
+│  Visualisation
+├── system_map.py                   # SVG star system maps: arc zones, orbit tables, log-AU scale
 │
 │  Schema
 ├── traveller_world_schema.json     # JSON Schema (draft 2020-12) for World.to_dict()
@@ -86,7 +90,7 @@ traveller-world-gen/
 │   └── VSCODE.md                   # VS Code + Claude shared environment setup
 │
 │  Examples
-├── examples/                       # Generated sample HTML cards (not committed)
+├── examples/                       # Generated sample SVG system maps
 │
 ├── LICENSE                         # MIT Licence + Traveller IP notice
 └── README.md                       # This file
@@ -180,6 +184,32 @@ python traveller_world_gen.py --name Cogri --seed 42 --html > cogri.html
 # Generate a subsector's worth (5 worlds)
 python traveller_world_gen.py --count 5
 ```
+
+### Generate an SVG system map
+
+Draw a star system as a visual orbit diagram with arc zones (one per star) and an orbit table.
+
+```bash
+# Procedurally generated system (random seed)
+python system_map.py --name Ardenne --out /tmp/ardenne_map.svg
+
+# With a fixed seed for reproducibility
+python system_map.py --name Ardenne --seed 1000 --out /tmp/ardenne_map.svg
+
+# For multi-star systems, increase canvas width so tables have room
+python system_map.py --name Trinary --seed 5555 --width 2400 --out /tmp/trinary_map.svg
+
+# Default: random seed, name "Unnamed", output to /tmp/traveller_system_map.svg
+python system_map.py
+```
+
+The SVG shows:
+- **Arc zones** — one stacked zone per star with orbit arcs scaled to fit the canvas
+- **Companion stars** — displayed as dashed arcs in the primary star's zone for context
+- **Orbit table** — a data table zone below with orbit slots listed per star
+- **Mainworld** — highlighted in the arc zone and marked in the table
+
+Open the SVG in any web browser or image viewer. The map includes all orbital data: world type, orbit#, AU, temperature zone, and notes.
 
 **Example summary output:**
 
