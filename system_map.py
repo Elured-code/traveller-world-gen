@@ -31,23 +31,8 @@ import argparse
 import math
 import os
 import secrets
-import subprocess
 import sys
 from typing import Any
-
-# On macOS, Homebrew's libcairo lives under $(brew --prefix)/lib and is not on
-# the default dyld search path.  Append it before cairosvg tries dlopen().
-if sys.platform == "darwin":
-    _hb = subprocess.run(
-        ["brew", "--prefix"], capture_output=True, text=True, check=False
-    ).stdout.strip()
-    if _hb:
-        _hb_lib = os.path.join(_hb, "lib")
-        _cur = os.environ.get("DYLD_LIBRARY_PATH", "")
-        if _hb_lib not in _cur.split(os.pathsep):
-            os.environ["DYLD_LIBRARY_PATH"] = (
-                f"{_hb_lib}{os.pathsep}{_cur}" if _cur else _hb_lib
-            )
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from traveller_system_gen import generate_full_system  # pylint: disable=wrong-import-position
