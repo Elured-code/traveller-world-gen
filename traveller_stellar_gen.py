@@ -533,7 +533,7 @@ def _apply_class_iv_subtype_limit(subtype: int) -> int:
 
 # WBH Orbit# to AU lookup — standard Traveller Orbit# table
 ORBIT_AU = {
-    0: 0.2,   0.5: 0.2,   1: 0.4,   2: 0.7,   3: 1.0,   4: 1.6,
+    0: 0.2,   1: 0.4,   2: 0.7,   3: 1.0,   4: 1.6,
     5: 2.8,   6: 5.2,     7: 10.0,  8: 20.0,  9: 40.0,  10: 77.0,
     11: 154.0, 12: 266.0, 13: 532.0, 14: 1064.0, 15: 2128.0,
     16: 4256.0, 17: 8512.0,
