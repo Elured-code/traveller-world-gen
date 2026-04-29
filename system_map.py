@@ -19,19 +19,21 @@ The canvas has two zones stacked vertically:
                height is dynamic.
 
 Usage (from project root):
-    python system_map.py [--seed N] [--name NAME] [--out FILE] [--width W]
+    python system_map.py [--seed N] [--name NAME] [--out FILE] [--width W] [--white-bg]
 
 For systems with 3+ stars, increase --width (e.g. --width 2400) so each
 per-star table column has enough horizontal room.
 
-Default: random seed, name "Unnamed", /tmp/traveller_system_map.svg
+Default: random seed, name "Unnamed", /tmp/traveller_system_map.svg, dark background
 """
 from __future__ import annotations
 import argparse
 import math
 import os
 import secrets
+import subprocess
 import sys
+from dataclasses import dataclass
 from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -39,20 +41,53 @@ from traveller_system_gen import generate_full_system  # pylint: disable=wrong-i
 from traveller_world_detail import attach_detail  # pylint: disable=wrong-import-position
 
 # ---------------------------------------------------------------------------
-# Colour palette — dark-space theme
+# Colour palettes
 # ---------------------------------------------------------------------------
-BG            = "#0d1117"
-COL_GG        = "#4A90D9"   # gas giant
-COL_INH       = "#4CAF50"   # inhabited terrestrial
-COL_UNINH     = "#5A6880"   # uninhabited terrestrial
-COL_BELT      = "#C87941"   # asteroid belt
-COL_STAR_PRI  = "#FFE066"   # primary star
-COL_STAR_SEC  = "#FFA040"   # companion / secondary star
-COL_MAINWORLD = "#FFE066"   # mainworld ring
-COL_TEXT      = "#C9D1D9"   # label primary text
-COL_DIM       = "#9BA3AD"   # label secondary text
-COL_AXIS      = "#3A4560"   # axis / tick marks
-COL_LEADER    = "#2A3550"   # leader lines
+
+@dataclass(frozen=True)
+class ColourPalette:
+    bg: str              # background
+    gg: str              # gas giant
+    inh: str             # inhabited terrestrial
+    uninh: str           # uninhabited terrestrial
+    belt: str            # asteroid belt
+    star_pri: str        # primary star
+    star_sec: str        # companion / secondary star
+    mainworld: str       # mainworld ring
+    text: str            # label primary text
+    dim: str             # label secondary text
+    axis: str            # axis / tick marks
+    leader: str          # leader lines
+
+PALETTE_DARK = ColourPalette(
+    bg="#0d1117",
+    gg="#4A90D9",
+    inh="#4CAF50",
+    uninh="#5A6880",
+    belt="#C87941",
+    star_pri="#FFE066",
+    star_sec="#FFA040",
+    mainworld="#FFE066",
+    text="#C9D1D9",
+    dim="#9BA3AD",
+    axis="#3A4560",
+    leader="#2A3550",
+)
+
+PALETTE_LIGHT = ColourPalette(
+    bg="#FFFFFF",
+    gg="#1E88E5",
+    inh="#2E7D32",
+    uninh="#616161",
+    belt="#D84315",
+    star_pri="#FFA000",
+    star_sec="#E65100",
+    mainworld="#FFA000",
+    text="#212121",
+    dim="#757575",
+    axis="#BDBDBD",
+    leader="#E0E0E0",
+)
 
 _EHEX = "0123456789ABCDEFGHIJKLMNOPQRSTU"
 
@@ -150,7 +185,7 @@ _C_CODES = 268
 _C_ZONE  = 398
 
 
-def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
+def build_svg(system: Any, canvas_w: int = 1600, palette: ColourPalette = PALETTE_DARK) -> tuple[str, int]:  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
     """Build and return (svg_string, canvas_height) for the given system."""
     mw        = system.mainworld
     # Sort orbit slots: all Star-A orbits first, then B, then C, etc.
@@ -200,7 +235,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
     s.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{canvas_w}" height="{canvas_h}" '
-        f'style="background:{BG};font-family:\'Courier New\',monospace">'
+        f'style="background:{palette.bg};font-family:\'Courier New\',monospace">'
     )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -248,7 +283,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             if item["kind"] == "star":
                 s.append(
                     f'<path d="{_arc_path(cx, cy, r, hd)}" fill="none" '
-                    f'stroke="{COL_STAR_SEC}" stroke-width="1.2" '
+                    f'stroke="{palette.star_sec}" stroke-width="1.2" '
                     f'stroke-dasharray="8,6" opacity="0.40"/>'
                 )
                 continue
@@ -256,18 +291,18 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             wt    = o.world_type
             is_mw = o.is_mainworld_candidate
             if wt == "empty":
-                stroke, dash, opa = COL_AXIS, "3,9", "0.30"
+                stroke, dash, opa = palette.axis, "3,9", "0.30"
             elif wt == "belt":
-                stroke, dash, opa = COL_BELT, "2,5", "0.55"
+                stroke, dash, opa = palette.belt, "2,5", "0.55"
             elif wt == "gas_giant":
-                stroke, dash, opa = COL_GG, "none", "0.60"
+                stroke, dash, opa = palette.gg, "none", "0.60"
             else:
                 detail    = getattr(o, "detail", None)
                 inhabited = detail.inhabited if detail else False
-                stroke    = COL_INH if inhabited else COL_UNINH
+                stroke    = palette.inh if inhabited else palette.uninh
                 dash, opa = "none", "0.60"
             if is_mw:
-                stroke, opa = COL_MAINWORLD, "0.75"
+                stroke, opa = palette.mainworld, "0.75"
             da = f'stroke-dasharray="{dash}"' if dash != "none" else ""
             s.append(
                 f'<path d="{_arc_path(cx, cy, r, hd)}" fill="none" '
@@ -277,7 +312,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
         # ── Axis + ticks ──────────────────────────────────────────────────────
         s.append(
             f'<line x1="{cx}" y1="{cy}" x2="{cx + max_r + 8:.1f}" y2="{cy}" '
-            f'stroke="{COL_AXIS}" stroke-width="0.6" opacity="0.35"/>'
+            f'stroke="{palette.axis}" stroke-width="0.6" opacity="0.35"/>'
         )
         for au_tick in [0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0]:
             if au_tick > max_au * 1.01:
@@ -285,15 +320,15 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             tx = cx + math.log1p(au_tick) * log_scale
             s.append(
                 f'<line x1="{tx:.1f}" y1="{cy - 4}" x2="{tx:.1f}" y2="{cy + 4}" '
-                f'stroke="{COL_AXIS}" stroke-width="1" opacity="0.7"/>'
+                f'stroke="{palette.axis}" stroke-width="1" opacity="0.7"/>'
             )
             s.append(
                 f'<text x="{tx:.1f}" y="{cy + 13}" text-anchor="middle" '
-                f'font-size="8" fill="{COL_DIM}" opacity="0.65">{au_tick:g} AU</text>'
+                f'font-size="8" fill="{palette.dim}" opacity="0.65">{au_tick:g} AU</text>'
             )
 
         # ── Central star glyph + label (left of glyph) ───────────────────────
-        star_color = COL_STAR_PRI if is_pri else COL_STAR_SEC
+        star_color = palette.star_pri if is_pri else palette.star_sec
         cls_str    = (f'{star.spectral_type}'
                       f'{star.subtype if star.subtype is not None else ""} {star.lum_class}')
         star_label = f'Star {star.designation}  {cls_str}'
@@ -316,11 +351,11 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
                 st = item["obj"]
                 s.append(
                     f'<text x="{mx:.1f}" y="{my + 4:.1f}" text-anchor="middle" '
-                    f'font-size="12" fill="{COL_STAR_SEC}">★</text>'
+                    f'font-size="12" fill="{palette.star_sec}">★</text>'
                 )
                 s.append(
                     f'<text x="{mx:.1f}" y="{my - 9:.1f}" text-anchor="middle" '
-                    f'font-size="8" fill="{COL_STAR_SEC}" opacity="0.85">'
+                    f'font-size="8" fill="{palette.star_sec}" opacity="0.85">'
                     f'{esc(st.designation)}</text>'
                 )
                 continue
@@ -330,14 +365,14 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             is_mw  = o.is_mainworld_candidate
             detail = getattr(o, "detail", None)
             idx    = item["idx"]
-            ic     = COL_MAINWORLD if is_mw else COL_DIM
+            ic     = palette.mainworld if is_mw else palette.dim
 
             if wt == "belt":
                 bw = max(10, int(arc_zone_h * 0.028))
                 bh = max(3,  int(arc_zone_h * 0.009))
                 s.append(
                     f'<rect x="{mx - bw//2:.1f}" y="{my - bh//2:.1f}" '
-                    f'width="{bw}" height="{bh}" rx="2" fill="{COL_BELT}"/>'
+                    f'width="{bw}" height="{bh}" rx="2" fill="{palette.belt}"/>'
                 )
             elif wt == "gas_giant":
                 gg_sah = getattr(o, "gg_sah", "")
@@ -345,27 +380,27 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
                 if is_mw:
                     s.append(
                         f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rr + 4}" '
-                        f'fill="none" stroke="{COL_MAINWORLD}" stroke-width="1.8"/>'
+                        f'fill="none" stroke="{palette.mainworld}" stroke-width="1.8"/>'
                     )
-                s.append(f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rr}" fill="{COL_GG}"/>')
+                s.append(f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rr}" fill="{palette.gg}"/>')
                 s.append(
                     f'<ellipse cx="{mx:.1f}" cy="{my:.1f}" rx="{rr + 3}" ry="2" '
-                    f'fill="none" stroke="{COL_GG}" stroke-width="1.5" opacity="0.55"/>'
+                    f'fill="none" stroke="{palette.gg}" stroke-width="1.5" opacity="0.55"/>'
                 )
             elif wt == "terrestrial":
                 inhabited = detail.inhabited if detail else False
-                fill      = COL_INH if inhabited else COL_UNINH
+                fill      = palette.inh if inhabited else palette.uninh
                 dot_r     = max(3, int(arc_zone_h * 0.011))
                 if is_mw:
                     s.append(
                         f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{dot_r + 4}" '
-                        f'fill="none" stroke="{COL_MAINWORLD}" stroke-width="2"/>'
+                        f'fill="none" stroke="{palette.mainworld}" stroke-width="2"/>'
                     )
                 s.append(f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{dot_r}" fill="{fill}"/>')
             else:  # empty
                 s.append(
                     f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="2" '
-                    f'fill="{COL_AXIS}" opacity="0.55"/>'
+                    f'fill="{palette.axis}" opacity="0.55"/>'
                 )
             s.append(
                 f'<text x="{mx:.1f}" y="{my - 8:.1f}" text-anchor="middle" '
@@ -377,15 +412,15 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             s.append(
                 f'<text x="{canvas_w // 2}" y="{y_top + int(arc_zone_h * 0.10)}" '
                 f'text-anchor="middle" font-size="11" '
-                f'fill="{COL_TEXT}" opacity="0.8">{esc(sys_title)}</text>'
+                f'fill="{palette.text}" opacity="0.8">{esc(sys_title)}</text>'
             )
             legend_items = [
-                (COL_GG,        "● GG"),
-                (COL_INH,       "● inh"),
-                (COL_UNINH,     "● uninh"),
-                (COL_BELT,      "▬ belt"),
-                (COL_MAINWORLD, "◯ MW"),
-                (COL_STAR_SEC,  "★ comp"),
+                (palette.gg,        "● GG"),
+                (palette.inh,       "● inh"),
+                (palette.uninh,     "● uninh"),
+                (palette.belt,      "▬ belt"),
+                (palette.mainworld, "◯ MW"),
+                (palette.star_sec,  "★ comp"),
             ]
             leg_x     = canvas_w - 88
             leg_y     = y_top + int(arc_zone_h * 0.10)
@@ -401,7 +436,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             div_y = y_top + arc_zone_h
             s.append(
                 f'<line x1="0" y1="{div_y}" x2="{canvas_w}" y2="{div_y}" '
-                f'stroke="{COL_AXIS}" stroke-width="0.5" opacity="0.25"/>'
+                f'stroke="{palette.axis}" stroke-width="0.5" opacity="0.25"/>'
             )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -409,7 +444,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
     # ══════════════════════════════════════════════════════════════════════════
     s.append(
         f'<line x1="0" y1="{sep_y}" x2="{canvas_w}" y2="{sep_y}" '
-        f'stroke="{COL_AXIS}" stroke-width="0.8" opacity="0.45"/>'
+        f'stroke="{palette.axis}" stroke-width="0.8" opacity="0.45"/>'
     )
 
     # ══════════════════════════════════════════════════════════════════════════
@@ -429,11 +464,11 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             sx = ci * col_w
             s.append(
                 f'<line x1="{sx}" y1="{sep_y}" x2="{sx}" y2="{canvas_h}" '
-                f'stroke="{COL_AXIS}" stroke-width="0.6" opacity="0.30"/>'
+                f'stroke="{palette.axis}" stroke-width="0.6" opacity="0.30"/>'
             )
 
         # Column header
-        hdr_col = COL_STAR_PRI if star.orbit_number == 0 else COL_STAR_SEC
+        hdr_col = palette.star_pri if star.orbit_number == 0 else palette.star_sec
         cls     = (f'{star.spectral_type}'
                    f'{star.subtype if star.subtype is not None else ""}'
                    f' {star.lum_class}')
@@ -449,7 +484,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
         uln_x2 = (ci + 1) * col_w - _TBL_COL_PAD
         s.append(
             f'<line x1="{bx}" y1="{uln_y}" x2="{uln_x2}" y2="{uln_y}" '
-            f'stroke="{COL_AXIS}" stroke-width="0.5" opacity="0.40"/>'
+            f'stroke="{palette.axis}" stroke-width="0.5" opacity="0.40"/>'
         )
 
         # Data rows
@@ -459,7 +494,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             is_mw  = o.is_mainworld_candidate
             detail = getattr(o, "detail", None)
             wt     = o.world_type
-            col1   = COL_MAINWORLD if is_mw else COL_TEXT
+            col1   = palette.mainworld if is_mw else palette.text
 
             if o.canonical_profile:
                 profile = o.canonical_profile
@@ -487,7 +522,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             hz_tag    = "⌾ " if o.is_habitable_zone else ""
             type_abbr = _TYPE_ABBR.get(wt, wt)
             mw_tag    = "★MW " if is_mw else ""
-            tz_col    = _TEMP_COLS.get(o.temperature_zone, COL_DIM)
+            tz_col    = _TEMP_COLS.get(o.temperature_zone, palette.dim)
 
             s.append(
                 f'<text x="{bx + _C_IDX}" y="{ry}" '
@@ -495,17 +530,17 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             )
             s.append(
                 f'<text x="{bx + _C_ORBIT}" y="{ry}" '
-                f'font-size="{_TBL_FONT_LG}" fill="{COL_TEXT}">'
+                f'font-size="{_TBL_FONT_LG}" fill="{palette.text}">'
                 f'{o.orbit_number:.2f}</text>'
             )
             s.append(
                 f'<text x="{bx + _C_AU}" y="{ry}" '
-                f'font-size="{_TBL_FONT_SM}" fill="{COL_DIM}">'
+                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
                 f'{o.orbit_au:.3f} AU</text>'
             )
             s.append(
                 f'<text x="{bx + _C_TYPE}" y="{ry}" '
-                f'font-size="{_TBL_FONT_SM}" fill="{COL_DIM}">'
+                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
                 f'{esc(mw_tag)}{type_abbr}</text>'
             )
             s.append(
@@ -516,7 +551,7 @@ def build_svg(system: Any, canvas_w: int = 1600) -> tuple[str, int]:  # pylint: 
             if codes_str:
                 s.append(
                     f'<text x="{bx + _C_CODES}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{COL_DIM}">'
+                    f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
                     f'{esc(codes_str)}</text>'
                 )
             s.append(
@@ -560,6 +595,8 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     ap.add_argument("--out",   default=None,
                     help="Output path (default: /tmp/traveller_system_map.svg)")
     ap.add_argument("--width", type=int, default=1600)
+    ap.add_argument("--white-bg", action="store_true",
+                    help="Use light background instead of dark (default: dark)")
     args = ap.parse_args()
 
     seed = args.seed if args.seed is not None else secrets.randbelow(2**31)
@@ -569,7 +606,8 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     attach_detail(system)
     print(system.summary())
 
-    svg_str, canvas_h = build_svg(system, canvas_w=args.width)
+    palette = PALETTE_LIGHT if args.white_bg else PALETTE_DARK
+    svg_str, canvas_h = build_svg(system, canvas_w=args.width, palette=palette)
 
     out_path = args.out or "/tmp/traveller_system_map.svg"
     save_output(svg_str, out_path)
