@@ -160,21 +160,14 @@ SUBTYPE_M_PRIMARY = {
 # Values are (mass, temperature_K).
 STAR_MASS_TEMP: dict[tuple[str, int], tuple[float, int]] = {
     # Class V (main sequence) — mass in solar masses, temp in K
-    ("O", 0): (90.0,  50000),
-    ("O", 5): (60.0,  40000),
-    ("B", 0): (18.0,  30000),
-    ("B", 5): (5.0,   15000),
-    ("A", 0): (2.2,   10000),
-    ("A", 5): (1.8,    8000),
-    ("F", 0): (1.5,    7500),
-    ("F", 5): (1.3,    6500),
-    ("G", 0): (1.1,    6000),
-    ("G", 5): (0.9,    5600),
-    ("K", 0): (0.8,    5200),
-    ("K", 5): (0.7,    4400),
-    ("M", 0): (0.5,    3700),
-    ("M", 5): (0.16,   3000),
-    ("M", 9): (0.08,   2400),
+    # Anchors at 0, 5, and 9; subtype-9 ≈ next spectral type's subtype-0.
+    ("O", 0): (90.0,  50000), ("O", 5): (60.0,  40000), ("O", 9): (18.0, 30000),
+    ("B", 0): (18.0,  30000), ("B", 5): (5.0,   15000), ("B", 9): (2.2,  10000),
+    ("A", 0): (2.2,   10000), ("A", 5): (1.8,    8000), ("A", 9): (1.5,   7500),
+    ("F", 0): (1.5,    7500), ("F", 5): (1.3,    6500), ("F", 9): (1.1,   6000),
+    ("G", 0): (1.1,    6000), ("G", 5): (0.9,    5600), ("G", 9): (0.8,   5200),
+    ("K", 0): (0.8,    5200), ("K", 5): (0.7,    4400), ("K", 9): (0.5,   3700),
+    ("M", 0): (0.5,    3700), ("M", 5): (0.16,   3000), ("M", 9): (0.08,  2400),
 }
 
 # Star Diameter by Class (WBH p.18-19)
@@ -187,7 +180,7 @@ STAR_DIAMETER: dict[tuple[str, int, str], Optional[float]] = {
     ("O", 0, "Ib"): 24.0,  ("O", 5, "Ib"): 20.0,
     ("O", 0, "II"): 22.0,  ("O", 5, "II"): 18.0,
     ("O", 0, "III"):21.0,  ("O", 5, "III"):15.0,
-    ("O", 0, "V"):  20.0,  ("O", 5, "V"):  12.0,
+    ("O", 0, "V"):  20.0,  ("O", 5, "V"):  12.0,  ("O", 9, "V"):   7.0,
     ("O", 0, "VI"):  0.18, ("O", 5, "VI"):  0.18,
     # --- B ---
     ("B", 0, "Ia"): 20.0,  ("B", 5, "Ia"): 60.0,
@@ -195,7 +188,7 @@ STAR_DIAMETER: dict[tuple[str, int, str], Optional[float]] = {
     ("B", 0, "II"): 12.0,  ("B", 5, "II"): 14.0,
     ("B", 0, "III"):10.0,  ("B", 5, "III"): 6.0,
     ("B", 0, "IV"):  8.0,  ("B", 5, "IV"):  5.0,
-    ("B", 0, "V"):   7.0,  ("B", 5, "V"):   3.5,
+    ("B", 0, "V"):   7.0,  ("B", 5, "V"):   3.5,  ("B", 9, "V"):   2.2,
     ("B", 0, "VI"):  0.2,  ("B", 5, "VI"):  0.5,
     # --- A ---
     ("A", 0, "Ia"):120.0,  ("A", 5, "Ia"):180.0,
@@ -203,21 +196,21 @@ STAR_DIAMETER: dict[tuple[str, int, str], Optional[float]] = {
     ("A", 0, "II"): 30.0,  ("A", 5, "II"): 45.0,
     ("A", 0, "III"): 5.0,  ("A", 5, "III"): 5.0,
     ("A", 0, "IV"):  4.0,  ("A", 5, "IV"):  3.0,
-    ("A", 0, "V"):   2.2,  ("A", 5, "V"):   2.0,
+    ("A", 0, "V"):   2.2,  ("A", 5, "V"):   2.0,  ("A", 9, "V"):   1.7,
     # --- F ---
     ("F", 0, "Ia"):210.0,  ("F", 5, "Ia"):280.0,
     ("F", 0, "Ib"): 85.0,  ("F", 5, "Ib"):115.0,
     ("F", 0, "II"): 50.0,  ("F", 5, "II"): 66.0,
     ("F", 0, "III"): 5.0,  ("F", 5, "III"): 5.0,
     ("F", 0, "IV"):  3.0,  ("F", 5, "IV"):  2.0,
-    ("F", 0, "V"):   1.7,  ("F", 5, "V"):   1.5,
+    ("F", 0, "V"):   1.7,  ("F", 5, "V"):   1.5,  ("F", 9, "V"):   1.1,
     # --- G ---
     ("G", 0, "Ia"):330.0,  ("G", 5, "Ia"):360.0,
     ("G", 0, "Ib"):135.0,  ("G", 5, "Ib"):150.0,
     ("G", 0, "II"): 77.0,  ("G", 5, "II"): 90.0,
     ("G", 0, "III"):10.0,  ("G", 5, "III"):15.0,
     ("G", 0, "IV"):  3.0,  ("G", 5, "IV"):  4.0,
-    ("G", 0, "V"):   1.1,  ("G", 5, "V"):   0.95,
+    ("G", 0, "V"):   1.1,  ("G", 5, "V"):   0.95, ("G", 9, "V"):   0.9,
     ("G", 0, "VI"):  0.8,  ("G", 5, "VI"):  0.7,
     # --- K ---
     ("K", 0, "Ia"):420.0,  ("K", 5, "Ia"):600.0,
@@ -225,7 +218,7 @@ STAR_DIAMETER: dict[tuple[str, int, str], Optional[float]] = {
     ("K", 0, "II"):110.0,  ("K", 5, "II"):160.0,
     ("K", 0, "III"):20.0,  ("K", 5, "III"):40.0,
     ("K", 0, "IV"):  6.0,
-    ("K", 0, "V"):   0.9,  ("K", 5, "V"):   0.8,
+    ("K", 0, "V"):   0.9,  ("K", 5, "V"):   0.8,  ("K", 9, "V"):   0.7,
     ("K", 0, "VI"):  0.6,  ("K", 5, "VI"):  0.5,
     # --- M ---
     ("M", 0, "Ia"):900.0,  ("M", 5, "Ia"):1200.0, ("M", 9, "Ia"):1800.0,
@@ -272,18 +265,15 @@ def _interpolate(
 
     Returns None if the requested class is not defined for this spectral type.
     """
-    # Determine anchor brackets
-    if spectral == "M":
-        anchors = [0, 5, 9]
-    else:
-        anchors = [0, 5]
-
     # Build the key depending on which table this is
     def get_val(anchor: int) -> Optional[float]:
         if table is STAR_MASS_TEMP:
             return table.get((spectral, anchor), (None, None))[0]
-        else:
-            return table.get((spectral, anchor, lum_class))
+        return table.get((spectral, anchor, lum_class))
+
+    # Use three anchors when a subtype-9 entry exists, otherwise two.
+    has_nine = get_val(9) is not None
+    anchors = [0, 5, 9] if (spectral == "M" or has_nine) else [0, 5]
 
     # Find the bracket containing our subtype
     for i in range(len(anchors) - 1):
@@ -305,17 +295,17 @@ def _interp_temp(spectral: str, subtype: int) -> Optional[int]:
     if spectral == "M":
         anchors = [(0, 3700), (5, 3000), (9, 2400)]
     elif spectral == "K":
-        anchors = [(0, 5200), (5, 4400)]
+        anchors = [(0, 5200), (5, 4400), (9, 3700)]
     elif spectral == "G":
-        anchors = [(0, 6000), (5, 5600)]
+        anchors = [(0, 6000), (5, 5600), (9, 5200)]
     elif spectral == "F":
-        anchors = [(0, 7500), (5, 6500)]
+        anchors = [(0, 7500), (5, 6500), (9, 6000)]
     elif spectral == "A":
-        anchors = [(0, 10000), (5, 8000)]
+        anchors = [(0, 10000), (5, 8000), (9, 7500)]
     elif spectral == "B":
-        anchors = [(0, 30000), (5, 15000)]
+        anchors = [(0, 30000), (5, 15000), (9, 10000)]
     elif spectral == "O":
-        anchors = [(0, 50000), (5, 40000)]
+        anchors = [(0, 50000), (5, 40000), (9, 30000)]
     else:
         return None
 
