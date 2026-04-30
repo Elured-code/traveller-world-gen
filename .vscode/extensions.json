@@ -2,7 +2,7 @@
   "recommendations": [
     "ms-azuretools.vscode-azurefunctions",
     "ms-python.python",
-    "ms-python.pylance",
-    "ms-python.vscode-pylance"
+    "ms-python.vscode-pylance",
+    "ms-python.pylint"
   ]
 }

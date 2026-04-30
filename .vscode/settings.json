@@ -6,7 +6,7 @@
   ],
   "python.testing.unittestEnabled": false,
   "python.analysis.venvPath": "${workspaceFolder}",
-  "python.analysis.venv": ".venv",
+  "python.analysis.venv": ".venv-1",
   "python.analysis.extraPaths": [
     "${workspaceFolder}"
   ],
@@ -25,15 +25,15 @@
   },
   "azureFunctions.deploySubpath": ".",
   "azureFunctions.scmDoBuildDuringDeployment": true,
-  "azureFunctions.pythonVenv": ".venv",
+  "azureFunctions.pythonVenv": ".venv-1",
   "azureFunctions.projectLanguage": "Python",
   "azureFunctions.projectRuntime": "~4",
   "debug.internalConsoleOptions": "neverOpen",
   "azureFunctions.projectLanguageModel": 2,
   "pylint.path": [
-    "${workspaceFolder}/.venv/bin/pylint"
+    "${workspaceFolder}/.venv-1/bin/pylint"
   ],
   "pylint.interpreter": [
-    "${workspaceFolder}/.venv/bin/python"
+    "${workspaceFolder}/.venv-1/bin/python"
   ]
 }
