@@ -19,6 +19,7 @@ A technical reference for developers working on the `traveller-world-gen` codeba
    - [function_app.py and shared/helpers.py](#47-function_apppy-and-sharedhelperspy)
    - [traveller_map_fetch.py](#48-traveller_map_fetchpy)
    - [system_map.py](#49-system_mappy)
+   - [gen-ui/app.py](#410-gen-uiapppy)
 5. [Key design decisions](#5-key-design-decisions)
 6. [Compliance audit history](#6-compliance-audit-history)
 7. [Deferred and out-of-scope features](#7-deferred-and-out-of-scope-features)
@@ -613,7 +614,12 @@ svg_str, canvas_height = build_svg(
 save_output(svg_str: str, path: str) -> None
 ```
 
-`build_svg()` calls `attach_detail()` internally (it needs world types and SAH codes to colour-code the arcs). The returned SVG string is self-contained and can be written to a file or embedded in HTML.
+`build_svg()` does **not** call `attach_detail()` itself. The CLI's `main()` calls it first so that arc colours and detail-table profiles are populated. When calling `build_svg()` programmatically, call `attach_detail(system)` beforehand if you want secondary world and moon data in the table. The returned SVG string is self-contained and can be written to a file or embedded in HTML.
+
+**SVG rendering in Qt (`QSvgWidget`):** Two properties of the SVG are set in ways that browsers support but Qt's SVG renderer does not:
+
+- *Background colour* — the CSS `background` property on the root `<svg>` element is ignored by Qt. The SVG output therefore includes an explicit `<rect x="0" y="0" width="…" height="…" fill="{palette.bg}"/>` as the first element inside the root, which all SVG renderers handle correctly.
+- *Font family inheritance* — Qt does not inherit `font-family` from a `style="…"` attribute on the root `<svg>` element. The table zone content is wrapped in `<g font-family="'Courier New', Courier, monospace">` so the monospace font is applied via an SVG presentation attribute, which Qt does inherit.
 
 **Colour palettes:**
 
@@ -642,6 +648,49 @@ python system_map.py --seed 42 --width 2400
 # Open in default viewer after writing (macOS/Linux)
 python system_map.py --name Mora --seed 7
 ```
+
+---
+
+### 4.10 `gen-ui/app.py`
+
+PySide6 (Qt6) desktop UI for local interactive use. Run with:
+
+```bash
+python gen-ui/app.py
+```
+
+**`AppWindow`** — the main window. Key instance state:
+
+| Attribute | Type | Purpose |
+|-----------|------|---------|
+| `_current_world` | `object \| None` | Last generated `World` |
+| `_current_system` | `object \| None` | Last generated `TravellerSystem` |
+| `_detail_attached` | `bool` | Whether `attach_detail()` was called on `_current_system` |
+| `_html_path` | `str \| None` | Temp file path of the last HTML card (for "Open in Browser") |
+| `_map_btn` | `QPushButton \| None` | Reference to the active "System Map" button; `None` when no system result is displayed |
+| `_map_windows` | `list[object]` | Open `SystemMapWindow` instances; list keeps them alive (Python GC otherwise collects shown windows) |
+
+The "System Map" button lives in `_build_system_summary_header()` (system results only; not shown in world-only mode). It is enabled/disabled in sync with the "Full system" checkbox: `_on_full_system_toggled()` calls `_map_btn.setEnabled(checked)` when the reference is set, and `_clear_status()` nulls `_map_btn` whenever the result panel is replaced.
+
+**`SystemMapWindow`** — a non-modal `QMainWindow` opened by the "System Map" button. One window is created per click; multiple windows can coexist.
+
+```python
+class SystemMapWindow(QMainWindow):
+    _CANVAS_W = 1600       # fixed SVG width
+
+    # toolbar buttons:
+    _theme_btn   # "Light Theme" / "Dark Theme" toggle
+    # "Save SVG…" → QFileDialog → writes self._svg_str
+
+    def _render(self) -> None:
+        # calls build_svg(system, canvas_w, palette)
+        # loads result into QSvgWidget inside QScrollArea
+        # falls back to browser + hint label if PySide6.QtSvgWidgets unavailable
+```
+
+`_render()` is called once at construction and again on every theme toggle. The `QSvgWidget` is sized to the exact SVG canvas dimensions (`_CANVAS_W × canvas_h`) so the `QScrollArea` provides correct scrollbars for large maps.
+
+**Keyboard shortcuts** — `QKeySequence::Quit` (Cmd+Q on macOS, Ctrl+Q on Windows/Linux) and `QKeySequence::Close` (Cmd+W / Ctrl+W) are registered globally on `AppWindow`. Qt resolves the correct platform key automatically.
 
 ---
 
