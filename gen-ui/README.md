@@ -1,8 +1,9 @@
-# Traveller World Generator — GTK4 UI
+# Traveller World Generator — Qt UI
 
-A desktop GUI for the Traveller World Generator, built with GTK4 and PyGObject.
+A desktop GUI for the Traveller World Generator, built with PySide6 (Qt6).
 Generates mainworlds (procedural or from TravellerMap) and displays the result
-as a native GTK4 widget card inside the application window.
+as a native Qt widget card inside the application window. Runs on macOS,
+Windows, and Linux from the same pip-installed package.
 
 ---
 
@@ -10,42 +11,41 @@ as a native GTK4 widget card inside the application window.
 
 Procedural mainworld generation, TravellerMap mainworld lookup, full system
 generation, and attach detail are all working and displayed in-app using native
-GTK4 widgets.
+Qt widgets.
 
 ---
 
 ## Requirements
 
-PyGObject is not available via pip on macOS. Install GTK4 and its Python
-bindings via Homebrew:
+PySide6 bundles Qt — no system packages (Homebrew, apt, etc.) required.
+Install into the project venv:
 
 ```bash
-brew install pygobject3 gtk4
-```
-
-The app must be run with the Homebrew-managed Python interpreter (not the
-project's `.venv-1`):
-
-```bash
-$(brew --prefix)/bin/python3 gen-ui/app.py
+.venv-1/bin/pip install "PySide6>=6.4.0"
 ```
 
 Tested with:
 
 | Package | Version |
 |---------|---------|
-| Python (Homebrew) | 3.14 |
-| GTK | 4.x |
-| PyGObject | 3.42+ |
+| Python (.venv-1) | 3.11 |
+| PySide6 | 6.4+ |
 
 ---
 
 ## Running
 
-From the project root:
+From the project root with the venv active:
 
 ```bash
-$(brew --prefix)/bin/python3 gen-ui/app.py
+source .venv-1/bin/activate
+python gen-ui/app.py
+```
+
+Or without activating the venv:
+
+```bash
+.venv-1/bin/python3 gen-ui/app.py
 ```
 
 ---
@@ -80,7 +80,7 @@ what was typed in the Name field.
 
 ### After generation
 
-The GTK window shows a scrollable world card with:
+The window shows a scrollable world card with:
 
 - **Header bar** — world name, UWP (monospace), travel zone badge
 - **Stat boxes** — Starport (quality + facilities), Size (diameter + gravity),
@@ -98,7 +98,7 @@ When **Full system** is checked, the card also includes:
 - **System Orbits table** — Star, Orbit#, AU, Type, HZ marker, Temp Zone for
   every orbit slot; mainworld row is bold, empty orbits are dimmed
 
-A **Stellar & Orbits** toggle switch in the header hides/shows the stellar and
+A **Stellar & Orbits** checkbox in the header hides/shows the stellar and
 orbit tables without regenerating.
 
 When **Full system** and **Attach detail** are both checked, the System Orbits
@@ -126,9 +126,8 @@ accumulated.
 | Cmd+Q / Ctrl+Q | Quit |
 | Cmd+W / Ctrl+W | Close window |
 
-> **macOS note:** GTK4's Quartz backend maps `<primary>` to Control, not
-> Command. Both `<meta>` (Command) and `<primary>` (Control) are registered,
-> so both variants work.
+Qt maps `QKeySequence::Quit` and `QKeySequence::Close` to the correct
+platform-native keys automatically.
 
 ---
 
@@ -141,20 +140,17 @@ dark mode support, and all world characteristics laid out as a formatted card.
 
 ### Why native widgets instead of in-app HTML?
 
-WebKitGTK (the GTK4 HTML renderer) requires Linux. Its dependencies —
-`systemd`, `wayland`, `wpebackend-fdo` — are not available on macOS, so
-`brew install webkitgtk` fails. The in-app card is therefore built from native
-GTK4 widgets (`Gtk.Frame`, `Gtk.Grid`, `Gtk.FlowBox`, `Gtk.ScrolledWindow`).
-The HTML representation is still available via **Open in Browser** and **Save…**.
+The in-app card uses native Qt widgets for simplicity and cross-platform
+consistency. PySide6 includes `QtWebEngineWidgets` (a Chromium-based renderer)
+which could be used to embed the HTML card directly if desired:
 
-On Linux, WebKitGTK can be installed and the app could be updated to embed the
-HTML card directly:
-
-```bash
-sudo apt install gir1.2-webkit-6.0   # Debian/Ubuntu
+```python
+from PySide6.QtWebEngineWidgets import QWebEngineView
+view = QWebEngineView()
+view.setHtml(html)
 ```
 
-See `requirements.txt` for details.
+This is a deferred feature — see `requirements.txt`.
 
 ---
 
@@ -162,31 +158,31 @@ See `requirements.txt` for details.
 
 | File | Description |
 |------|-------------|
-| `app.py` | GTK4 application — `App`, `AppWindow` classes |
-| `requirements.txt` | Dependency notes and HTML rendering constraints |
+| `app.py` | Qt application — `AppWindow(QMainWindow)` |
+| `requirements.txt` | Dependency notes |
 
 ---
 
 ## Architecture
 
-The UI is a standard GTK4 `Gtk.Application` / `Gtk.ApplicationWindow`. Three
-control rows sit at the top of the window:
+The UI is a `QMainWindow` with a central `QWidget` and a root `QVBoxLayout`.
+Three control rows sit at the top of the window:
 
 1. **Controls row** — Name, Seed, New Seed button, Generate button
 2. **Source row** — Procedural / TravellerMap radio buttons; Sector, Name, and
-   Hex fields (Sector/Name/Hex are insensitive when Procedural is active)
-3. **Options row** — Full system / Attach detail checkboxes; Format dropdown
-   (Attach detail is only sensitive when Full system is checked)
+   Hex fields (disabled when Procedural is active)
+3. **Options row** — Full system / Attach detail checkboxes
+   (Attach detail is only enabled when Full system is checked)
 
-The status panel below the separator fills the remaining window height and
-updates after each generation.
+The status panel (`_status_widget` / `_status_layout`) below the separator
+fills the remaining window height and is cleared and rebuilt on each generation.
 
 ### Mainworld-only path
 
 `_finish_generation(world)` calls `_show_summary(world)`, which builds:
 - `_build_summary_header(world)` — fixed header bar with name/UWP/zone and
   action buttons
-- `_build_world_card(world)` inside a `Gtk.ScrolledWindow`
+- `_build_world_card(world)` inside a `QScrollArea`
 
 `_build_world_card` composes: `_build_stat_row`, `_build_detail_cards`,
 `_build_trade_codes`, `_build_notes`.
@@ -196,28 +192,26 @@ updates after each generation.
 `_finish_system_generation(system, attach_detail_flag)` optionally calls
 `attach_detail(system)` when the Attach detail checkbox is active, sets
 `self._detail_attached`, then calls `_show_system_summary(system)`, which builds:
-- `_build_system_summary_header(system)` — returns `(header_bar, orbit_switch)`;
-  header shows world name/UWP/zone, Stellar & Orbits toggle switch, and action
-  buttons
-- `_build_stellar_card(system)` — `Gtk.Frame` + `Gtk.Grid` stars table
-- `_build_orbits_card(system, detail_attached)` — `Gtk.Frame` + `Gtk.Grid`
+- `_build_system_summary_header(system)` — returns `(header_bar, orbit_toggle)`;
+  header shows world name/UWP/zone, Stellar & Orbits checkbox, and action buttons
+- `_build_stellar_card(system)` — `QGroupBox` + `QGridLayout` stars table
+- `_build_orbits_card(system, detail_attached)` — `QGroupBox` + `QGridLayout`
   orbits table; when `detail_attached=True`, adds Profile and Codes columns and
-  inserts moon sub-rows using a free-running `grid_row` counter (required because
-  moon rows are interleaved with orbit rows dynamically)
-- Optional mainworld `Gtk.Frame` wrapping `_build_world_card(world)`, all inside
-  a `Gtk.ScrolledWindow`
+  inserts moon sub-rows using a free-running `grid_row` counter
+- Optional mainworld `QGroupBox` wrapping `_build_world_card(world)`, all inside
+  a `QScrollArea`
 
-The `notify::active` signal on the switch calls `set_visible()` on both the
-stellar and orbits cards. `self._detail_attached` is used by `_on_save_finish()`
-to pass the correct `detail_attached` flag to `to_html()`.
+The `orbit_toggle.toggled` signal calls `setVisible()` on both the stellar and
+orbits cards. `self._detail_attached` is used by `_on_save_clicked()` to pass
+the correct `detail_attached` flag to `to_html()`.
 
 ### TravellerMap path
 
 `generate_system_from_map()` in `traveller_map_fetch.py` is called directly.
 When a name search returns multiple exact matches in the same sector,
 `AmbiguousWorldError` is raised and caught in `_do_travellermap_generation()`,
-which opens a modal disambiguation dialog. Selecting a candidate retries with
-its hex position, bypassing name resolution.
+which opens a modal `QDialog`. Selecting a candidate retries with its hex
+position, bypassing name resolution.
 
 ---
 

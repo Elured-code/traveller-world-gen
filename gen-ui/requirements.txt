@@ -1,28 +1,25 @@
 # GTK4 UI dependencies
 #
-# PyGObject (gi) is not available via pip on macOS.
-# Install via Homebrew:
+# PySide6 bundles Qt — no system packages (Homebrew, apt, etc.) required.
+# Install into the project venv:
 #
-#   brew install pygobject3 gtk4
+#   .venv-1/bin/pip install "PySide6>=6.4.0"
 #
-# Then run the app with the Homebrew Python interpreter:
+# Then run the app:
 #
-#   $(brew --prefix)/bin/python3 gen-ui/app.py
+#   .venv-1/bin/python3 gen-ui/app.py
 #
-# PyGObject>=3.42.0
+PySide6>=6.4.0
 
 # HTML rendering
 #
-# The app displays generated world cards as HTML using world.to_html().
-# On macOS, WebKitGTK is not available (its dependencies — systemd, wayland,
-# wpebackend-fdo — are Linux-only), so the HTML is written to a temp file
-# and opened in the system default browser via Gio.AppInfo.launch_default_for_uri.
+# The app displays generated world cards as native Qt widgets.
+# The full HTML card is still available via Open in Browser and Save as HTML.
+# To embed HTML in-app on any platform, WebEngineWidgets is available in
+# PySide6 (PySide6-Essentials includes QtWebEngineWidgets):
 #
-# On Linux, WebKitGTK can be installed to embed the HTML card directly in the
-# app window:
+#   from PySide6.QtWebEngineWidgets import QWebEngineView
+#   view = QWebEngineView()
+#   view.setHtml(html)
 #
-#   sudo apt install gir1.2-webkit-6.0   # Debian/Ubuntu
-#   brew install webkitgtk               # Linux Homebrew
-#
-# If WebKit is available, require_version("WebKit", "6.0") and use
-# WebKit.WebView.load_html(html, "file:///") as the results widget.
+# This is a deferred feature — the current in-app card uses native widgets.
