@@ -51,6 +51,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QRadioButton,
     QScrollArea,
@@ -58,6 +59,14 @@ from PySide6.QtWidgets import (  # noqa: E402
     QVBoxLayout,
     QWidget,
 )
+
+from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
+
+try:
+    from PySide6.QtSvgWidgets import QSvgWidget as _QSvgWidget
+    _HAS_SVG_WIDGET = True
+except ImportError:
+    _HAS_SVG_WIDGET = False
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
 from traveller_system_gen import generate_full_system  # noqa: E402
@@ -191,6 +200,105 @@ def _detail_row(label_text: str, value_text: str, danger: bool = False) -> QWidg
 
 
 # ---------------------------------------------------------------------------
+# System map window
+# ---------------------------------------------------------------------------
+
+_MAP_CANVAS_W = 1600
+
+
+class SystemMapWindow(QMainWindow):
+    """Separate, non-modal window that renders an SVG system map."""
+
+    def __init__(self, system: object) -> None:
+        super().__init__()
+        mw = system.mainworld  # type: ignore[attr-defined]
+        name = mw.name if mw else "System"
+        self.setWindowTitle(f"System Map — {name}")
+        self.resize(min(_MAP_CANVAS_W + 40, 1400), 720)
+
+        self._system = system
+        self._palette = PALETTE_DARK
+        self._svg_str = ""
+
+        central = QWidget()
+        self.setCentralWidget(central)
+        vbox = QVBoxLayout(central)
+        vbox.setContentsMargins(0, 0, 0, 0)
+        vbox.setSpacing(0)
+
+        toolbar = QWidget()
+        tbox = QHBoxLayout(toolbar)
+        tbox.setContentsMargins(8, 6, 8, 6)
+        tbox.setSpacing(8)
+
+        self._theme_btn = QPushButton("Light Theme")
+        self._theme_btn.clicked.connect(self._toggle_theme)
+        tbox.addWidget(self._theme_btn)
+
+        save_btn = QPushButton("Save SVG…")
+        save_btn.clicked.connect(self._on_save)
+        tbox.addWidget(save_btn)
+        tbox.addStretch()
+        vbox.addWidget(toolbar)
+        vbox.addWidget(_make_hsep())
+
+        self._scroll = QScrollArea()
+        self._scroll.setWidgetResizable(False)
+        vbox.addWidget(self._scroll, stretch=1)
+
+        self._render()
+
+    def _render(self) -> None:
+        svg_str, canvas_h = build_svg(
+            self._system, canvas_w=_MAP_CANVAS_W, palette=self._palette
+        )
+        self._svg_str = svg_str
+
+        if _HAS_SVG_WIDGET:
+            widget = _QSvgWidget()  # type: ignore[possibly-undefined]
+            widget.load(svg_str.encode("utf-8"))
+            widget.setFixedSize(_MAP_CANVAS_W, canvas_h)
+            self._scroll.setWidget(widget)
+        else:
+            try:
+                fd, path = tempfile.mkstemp(suffix=".svg", prefix="traveller-map-")
+                os.close(fd)
+                with open(path, "w", encoding="utf-8") as fh:
+                    fh.write(svg_str)
+                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+                msg = "System map opened in browser (PySide6.QtSvgWidgets not available)."
+            except OSError as exc:
+                msg = f"Could not write map: {exc}"
+            lbl = QLabel(msg)
+            lbl.setObjectName("hint-label")
+            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._scroll.setWidget(lbl)
+
+    def _toggle_theme(self) -> None:
+        if self._palette is PALETTE_DARK:
+            self._palette = PALETTE_LIGHT
+            self._theme_btn.setText("Dark Theme")
+        else:
+            self._palette = PALETTE_DARK
+            self._theme_btn.setText("Light Theme")
+        self._render()
+
+    def _on_save(self) -> None:
+        mw = self._system.mainworld  # type: ignore[attr-defined]
+        base = (mw.name if mw else "system").replace(" ", "-").lower()
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save System Map", f"{base}-map.svg", "SVG files (*.svg)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(self._svg_str)
+        except OSError as exc:
+            QMessageBox.critical(self, "Save Failed", str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -205,6 +313,8 @@ class AppWindow(QMainWindow):
         self._current_system: object | None = None
         self._detail_attached: bool = False
         self._seed_auto: bool = False
+        self._map_windows: list[object] = []
+        self._map_btn: QPushButton | None = None
         app = QApplication.instance()
         if isinstance(app, QApplication):
             app.setStyleSheet(_CSS)
@@ -380,6 +490,8 @@ class AppWindow(QMainWindow):
         self._check_attach_detail.setEnabled(checked)
         if not checked:
             self._check_attach_detail.setChecked(False)
+        if self._map_btn is not None:
+            self._map_btn.setEnabled(checked)
 
     def _on_source_toggled(self, checked: bool) -> None:  # pylint: disable=unused-argument
         procedural = self._radio_procedural.isChecked()
@@ -528,6 +640,13 @@ class AppWindow(QMainWindow):
                     error.sector, None, selected, seed, full_system, attach_detail_flag
                 )
 
+    def _on_map_clicked(self) -> None:
+        if self._current_system is None:
+            return
+        win = SystemMapWindow(self._current_system)
+        self._map_windows.append(win)
+        win.show()
+
     def _on_save_clicked(self) -> None:
         obj = self._current_system or self._current_world
         if obj is None:
@@ -594,6 +713,7 @@ class AppWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _clear_status(self) -> None:
+        self._map_btn = None
         while self._status_layout.count():
             item = self._status_layout.takeAt(0)
             if item is not None:
@@ -713,6 +833,16 @@ class AppWindow(QMainWindow):
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
         layout.addWidget(spacer)
+
+        map_btn = QPushButton("System Map")
+        map_btn.clicked.connect(self._on_map_clicked)
+        map_btn.setEnabled(self._check_full_system.isChecked())
+        self._map_btn = map_btn
+        layout.addWidget(map_btn)
+
+        vsep0 = _make_vsep()
+        vsep0.setContentsMargins(6, 0, 6, 0)
+        layout.addWidget(vsep0)
 
         orbit_toggle = QCheckBox("Stellar && Orbits")
         orbit_toggle.setChecked(True)
