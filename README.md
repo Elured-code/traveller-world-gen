@@ -37,7 +37,7 @@ HTML display card.
 - TravellerMap integration — fetch canonical UWP + stellar data from travellermap.com and generate a full procedural system
 - `World.from_dict()` deserialiser — reconstruct a World from a previous JSON response and feed it into a new system generation
 - JSON Schema for the world output format (`traveller_world_schema.json`)
-- GTK4 desktop UI (`gen-ui/app.py`) — full native desktop application: procedural mainworld and full system generation, TravellerMap lookup with disambiguation, in-app world card and stellar/orbit tables, attach detail (secondary world SAH + moon sub-rows), save to JSON/HTML/text, open in browser
+- Qt desktop UI (`gen-ui/app.py`, PySide6) — cross-platform native desktop application: procedural mainworld and full system generation, TravellerMap lookup with disambiguation, in-app world card and stellar/orbit tables, attach detail (secondary world SAH + moon sub-rows), save to JSON/HTML/text, open in browser
 
 ---
 
@@ -70,11 +70,11 @@ traveller-world-gen/
 ├── local.settings.json.example     # Local development settings template
 │                                   # (copy to local.settings.json — not committed)
 │
-│  GTK4 Desktop UI
+│  Qt Desktop UI (PySide6)
 ├── gen-ui/
-│   ├── app.py                      # GTK4 desktop UI — fully working
+│   ├── app.py                      # Qt desktop UI — cross-platform, no system packages required
 │   ├── README.md                   # Setup, usage, and keyboard shortcut reference
-│   └── requirements.txt            # Dependency notes (Homebrew) and HTML rendering constraints
+│   └── requirements.txt            # PySide6>=6.4.0
 │
 │  Tests
 ├── tests/
@@ -104,6 +104,15 @@ traveller-world-gen/
 
 - Python 3.11+
 - No third-party packages required for the core generation modules
+
+> **macOS (python.org installer only):** If you see `certificate verify failed`
+> when using TravellerMap lookups, run the one-time certificate installer that
+> ships with Python 3.11:
+> ```bash
+> open "/Applications/Python 3.11/Install Certificates.command"
+> ```
+> This installs `certifi` and links it to Python's SSL certificate store.
+> Not required if you installed Python via Homebrew or pyenv.
 
 ```bash
 git clone https://github.com/your-username/traveller-world-gen.git

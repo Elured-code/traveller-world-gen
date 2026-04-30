@@ -166,13 +166,15 @@ This is a deferred feature — see `requirements.txt`.
 ## Architecture
 
 The UI is a `QMainWindow` with a central `QWidget` and a root `QVBoxLayout`.
-Three control rows sit at the top of the window:
+Two control rows sit at the top of the window:
 
 1. **Controls row** — Name, Seed, New Seed button, Generate button
-2. **Source row** — Procedural / TravellerMap radio buttons; Sector, Name, and
-   Hex fields (disabled when Procedural is active)
-3. **Options row** — Full system / Attach detail checkboxes
-   (Attach detail is only enabled when Full system is checked)
+2. **Source row** — left side: Procedural / TravellerMap radio buttons with
+   Full system / Attach detail checkboxes directly below them; right side
+   (separated by a vertical rule): Sector, Name, and Hex fields in a shared
+   `QGridLayout` (Sector and Name on the same row, Hex on the row below;
+   all three disabled when Procedural is active).
+   Attach detail is only enabled when Full system is checked.
 
 The status panel (`_status_widget` / `_status_layout`) below the separator
 fills the remaining window height and is cleared and rebuilt on each generation.
