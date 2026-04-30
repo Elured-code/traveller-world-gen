@@ -522,14 +522,34 @@ class TestAssignTradeCodes:
     """Tests for assign_trade_codes() — every code, including boundaries."""
 
     # ------------------------------------------------------------------
-    # Agricultural (Ag): Size 4-9, Atm 4-8, Hydro 5-7
+    # Agricultural (Ag): Atm 4-9, Hyd 4-8, Pop 5-7  (CRB p.260)
     # ------------------------------------------------------------------
     def test_ag_assigned_when_criteria_met(self):
         codes = assign_trade_codes(6, 6, 6, 5, 4, 4, 8)
         assert "Ag" in codes
 
-    def test_ag_not_assigned_with_wrong_hydro(self):
-        codes = assign_trade_codes(6, 6, 4, 5, 4, 4, 8)  # hydro=4 is outside 5-7
+    def test_ag_assigned_at_atm9_hyd4(self):
+        codes = assign_trade_codes(6, 9, 4, 6, 4, 4, 8)  # atm=9, hyd=4 both in range
+        assert "Ag" in codes
+
+    def test_ag_not_assigned_when_uninhabited(self):
+        codes = assign_trade_codes(6, 6, 6, 0, 0, 0, 0)  # population=0
+        assert "Ag" not in codes
+
+    def test_ag_not_assigned_with_pop_too_low(self):
+        codes = assign_trade_codes(6, 6, 6, 4, 4, 4, 8)  # population=4 outside 5-7
+        assert "Ag" not in codes
+
+    def test_ag_not_assigned_with_pop_too_high(self):
+        codes = assign_trade_codes(6, 6, 6, 8, 4, 4, 8)  # population=8 outside 5-7
+        assert "Ag" not in codes
+
+    def test_ag_not_assigned_with_hydro_too_low(self):
+        codes = assign_trade_codes(6, 6, 3, 5, 4, 4, 8)  # hyd=3 outside 4-8
+        assert "Ag" not in codes
+
+    def test_ag_not_assigned_with_atm_too_high(self):
+        codes = assign_trade_codes(6, 10, 6, 5, 4, 4, 8)  # atm=10 outside 4-9
         assert "Ag" not in codes
 
     # ------------------------------------------------------------------
@@ -2938,3 +2958,142 @@ class TestJsonSchema:
         except jsonschema.ValidationError:
             raised = True
         assert raised, "Expected ValidationError for extra field 'subsector'"
+
+
+# ===========================================================================
+# TestGasGiantOrbitSlot
+# ===========================================================================
+
+class TestGasGiantOrbitSlot:
+    """Tests for gg_sah rolled at orbit-gen time and gas giant mainworld fix."""
+
+    def test_gg_sah_roll_returns_valid_prefix(self):
+        from traveller_orbit_gen import _gg_sah_roll
+        for _ in range(100):
+            sah = _gg_sah_roll("G", "V")
+            assert sah[:2] in ("GS", "GM", "GL"), f"unexpected prefix in {sah!r}"
+
+    def test_gg_sah_roll_diameter_digit_is_valid_ehex(self):
+        from traveller_orbit_gen import _gg_sah_roll, _GG_EHEX
+        for _ in range(100):
+            sah = _gg_sah_roll("K", "V")
+            assert len(sah) == 3
+            assert sah[2].upper() in _GG_EHEX, f"invalid diameter digit in {sah!r}"
+
+    def test_gg_sah_on_orbit_slot_set_for_gas_giants(self):
+        from traveller_orbit_gen import generate_orbits
+        from traveller_stellar_gen import generate_stellar_data
+        import random as _random
+        _random.seed(42)
+        stellar = generate_stellar_data()
+        orbits = generate_orbits(stellar)
+        gas_giant_slots = [o for o in orbits.orbits if o.world_type == "gas_giant"]
+        for slot in gas_giant_slots:
+            assert slot.gg_sah != "", f"gg_sah empty for gas giant at orbit {slot.orbit_number}"
+            assert slot.gg_sah[:2] in ("GS", "GM", "GL"), f"bad gg_sah {slot.gg_sah!r}"
+
+    def test_non_gas_giant_slots_have_empty_gg_sah(self):
+        from traveller_orbit_gen import generate_orbits
+        from traveller_stellar_gen import generate_stellar_data
+        import random as _random
+        _random.seed(7)
+        stellar = generate_stellar_data()
+        orbits = generate_orbits(stellar)
+        for slot in orbits.orbits:
+            if slot.world_type != "gas_giant":
+                assert slot.gg_sah == "", (
+                    f"expected empty gg_sah on {slot.world_type} slot, got {slot.gg_sah!r}"
+                )
+
+    def test_gg_diameter_parses_decimal_digits(self):
+        from traveller_system_gen import _gg_diameter
+        assert _gg_diameter("GM9") == 9
+        assert _gg_diameter("GS4") == 4
+        assert _gg_diameter("GL0") == 0
+
+    def test_gg_diameter_parses_hex_letter(self):
+        from traveller_system_gen import _gg_diameter
+        assert _gg_diameter("GLC") == 12
+        assert _gg_diameter("GLF") == 15
+
+    def test_gg_diameter_fallback_for_empty(self):
+        from traveller_system_gen import _gg_diameter
+        assert _gg_diameter("") == 8
+        assert _gg_diameter("XX") == 8
+
+    def test_gas_giant_mainworld_size_less_than_gg(self):
+        from traveller_system_gen import generate_full_system
+        # Run many seeds to catch gas-giant-mainworld cases
+        found = False
+        for seed in range(200):
+            system = generate_full_system("Test", seed=seed)
+            if system.mainworld_orbit and system.mainworld_orbit.world_type == "gas_giant":
+                found = True
+                gg_sah = system.mainworld_orbit.gg_sah
+                gg_diam = int("0123456789ABCDEFGHIJ".index(gg_sah[2].upper()))
+                assert system.mainworld is not None
+                assert system.mainworld.size >= 1, "satellite size must be at least 1"
+                assert system.mainworld.size < gg_diam, (
+                    f"satellite size {system.mainworld.size} must be < gg diameter {gg_diam}"
+                )
+        assert found, "no gas-giant-mainworld case found in 200 seeds — increase range"
+
+    def test_gas_giant_mainworld_note_present(self):
+        from traveller_system_gen import generate_full_system
+        for seed in range(200):
+            system = generate_full_system("Test", seed=seed)
+            if system.mainworld_orbit and system.mainworld_orbit.world_type == "gas_giant":
+                assert system.mainworld is not None
+                notes_text = " ".join(system.mainworld.notes)
+                assert "satellite" in notes_text.lower(), (
+                    f"expected satellite note, got {system.mainworld.notes!r}"
+                )
+                return
+        pytest.skip("no gas-giant-mainworld case found in 200 seeds")
+
+    def test_gg_sah_in_to_dict(self):
+        from traveller_orbit_gen import generate_orbits
+        from traveller_stellar_gen import generate_stellar_data
+        import random as _random
+        _random.seed(42)
+        stellar = generate_stellar_data()
+        orbits = generate_orbits(stellar)
+        for slot in orbits.orbits:
+            d = slot.to_dict()
+            if slot.world_type == "gas_giant":
+                assert "gg_sah" in d, "gg_sah missing from gas giant to_dict()"
+            else:
+                assert "gg_sah" not in d, "gg_sah present in non-gas-giant to_dict()"
+
+
+class TestOrbitToAu:
+    """Orbit# to AU conversion — verifies the flat-region bug (0.5:0.2) is gone."""
+
+    def test_sub_half_orbit_increases_with_orbit_number(self):
+        from traveller_stellar_gen import _orbit_to_au
+        # Orbit# 0.1 must be farther than Orbit# 0.0 and closer than Orbit# 0.5
+        assert _orbit_to_au(0.0) < _orbit_to_au(0.1) < _orbit_to_au(0.5)
+
+    def test_orbit_0_is_0_2_au(self):
+        from traveller_stellar_gen import _orbit_to_au
+        assert _orbit_to_au(0.0) == pytest.approx(0.2)
+
+    def test_orbit_half_is_0_3_au(self):
+        from traveller_stellar_gen import _orbit_to_au
+        assert _orbit_to_au(0.5) == pytest.approx(0.3)
+
+    def test_orbit_1_is_0_4_au(self):
+        from traveller_stellar_gen import _orbit_to_au
+        assert _orbit_to_au(1.0) == pytest.approx(0.4)
+
+    def test_roundtrip_sub_1(self):
+        from traveller_stellar_gen import _orbit_to_au
+        from traveller_orbit_gen import _au_to_orbit
+        for on in (0.1, 0.2, 0.3, 0.4, 0.5, 0.65):
+            assert _au_to_orbit(_orbit_to_au(on)) == pytest.approx(on, abs=0.01)
+
+    def test_companion_orbits_are_not_all_identical(self):
+        # Companion orbit numbers 0.05–0.65 must produce distinct AU values.
+        from traveller_stellar_gen import _orbit_to_au
+        aus = {_orbit_to_au(on) for on in (0.05, 0.1, 0.3, 0.5, 0.65)}
+        assert len(aus) == 5, f"expected 5 distinct AU values, got {aus}"

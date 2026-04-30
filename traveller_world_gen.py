@@ -388,6 +388,48 @@ class World:
         """
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "World":
+        """Reconstruct a World from a dict produced by to_dict().
+
+        Handles both the nested form produced by to_dict() (where 'starport',
+        'size', 'atmosphere', 'hydrographics', 'population', and 'government'
+        are sub-objects with a 'code' key) and flat forms where the value is
+        the code directly.  Missing fields receive safe defaults.
+        """
+        def _int(val: object, default: int = 0) -> int:
+            try:
+                return int(val)  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return default
+
+        def _code(field: object) -> object:
+            """Return field['code'] when field is a dict, else field itself."""
+            return field.get("code") if isinstance(field, dict) else field
+
+        gas_giant_count = _int(_code(d.get("gas_giant_count", 0)))
+
+        return cls(
+            name=str(d.get("name", "Unknown")),
+            starport=str(_code(d.get("starport", "X")) or "X"),
+            size=_int(_code(d.get("size", 0))),
+            atmosphere=_int(_code(d.get("atmosphere", 0))),
+            temperature=str(d.get("temperature", "Temperate")),
+            hydrographics=_int(_code(d.get("hydrographics", 0))),
+            population=_int(_code(d.get("population", 0))),
+            government=_int(_code(d.get("government", 0))),
+            law_level=_int(d.get("law_level", 0)),
+            tech_level=_int(d.get("tech_level", 0)),
+            has_gas_giant=gas_giant_count > 0,
+            gas_giant_count=gas_giant_count,
+            belt_count=_int(d.get("belt_count", 0)),
+            population_multiplier=_int(d.get("population_multiplier", 0)),
+            bases=list(d.get("bases", [])),
+            trade_codes=list(d.get("trade_codes", [])),
+            travel_zone=str(d.get("travel_zone", "Green")),
+            notes=list(d.get("notes", [])),
+        )
+
     # ------------------------------------------------------------------
     # HTML display card
     # ------------------------------------------------------------------
@@ -461,10 +503,10 @@ class World:
         def row(label: str, value: str, danger: bool = False) -> str:
             """Render one label/value detail row."""
             val_style = (
-                'style="font-size:13px;font-weight:500;'
+                'style="font-size:13px;font-weight:500;text-align:right;'
                 'color:var(--color-text-danger,#c0392b)"'
                 if danger
-                else 'style="font-size:13px;font-weight:500"'
+                else 'style="font-size:13px;font-weight:500;text-align:right"'
             )
             return (
                 f'<div class="detail-row">'
@@ -654,7 +696,7 @@ class World:
     border-bottom: 0.5px solid var(--color-border);
   }}
   .detail-row:last-child {{ border-bottom: none; }}
-  .row-label {{ font-size:13px; color:var(--color-text-secondary); }}
+  .row-label {{ font-size:13px; color:var(--color-text-secondary); flex-shrink:0; margin-right:8px; }}
   .trade-row {{
     display: flex;
     align-items: center;
@@ -1156,8 +1198,8 @@ def assign_trade_codes(size: int, atmosphere: int, hydrographics: int,
     """
     codes = []
 
-    # Agricultural (Ag): arable worlds with reasonable water and population
-    if (4 <= size <= 9 and 4 <= atmosphere <= 8 and 5 <= hydrographics <= 7):
+    # Agricultural (Ag): Atm 4-9, Hyd 4-8, Pop 5-7  (CRB p.260)
+    if (4 <= atmosphere <= 9 and 4 <= hydrographics <= 8 and 5 <= population <= 7):
         codes.append("Ag")
 
     # Asteroid (As): tiny, airless, dry

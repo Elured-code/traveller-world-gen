@@ -48,6 +48,13 @@ GET/POST /api/map/system
 GET  /api/map/system/{name}
     Same as above; world name from URL path.
 
+POST /api/system/from-world
+    Generate a full star system around an existing mainworld JSON object.
+    The world's UWP and PBG are preserved; stellar data and orbital structure
+    are generated procedurally. Temperature is recalculated from orbital position.
+    Body: mainworld JSON (from any world or system endpoint).
+    Parameters: seed, detail, format.
+
 The 'detail' parameter
 ----------------------
 All system endpoints accept an optional boolean 'detail' parameter
@@ -133,16 +140,16 @@ from typing import Optional
 
 import azure.functions as func
 
-from traveller_world_gen import generate_world
-from traveller_system_gen import generate_full_system
+from traveller_world_gen import World, generate_world
+from traveller_system_gen import generate_full_system, generate_system_from_world
 from traveller_world_detail import attach_detail
 from traveller_map_fetch import generate_system_from_map
 
 from shared.helpers import (
     ok, error,
     ERR_INVALID_BODY, ERR_INTERNAL, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
-    apply_seed, parse_count, parse_detail, parse_format, parse_name, parse_seed,
-    parse_sector,
+    apply_seed, parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
+    parse_seed, parse_sector, parse_world_json,
 )
 
 logger = logging.getLogger(__name__)
@@ -169,14 +176,16 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
                      ERR_INTERNAL, status_code=500)
     logger.info("Generated world UWP=%s name=%s", world.uwp(), world.name)
-    return ok(world.to_dict())
+    d = world.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -199,14 +208,16 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
                      ERR_INTERNAL, status_code=500)
     logger.info("Generated world UWP=%s name=%s", world.uwp(), world.name)
-    return ok(world.to_dict())
+    d = world.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -249,16 +260,19 @@ def generate_world_batch(req: func.HttpRequest) -> func.HttpResponse:
         return err
 
     try:
-        apply_seed(seed)
-        worlds = [generate_world(name=f"{prefix}{i+1}").to_dict()
-                  for i in range(count)]
+        seed = apply_seed(seed)
+        worlds = []
+        for i in range(count):
+            d = generate_world(name=f"{prefix}{i+1}").to_dict()
+            d["seed"] = seed
+            worlds.append(d)
     except Exception as exc:
         logger.exception("Error generating batch: %s", exc)
         return error("An unexpected error occurred while generating the world batch.",
                      ERR_INTERNAL, status_code=500)
 
     logger.info("Generated batch count=%d prefix=%s", count, prefix)
-    return ok({"count": count, "worlds": worlds})
+    return ok({"count": count, "seed": seed, "worlds": worlds})
 
 
 # ===========================================================================
@@ -281,7 +295,7 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
         html = world.to_html()
     except Exception as exc:
@@ -325,7 +339,7 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
@@ -338,7 +352,9 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
                 name, len(system.stellar_system.stars),
                 system.system_orbits.total_worlds, want_detail,
                 mw.uwp() if mw else "—")
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -362,7 +378,7 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
@@ -375,7 +391,9 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
                 name, len(system.stellar_system.stars),
                 system.system_orbits.total_worlds, want_detail,
                 mw.uwp() if mw else "—")
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 # ===========================================================================
@@ -416,7 +434,7 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
         return err
     fmt = parse_format(req)
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         attach_detail(system)
     except Exception as exc:
@@ -444,7 +462,9 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
             mimetype="text/plain",
             charset="utf-8",
         )
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 @app.route(route="system/{name}/card", methods=["GET"])
@@ -467,7 +487,7 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     try:
-        apply_seed(seed)
+        seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
@@ -496,6 +516,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
     fmt: str,
 ) -> func.HttpResponse:
     """Shared implementation for both map/system endpoint variants."""
+    seed = apply_seed(seed)
     try:
         system = generate_system_from_map(
             name=name, sector=sector, hex_pos=hex_pos,
@@ -507,7 +528,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
     except urllib.error.URLError as exc:
         logger.error("TravellerMap upstream error: %s", exc)
         return error(
-            f"Could not reach TravellerMap: {exc.reason}",
+            "Could not reach the upstream data source. Please try again later.",
             ERR_UPSTREAM, status_code=502,
         )
     except Exception as exc:
@@ -539,7 +560,81 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
             mimetype="text/plain",
             charset="utf-8",
         )
-    return ok(system.to_dict())
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
+
+
+# ===========================================================================
+# Endpoint 14:  POST /api/system/from-world
+# ===========================================================================
+
+@app.route(route="system/from-world", methods=["POST"])
+def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpResponse:
+    """Generate a full star system around an existing mainworld.
+
+    The request body must be a mainworld JSON object (as returned by any
+    world or system endpoint). The world's UWP, bases, trade codes, and PBG
+    values are preserved. New stellar data and orbital structure are generated
+    procedurally. Temperature is recalculated from the assigned orbital
+    position to remain consistent with the host star's habitable zone.
+
+    Parameters (body + query string)
+    ---------------------------------
+    <world JSON>   required   Mainworld object from a previous generation call.
+    seed           int, opt   RNG seed for stellar/orbital generation.
+    detail         bool, opt  Attach secondary world profiles (attach_detail).
+    format         str, opt   'json' (default) | 'html' | 'text'.
+
+    Returns
+    -------
+    200  TravellerSystem JSON/HTML/text with the supplied world as mainworld.
+    400  INVALID_BODY / INVALID_SEED
+    500  INTERNAL_ERROR
+    """
+    logger.info("generate_system_from_existing_world called")
+    world_dict, err = parse_world_json(req)
+    if err or world_dict is None:
+        return err or error("Missing world data.", ERR_INVALID_BODY)
+    seed, err = parse_seed(req)
+    if err:
+        return err
+    want_detail = parse_detail(req)
+    fmt = parse_format(req)
+    try:
+        seed = apply_seed(seed)
+        world = World.from_dict(world_dict)
+        system = generate_system_from_world(world, seed=seed)
+        if want_detail:
+            attach_detail(system)
+    except Exception as exc:
+        logger.exception("Error generating system from world: %s", exc)
+        return error(
+            "An unexpected error occurred while generating the system.",
+            ERR_INTERNAL, status_code=500,
+        )
+    mw = system.mainworld
+    logger.info(
+        "Generated system from world name=%s stars=%d worlds=%d detail=%s uwp=%s",
+        mw.name if mw else "?",
+        len(system.stellar_system.stars),
+        system.system_orbits.total_worlds,
+        want_detail,
+        mw.uwp() if mw else "—",
+    )
+    if fmt == "html":
+        return func.HttpResponse(
+            body=system.to_html(detail_attached=want_detail),
+            status_code=200, mimetype="text/html", charset="utf-8",
+        )
+    if fmt == "text":
+        return func.HttpResponse(
+            body=system.summary(),
+            status_code=200, mimetype="text/plain", charset="utf-8",
+        )
+    d = system.to_dict()
+    d["seed"] = seed
+    return ok(d)
 
 
 @app.route(route="map/system", methods=["GET", "POST"])
@@ -576,14 +671,14 @@ def generate_map_system(req: func.HttpRequest) -> func.HttpResponse:
     sector, err = parse_sector(req)
     if err:
         return err
-    hex_pos = req.params.get("hex", "").strip() or None
-    if not hex_pos:
-        try:
-            body = req.get_json()
-            if isinstance(body, dict):
-                hex_pos = str(body.get("hex", "")).strip() or None
-        except (ValueError, TypeError):
-            pass
+    try:
+        body = req.get_json()
+        body = body if isinstance(body, dict) else None
+    except (ValueError, TypeError):
+        body = None
+    hex_pos, err = parse_hex_pos(req, body)
+    if err:
+        return err
     if not sector:
         return error(
             "The 'sector' parameter is required to avoid same-name ambiguity.",
@@ -636,7 +731,9 @@ def generate_named_map_system(req: func.HttpRequest) -> func.HttpResponse:
             "The 'sector' query parameter is required to avoid same-name ambiguity.",
             ERR_MISSING_PARAM,
         )
-    hex_pos = req.params.get("hex", "").strip() or None
+    hex_pos, err = parse_hex_pos(req)
+    if err:
+        return err
     want_detail = parse_detail(req)
     fmt = parse_format(req)
     return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt)

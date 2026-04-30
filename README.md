@@ -32,9 +32,12 @@ HTML display card.
 - Complete UWP output, all 18 trade codes, all Amber zone triggers
 - Verified TL era labels (Primitive → High Stellar) against pp. 6–7
 - Three output formats: text summary, JSON, standalone HTML card
-- REST API via Azure Functions (12 endpoints: 5 mainworld + 5 system + 2 TravellerMap, JSON + HTML + plain-text responses)
+- **SVG system maps** — visual orbit diagrams with arc zones per star, log-scale AU radii, and orbit data tables
+- REST API via Azure Functions (13 endpoints: 5 mainworld + 6 system + 2 TravellerMap, JSON + HTML + plain-text responses)
 - TravellerMap integration — fetch canonical UWP + stellar data from travellermap.com and generate a full procedural system
+- `World.from_dict()` deserialiser — reconstruct a World from a previous JSON response and feed it into a new system generation
 - JSON Schema for the world output format (`traveller_world_schema.json`)
+- Qt desktop UI (`gen-ui/app.py`, PySide6) — cross-platform native desktop application: procedural mainworld and full system generation, TravellerMap lookup with disambiguation, in-app world card and stellar/orbit tables, attach detail (secondary world SAH + moon sub-rows), save to JSON/HTML/text, open in browser
 
 ---
 
@@ -52,17 +55,26 @@ traveller-world-gen/
 ├── traveller_moon_gen.py           # Significant moon sizing and profiles
 ├── traveller_map_fetch.py          # TravellerMap integration: fetch UWP + stellar, reconstruct system
 │
+│  Visualisation
+├── system_map.py                   # SVG star system maps: arc zones, orbit tables, log-AU scale
+│
 │  Schema
 ├── traveller_world_schema.json     # JSON Schema (draft 2020-12) for World.to_dict()
 │
 │  Azure Functions API
-├── function_app.py                 # All HTTP endpoints (12 routes, v2 model)
+├── function_app.py                 # All HTTP endpoints (13 routes, v2 model)
 ├── shared/
 │   └── helpers.py                  # Request parsing & response helpers
 ├── host.json                       # Azure Functions host configuration
 ├── requirements.txt                # Python dependencies
 ├── local.settings.json.example     # Local development settings template
 │                                   # (copy to local.settings.json — not committed)
+│
+│  Qt Desktop UI (PySide6)
+├── gen-ui/
+│   ├── app.py                      # Qt desktop UI — cross-platform, no system packages required
+│   ├── README.md                   # Setup, usage, and keyboard shortcut reference
+│   └── requirements.txt            # PySide6>=6.4.0
 │
 │  Tests
 ├── tests/
@@ -73,12 +85,12 @@ traveller-world-gen/
 │
 │  Documentation
 ├── docs/
-│   ├── AZURE_DEPLOYMENT.md         # Full REST API reference (all 12 endpoints)
+│   ├── AZURE_DEPLOYMENT.md         # Full REST API reference (all 13 endpoints)
 │   ├── developer-guide.md          # Architecture, module reference, compliance notes
 │   └── VSCODE.md                   # VS Code + Claude shared environment setup
 │
 │  Examples
-├── examples/                       # Generated sample HTML cards (not committed)
+├── examples/                       # Generated sample SVG system maps
 │
 ├── LICENSE                         # MIT Licence + Traveller IP notice
 └── README.md                       # This file
@@ -92,6 +104,15 @@ traveller-world-gen/
 
 - Python 3.11+
 - No third-party packages required for the core generation modules
+
+> **macOS (python.org installer only):** If you see `certificate verify failed`
+> when using TravellerMap lookups, run the one-time certificate installer that
+> ships with Python 3.11:
+> ```bash
+> open "/Applications/Python 3.11/Install Certificates.command"
+> ```
+> This installs `certifi` and links it to Python's SSL certificate store.
+> Not required if you installed Python via Homebrew or pyenv.
 
 ```bash
 git clone https://github.com/your-username/traveller-world-gen.git
@@ -173,6 +194,35 @@ python traveller_world_gen.py --name Cogri --seed 42 --html > cogri.html
 python traveller_world_gen.py --count 5
 ```
 
+### Generate an SVG system map
+
+Draw a star system as a visual orbit diagram with arc zones (one per star) and an orbit table.
+
+```bash
+# Procedurally generated system (random seed, dark background)
+python system_map.py --name Ardenne --out /tmp/ardenne_map.svg
+
+# With a fixed seed for reproducibility
+python system_map.py --name Ardenne --seed 1000 --out /tmp/ardenne_map.svg
+
+# With white background (light theme) instead of dark
+python system_map.py --name Ardenne --seed 1000 --white-bg --out /tmp/ardenne_light.svg
+
+# For multi-star systems, increase canvas width so tables have room
+python system_map.py --name Trinary --seed 5555 --width 2400 --out /tmp/trinary_map.svg
+
+# Default: random seed, name "Unnamed", output to /tmp/traveller_system_map.svg, dark background
+python system_map.py
+```
+
+The SVG shows:
+- **Arc zones** — one stacked zone per star with orbit arcs scaled to fit the canvas
+- **Companion stars** — displayed as dashed arcs in the primary star's zone for context
+- **Orbit table** — a data table zone below with orbit slots listed per star
+- **Mainworld** — highlighted in the arc zone and marked in the table
+
+Open the SVG in any web browser or image viewer. The map includes all orbital data: world type, orbit#, AU, temperature zone, and notes.
+
 **Example summary output:**
 
 ```
@@ -238,6 +288,24 @@ print(system.mainworld.uwp())     # e.g. "C473574-8"
 print(system.mainworld_orbit.orbit_number)  # e.g. 3.0
 ```
 
+### System from an existing mainworld
+
+```python
+from traveller_world_gen import World
+from traveller_system_gen import generate_system_from_world
+
+# Reconstruct a World from a previously generated (or API-returned) JSON dict
+world = World.from_dict(world_dict)    # tolerates nested or flat code forms
+
+# Generate a full star system around it — UWP and PBG are preserved exactly;
+# stellar data and orbits are fresh procedural output;
+# temperature is recalculated from the assigned orbital position
+system = generate_system_from_world(world, seed=99)
+print(system.mainworld.uwp())          # original UWP preserved
+print(system.mainworld.temperature)    # recalculated from new orbit
+print(system.mainworld_orbit.canonical_profile)  # canonical UWP stamped on orbit slot
+```
+
 ### System from TravellerMap canonical data
 
 ```python
@@ -289,7 +357,7 @@ world = generate_world(name="Regina")
 
 ## REST API (Azure Functions)
 
-The API exposes twelve HTTP endpoints across three groups.
+The API exposes thirteen HTTP endpoints across three groups.
 
 ### Mainworld endpoints — CRB generation only
 
@@ -311,6 +379,7 @@ The API exposes twelve HTTP endpoints across three groups.
 | `GET`  | `/api/system/{name}/card` | Standalone HTML system card |
 | `GET`  | `/api/system/full` | Complete system with all secondary worlds and moons |
 | `POST` | `/api/system/full` | Complete system with all secondary worlds and moons (JSON body) |
+| `POST` | `/api/system/from-world` | Full system around an existing mainworld JSON; UWP/PBG preserved |
 
 ### TravellerMap endpoints — canonical UWP + procedural orbital structure
 
@@ -345,10 +414,11 @@ structure (secondary world positions, moons) is procedurally generated.
 **`sector` is always required** — many world names exist in multiple sectors.
 Identify the world by `name` + `sector`, or by `sector` + `hex`.
 
-Returns `400 MISSING_PARAM` if sector is omitted, `404 NOT_FOUND` if the world
-cannot be found on TravellerMap, or `502 UPSTREAM_ERROR` if TravellerMap is
-unreachable. Supports the same `detail` and `format` parameters as the system
-endpoints.
+Returns `400 MISSING_PARAM` if sector is omitted, `400 INVALID_HEX` if `hex`
+is present but not a valid 4-digit hex position (e.g. `1910`), `404 NOT_FOUND`
+if the world cannot be found on TravellerMap, or `502 UPSTREAM_ERROR` if
+TravellerMap is unreachable. Supports the same `detail` and `format`
+parameters as the system endpoints.
 
 ### The `detail` parameter
 
@@ -394,6 +464,12 @@ curl "http://localhost:7071/api/map/system/Mora?sector=Spinward+Marches&seed=7&d
 curl "http://localhost:7071/api/map/system?sector=Spinward+Marches&hex=1910&format=html" \
      -o regina.html
 
+# System from existing mainworld JSON — UWP/PBG preserved; fresh stellar + orbital generation
+WORLD=$(curl -s "http://localhost:7071/api/world?name=Cogri&seed=42")
+curl -X POST "http://localhost:7071/api/system/from-world" \
+     -H "Content-Type: application/json" \
+     -d "$WORLD"
+
 # Batch of worlds
 curl -X POST "http://localhost:7071/api/worlds" \
      -H "Content-Type: application/json" \
@@ -433,7 +509,7 @@ curl "https://traveller-world-gen.azurewebsites.net/api/system/Mora?detail=true&
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TRAVELLER_MAX_BATCH_SIZE` | `20` | Maximum worlds per batch request |
+| `TRAVELLER_MAX_BATCH_SIZE` | `20` | Maximum worlds per batch request (accepted range: 1–1000) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | _(empty)_ | Application Insights telemetry |
 
 ---
@@ -450,7 +526,7 @@ pytest tests/ -v
 
 ### What is tested
 
-**`test_traveller_world_gen.py`** (342 tests, 26 classes)
+**`test_traveller_world_gen.py`** (414 tests, 27 classes)
 
 - All dice helper functions and clamp behaviour
 - Traveller hex digit conversion (0–9, A–G)
@@ -467,6 +543,8 @@ pytest tests/ -v
   (requires `pip install jsonschema`)
 - Integration tests: range bounds, uninhabited world invariants,
   seed reproducibility
+- `TestGasGiantOrbitSlot` — `gg_sah` field on `OrbitSlot`, `_gg_diameter()`
+  helper, satellite size constraint, satellite note in mainworld record
 
 **`test_function_app.py`** (98 tests, 15 classes)
 
@@ -481,7 +559,9 @@ pytest tests/ -v
 
 ## Generation rules implemented
 
-All steps follow the Traveller 2022 Core Rulebook exactly.
+### Core Rulebook (CRB pp. 248–261) — mainworld generation
+
+All 13 steps follow the Traveller 2022 Core Rulebook exactly.
 
 | Step | Characteristic | Formula |
 |------|---------------|---------|
@@ -498,6 +578,90 @@ All steps follow the Traveller 2022 Core Rulebook exactly.
 | 11 | Gas Giant | 2D ≤ 9 → present |
 | 12 | Trade Codes | Table lookup (all 18 codes) |
 | 13 | Travel Zone | Amber if Atm ≥ 10, Gov 0/7/10, or Law 0/9+ |
+
+When a mainworld is generated in orbital context (system endpoints), step 3 is
+replaced by `generate_temperature_from_orbit()`, which derives temperature from
+the world's HZ deviation rather than a random roll. When the mainworld orbit is a
+gas giant, the mainworld is generated as a satellite: size is clamped to
+`[1, gg_diameter−1]` (WBH p.57) and a note is added to the world record.
+
+---
+
+### World Builder's Handbook (WBH Sept 2023) — stellar and system generation
+
+#### Stellar generation (pp. 14–29)
+
+| Procedure | Details |
+|-----------|---------|
+| Primary star type | Spectral class (O B A F G K M) and luminosity class (Ia Ib II III IV V VI) rolled from WBH tables; Brown Dwarfs and White Dwarfs handled |
+| Star properties | Mass, temperature, diameter, and luminosity interpolated from WBH lookup tables by spectral type and subtype (0–9) |
+| System age | Rolled for primary; constrained by main-sequence lifespan; shared across all stars |
+| Multiple stars | Close, Near, and Far secondaries; tight Companion pairs (e.g. Aa/Ab) |
+| Non-primary typing | Random, Lesser, Sibling, or Twin procedure; mass ordering enforced (`candidate.mass < parent.mass`) |
+| Non-primary properties | Same interpolation tables as primary |
+
+#### Orbit placement (pp. 36–51)
+
+| Step | Procedure | Details |
+|------|-----------|---------|
+| World counts | Gas giants, belts, terrestrials | 2D rolls with DMs for luminosity class |
+| Empty orbits | Step 4 | 2D roll; result > 9 → that many empty slots added |
+| MAO | Minimum Allowable Orbit# | Interpolated from WBH table by spectral type, subtype, and luminosity class |
+| HZCO | Habitable Zone Centre Orbit# | `√(combined luminosity) × 3.0` |
+| Baseline number | Step 3 | 2D + DMs for luminosity class, companion presence, world count |
+| Baseline orbit | Step 3a/3b/3c | 3a: HZ world present; 3b: cold system (all worlds beyond HZ); 3c: hot system (all worlds inside HZ) |
+| Spread | Step 5 | `(baseline_orbit − MAO) / baseline_num`; floored and capped by available range |
+| Slot placement | Step 6 | `MAO + spread + (2D−7)×spread/10` per slot; additive gap check |
+| World type assignment | Step 8 | Pool of gas giants → belts → terrestrials placed into slots; remainder as terrestrial |
+| Mainworld selection | Step 9 | Scored by HZ proximity, temperature zone, world type, and star role |
+
+Multiple-star systems allocate worlds to each star proportionally by available
+orbital range. Primary star's `max_o` is reduced to `companion.orbit_number − 1.0`
+when a Close/Near/Far secondary is present.
+
+#### Secondary world detail (pp. 55–77, 162–163)
+
+| Procedure | Details |
+|-----------|---------|
+| SAH profile | Size, Atmosphere, Hydrographics rolled for every non-mainworld orbit slot and significant moon |
+| Population cap | `mainworld.population − 1D` rolled once per system; applied as a ceiling to all secondary worlds and moons |
+| TL viability check | `minimal_sustainable_TL(atmosphere) > mainworld_TL` → uninhabited regardless of population roll |
+| Government | Dependent procedure (WBH Case 1): 1D on Secondary World Government table |
+| Law Level | 1D−3 + Government |
+| Tech Level | 1D−1 + Population DM |
+| Spaceport | Y/H/G/F scale (not the CRB A–X starport scale) |
+| Gas giants | Never directly inhabited; moons may be |
+| Belt SAH | Fixed at `000`; atmosphere 0 used for TL viability check (TL ≥ 8 required) |
+
+#### Moon generation (pp. 55–57)
+
+| Procedure | Details |
+|-----------|---------|
+| Quantity | Size 1–2: 1D−5; Size 3–9: 2D−8; Size A–F: 2D−6; Small GG: 3D−7; Medium/Large GG: 4D−6; DM−1 per die if Orbit# < 1.0 |
+| Result = 0 | One significant ring (R) instead of moons |
+| Terrestrial moon sizing | 1D picks range: 1–3 → size S; 4–5 → D3−1 (0=ring); 6 → (parent−1) − 1D |
+| Gas giant moon sizing | 1D picks range: 1–3 → size S; 4–5 → D3−1; 6 → special table (1D: 1–3→1D, 4–5→2D−2, 6→2D+4) |
+| Twin/near-twin check | If moon size = parent−2: roll 2D; 2 → near-twin (parent−1), 12 → twin (parent) |
+| Moon size cap | Moon cannot exceed parent size |
+| Ring consolidation | Multiple rings on one planet collapsed to a single R0N entry |
+| Moon SAH and social | Full secondary world procedure using parent orbit's HZ deviation |
+
+#### Not yet implemented
+
+The following WBH procedures are explicitly out of scope:
+
+| Feature | WBH pages |
+|---------|-----------|
+| Anomalous orbits (random, eccentric, inclined, retrograde, trojan) | pp. 49–50 |
+| Orbital eccentricity | p. 51 |
+| Orbital periods | — |
+| Moon orbit placement (Hill sphere, Roche limit, PD distances) | pp. 74–77 |
+| Moon orbit adjacency DMs (3 of 4 conditions require eccentricity data) | p. 56 |
+| Secondary world independent government (Case 2) | p. 162 |
+| Secondary world classifications (Colony, Freeport, Mining, etc.) | p. 163 |
+| World physical detail beyond SAH (density, gravity, seismic stress, etc.) | pp. 74–130 |
+| Belt physical detail (span, composition, bulk, resource rating) | pp. 131–133 |
+| Post-stellar special circumstances (neutron stars, black holes, pulsars) | pp. 219+ |
 
 ---
 

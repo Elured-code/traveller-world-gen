@@ -51,7 +51,8 @@ Desktop.ini
 examples/*.html
 
 # ── Claude Code context ─────────────────────────────────────────────────────
-# Project context document for Claude Code import — contains session history
-# and internal development notes not intended for the public repository.
+# Project context and session history — internal development notes not
+# intended for the public repository.
 .context/
 .claude/
+CLAUDE.md

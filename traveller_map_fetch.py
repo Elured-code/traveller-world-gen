@@ -70,6 +70,7 @@ from __future__ import annotations
 
 import json
 import random
+import secrets
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -111,6 +112,25 @@ _VALID_TRADE_CODES = {
 # TravellerMap gives classification strings only; orbital separation is unknown,
 # so we assign close → near → far for the 2nd, 3rd, 4th+ stars.
 _SECONDARY_ROLES = ["close", "near", "far"]
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class AmbiguousWorldError(Exception):
+    """Raised when a name search matches more than one world in the same sector."""
+
+    def __init__(self, name: str, sector: str, candidates: list) -> None:
+        self.name = name
+        self.sector = sector
+        # list of (world_name: str, hex_pos: str) tuples
+        self.candidates: list = candidates
+        super().__init__(
+            f"Ambiguous world name '{name}' in '{sector}': "
+            f"{', '.join(h for _, h in candidates)}."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +217,16 @@ def _name_to_hex(name: str, sector: str, timeout: int = 10) -> str:
             f"No worlds found in sector '{sector}' matching '{name}'."
         )
 
-    for w in sector_worlds:
-        if w.get("Name", "").lower() == name.lower():
-            hex_x = int(w.get("HexX", 0))
-            hex_y = int(w.get("HexY", 0))
-            return f"{hex_x:02d}{hex_y:02d}"
+    matches = [
+        (w.get("Name", name), f"{int(w.get('HexX', 0)):02d}{int(w.get('HexY', 0)):02d}")
+        for w in sector_worlds
+        if w.get("Name", "").lower() == name.lower()
+    ]
+
+    if len(matches) == 1:
+        return matches[0][1]
+    if len(matches) > 1:
+        raise AmbiguousWorldError(name, sector, matches)
 
     raise LookupError(
         f"'{name}' not found in sector '{sector}'. "
@@ -578,8 +603,9 @@ def generate_system_from_map(
     # Step 1: fetch canonical data — mainworld is taken directly from this
     map_data = fetch_world_data(name=name, sector=sector, hex_pos=hex_pos)
 
-    if seed is not None:
-        random.seed(seed)
+    if seed is None:
+        seed = secrets.randbelow(2 ** 31)
+    random.seed(seed)
 
     # Step 2: canonical stellar system (types fixed, orbit positions random)
     stellar = reconstruct_star_system(map_data.stars_str)
