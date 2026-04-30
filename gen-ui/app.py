@@ -179,12 +179,12 @@ def _detail_row(label_text: str, value_text: str, danger: bool = False) -> QWidg
     layout.setSpacing(8)
     lbl = QLabel(label_text)
     lbl.setObjectName("row-label")
-    lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+    lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
     val = QLabel(value_text)
     val.setObjectName("danger-value" if danger else "row-value")
     val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
     val.setWordWrap(True)
-    val.setMaximumWidth(200)
+    val.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     layout.addWidget(lbl)
     layout.addWidget(val)
     return row
@@ -227,7 +227,6 @@ class AppWindow(QMainWindow):
         root.addWidget(self._build_controls())
         root.addWidget(_make_hsep(margin_v=8))
         root.addWidget(self._build_source_row())
-        root.addWidget(self._build_options_row())
         root.addWidget(_make_hsep(margin_v=8))
 
         self._status_widget = QWidget()
@@ -280,6 +279,12 @@ class AppWindow(QMainWindow):
         layout.setSpacing(12)
         layout.setContentsMargins(0, 0, 0, 0)
 
+        # Left column: radio buttons stacked above checkboxes
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        left_layout.setSpacing(6)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+
         self._radio_procedural = QRadioButton("Procedural")
         self._radio_travellermap = QRadioButton("TravellerMap")
         self._radio_group = QButtonGroup(self)
@@ -288,25 +293,45 @@ class AppWindow(QMainWindow):
         self._radio_procedural.setChecked(True)
         self._radio_procedural.toggled.connect(self._on_source_toggled)
 
-        layout.addWidget(self._radio_procedural)
-        layout.addWidget(self._radio_travellermap)
+        radio_row = QWidget()
+        radio_layout = QHBoxLayout(radio_row)
+        radio_layout.setSpacing(12)
+        radio_layout.setContentsMargins(0, 0, 0, 0)
+        radio_layout.addWidget(self._radio_procedural)
+        radio_layout.addWidget(self._radio_travellermap)
+        left_layout.addWidget(radio_row)
+
+        self._check_full_system = QCheckBox("Full system")
+        self._check_full_system.toggled.connect(self._on_full_system_toggled)
+        self._check_attach_detail = QCheckBox("Attach detail")
+        self._check_attach_detail.setEnabled(False)
+
+        check_row = QWidget()
+        check_layout = QHBoxLayout(check_row)
+        check_layout.setSpacing(12)
+        check_layout.setContentsMargins(0, 0, 0, 0)
+        check_layout.addWidget(self._check_full_system)
+        check_layout.addWidget(self._check_attach_detail)
+        left_layout.addWidget(check_row)
+
+        layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
 
         vsep = _make_vsep()
         vsep.setContentsMargins(4, 0, 4, 0)
         layout.addWidget(vsep)
 
-        sector_lbl = QLabel("Sector:")
-        sector_lbl.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(sector_lbl)
-        self._sector_entry = QLineEdit()
-        self._sector_entry.setPlaceholderText("e.g. Spinward Marches")
-        self._sector_entry.setFixedWidth(180)
-        layout.addWidget(self._sector_entry)
-
         grid_widget = QWidget()
         grid = QGridLayout(grid_widget)
         grid.setSpacing(4)
         grid.setContentsMargins(0, 0, 0, 0)
+
+        sector_lbl = QLabel("Sector:")
+        sector_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._sector_entry = QLineEdit()
+        self._sector_entry.setPlaceholderText("e.g. Spinward Marches")
+        self._sector_entry.setFixedWidth(180)
+        grid.addWidget(sector_lbl, 0, 0)
+        grid.addWidget(self._sector_entry, 0, 1)
 
         name_lbl = QLabel("Name:")
         name_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -314,8 +339,8 @@ class AppWindow(QMainWindow):
         self._tm_name_entry.setPlaceholderText("e.g. Regina")
         self._tm_name_entry.setFixedWidth(120)
         self._tm_name_entry.returnPressed.connect(self._on_generate)
-        grid.addWidget(name_lbl, 0, 0)
-        grid.addWidget(self._tm_name_entry, 0, 1)
+        grid.addWidget(name_lbl, 0, 2)
+        grid.addWidget(self._tm_name_entry, 0, 3)
 
         hex_lbl = QLabel("Hex:")
         hex_lbl.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
@@ -325,9 +350,9 @@ class AppWindow(QMainWindow):
         self._hex_entry.returnPressed.connect(self._on_generate)
         optional_lbl = QLabel("Optional")
         optional_lbl.setObjectName("hint-label")
-        grid.addWidget(hex_lbl, 1, 0)
-        grid.addWidget(self._hex_entry, 1, 1)
-        grid.addWidget(optional_lbl, 1, 2)
+        grid.addWidget(hex_lbl, 1, 2)
+        grid.addWidget(self._hex_entry, 1, 3)
+        grid.addWidget(optional_lbl, 1, 4)
 
         layout.addWidget(grid_widget)
         layout.addStretch()
@@ -336,23 +361,6 @@ class AppWindow(QMainWindow):
         self._tm_name_entry.setEnabled(False)
         self._hex_entry.setEnabled(False)
 
-        return row
-
-    def _build_options_row(self) -> QWidget:
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setSpacing(12)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        self._check_full_system = QCheckBox("Full system")
-        self._check_full_system.toggled.connect(self._on_full_system_toggled)
-        layout.addWidget(self._check_full_system)
-
-        self._check_attach_detail = QCheckBox("Attach detail")
-        self._check_attach_detail.setEnabled(False)
-        layout.addWidget(self._check_attach_detail)
-
-        layout.addStretch()
         return row
 
     # ------------------------------------------------------------------
@@ -373,9 +381,7 @@ class AppWindow(QMainWindow):
         if not checked:
             self._check_attach_detail.setChecked(False)
 
-    def _on_source_toggled(self, checked: bool) -> None:
-        if not checked:
-            return
+    def _on_source_toggled(self, checked: bool) -> None:  # pylint: disable=unused-argument
         procedural = self._radio_procedural.isChecked()
         self._sector_entry.setEnabled(not procedural)
         self._tm_name_entry.setEnabled(not procedural)
