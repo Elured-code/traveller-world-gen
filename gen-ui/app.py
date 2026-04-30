@@ -206,7 +206,7 @@ class AppWindow(QMainWindow):
         self._detail_attached: bool = False
         self._seed_auto: bool = False
         app = QApplication.instance()
-        if app is not None:
+        if isinstance(app, QApplication):
             app.setStyleSheet(_CSS)
         self._build_ui()
         self._setup_shortcuts()
@@ -596,8 +596,10 @@ class AppWindow(QMainWindow):
     def _clear_status(self) -> None:
         while self._status_layout.count():
             item = self._status_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item is not None:
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
 
     def _show_placeholder(self) -> None:
         self._clear_status()
@@ -856,7 +858,8 @@ class AppWindow(QMainWindow):
             is_empty = orbit.world_type == "empty"
             css = "table-mw" if is_mw else ("table-dim" if is_empty else "table-cell")
             hz_str = "★ HZ" if orbit.is_habitable_zone else ""
-            type_str = _WORLD_TYPE_LABEL.get(orbit.world_type, orbit.world_type)
+            _wt = str(orbit.world_type)
+            type_str = _WORLD_TYPE_LABEL.get(_wt, _wt)
             zone_str = orbit.temperature_zone.capitalize()
 
             if detail_attached:
