@@ -36,8 +36,10 @@ The human author reviewed, directed, and is responsible for the code.
 from __future__ import annotations
 import json, math, random
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from traveller_stellar_gen import Star, StarSystem, _orbit_to_au, ORBIT_AU
+if TYPE_CHECKING:
+    from traveller_world_detail import WorldDetail
 
 
 def roll(n: int, dm: int = 0) -> int:
@@ -186,6 +188,7 @@ class OrbitSlot:
     notes: str = ""
     canonical_profile: str = ""  # UWP set when mainworld comes from canonical data
     gg_sah: str = ""             # gas giant SAH rolled at orbit gen time (e.g. "GM9")
+    detail: Optional["WorldDetail"] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
         d = {
@@ -205,9 +208,8 @@ class OrbitSlot:
         if self.gg_sah:
             d["gg_sah"] = self.gg_sah
         # Include secondary world / satellite detail if attach_detail() has run
-        detail = getattr(self, "detail", None)
-        if detail is not None:
-            d["detail"] = detail.to_dict()
+        if self.detail is not None:
+            d["detail"] = self.detail.to_dict()
         return d
 
 
@@ -281,7 +283,7 @@ class SystemOrbits:
         for o in self.orbits:
             hz   = "★" if o.is_habitable_zone else " "
             mw   = "  ← mainworld" if o.is_mainworld_candidate else ""
-            detail = getattr(o, "detail", None)
+            detail = o.detail
             if o.canonical_profile:
                 profile = o.canonical_profile
             elif detail is not None:

@@ -108,7 +108,6 @@ The human author reviewed, directed, and is responsible for the code.
 from __future__ import annotations
 
 import random
-from typing import Optional
 
 from traveller_orbit_gen import OrbitSlot, SystemOrbits
 from traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
@@ -560,8 +559,7 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:
             # Gas giants: never directly inhabited (moons are out of scope).
             # Reuse the SAH rolled at orbit-gen time if available so the
             # diameter seen here matches the mainworld satellite size constraint.
-            existing_sah = getattr(orbit, "gg_sah", "")
-            sah = (existing_sah if existing_sah
+            sah = (orbit.gg_sah if orbit.gg_sah
                    else _gas_giant_sah(host.spectral_type, host.lum_class))
             result[key] = WorldDetail(sah=sah)
 
@@ -694,7 +692,7 @@ def system_body_table(system: TravellerSystem) -> str:
     ]
 
     for o in orbits.orbits:
-        detail = getattr(o, "detail", None)
+        detail = o.detail
         mw_mark = " ← mainworld" if o.is_mainworld_candidate else ""
         if o.is_mainworld_candidate and system.mainworld:
             profile = system.mainworld.uwp()

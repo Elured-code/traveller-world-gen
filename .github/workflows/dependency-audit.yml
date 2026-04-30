@@ -1,0 +1,53 @@
+name: Dependency vulnerability scan
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      # Hard fail if any vulnerability is found in either requirements file.
+      # Each step is separate so the failure identifies which file is affected.
+      - name: Audit Azure Functions dependencies
+        run: pip-audit --requirement requirements.txt
+
+      - name: Audit gen-ui dependencies (PySide6)
+        run: pip-audit --requirement gen-ui/requirements.txt
+
+      # Always generate and upload JSON reports, even when the audit steps fail,
+      # so the specific findings are available without re-running locally.
+      - name: Generate JSON reports
+        if: always()
+        run: |
+          pip-audit --requirement requirements.txt --format json \
+            --output azure-audit.json || true
+          pip-audit --requirement gen-ui/requirements.txt --format json \
+            --output genui-audit.json || true
+
+      - name: Upload audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-results
+          path: |
+            azure-audit.json
+            genui-audit.json
+          retention-days: 30

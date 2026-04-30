@@ -18,6 +18,7 @@ A technical reference for developers working on the `traveller-world-gen` codeba
    - [traveller_moon_gen.py](#46-traveller_moon_genpy)
    - [function_app.py and shared/helpers.py](#47-function_apppy-and-sharedhelperspy)
    - [traveller_map_fetch.py](#48-traveller_map_fetchpy)
+   - [system_map.py](#49-system_mappy)
 5. [Key design decisions](#5-key-design-decisions)
 6. [Compliance audit history](#6-compliance-audit-history)
 7. [Deferred and out-of-scope features](#7-deferred-and-out-of-scope-features)
@@ -51,14 +52,15 @@ traveller-world-gen/
 ├── traveller_moon_gen.py       # Moon quantity, sizing, and SAH/social detail
 ├── traveller_map_fetch.py      # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
 ├── traveller_world_schema.json # JSON Schema (draft 2020-12) for World.to_dict()
+├── system_map.py               # SVG star system map: per-star arc zones, log-AU radial scale, orbit table
 │
 ├── function_app.py             # Azure Functions HTTP endpoints (13 routes)
 ├── shared/
 │   └── helpers.py              # Request parsing, response builders, error codes
 ├── gen-ui/
-│   ├── app.py                  # GTK4 desktop UI — fully working
+│   ├── app.py                  # PySide6 (Qt6) desktop UI — fully working
 │   ├── README.md               # Setup, usage, and keyboard shortcut reference
-│   └── requirements.txt        # Dependency notes (Homebrew) and HTML rendering constraints
+│   └── requirements.txt        # Dependency list (PySide6>=6.4.0; bundled Qt, no system libs required)
 │
 ├── tests/
 │   ├── test_traveller_world_gen.py   # Unit tests — mainworld generation
@@ -214,8 +216,8 @@ class OrbitSlot:
                             # mainworld placed here; takes display priority over detail.profile
     gg_sah: str             # gas giant SAH rolled at orbit-gen time (e.g. "GM9");
                             # empty string for non-gas-giant slots
-    # Attached after generate_system_detail():
-    detail: Optional[WorldDetail]  # set by attach_detail()
+    detail: Optional[WorldDetail] = field(default=None, init=False)
+                            # populated by attach_detail(); None until then
 
 @dataclass
 class SystemOrbits:
@@ -376,6 +378,7 @@ class WorldDetail:
     tech_level: int
     spaceport: str      # Y/H/G/F for secondaries; "-" default
     moons: list         # List[Moon], populated by attach_detail()
+    trade_codes: list   # List[str]; empty for gas giants and rings
 
     # computed properties:
     .inhabited -> bool
@@ -499,11 +502,19 @@ system: TravellerSystem = generate_system_from_map(
 ```
 
 Raises `LookupError` if the world is not found on TravellerMap.
+Raises `AmbiguousWorldError` if a name search matches more than one world in the same sector.
 Raises `urllib.error.URLError` if the API is unreachable.
 
 **Key dataclasses and functions:**
 
 ```python
+class AmbiguousWorldError(Exception):
+    # Raised when a name search matches more than one world in the same sector.
+    # Attributes:
+    name: str
+    sector: str
+    candidates: list  # list of (world_name: str, hex_pos: str) tuples
+
 @dataclass
 class MapWorldData:
     name: str
@@ -535,6 +546,8 @@ World data is fetched in two steps:
 
 If `hex_pos` is provided directly (bypassing name search), step 1 is skipped.
 `sector` is always required for both steps.
+
+**Duplicate world names within a sector:** The Spinward Marches alone has seven pairs of worlds sharing a name (e.g. Aramis at 2540 and 3110). `_name_to_hex()` raises `AmbiguousWorldError` (carrying a `candidates` list of `(name, hex)` tuples) when a name search returns more than one exact match. Callers that supply `hex_pos` directly bypass this entirely. The gen-ui shows a modal disambiguation dialog and re-calls with the selected hex position.
 
 **Pipeline inside `generate_system_from_map()`:**
 
@@ -577,6 +590,57 @@ python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --format
 
 # Uninhabited worlds are handled correctly
 python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detail
+```
+
+---
+
+### 4.9 `system_map.py`
+
+Generates an SVG diagram of a complete star system. The canvas has two zones stacked vertically:
+
+- **Arc zones** — one per star that has orbit slots. Each zone uses its own log-AU radial scale so the star's orbits fill the available width. Arcs are right-facing semicircles; the sweep angle per orbit is set so every arc reaches the same top and bottom y-coordinate within its zone. Companion-star dashed arcs are rendered inside the primary zone for context.
+- **Table zone** — one column per star, listing orbit slots in orbit-number order. Column count grows with the stellar system; use `--width` to avoid cramping on multi-star systems.
+
+**Key public API:**
+
+```python
+svg_str, canvas_height = build_svg(
+    system: TravellerSystem,
+    canvas_w: int = 1600,
+    palette: ColourPalette = PALETTE_DARK,
+) -> tuple[str, int]
+
+save_output(svg_str: str, path: str) -> None
+```
+
+`build_svg()` calls `attach_detail()` internally (it needs world types and SAH codes to colour-code the arcs). The returned SVG string is self-contained and can be written to a file or embedded in HTML.
+
+**Colour palettes:**
+
+```python
+@dataclass(frozen=True)
+class ColourPalette:
+    bg, gg, inh, uninh, belt, star_pri, star_sec,
+    mainworld, text, dim, axis, leader: str
+
+PALETTE_DARK   # dark background (default)
+PALETTE_LIGHT  # white background (--white-bg flag)
+```
+
+**CLI:**
+
+```bash
+# Random system, dark background, written to /tmp/traveller_system_map.svg
+python system_map.py
+
+# Named system with seed, white background, custom output path
+python system_map.py --name Ardenne --seed 1000 --white-bg --out ardenne.svg
+
+# Wider canvas for multi-star systems
+python system_map.py --seed 42 --width 2400
+
+# Open in default viewer after writing (macOS/Linux)
+python system_map.py --name Mora --seed 7
 ```
 
 ---
@@ -728,6 +792,15 @@ python traveller_world_gen.py --name Cogri --seed 42 --json
 
 # Moon generation detail (legacy entry point)
 python traveller_world_detail.py --name Varanthos --seed 6056
+
+# SVG star system map (dark background by default)
+python system_map.py --name Ardenne --seed 1000 --out ardenne.svg
+
+# White background (for printing / light-theme display)
+python system_map.py --name Ardenne --seed 1000 --white-bg --out ardenne-light.svg
+
+# Wider canvas for multi-star systems
+python system_map.py --seed 42 --width 2400 --out multi-star.svg
 ```
 
 ### Running the tests
@@ -753,6 +826,12 @@ The Azure Functions SDK is stubbed automatically by `conftest.py` if not install
 pip install -r requirements.txt
 func start   # requires Azure Functions Core Tools v4
 ```
+
+### CI — dependency vulnerability scan
+
+`.github/workflows/dependency-audit.yml` runs `pip-audit` on every branch push and on pull requests targeting `main`. It audits `requirements.txt` and `gen-ui/requirements.txt` separately (two named steps) and hard-fails the workflow if any vulnerability is found. A JSON report artifact is always uploaded (30-day retention) so findings are readable without re-running locally.
+
+To make the audit a required check that blocks merges: Settings → Branches → branch protection rule for `main` → Require status checks → add `pip-audit`.
 
 ---
 
