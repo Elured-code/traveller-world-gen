@@ -330,6 +330,11 @@
       "type": "string",
       "description": "PBG string encoding Population multiplier, Belt count, and Gas giant count as a three-character string (e.g. '312' = P3, 1 belt, 2 gas giants). Each digit uses standard Traveller notation. Format introduced in MegaTraveller and used on Travellermap.com.",
       "pattern": "^[0-9][0-9][0-9A-G]$"
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The RNG seed used to generate this world. Pass this value as the 'seed' parameter to reproduce identical output."
     }
   },
   "$defs": {

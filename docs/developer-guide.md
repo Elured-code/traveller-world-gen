@@ -52,9 +52,13 @@ traveller-world-gen/
 ├── traveller_map_fetch.py      # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
 ├── traveller_world_schema.json # JSON Schema (draft 2020-12) for World.to_dict()
 │
-├── function_app.py             # Azure Functions HTTP endpoints (12 routes)
+├── function_app.py             # Azure Functions HTTP endpoints (13 routes)
 ├── shared/
 │   └── helpers.py              # Request parsing, response builders, error codes
+├── gen-ui/
+│   ├── app.py                  # GTK4 desktop UI — fully working
+│   ├── README.md               # Setup, usage, and keyboard shortcut reference
+│   └── requirements.txt        # Dependency notes (Homebrew) and HTML rendering constraints
 │
 ├── tests/
 │   ├── test_traveller_world_gen.py   # Unit tests — mainworld generation
@@ -105,6 +109,24 @@ attach_detail(system)              →  optional secondary detail
 ```
 
 `generate_full_system()` in `traveller_system_gen.py` is the main entry point for most callers. It calls the stellar and orbit generators internally, then constructs the mainworld using `generate_mainworld_at_orbit()`. Calling `attach_detail()` afterwards populates secondary world and moon data; this is a separate step because it is expensive and not always needed.
+
+For systems built from an existing mainworld JSON, a separate path is provided:
+
+```
+World.from_dict(world_dict)        →  World  (UWP/PBG preserved, no dice)
+       ↓
+generate_system_from_world(world, seed)
+       ↓
+generate_stellar_data()            →  StarSystem  (fresh procedural)
+generate_orbits()                  →  SystemOrbits (fresh procedural)
+PBG reconciliation                 →  overrides orbit gas/belt counts with world values
+canonical_profile stamped          →  mainworld orbit slot gets world.uwp()
+generate_temperature_from_orbit()  →  temperature recalculated from new orbital HZ deviation
+       ↓
+TravellerSystem  (assembled)
+       ↓  (optional)
+attach_detail()
+```
 
 **RNG state is global.** All modules use `random.seed()` / `random.randint()` directly. The seed is set once at the top of `generate_full_system()` when a seed is provided, and every subsequent roll in the pipeline consumes from that same RNG sequence. This means the order of calls matters: adding or removing any roll anywhere in the pipeline will shift all subsequent results for a given seed.
 
@@ -190,6 +212,8 @@ class OrbitSlot:
     notes: str
     canonical_profile: str  # set by generate_system_from_map() — canonical UWP of the
                             # mainworld placed here; takes display priority over detail.profile
+    gg_sah: str             # gas giant SAH rolled at orbit-gen time (e.g. "GM9");
+                            # empty string for non-gas-giant slots
     # Attached after generate_system_detail():
     detail: Optional[WorldDetail]  # set by attach_detail()
 
@@ -225,6 +249,11 @@ The integration layer. Imports from all three other generation modules.
 
 ```python
 system: TravellerSystem = generate_full_system(name: str = "Unknown", seed: int = None)
+
+system: TravellerSystem = generate_system_from_world(world: World, seed: int = None)
+# Generates fresh stellar data and orbits around an existing World object.
+# Preserves UWP and PBG; recalculates temperature from the assigned orbital position.
+# Stamps canonical_profile on the mainworld orbit slot (same as TravellerMap path).
 ```
 
 **Key dataclass:**
@@ -238,6 +267,8 @@ class TravellerSystem:
     mainworld_orbit: Optional[OrbitSlot]
     # methods: .to_dict(), .to_json(), .summary(), .to_html(detail_attached)
 ```
+
+**Gas giant mainworld (WBH p.57):** When the selected mainworld orbit is a gas giant, `generate_mainworld_at_orbit()` generates the mainworld as a satellite of that giant rather than the giant itself. The helper `_gg_diameter(gg_sah: str) -> int` decodes the eHex diameter digit from the gas giant's `gg_sah` string (e.g. `"GM9"` → 9 Terran diameters). The satellite's size is clamped to `min(max(generate_size(), 1), gg_diameter - 1)`. A note recording the host giant's SAH and orbital position is appended to `world.notes`. The `gg_sah` value used here was rolled at orbit-gen time and stored in `OrbitSlot.gg_sah`, so there is no second SAH roll.
 
 **Temperature integration (WBH p.46–47):** This module implements the critical link between orbital position and world temperature. Rather than rolling temperature randomly as in the standalone CRB procedure, `generate_temperature_from_orbit()` converts an orbit's HZ deviation to the raw 2D roll that the CRB temperature table expects, then applies atmosphere DMs. The mapping:
 
@@ -304,6 +335,8 @@ class World:
     # methods: .uwp(), .summary(), .to_dict(), .to_json(), .to_html()
 ```
 
+**`World.from_dict(d)`** reconstructs a `World` from the dict produced by `to_dict()`. It handles both the nested form (`starport: {code: "A", ...}`) and flat forms where the value is the code directly. Missing fields receive safe defaults. Used by `generate_system_from_world()` and the `/api/system/from-world` endpoint.
+
 **eHex encoding:** Traveller uses a base-17 encoding for UWP digits above 9: 10=A, 11=B … 16=G. The `to_hex(value)` helper handles this throughout. Size S (sub-size-1) moons use the string `"S"` in code but this does not appear in standard UWP strings.
 
 **JSON Schema:** `traveller_world_schema.json` validates the output of `World.to_dict()`. It uses `"additionalProperties": false` throughout and validates UWP strings against `^[ABCDEX][0-9A-G]{6}-[0-9A-G]$`.
@@ -362,7 +395,7 @@ class WorldDetail:
 | 6–9        | 0         | No special equipment |
 | A+         | 8         | Hostile environment suit |
 
-**Gas giants** are never directly inhabited. Their moons can be.
+**Gas giants** are never directly inhabited. Their moons can be. The gas giant's SAH is read from `orbit.gg_sah` when available (set at orbit-gen time by `_gg_sah_roll()`), so the diameter seen in the detail table is consistent with the satellite size constraint applied when the mainworld was generated. If `orbit.gg_sah` is empty (legacy data), a fresh SAH is rolled as a fallback.
 
 **Belts** use atmosphere 0 for the TL viability check, so they are only inhabited when the mainworld TL ≥ 8.
 
@@ -396,14 +429,14 @@ class Moon:
     is_ring: bool = False
     is_gas_giant_moon: bool = False  # moon is itself a small gas giant
     detail: Optional[WorldDetail] = None  # populated by attach_detail()
-    # _ring_count: int  # informal attribute set on ring Moons by _consolidate()
+    _ring_count: int    # field(default=1, init=False) — set by _consolidate()
 
     # properties: .size_str, __repr__
 ```
 
 **Quantity DM:** The only DM currently applied is `DM-1 per dice` when `orbit_number < 1.0`. Other adjacency conditions (companion-induced MAO, Close/Near star exclusion zone proximity) require eccentricity data that is not yet generated, so they are omitted.
 
-**Ring consolidation:** Multiple rings rolled for a single planet are merged into one `Moon(is_ring=True)` with `_ring_count` set to the total. The display string for two rings is `R02`. This attribute is informal (not in `__slots__` or `__init__`) and set by `_consolidate()`.
+**Ring consolidation:** Multiple rings rolled for a single planet are merged into one `Moon(is_ring=True)` with `_ring_count` set to the total. The display string for two rings is `R02`. `_ring_count` is declared as `field(default=1, init=False)` in the dataclass so it is a known field for type checkers, even though it is not accepted by `__init__`.
 
 **Moon detail generation** (`_moon_detail()` in `traveller_world_detail.py`): Uses the **parent planet's HZ deviation**, not the moon's own position, because moons share their parent's orbital distance from the star. Size S and size 0–1 moons automatically receive atmosphere 0 and hydrographics 0 (too small to retain atmosphere). Size 2+ moons go through the full `generate_atmosphere` / `generate_hydrographics` pipeline.
 
@@ -427,14 +460,23 @@ The Azure Functions REST API layer. Not required for local use of the generation
 | GET/POST | `/api/system/full` | Complete system — all secondary worlds and moons always attached; selectable `format` |
 | GET/POST | `/api/map/system` | TravellerMap world — canonical UWP; procedural orbits |
 | GET | `/api/map/system/{name}` | Same; name from URL |
+| POST | `/api/system/from-world` | Full system around an existing mainworld JSON; UWP/PBG preserved |
 
-Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` endpoints return `text/html; charset=utf-8`. `/api/system/full` and `/api/map/system` with `format=text` return `text/plain; charset=utf-8`.
+Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` endpoints return `text/html; charset=utf-8`. `/api/system/full`, `/api/map/system`, and `/api/system/from-world` with `format=text` return `text/plain; charset=utf-8`.
 
-**`parse_format(req)` helper** (`shared/helpers.py`): Extracts the `format` parameter from query string or JSON body. Returns one of `"json"` (default), `"html"`, or `"text"`. Used by `/api/system/full` and the map endpoints.
+**`parse_format(req)` helper** (`shared/helpers.py`): Extracts the `format` parameter from query string or JSON body. Returns one of `"json"` (default), `"html"`, or `"text"`. Used by `/api/system/full`, the map endpoints, and `/api/system/from-world`.
+
+**`parse_hex_pos(req, body=None)` helper** (`shared/helpers.py`): Extracts and validates the optional `hex` query/body parameter. Accepts a 4-digit hex position matching `[0-9A-Fa-f]{4}` (e.g. `"1910"`). Returns `(hex_str, None)` if valid or absent; returns `(None, error_response)` with error code `INVALID_HEX` if the value is present but wrongly formatted. Used by both map/system endpoints.
+
+**`parse_world_json(req)` helper** (`shared/helpers.py`): Extracts and validates a mainworld JSON object from the request body. The body must be a dict containing at minimum `uwp` or the characteristic sub-fields (`size`, `atmosphere`, `hydrographics`, `population`). Returns `(dict, None)` if valid; `(None, error_response)` with code `INVALID_BODY` if the body is absent, not JSON, or missing required fields. Used exclusively by `/api/system/from-world`.
+
+**`max_batch_size()` helper** (`shared/helpers.py`): Reads `TRAVELLER_MAX_BATCH_SIZE` from the environment and returns it as an integer, falling back to `DEFAULT_MAX_BATCH = 20` on parse failure. The returned value is bounds-checked to `1–1000`; values outside that range are silently replaced with the default.
 
 **`/api/system/full` behaviour:** Calls `generate_full_system()` then unconditionally calls `attach_detail()`. No `detail` parameter is accepted or needed. The `format` parameter then controls serialisation: `to_dict()` for JSON, `to_html(detail_attached=True)` for HTML, `summary()` for text.
 
-**`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). Supports `detail` and `format` identically to the system endpoints.
+**`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). The `URLError` handler logs the upstream detail server-side but returns only a generic message to the caller. Supports `detail` and `format` identically to the system endpoints.
+
+**`/api/system/from-world` behaviour:** Calls `parse_world_json()` to validate the body, reconstructs a `World` via `World.from_dict()`, then calls `generate_system_from_world()`. PBG counts from the world are reconciled into the generated `SystemOrbits`. The mainworld orbit slot receives `canonical_profile = world.uwp()`. Temperature is recalculated from orbital HZ deviation — the temperature in the input JSON is discarded. Supports `detail` and `format` identically to the system endpoints. Returns `400 INVALID_BODY` if the body is missing or malformed.
 
 ---
 
@@ -551,11 +593,13 @@ python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detai
 
 **Secondary world government defaults to dependent (Case 1).** The WBH provides two government procedures for secondary worlds: dependent (roll 1D on the Secondary World Government table) and independent (roll 2D-7 + Population). The current implementation uses the dependent (Case 1) table for all secondary worlds. This is the most common case and keeps the social generation self-contained without requiring Referee input about political independence.
 
+**Gas giant SAH is rolled at orbit-gen time.** `_gg_sah_roll()` in `traveller_orbit_gen.py` rolls and stores the gas giant SAH (GS/GM/GL + diameter digit) in `OrbitSlot.gg_sah` during `generate_orbits()`. This solves two problems: (1) `generate_mainworld_at_orbit()` needs the gas giant diameter to constrain satellite size, but importing `traveller_world_detail` would create a circular import; (2) the SAH value must be the same whether it is accessed for satellite sizing (in system_gen) or for the detail table (in world_detail), so it must be rolled once and shared. Inlining the roll in orbit_gen avoids the circular import and ensures consistency. The RNG sequence shifts for any system that contains a gas giant — an unavoidable consequence of inserting new dice rolls earlier in the pipeline.
+
 ---
 
 ## 6. Compliance audit history
 
-Three bugs were found and fixed during a formal compliance audit of `traveller_orbit_gen.py` against WBH pp. 44–51.
+The bugs below were found during development and testing and corrected. Each entry notes the severity, root cause, and post-fix verification.
 
 **Step 3b — cold system baseline formula (high severity).** The original code computed `baseline_orbit = anchor + abs(baseline_num) + total_slots * 0.1 + var`. The WBH formula is `HZCO − baseline_number + Total Worlds + (2D−7)/10`, which adds Total Worlds as whole Orbit# units. Multiplying by 0.1 compressed an 8-world system's outward shift from 8.0 Orbit# down to 0.8 Orbit#. Post-fix: 97.8% → 0% genuine violations. Fixed in `generate_orbits()`, Step 3b branch.
 
@@ -564,6 +608,20 @@ Three bugs were found and fixed during a formal compliance audit of `traveller_o
 **Step 6 — outermost orbit exceeds max_o (low severity).** The clamp `current = min(current, max_o)` was applied at the start of each loop iteration, but after the spacing-fallback branch could push `current` above `max_o`. Fixed by clamping before appending and also clamping the fallback path. Post-fix: 0 violations in 10,000 systems.
 
 **Non-primary star mass ordering (separate fix).** Early versions compared non-primary star types using only the spectral letter (e.g., both M0 V and M7 V are "M"), but mass varies significantly within a spectral type. Fixed to compare `candidate.mass > parent.mass` directly.
+
+**Orbit spread range — inner-system clustering (medium severity).** Two interacting bugs caused all worlds to cluster near the inner system regardless of the star type or system size.
+
+*Bug 1 — missing minimum spread:* When `baseline_num` is close to `total_slots` (as in the normal Step 3a path), the formula `spread = (baseline_orbit - mao) / baseline_num` collapses to approximately `HZCO / total_slots`. For a G-type star with 8 worlds this gives spread ≈ 0.4, placing every world within Orbit# 3.5 (≈ 1.5 AU) regardless of the available range.
+
+*Bug 2 — multiplicative gap check:* The slot-spacing fallback `if current <= slots[-1] * 1.1` triggered continuously for any orbit number above `spread / 0.1` (e.g., beyond Orbit# 4 with spread 0.4), halving the effective spacing on every outer step.
+
+Fixed by adding `min_spread = avail / max(total_slots * 2, 1)` as a floor so that worlds always span at least half the available range, and by changing the gap check to additive: `if current - slots[-1] < spread * 0.4`. Post-fix: single-star systems routinely place worlds from ≈ 0.5 AU to 20+ AU; binary systems are correctly limited by their companion orbit geometry.
+
+**Sub-Orbit#1 deviation scaling amplifies temperature errors for dim stars (high severity).** `hz_deviation_to_raw_roll()` in `traveller_system_gen.py` and `_temp_zone()` in `traveller_orbit_gen.py` both applied a scaling formula `eff_dev = hz_deviation / min(hzco, orbit)` for positions below Orbit#1. This was intended to scale deviations that occur on a compressed sub-AU orbit scale. However, `is_habitable_zone` used the unscaled deviation (`|dev| <= 1.0`), so worlds were classified as being in the HZ based on unscaled deviation, yet had their temperature computed from an inflated deviation. For dim M-type stars where HZCO rounds to approximately 0.000, the denominator collapsed to 0.01, amplifying deviations by up to 50×. Statistical test over 2,000 systems confirmed 22% of HZ mainworlds were assigned Frozen temperatures — 0% is the correct result for worlds at exactly the HZCO. Fix: the scaling was removed from both functions. The WBH HZ Regions table (p.46) is defined in terms of orbit# deviation directly, with no secondary scaling. Post-fix: 0% frozen-in-HZ from orbital position; HZ mainworld distribution is approximately 50% Temperate, 30% Cold, 20% Hot after atmosphere DMs.
+
+**Gas giant mainworld generates terrestrial UWP instead of satellite UWP (medium severity).** `generate_mainworld_at_orbit()` had a `"belt"` branch but no `"gas_giant"` branch. When the selected mainworld orbit was a gas giant, generation fell through to the terrestrial path, rolling size 0–10 freely — including sizes 8–10 that are impossible for any moon, and with no relation to the host giant's size. Statistical analysis over 1,000 systems confirmed 13.8% were affected. Fix: `_gg_sah_roll()` was inlined in `traveller_orbit_gen.py` to roll and store the gas giant SAH in `OrbitSlot.gg_sah` during `generate_orbits()`. A new gas giant branch in `generate_mainworld_at_orbit()` treats the mainworld as a satellite: size is clamped to `[1, gg_diameter − 1]` (WBH p.57), with normal atmosphere/temperature/hydrographics generation and a satellite note appended to the world. `traveller_world_detail.py` reuses `orbit.gg_sah` rather than re-rolling. The RNG sequence shifts for all systems containing a gas giant (unavoidable new dice at orbit-gen time).
+
+**Ag trade code applied to unpopulated worlds (medium severity).** `assign_trade_codes()` in `traveller_world_gen.py` checked `4 <= size <= 9` (a spurious size criterion not present in CRB p.260), `4 <= atmosphere <= 8` (upper bound off by one), and `5 <= hydrographics <= 7` (range shifted vs. CRB). The population criterion `5 <= population <= 7` was missing entirely, allowing uninhabited worlds (population 0) and underpopulated or overpopulated worlds to receive the Ag code. Fix (Session 15): replaced the check with the correct CRB p.260 criteria — `4 <= atmosphere <= 9`, `4 <= hydrographics <= 8`, `5 <= population <= 7`. Six boundary tests added. No RNG sequence change — `assign_trade_codes()` is deterministic given its arguments and calls no dice rolls.
 
 ---
 

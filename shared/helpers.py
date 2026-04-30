@@ -27,6 +27,8 @@ import json
 import logging
 import os
 import random
+import re
+import secrets
 from typing import Any, Optional, Tuple
 
 import azure.functions as func
@@ -43,12 +45,17 @@ logger = logging.getLogger(__name__)
 # the limit can be adjusted in Azure App Settings without redeploying.
 DEFAULT_MAX_BATCH = 20
 
+_MAX_BATCH_UPPER = 1000
+
 def max_batch_size() -> int:
     """Return the maximum allowed batch size, from env or default."""
     try:
-        return int(os.environ.get("TRAVELLER_MAX_BATCH_SIZE", DEFAULT_MAX_BATCH))
-    except ValueError:
-        return DEFAULT_MAX_BATCH
+        size = int(os.environ.get("TRAVELLER_MAX_BATCH_SIZE", DEFAULT_MAX_BATCH))
+        if 1 <= size <= _MAX_BATCH_UPPER:
+            return size
+    except (ValueError, OverflowError):
+        pass
+    return DEFAULT_MAX_BATCH
 
 
 # ---------------------------------------------------------------------------
@@ -109,6 +116,7 @@ ERR_INVALID_SEED       = "INVALID_SEED"
 ERR_INVALID_COUNT      = "INVALID_COUNT"
 ERR_COUNT_TOO_LARGE    = "COUNT_TOO_LARGE"
 ERR_INVALID_BODY       = "INVALID_BODY"
+ERR_INVALID_HEX        = "INVALID_HEX"
 ERR_NAME_TOO_LONG      = "NAME_TOO_LONG"
 ERR_MISSING_PARAM      = "MISSING_PARAM"
 ERR_NOT_FOUND          = "NOT_FOUND"
@@ -319,16 +327,93 @@ def parse_sector(
     return sector, None
 
 
-def apply_seed(seed: Optional[int]) -> None:
-    """Seed the global random state if a seed was requested.
+_HEX_RE = re.compile(r"^[0-9A-Fa-f]{4}$")
 
-    This function is intentionally simple: it calls random.seed() directly.
+
+def parse_hex_pos(
+    req: func.HttpRequest,
+    body: Optional[dict] = None,
+) -> Tuple[Optional[str], Optional[func.HttpResponse]]:
+    """Extract and validate the optional hex-position parameter.
+
+    Accepts ?hex=... in the query string or {"hex": "..."} in the body.
+    Valid format: exactly four hex digits, e.g. "1910" or "0204".
+
+    Returns:
+        (hex_str, None)    if valid or absent.
+        (None, error_resp) if present but not a valid 4-digit hex position.
+    """
+    hex_pos = req.params.get("hex", "").strip() or None
+    if not hex_pos and body and isinstance(body, dict):
+        hex_pos = str(body.get("hex", "")).strip() or None
+    if hex_pos and not _HEX_RE.match(hex_pos):
+        return None, error(
+            "'hex' must be a 4-digit hex grid position (e.g. '1910').",
+            ERR_INVALID_HEX,
+        )
+    return hex_pos, None
+
+
+def parse_world_json(
+    req: func.HttpRequest,
+) -> Tuple[Optional[dict], Optional[func.HttpResponse]]:
+    """Extract and validate a mainworld JSON object from the request body.
+
+    The body must be a JSON object in the shape produced by World.to_dict().
+    Minimal required fields: 'name' plus either 'uwp' or the individual
+    characteristic sub-objects ('size', 'atmosphere', 'hydrographics',
+    'population').
+
+    Returns:
+        (world_dict, None)   if valid.
+        (None, error_resp)   if absent or invalid.
+    """
+    if not req.get_body():
+        return None, error(
+            "Request body is required and must be a mainworld JSON object.",
+            ERR_INVALID_BODY,
+        )
+    try:
+        data = req.get_json()
+    except (ValueError, TypeError):
+        return None, error("Request body is not valid JSON.", ERR_INVALID_BODY)
+
+    if not isinstance(data, dict):
+        return None, error(
+            "Request body must be a JSON object (mainworld data).",
+            ERR_INVALID_BODY,
+        )
+
+    has_uwp = "uwp" in data
+    has_breakdown = all(k in data for k in ("size", "atmosphere", "hydrographics", "population"))
+    if not has_uwp and not has_breakdown:
+        return None, error(
+            "Request body must include 'uwp' or the individual world "
+            "characteristic fields (size, atmosphere, hydrographics, population).",
+            ERR_INVALID_BODY,
+        )
+
+    return data, None
+
+
+def apply_seed(seed: Optional[int]) -> int:
+    """Seed the global random state and return the seed used.
+
+    If *seed* is None a cryptographically random seed is generated via
+    :mod:`secrets` so that results are always reproducible: callers can
+    record the returned value and pass it back to reproduce the same output.
+
     Azure Functions runs one worker per invocation in the consumption plan,
     so there is no cross-request state leak, but note that in a Premium/
     Dedicated plan with warm instances the seed would affect all subsequent
     calls on that instance.  For production use at scale, consider passing
     the seed through to the generation logic rather than using global state.
+
+    Returns:
+        The integer seed that was applied to :func:`random.seed`.
     """
-    if seed is not None:
-        random.seed(seed)
-        logger.debug("Random seed set to %d", seed)
+    if seed is None:
+        seed = secrets.randbelow(2 ** 31)
+    random.seed(seed)
+    logger.debug("Random seed set to %d", seed)
+    return seed

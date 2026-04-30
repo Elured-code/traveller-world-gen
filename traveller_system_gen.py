@@ -54,6 +54,7 @@ from __future__ import annotations
 
 import json
 import random
+import secrets
 from dataclasses import dataclass
 from typing import Optional
 
@@ -96,25 +97,22 @@ def hz_deviation_to_raw_roll(
 
     The raw roll is the 2D result BEFORE atmosphere DMs are applied.
     A raw roll of 7 corresponds to the HZCO itself (deviation 0).
-    Negative deviation (closer = hotter) lowers the raw roll.
-    Positive deviation (further = colder) raises the raw roll.
+    Negative deviation (closer = hotter) raises the raw roll toward Boiling.
+    Positive deviation (further = colder) lowers the raw roll toward Frozen.
 
-    For sub-Orbit#1 positions (WBH p.42) the effective deviation is
-    scaled by dividing by the smaller of HZCO or the world's Orbit#.
+    The hzco and orbit parameters are retained for API compatibility but are
+    no longer used; the WBH HZ Regions table (p.46) is applied directly to
+    the unscaled orbit# deviation.  Sub-Orbit#1 scaling was removed because
+    it conflicts with is_habitable_zone (which uses the unscaled deviation) and
+    produces absurd results for dim stars (HZCO ≈ 0 amplified 50×).
 
     Returns an int in range 2-12 (clamped).
     """
-    # Scale deviation for sub-Orbit#1 positions
-    if hzco < 1.0 or orbit < 1.0:
-        denom = max(min(hzco, orbit), 0.01)
-        eff_dev = hz_deviation / denom
-    else:
-        eff_dev = hz_deviation
-
-    # Map deviation to raw roll via the HZ Regions table
+    # Map deviation to raw roll via the HZ Regions table (WBH p.46)
     # HZCO = raw roll 7 (deviation 0)
     # Each 0.1 Orbit# away from HZCO shifts the raw roll by ~1
-    # Exact boundaries from WBH table:
+    eff_dev = hz_deviation
+
     if eff_dev >= 1.1:
         raw = 2        # Frozen
     elif eff_dev >= 1.0:
@@ -485,6 +483,16 @@ pre{{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
 </html>"""
 
 
+_GG_EHEX = "0123456789ABCDEFGHIJ"
+
+
+def _gg_diameter(gg_sah: str) -> int:
+    """Return the numeric diameter from a gas giant SAH string (e.g. 'GM9' → 9)."""
+    if len(gg_sah) >= 3 and gg_sah[2].upper() in _GG_EHEX:
+        return _GG_EHEX.index(gg_sah[2].upper())
+    return 8  # fallback: mid-range GM diameter
+
+
 def generate_mainworld_at_orbit(
     name: str,
     orbit: OrbitSlot,
@@ -519,6 +527,26 @@ def generate_mainworld_at_orbit(
             hz_deviation=orbit.hz_deviation,
             hzco=hzco,
             orbit=orbit.orbit_number,
+        )
+    elif orbit.world_type == "gas_giant":
+        # The mainworld is a satellite of the gas giant, not the giant itself.
+        # Size is constrained: at least 1, at most gg_diameter-1 (WBH p.57).
+        gg_sah = getattr(orbit, "gg_sah", "")
+        gg_diam = _gg_diameter(gg_sah)
+        world.size = min(max(generate_size(), 1), gg_diam - 1)
+        world.atmosphere = generate_atmosphere(world.size)
+        world.temperature = generate_temperature_from_orbit(
+            atmosphere=world.atmosphere,
+            hz_deviation=orbit.hz_deviation,
+            hzco=hzco,
+            orbit=orbit.orbit_number,
+        )
+        world.hydrographics = generate_hydrographics(
+            world.size, world.atmosphere, world.temperature
+        )
+        world.notes.append(
+            f"Mainworld is a satellite of gas giant {gg_sah or '?'} "
+            f"at Orbit# {orbit.orbit_number:.2f} ({orbit.orbit_au:.2f} AU)"
         )
     else:
         # Steps 1-2: Size and Atmosphere (random as normal)
@@ -618,8 +646,9 @@ def generate_full_system(
     Returns:
         A TravellerSystem containing stellar data, orbits, and mainworld.
     """
-    if seed is not None:
-        random.seed(seed)
+    if seed is None:
+        seed = secrets.randbelow(2 ** 31)
+    random.seed(seed)
 
     # Step 1: Stars
     stellar = generate_stellar_data()
@@ -646,6 +675,73 @@ def generate_full_system(
         stellar_system=stellar,
         system_orbits=orbits,
         mainworld=mainworld,
+        mainworld_orbit=mw_orbit,
+    )
+
+
+def generate_system_from_world(
+    world: World,
+    seed: Optional[int] = None,
+) -> TravellerSystem:
+    """
+    Generate a complete Traveller star system around an existing mainworld.
+
+    The world's UWP, bases, trade codes, and PBG values are preserved
+    exactly. New stellar data and orbital structure are generated
+    procedurally. The mainworld's temperature is recalculated from its
+    assigned orbital position to remain consistent with the host star's
+    habitable zone.
+
+    The canonical UWP is stamped on the mainworld orbit slot so the
+    HTML/JSON output always shows the correct profile, following the same
+    pattern used for TravellerMap canonical systems.
+
+    Args:
+        world: An existing World object (e.g. from World.from_dict()).
+        seed:  Optional RNG seed for reproducible stellar/orbital generation.
+
+    Returns:
+        A TravellerSystem with the supplied world placed as the mainworld.
+    """
+    if seed is None:
+        seed = secrets.randbelow(2 ** 31)
+    random.seed(seed)
+
+    stellar = generate_stellar_data()
+    orbits = generate_orbits(stellar)
+
+    # Reconcile PBG: honour the world's canonical gas giant and belt counts
+    # rather than the freshly generated orbit counts.
+    orbits.gas_giant_count = world.gas_giant_count
+    orbits.belt_count = world.belt_count
+
+    mw_orbit = orbits.mainworld_orbit
+
+    if mw_orbit is not None:
+        # Stamp canonical UWP on the orbit slot (mirrors TravellerMap path).
+        mw_orbit.canonical_profile = world.uwp()
+
+        # Recalculate temperature from orbital position ("orbital temperature,
+        # not random" design rule — the JSON value is discarded).
+        hzco = orbits.star_hzco.get(mw_orbit.star_designation, 1.0)
+        world.temperature = generate_temperature_from_orbit(
+            atmosphere=world.atmosphere,
+            hz_deviation=mw_orbit.hz_deviation,
+            hzco=hzco,
+            orbit=mw_orbit.orbit_number,
+        )
+        world.notes.append(
+            f"System generated from existing mainworld UWP {world.uwp()}. "
+            f"Placed at Star {mw_orbit.star_designation} Orbit# "
+            f"{mw_orbit.orbit_number:.2f} ({mw_orbit.orbit_au:.3f} AU), "
+            f"HZ deviation {mw_orbit.hz_deviation:+.2f}; "
+            f"temperature recalculated as {world.temperature}."
+        )
+
+    return TravellerSystem(
+        stellar_system=stellar,
+        system_orbits=orbits,
+        mainworld=world,
         mainworld_orbit=mw_orbit,
     )
 

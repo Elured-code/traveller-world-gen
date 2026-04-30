@@ -142,17 +142,34 @@ def get_hzco(star: Star, combined_lum: Optional[float] = None) -> float:
     return _au_to_orbit(hzco_au)
 
 
-def _temp_zone(deviation: float, hzco: float, orbit: float) -> str:
-    if hzco < 1.0 or orbit < 1.0:
-        denom = max(min(hzco, orbit), 0.01)
-        dev = deviation / denom
-    else:
-        dev = deviation
-    if dev >= 1.0:   return "frozen"
-    elif dev >= 0.2: return "cold"
-    elif dev >= -0.2:return "temperate"
-    elif dev >= -1.0:return "hot"
-    else:            return "boiling"
+def _temp_zone(deviation: float, hzco: float, orbit: float) -> str:  # pylint: disable=unused-argument
+    if deviation >= 1.0:   return "frozen"
+    elif deviation >= 0.2: return "cold"
+    elif deviation >= -0.2:return "temperate"
+    elif deviation >= -1.0:return "hot"
+    else:                  return "boiling"
+
+
+_GG_EHEX = "0123456789ABCDEFGHIJ"
+
+
+def _gg_sah_roll(spectral: str, lum_class: str) -> str:
+    """Roll gas giant SAH (WBH p.55): GS#, GM#, or GL# with a hex diameter digit."""
+    dm = 0
+    if spectral == "BD" or lum_class == "VI" or (spectral == "M" and lum_class == "V"):
+        dm = -1
+    cat = random.randint(1, 6) + dm
+    if cat <= 2:
+        d3a = (random.randint(1, 6) + 1) // 2
+        d3b = (random.randint(1, 6) + 1) // 2
+        diameter = d3a + d3b            # 2-6
+        return f"GS{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
+    if cat <= 4:
+        diameter = random.randint(1, 6) + 6  # 7-12
+        return f"GM{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
+    # WBH p.55 GL: 2D+6 → 8-18
+    diameter = random.randint(1, 6) + random.randint(1, 6) + 6
+    return f"GL{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
 
 
 @dataclass
@@ -168,6 +185,7 @@ class OrbitSlot:
     is_mainworld_candidate: bool = False
     notes: str = ""
     canonical_profile: str = ""  # UWP set when mainworld comes from canonical data
+    gg_sah: str = ""             # gas giant SAH rolled at orbit gen time (e.g. "GM9")
 
     def to_dict(self) -> dict:
         d = {
@@ -184,6 +202,8 @@ class OrbitSlot:
         }
         if self.canonical_profile:
             d["canonical_profile"] = self.canonical_profile
+        if self.gg_sah:
+            d["gg_sah"] = self.gg_sah
         # Include secondary world / satellite detail if attach_detail() has run
         detail = getattr(self, "detail", None)
         if detail is not None:
@@ -467,7 +487,14 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
         # spread unit, preventing outer slots from piling up at the ceiling.
         avail = max_o - mao
         max_spread = avail / max(total_slots + n_total_stars, 1)
-        spread = max(0.01, min(spread, max_spread))
+        # Minimum spread: when baseline_num is large the formula above collapses
+        # to HZCO/total_slots (~0.4 for a G star with 8 worlds), pinning all
+        # slots near the inner system.  Enforce a floor so worlds span at least
+        # half the available range.
+        min_spread = avail / max(total_slots * 2, 1)
+        spread = max(min_spread, min(spread, max_spread))
+        spread = min(spread, max_spread)
+        spread = max(0.01, spread)
 
         # Place slots (WBH p.48-49)
         # Inner Slot Orbit# = (MAO + Spread) + (2D-7) × Spread/10
@@ -477,7 +504,9 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
         current = max(mao, current)
         for _ in range(total_slots):
             current = max(mao, min(current, max_o))
-            if slots and current <= slots[-1] * 1.1:
+            # Additive gap check (was multiplicative `* 1.1`, which triggered
+            # constantly once orbit# exceeded spread/0.1 and halved every step).
+            if slots and current - slots[-1] < spread * 0.4:
                 current = min(slots[-1] + spread * 0.5, max_o)
             # Stop if we cannot advance past the last slot (at ceiling)
             if slots and round(current, 2) == round(slots[-1], 2):
@@ -498,11 +527,15 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
                 wtype = pool[pool_idx]; pool_idx += 1
             else:
                 wtype = "terrestrial"
+            slot_gg_sah = (
+                _gg_sah_roll(star.spectral_type, star.lum_class)
+                if wtype == "gas_giant" else ""
+            )
             result.orbits.append(OrbitSlot(
                 star_designation=d, orbit_number=on, orbit_au=au,
                 slot_index=si+1, world_type=wtype,
                 is_habitable_zone=in_hz, hz_deviation=round(dev,3),
-                temperature_zone=tz,
+                temperature_zone=tz, gg_sah=slot_gg_sah,
             ))
 
     result.orbits.sort(key=lambda o: (o.star_designation, o.orbit_au))

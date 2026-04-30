@@ -1,0 +1,25 @@
+# GTK4 UI dependencies
+#
+# PySide6 bundles Qt — no system packages (Homebrew, apt, etc.) required.
+# Install into the project venv:
+#
+#   .venv-1/bin/pip install "PySide6>=6.4.0"
+#
+# Then run the app:
+#
+#   .venv-1/bin/python3 gen-ui/app.py
+#
+PySide6>=6.4.0
+
+# HTML rendering
+#
+# The app displays generated world cards as native Qt widgets.
+# The full HTML card is still available via Open in Browser and Save as HTML.
+# To embed HTML in-app on any platform, WebEngineWidgets is available in
+# PySide6 (PySide6-Essentials includes QtWebEngineWidgets):
+#
+#   from PySide6.QtWebEngineWidgets import QWebEngineView
+#   view = QWebEngineView()
+#   view.setHtml(html)
+#
+# This is a deferred feature — the current in-app card uses native widgets.
