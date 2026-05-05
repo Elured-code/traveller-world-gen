@@ -75,8 +75,12 @@ from traveller_world_gen import (
     generate_population_multiplier,
     assign_trade_codes,
     assign_travel_zone,
+    to_hex,
     ATMOSPHERE_MIN_TL,
     ATMOSPHERE_NAMES,
+    GOVERNMENT_NAMES,
+    HYDROGRAPHIC_NAMES,
+    STARPORT_QUALITY_LABEL,
     TEMPERATURE_DM,
 )
 
@@ -85,7 +89,7 @@ from traveller_world_gen import (
 # HZ deviation → raw temperature roll  (WBH p.46-47)
 # ---------------------------------------------------------------------------
 
-def hz_deviation_to_raw_roll(
+def hz_deviation_to_raw_roll(  # pylint: disable=unused-argument
     hz_deviation: float,
     hzco: float,
     orbit: float,
@@ -172,12 +176,14 @@ class TravellerSystem:
     mainworld_orbit: Optional[OrbitSlot]
 
     def to_dict(self) -> dict:
+        """Serialise this system to a JSON-compatible dict."""
         d = self.stellar_system.to_dict()
         d["orbits"] = self.system_orbits.to_dict()
         d["mainworld"] = self.mainworld.to_dict() if self.mainworld else None
         return d
 
     def to_json(self, indent: int = 2) -> str:
+        """Serialise this system to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     def summary(self) -> str:
@@ -197,7 +203,7 @@ class TravellerSystem:
         )
 
         if detail_attached:
-            from traveller_world_detail import system_body_table
+            from traveller_world_detail import system_body_table  # pylint: disable=import-outside-toplevel
             orbital_section = system_body_table(self)
         else:
             orbital_section = self.system_orbits.summary()
@@ -218,7 +224,7 @@ class TravellerSystem:
             lines.append(mw.summary())
         return "\n".join(lines)
 
-    def to_html(self, detail_attached: bool = False) -> str:
+    def to_html(self, detail_attached: bool = False) -> str:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         """Return a self-contained HTML system card.
 
         Suitable for saving as a standalone .html file or serving directly
@@ -231,12 +237,7 @@ class TravellerSystem:
             Pass True when attach_detail() has already been called so the
             card includes secondary world profiles and satellite data.
         """
-        from traveller_world_detail import system_body_table
-        from traveller_world_gen import STARPORT_QUALITY, to_hex
-
         mw  = self.mainworld
-        mwo = self.mainworld_orbit
-        st  = self.stellar_system.primary
 
         def esc(s: str) -> str:
             return (str(s).replace("&","&amp;").replace("<","&lt;")
@@ -312,7 +313,7 @@ class TravellerSystem:
             if detail is not None:
                 for mi, moon in enumerate(detail.moons or [], 1):
                     if moon.is_ring:
-                        rc = getattr(moon, "_ring_count", 1)
+                        rc = moon.ring_count
                         mp = f"R{rc:02d}"
                         moon_codes_html = ""
                     elif moon.detail is not None:
@@ -336,10 +337,6 @@ class TravellerSystem:
 
         # ── Mainworld panel ───────────────────────────────────────────────
         if mw:
-            from traveller_world_gen import (
-                ATMOSPHERE_NAMES, GOVERNMENT_NAMES,
-                HYDROGRAPHIC_NAMES, STARPORT_QUALITY_LABEL,
-            )
             trade_badges = "".join(
                 f'<span class="badge trade">{esc(tc)}</span>'
                 for tc in mw.trade_codes
@@ -374,7 +371,8 @@ class TravellerSystem:
             mw_panel = '<p class="no-val">No mainworld determined.</p>'
 
         title       = esc(mw.name if mw else "Unknown") + " system"
-        age         = f"{self.stellar_system.age_gyr:.2f} Gyr" if self.stellar_system.age_gyr else "?"
+        age         = (f"{self.stellar_system.age_gyr:.2f} Gyr"
+                       if self.stellar_system.age_gyr else "?")
         nw          = self.system_orbits.total_worlds
         star_classes = " + ".join(esc(s.classification()) for s in self.stellar_system.stars)
 
@@ -751,8 +749,9 @@ def generate_system_from_world(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    import argparse
-    import sys as _sys
+    """Generate a Traveller star system and print it to stdout."""
+    import argparse  # pylint: disable=import-outside-toplevel
+    import sys as _sys  # pylint: disable=import-outside-toplevel
 
     parser = argparse.ArgumentParser(
         description=(
@@ -794,7 +793,7 @@ def main() -> None:
         out_format = "text"
         want_detail = args.detail
 
-    from traveller_world_detail import attach_detail
+    from traveller_world_detail import attach_detail  # pylint: disable=import-outside-toplevel
 
     for i in range(args.count):
         system = generate_full_system(
@@ -810,7 +809,7 @@ def main() -> None:
         elif out_format == "html":
             if args.count > 1:
                 _sys.stderr.write(
-                    f"Warning: --html with --count > 1 outputs multiple HTML documents.\n"
+                    "Warning: --html with --count > 1 outputs multiple HTML documents.\n"
                 )
             print(system.to_html(detail_attached=want_detail))
         else:

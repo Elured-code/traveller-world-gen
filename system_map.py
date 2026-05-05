@@ -237,6 +237,9 @@ def build_svg(system: Any, canvas_w: int = 1600, palette: ColourPalette = PALETT
         f'width="{canvas_w}" height="{canvas_h}" '
         f'style="background:{palette.bg};font-family:\'Courier New\',monospace">'
     )
+    s.append(
+        f'<rect x="0" y="0" width="{canvas_w}" height="{canvas_h}" fill="{palette.bg}"/>'
+    )
 
     # ══════════════════════════════════════════════════════════════════════════
     # ARC ZONES — one per active star, stacked vertically
@@ -450,6 +453,7 @@ def build_svg(system: Any, canvas_w: int = 1600, palette: ColourPalette = PALETT
     # ══════════════════════════════════════════════════════════════════════════
     # TABLE ZONE — one column per star, rows grow downward
     # ══════════════════════════════════════════════════════════════════════════
+    s.append('<g font-family="\'Courier New\', Courier, monospace">')
     hdr_y  = sep_y + _TBL_HDR_OFF
     uln_y  = sep_y + _TBL_ULN_OFF
     row0_y = sep_y + _TBL_ROW0_OFF
@@ -560,6 +564,7 @@ def build_svg(system: Any, canvas_w: int = 1600, palette: ColourPalette = PALETT
                 f'{esc(hz_tag)}{esc(o.temperature_zone)}{esc(moons_str)}</text>'
             )
 
+    s.append('</g>')
     s.append('</svg>')
     return "\n".join(s), canvas_h
 
