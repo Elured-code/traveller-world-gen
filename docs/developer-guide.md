@@ -876,6 +876,28 @@ pip install -r requirements.txt
 func start   # requires Azure Functions Core Tools v4
 ```
 
+### Linting (Pylint)
+
+All six generation modules target **10.00/10 per file** with Pylint 4.x. Check a single file:
+
+```bash
+.venv-1/bin/pylint traveller_stellar_gen.py
+```
+
+Multi-file runs will show R0801 (duplicate-code) due to shared HTML boilerplate in `traveller_system_gen.py` and `traveller_world_gen.py`. This is expected — the code is intentionally kept separate (different data structures) and the per-file target is what matters.
+
+Common inline suppression comments used in this codebase (with `# pylint: disable=`):
+
+| Message | Reason |
+|---------|--------|
+| `too-many-arguments` / `too-many-positional-arguments` | Helpers with 5+ params |
+| `too-many-locals` | Complex generation functions |
+| `too-many-instance-attributes` | Dataclasses and `__slots__` classes |
+| `too-many-branches` / `too-many-statements` / `too-many-return-statements` | Rule-table dispatch functions |
+| `import-outside-toplevel` | `argparse`/`sys` inside `main()`; lazy imports to break circular deps |
+| `locally-disabled,suppressed-message` | Module-level disable comment to suppress I0011/I0020 noise |
+| `broad-exception-caught` | All endpoint handlers (deliberate) |
+
 ### CI — dependency vulnerability scan
 
 `.github/workflows/dependency-audit.yml` runs `pip-audit` on every branch push and on pull requests targeting `main`. It audits `requirements.txt` and `gen-ui/requirements.txt` separately (two named steps) and hard-fails the workflow if any vulnerability is found. A JSON report artifact is always uploaded (30-day retention) so findings are readable without re-running locally.

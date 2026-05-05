@@ -25,6 +25,8 @@ AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
 
+# pylint: disable=wrong-import-position,no-name-in-module,import-error,too-many-lines
+
 import os
 import random
 import secrets
@@ -63,7 +65,7 @@ from PySide6.QtWidgets import (  # noqa: E402
 from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
 
 try:
-    from PySide6.QtSvgWidgets import QSvgWidget as _QSvgWidget
+    from PySide6.QtSvgWidgets import QSvgWidget as _QSvgWidget  # pylint: disable=ungrouped-imports
     _HAS_SVG_WIDGET = True
 except ImportError:
     _HAS_SVG_WIDGET = False
@@ -172,11 +174,16 @@ def _orbit_profile(orbit: object) -> str:
 
 
 def _tl_era(tl: int) -> str:
-    if tl <= 3:  return "Primitive"
-    if tl <= 6:  return "Industrial"
-    if tl <= 9:  return "Pre-Stellar"
-    if tl <= 11: return "Early Stellar"
-    if tl <= 14: return "Average Stellar"
+    if tl <= 3:
+        return "Primitive"
+    if tl <= 6:
+        return "Industrial"
+    if tl <= 9:
+        return "Pre-Stellar"
+    if tl <= 11:
+        return "Early Stellar"
+    if tl <= 14:
+        return "Average Stellar"
     return "High Stellar"
 
 
@@ -206,7 +213,7 @@ def _detail_row(label_text: str, value_text: str, danger: bool = False) -> QWidg
 _MAP_CANVAS_W = 1600
 
 
-class SystemMapWindow(QMainWindow):
+class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
     """Separate, non-modal window that renders an SVG system map."""
 
     def __init__(self, system: object) -> None:
@@ -303,7 +310,9 @@ class SystemMapWindow(QMainWindow):
 # ---------------------------------------------------------------------------
 
 
-class AppWindow(QMainWindow):
+class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many-instance-attributes,attribute-defined-outside-init
+    """Main application window for the Traveller World Generator."""
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Traveller World Generator")
@@ -348,6 +357,7 @@ class AppWindow(QMainWindow):
         self._show_placeholder()
 
     def _build_controls(self) -> QWidget:
+        # pylint: disable=attribute-defined-outside-init
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setSpacing(8)
@@ -383,7 +393,8 @@ class AppWindow(QMainWindow):
 
         return row
 
-    def _build_source_row(self) -> QWidget:
+    def _build_source_row(self) -> QWidget:  # pylint: disable=too-many-locals,too-many-statements
+        # pylint: disable=attribute-defined-outside-init
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setSpacing(12)
@@ -540,7 +551,7 @@ class AppWindow(QMainWindow):
                 world = generate_world(name)
                 self._finish_generation(world)
 
-    def _do_travellermap_generation(
+    def _do_travellermap_generation(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         sector: str,
         search_name: "str | None",
@@ -594,7 +605,7 @@ class AppWindow(QMainWindow):
             self._html_path = path
         self._show_system_summary(system)
 
-    def _show_disambiguation_dialog(
+    def _show_disambiguation_dialog(  # pylint: disable=too-many-locals
         self,
         error: AmbiguousWorldError,
         seed: int,
@@ -675,7 +686,9 @@ class AppWindow(QMainWindow):
             content = obj.summary()  # type: ignore[attr-defined]
         else:
             if self._current_system is not None:
-                content = obj.to_html(detail_attached=self._detail_attached)  # type: ignore[attr-defined]
+                content = obj.to_html(  # type: ignore[attr-defined]
+                    detail_attached=self._detail_attached
+                )
             else:
                 content = obj.to_html()  # type: ignore[attr-defined]
 
@@ -803,8 +816,8 @@ class AppWindow(QMainWindow):
         self, system: object
     ) -> "tuple[QWidget, QCheckBox]":
         mw = system.mainworld  # type: ignore[attr-defined]
-        bar = QWidget()
-        layout = QHBoxLayout(bar)
+        header = QWidget()
+        layout = QHBoxLayout(header)
         layout.setSpacing(10)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -853,9 +866,10 @@ class AppWindow(QMainWindow):
         layout.addWidget(vsep)
 
         layout.addWidget(self._build_action_buttons())
-        return bar, orbit_toggle
+        return header, orbit_toggle
 
     def _build_action_buttons(self) -> QWidget:
+        # pylint: disable=attribute-defined-outside-init
         box = QWidget()
         layout = QHBoxLayout(box)
         layout.setSpacing(8)
@@ -887,8 +901,8 @@ class AppWindow(QMainWindow):
         return box
 
     def _build_summary_header(self, world: object) -> QWidget:
-        bar = QWidget()
-        layout = QHBoxLayout(bar)
+        header = QWidget()
+        layout = QHBoxLayout(header)
         layout.setSpacing(10)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -913,9 +927,9 @@ class AppWindow(QMainWindow):
         layout.addWidget(spacer)
 
         layout.addWidget(self._build_action_buttons())
-        return bar
+        return header
 
-    def _build_stellar_card(self, system: object) -> QGroupBox:
+    def _build_stellar_card(self, system: object) -> QGroupBox:  # pylint: disable=too-many-locals
         group = QGroupBox("Stellar System")
         grid = QGridLayout(group)
         grid.setSpacing(4)
@@ -953,7 +967,7 @@ class AppWindow(QMainWindow):
 
         return group
 
-    def _build_orbits_card(
+    def _build_orbits_card(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         self, system: object, detail_attached: bool = False
     ) -> QGroupBox:
         group = QGroupBox("System Orbits")
@@ -1033,7 +1047,7 @@ class AppWindow(QMainWindow):
             if detail_attached and detail is not None:
                 for mi, moon in enumerate(detail.moons or [], 1):  # type: ignore[attr-defined]
                     if moon.is_ring:
-                        ring_count = getattr(moon, "_ring_count", 1)
+                        ring_count = moon.ring_count
                         moon_profile = f"R{ring_count:02d}"
                         moon_type = "ring"
                         moon_codes = ""
@@ -1132,7 +1146,7 @@ class AppWindow(QMainWindow):
         )
         return row
 
-    def _build_detail_cards(self, w: object, d: dict) -> QWidget:
+    def _build_detail_cards(self, w: object, d: dict) -> QWidget:  # pylint: disable=too-many-locals
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setSpacing(8)
@@ -1147,14 +1161,24 @@ class AppWindow(QMainWindow):
         pb.setContentsMargins(8, 4, 8, 6)
         gear = d["atmosphere"]["survival_gear"]
         gear_danger = gear not in ("None", "Varies")
+        hydro_desc = d['hydrographics']['description'].split(' (')[0]
         for lbl_text, val_text, danger in [
-            ("Atmosphere",      f"{_to_hex(w.atmosphere)} — {d['atmosphere']['name']}", False),  # type: ignore[attr-defined]
-            ("Survival gear",   gear,                                                          gear_danger),
-            ("Temperature",     w.temperature,                                                 False),   # type: ignore[attr-defined]
-            ("Hydrographics",   f"{_to_hex(w.hydrographics)} — {d['hydrographics']['description'].split(' (')[0]}", False),  # type: ignore[attr-defined]
-            ("Gas giants",      str(w.gas_giant_count) if w.has_gas_giant else "None",        False),   # type: ignore[attr-defined]
-            ("Planetoid belts", str(w.belt_count),                                             False),   # type: ignore[attr-defined]
-            ("PBG",             f"{w.population_multiplier}{w.belt_count}{w.gas_giant_count}", False),   # type: ignore[attr-defined]
+            ("Atmosphere",
+             f"{_to_hex(w.atmosphere)} — {d['atmosphere']['name']}",  # type: ignore[attr-defined]
+             False),
+            ("Survival gear",   gear, gear_danger),
+            ("Temperature",     w.temperature, False),  # type: ignore[attr-defined]
+            ("Hydrographics",
+             f"{_to_hex(w.hydrographics)} — {hydro_desc}",  # type: ignore[attr-defined]
+             False),
+            ("Gas giants",
+             str(w.gas_giant_count) if w.has_gas_giant else "None",  # type: ignore[attr-defined]
+             False),
+            ("Planetoid belts", str(w.belt_count), False),  # type: ignore[attr-defined]
+            ("PBG",
+             f"{w.population_multiplier}"  # type: ignore[attr-defined]
+             f"{w.belt_count}{w.gas_giant_count}",  # type: ignore[attr-defined]
+             False),
         ]:
             pb.addWidget(_detail_row(lbl_text, val_text, danger))
         layout.addWidget(phys)
@@ -1166,13 +1190,18 @@ class AppWindow(QMainWindow):
         sb = QVBoxLayout(soc)
         sb.setSpacing(0)
         sb.setContentsMargins(8, 4, 8, 6)
-        pop_str = f"{_to_hex(w.population)} — {d['population']['range']}"  # type: ignore[attr-defined]
+        pop_str = (
+            f"{_to_hex(w.population)} — {d['population']['range']}"  # type: ignore[attr-defined]
+        )
         if w.population > 0:  # type: ignore[attr-defined]
             pop_str += f"  (P={w.population_multiplier})"  # type: ignore[attr-defined]
-        bases_str = "  ".join(_BASE_FULL.get(b, b) for b in w.bases) or "None"  # type: ignore[attr-defined]
+        bases_str = (
+            "  ".join(_BASE_FULL.get(b, b) for b in w.bases) or "None"  # type: ignore[attr-defined]
+        )
         for lbl_text, val_text in [
             ("Population", pop_str),
-            ("Government", f"{_to_hex(w.government)} — {d['government']['name']}"),  # type: ignore[attr-defined]
+            ("Government",
+             f"{_to_hex(w.government)} — {d['government']['name']}"),  # type: ignore[attr-defined]
             ("Law level",  _to_hex(w.law_level)),  # type: ignore[attr-defined]
             ("Bases",      bases_str),
         ]:
@@ -1231,6 +1260,7 @@ class AppWindow(QMainWindow):
 
 
 def main() -> None:
+    """Launch the Traveller World Generator desktop application."""
     app = QApplication(sys.argv)
     app.setApplicationName("Traveller World Generator")
     window = AppWindow()
