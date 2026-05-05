@@ -38,7 +38,10 @@ import json
 import random
 import argparse
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from traveller_world_physical import WorldPhysical
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +285,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     trade_codes:    List[str] = field(default_factory=list)
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
+    physical:       Optional["WorldPhysical"] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -372,6 +376,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             "trade_codes": self.trade_codes,
             "travel_zone": self.travel_zone,
             "notes": self.notes,
+            **({"physical": self.physical.to_dict()} if self.physical else {}),
         }
 
     def to_json(self, indent: int = 2) -> str:
