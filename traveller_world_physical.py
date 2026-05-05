@@ -157,26 +157,40 @@ def _roll_diameter(size: int) -> int:
 # Axial Tilt Table (WBH p.77)
 # ---------------------------------------------------------------------------
 
-# Each entry: (upper_bound_inclusive, base_degrees, dice_count, multiplier)
-# Roll 2D selects a band; 1D within that band gives: base + 1D × multiplier
-# Result is clamped to [0, 90].
-_TILT_BANDS: list[tuple[int, int, int, int]] = [
-    (2,   0, 0,  0),   # 2:    0° (negligible tilt)
-    (5,   0, 1,  5),   # 3-5:  1D × 5°  =  5-30°
-    (8,  20, 1,  5),   # 6-8:  20 + 1D × 5°  = 25-50°
-    (10, 40, 1,  5),   # 9-10: 40 + 1D × 5°  = 45-70°
-    (99, 60, 1,  5),   # 11+:  60 + 1D × 5°  = 65-90°
-]
+def _roll_extreme_axial_tilt() -> float:
+    """Placeholder for the WBH Extreme Axial Tilt sub-table (WBH p.77).
+
+    The full extreme table is not yet implemented; returns a high-tilt
+    value until the sub-table rules are added.
+    """
+    # Extreme axial tilt sub-table not yet implemented (WBH p.77).
+    return float(30 + _roll(2) * 5)   # 40-90° placeholder
 
 
-def _roll_axial_tilt() -> int:
-    """Roll axial tilt in degrees (0-90) from the Axial Tilt Table."""
-    band_roll = _roll(2)
-    for bound, base, dice, mult in _TILT_BANDS:
-        if band_roll <= bound:
-            tilt = base + (random.randint(1, 6) * mult if dice else 0)
-            return min(90, max(0, tilt))
-    return 0
+def _roll_axial_tilt() -> float:
+    """Roll axial tilt in degrees from the Axial Tilt Table (WBH p.77).
+
+    2D selects the band; the per-band formula gives the result in degrees.
+    Bands and formulas (WBH p.77):
+      2-4  : (1D-1) / 50        →  0.00 – 0.10°
+      5    : 1D / 5             →  0.20 – 1.20°
+      6    : 1D                 →  1 – 6°
+      7    : 6 + 1D             →  7 – 12°
+      8-9  : 5 + (1D × 5)      →  10 – 35°
+      ≥10  : extreme axial tilt table
+    """
+    result = _roll(2)
+    if result <= 4:
+        return round((random.randint(1, 6) - 1) / 50, 2)
+    if result == 5:
+        return round(random.randint(1, 6) / 5, 1)
+    if result == 6:
+        return float(random.randint(1, 6))
+    if result == 7:
+        return float(6 + random.randint(1, 6))
+    if result <= 9:
+        return float(5 + random.randint(1, 6) * 5)
+    return _roll_extreme_axial_tilt()
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +237,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     mass: float             # Relative to Earth
     gravity: float          # Surface gravity in G
     escape_velocity: float  # km/s
-    axial_tilt: int         # Degrees (0-90)
+    axial_tilt: float       # Degrees (0-90)
     day_length: float       # Rotation period in standard hours
 
     def to_dict(self) -> dict:
