@@ -34,10 +34,10 @@ Axial Tilt (WBH p.77):
   Roll 2D to select a tilt band; roll 1D within that band for degrees.
   Result clamped to 0-90°.
 
-Day Length (WBH p.77-78):
-  Roll 2D to select a rotation period band; roll 1D within that band.
-  Result in standard hours. Tidal locking (requires orbital data) is
-  out of scope and will be handled separately.
+Basic Rotation Rate (WBH p.103):
+  Terrestrial worlds: (2D-2) × 4 + 2 + 1D + DMs  (hours)
+  DM: +1 per 2 full Gyrs of system age (round down).
+  Tidal effects require orbital data and are deferred.
 
 Licence
 -------
@@ -194,29 +194,27 @@ def _roll_axial_tilt() -> float:
 
 
 # ---------------------------------------------------------------------------
-# Day Length Table (WBH p.77-78)
+# Basic Rotation Rate (WBH p.103)
 # ---------------------------------------------------------------------------
 
-# Each entry: (upper_bound_inclusive, base_hours, dice_count, multiplier)
-# Roll 2D selects a band; rolls within that band give: base + nD × multiplier
-# Result stored in standard hours (1 decimal place).
-_DAY_LENGTH_BANDS: list[tuple[int, int, int, int]] = [
-    (3,   6, 1,  2),   # 2-3:   6 + 1D × 2h  =  8-18h  (fast rotator)
-    (6,  14, 1,  4),   # 4-6:  14 + 1D × 4h  = 18-38h  (standard)
-    (9,  30, 1, 10),   # 7-9:  30 + 1D × 10h = 40-90h  (slow rotator)
-    (11, 60, 2, 10),   # 10-11: 60 + 2D × 10h = 80-180h
-    (99,100, 2, 25),   # 12:  100 + 2D × 25h = 150-400h (very slow)
-]
+def _age_dm(age_gyr: float) -> int:
+    """Return the age DM for the Basic Rotation Rate roll (WBH p.103).
+
+    DM+1 per 2 full Gyrs of system age, rounded down.
+    """
+    return int(age_gyr // 2)
 
 
-def _roll_day_length() -> float:
-    """Roll rotation period in hours from the Day Length Table."""
-    band_roll = _roll(2)
-    for bound, base, dice, mult in _DAY_LENGTH_BANDS:
-        if band_roll <= bound:
-            hours = base + _roll(dice) * mult
-            return round(float(hours), 1)
-    return 24.0
+def _roll_day_length(age_gyr: float = 0.0) -> float:
+    """Roll basic rotation period in hours for a terrestrial world (WBH p.103).
+
+    Formula: (2D-2) × 4 + 2 + 1D + DMs
+    DM: +1 per 2 full Gyrs of system age (round down).
+    Tidal effects are not applied here; they require orbital data.
+    """
+    dm = _age_dm(age_gyr)
+    hours = (_roll(2) - 2) * 4 + 2 + random.randint(1, 6) + dm
+    return round(float(max(1, hours)), 1)
 
 
 # ---------------------------------------------------------------------------
@@ -258,13 +256,14 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_world_physical(world: "World") -> Optional[WorldPhysical]:
+def generate_world_physical(  # pylint: disable=too-many-positional-arguments,too-many-arguments
+        world: "World",
+        age_gyr: float = 0.0,
+) -> Optional[WorldPhysical]:
     """Generate physical characteristics for a mainworld.
 
-    Implements WBH pp. 74-77: diameter, composition, density, mass,
-    surface gravity, and escape velocity.  Derived properties are
-    calculated from diameter and density using standard formulae
-    (WBH p.76-77).
+    Implements WBH pp. 74-77, 103: diameter, composition, density, mass,
+    surface gravity, escape velocity, axial tilt, and basic rotation rate.
 
     Returns None for Size 0 (belt), Size S, and ring worlds; these
     body types are out of scope and will be handled separately.
@@ -273,6 +272,9 @@ def generate_world_physical(world: "World") -> Optional[WorldPhysical]:
     ----------
     world : World
         The mainworld whose size code drives generation.
+    age_gyr : float
+        System age in Gyr, used for the rotation rate age DM (WBH p.103).
+        Defaults to 0.0 (no DM) when age is unavailable.
 
     Returns
     -------
@@ -285,7 +287,7 @@ def generate_world_physical(world: "World") -> Optional[WorldPhysical]:
     diameter_km = _roll_diameter(world.size)
     density = _roll_density(composition)
     axial_tilt = _roll_axial_tilt()
-    day_length = _roll_day_length()
+    day_length = _roll_day_length(age_gyr)
 
     rel_d = diameter_km / _EARTH_DIAMETER_KM
     rel_rho = density / _EARTH_DENSITY_G_CM3
