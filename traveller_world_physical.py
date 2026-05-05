@@ -2,7 +2,7 @@
 traveller_world_physical.py
 ===========================
 Physical world characteristics derived from the UWP size and atmosphere
-codes, following the World Builder's Handbook (WBH pp. 74-77).
+codes, following the World Builder's Handbook (WBH pp. 74-78).
 
 Scope
 -----
@@ -29,6 +29,15 @@ Derived properties (WBH p.76-77):
   Mass (Earth = 1)    = D*³ × d*
   Surface gravity (G) = D* × d*
   Escape velocity (km/s) = 11.186 × √(gravity × D*)
+
+Axial Tilt (WBH p.77):
+  Roll 2D to select a tilt band; roll 1D within that band for degrees.
+  Result clamped to 0-90°.
+
+Day Length (WBH p.77-78):
+  Roll 2D to select a rotation period band; roll 1D within that band.
+  Result in standard hours. Tidal locking (requires orbital data) is
+  out of scope and will be handled separately.
 
 Licence
 -------
@@ -145,6 +154,58 @@ def _roll_diameter(size: int) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Axial Tilt Table (WBH p.77)
+# ---------------------------------------------------------------------------
+
+# Each entry: (upper_bound_inclusive, base_degrees, dice_count, multiplier)
+# Roll 2D selects a band; 1D within that band gives: base + 1D × multiplier
+# Result is clamped to [0, 90].
+_TILT_BANDS: list[tuple[int, int, int, int]] = [
+    (2,   0, 0,  0),   # 2:    0° (negligible tilt)
+    (5,   0, 1,  5),   # 3-5:  1D × 5°  =  5-30°
+    (8,  20, 1,  5),   # 6-8:  20 + 1D × 5°  = 25-50°
+    (10, 40, 1,  5),   # 9-10: 40 + 1D × 5°  = 45-70°
+    (99, 60, 1,  5),   # 11+:  60 + 1D × 5°  = 65-90°
+]
+
+
+def _roll_axial_tilt() -> int:
+    """Roll axial tilt in degrees (0-90) from the Axial Tilt Table."""
+    band_roll = _roll(2)
+    for bound, base, dice, mult in _TILT_BANDS:
+        if band_roll <= bound:
+            tilt = base + (random.randint(1, 6) * mult if dice else 0)
+            return min(90, max(0, tilt))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Day Length Table (WBH p.77-78)
+# ---------------------------------------------------------------------------
+
+# Each entry: (upper_bound_inclusive, base_hours, dice_count, multiplier)
+# Roll 2D selects a band; rolls within that band give: base + nD × multiplier
+# Result stored in standard hours (1 decimal place).
+_DAY_LENGTH_BANDS: list[tuple[int, int, int, int]] = [
+    (3,   6, 1,  2),   # 2-3:   6 + 1D × 2h  =  8-18h  (fast rotator)
+    (6,  14, 1,  4),   # 4-6:  14 + 1D × 4h  = 18-38h  (standard)
+    (9,  30, 1, 10),   # 7-9:  30 + 1D × 10h = 40-90h  (slow rotator)
+    (11, 60, 2, 10),   # 10-11: 60 + 2D × 10h = 80-180h
+    (99,100, 2, 25),   # 12:  100 + 2D × 25h = 150-400h (very slow)
+]
+
+
+def _roll_day_length() -> float:
+    """Roll rotation period in hours from the Day Length Table."""
+    band_roll = _roll(2)
+    for bound, base, dice, mult in _DAY_LENGTH_BANDS:
+        if band_roll <= bound:
+            hours = base + _roll(dice) * mult
+            return round(float(hours), 1)
+    return 24.0
+
+
+# ---------------------------------------------------------------------------
 # WorldPhysical dataclass
 # ---------------------------------------------------------------------------
 
@@ -153,7 +214,7 @@ _EARTH_DENSITY_G_CM3 = 5.515
 
 
 @dataclass
-class WorldPhysical:
+class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     """Physical characteristics for a Size 1-A terrestrial world."""
 
     composition: str        # Terrestrial Composition Table result
@@ -162,6 +223,8 @@ class WorldPhysical:
     mass: float             # Relative to Earth
     gravity: float          # Surface gravity in G
     escape_velocity: float  # km/s
+    axial_tilt: int         # Degrees (0-90)
+    day_length: float       # Rotation period in standard hours
 
     def to_dict(self) -> dict:
         """Return physical characteristics as a JSON-compatible dict."""
@@ -172,6 +235,8 @@ class WorldPhysical:
             "mass_earth":           self.mass,
             "gravity_g":            self.gravity,
             "escape_velocity_km_s": self.escape_velocity,
+            "axial_tilt_deg":       self.axial_tilt,
+            "day_length_hours":     self.day_length,
         }
 
 
@@ -205,6 +270,8 @@ def generate_world_physical(world: "World") -> Optional[WorldPhysical]:
     composition = _roll_composition(world.size)
     diameter_km = _roll_diameter(world.size)
     density = _roll_density(composition)
+    axial_tilt = _roll_axial_tilt()
+    day_length = _roll_day_length()
 
     rel_d = diameter_km / _EARTH_DIAMETER_KM
     rel_rho = density / _EARTH_DENSITY_G_CM3
@@ -220,4 +287,6 @@ def generate_world_physical(world: "World") -> Optional[WorldPhysical]:
         mass=mass,
         gravity=gravity,
         escape_velocity=escape_velocity,
+        axial_tilt=axial_tilt,
+        day_length=day_length,
     )
