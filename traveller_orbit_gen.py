@@ -34,13 +34,18 @@ The human author reviewed, directed, and is responsible for the code.
 """
 
 from __future__ import annotations
-import json, math, random
+import json
+import math
+import random
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from traveller_stellar_gen import Star, StarSystem, _orbit_to_au, ORBIT_AU
+if TYPE_CHECKING:
+    from traveller_world_detail import WorldDetail
 
 
 def roll(n: int, dm: int = 0) -> int:
+    """Roll n six-sided dice and return the sum plus dm, minimum 0."""
     return max(0, sum(random.randint(1, 6) for _ in range(n)) + dm)
 
 
@@ -118,6 +123,7 @@ def _interp(
 
 
 def get_mao(star: Star) -> float:
+    """Return the Minimum Allowable Orbit# for this star (WBH p.38)."""
     if star.spectral_type in ("D","BD"):
         return 0.01
     st = star.subtype if star.subtype is not None else 0
@@ -127,8 +133,10 @@ def get_mao(star: Star) -> float:
 def _au_to_orbit(au: float) -> float:
     keys = sorted(ORBIT_AU.keys())
     vals = [ORBIT_AU[k] for k in keys]
-    if au <= vals[0]: return float(keys[0])
-    if au >= vals[-1]: return float(keys[-1])
+    if au <= vals[0]:
+        return float(keys[0])
+    if au >= vals[-1]:
+        return float(keys[-1])
     for i in range(len(vals)-1):
         if vals[i] <= au <= vals[i+1]:
             frac = (au - vals[i]) / (vals[i+1] - vals[i])
@@ -137,17 +145,23 @@ def _au_to_orbit(au: float) -> float:
 
 
 def get_hzco(star: Star, combined_lum: Optional[float] = None) -> float:
+    """Return the Habitable Zone Centre Orbit# for this star (WBH p.42)."""
     lum = combined_lum if combined_lum is not None else star.luminosity
     hzco_au = math.sqrt(max(lum, 1e-10))
     return _au_to_orbit(hzco_au)
 
 
 def _temp_zone(deviation: float, hzco: float, orbit: float) -> str:  # pylint: disable=unused-argument
-    if deviation >= 1.0:   return "frozen"
-    elif deviation >= 0.2: return "cold"
-    elif deviation >= -0.2:return "temperate"
-    elif deviation >= -1.0:return "hot"
-    else:                  return "boiling"
+    """Map HZ deviation to temperature zone string."""
+    if deviation >= 1.0:
+        return "frozen"
+    if deviation >= 0.2:
+        return "cold"
+    if deviation >= -0.2:
+        return "temperate"
+    if deviation >= -1.0:
+        return "hot"
+    return "boiling"
 
 
 _GG_EHEX = "0123456789ABCDEFGHIJ"
@@ -173,7 +187,9 @@ def _gg_sah_roll(spectral: str, lum_class: str) -> str:
 
 
 @dataclass
-class OrbitSlot:
+class OrbitSlot:  # pylint: disable=too-many-instance-attributes
+    """One orbit slot in a star system, with world type and zone data."""
+
     star_designation: str
     orbit_number: float
     orbit_au: float
@@ -186,8 +202,10 @@ class OrbitSlot:
     notes: str = ""
     canonical_profile: str = ""  # UWP set when mainworld comes from canonical data
     gg_sah: str = ""             # gas giant SAH rolled at orbit gen time (e.g. "GM9")
+    detail: Optional["WorldDetail"] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
+        """Serialise this orbit slot to a JSON-compatible dict."""
         d = {
             "star": self.star_designation,
             "orbit_number": round(self.orbit_number, 2),
@@ -205,14 +223,15 @@ class OrbitSlot:
         if self.gg_sah:
             d["gg_sah"] = self.gg_sah
         # Include secondary world / satellite detail if attach_detail() has run
-        detail = getattr(self, "detail", None)
-        if detail is not None:
-            d["detail"] = detail.to_dict()
+        if self.detail is not None:
+            d["detail"] = self.detail.to_dict()
         return d
 
 
 @dataclass
-class SystemOrbits:
+class SystemOrbits:  # pylint: disable=too-many-instance-attributes
+    """All orbit slots for a star system, with world counts and zone data."""
+
     stellar_system: StarSystem
     gas_giant_count: int = 0
     belt_count: int = 0
@@ -227,6 +246,7 @@ class SystemOrbits:
     star_hz_outer: Dict[str, float] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
+        """Serialise this system's orbits to a JSON-compatible dict."""
         return {
             "gas_giant_count": self.gas_giant_count,
             "belt_count": self.belt_count,
@@ -246,9 +266,10 @@ class SystemOrbits:
         }
 
     def to_json(self, indent=2):
+        """Serialise this system's orbits to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent)
 
-    def summary(self) -> str:
+    def summary(self) -> str:  # pylint: disable=too-many-locals
         """
         Human-readable orbital summary.
 
@@ -281,7 +302,7 @@ class SystemOrbits:
         for o in self.orbits:
             hz   = "★" if o.is_habitable_zone else " "
             mw   = "  ← mainworld" if o.is_mainworld_candidate else ""
-            detail = getattr(o, "detail", None)
+            detail = o.detail
             if o.canonical_profile:
                 profile = o.canonical_profile
             elif detail is not None:
@@ -300,7 +321,7 @@ class SystemOrbits:
             if detail is not None:
                 for mi, moon in enumerate(detail.moons or [], 1):
                     if moon.is_ring:
-                        rc = getattr(moon, "_ring_count", 1)
+                        rc = moon.ring_count
                         mp = f"R{rc:02d}"
                         ms = "ring system"
                     elif moon.detail is not None:
@@ -325,13 +346,12 @@ class SystemOrbits:
         return "\n".join(lines)
 
 
-def generate_orbits(system: StarSystem) -> SystemOrbits:
+def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    """Generate all orbit slots for a star system (WBH pp.36-51)."""
     result = SystemOrbits(stellar_system=system)
     primary_stars = [s for s in system.stars if s.role != "companion"]
     has_companion = any(s.role == "companion" for s in system.stars)
     secondary_count = sum(1 for s in primary_stars if s.role != "primary")
-    primary = system.primary
-
     # World counts (WBH p.36-37)
     if roll(2) <= 9:
         r = roll(2)
@@ -423,22 +443,32 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
 
         mao = star_mao[d]
         hzco = star_hzco[d]
-        min_o, max_o = star_avail[d]
+        _, max_o = star_avail[d]
 
         # Baseline number (WBH p.44)
         bn_dm = 0
-        if has_companion: bn_dm -= 2
-        if star.lum_class in ("Ia","Ib","II"): bn_dm += 3
-        elif star.lum_class == "III": bn_dm += 2
-        elif star.lum_class == "IV":  bn_dm += 1
-        elif star.lum_class == "VI":  bn_dm -= 1
+        if has_companion:
+            bn_dm -= 2
+        if star.lum_class in ("Ia","Ib","II"):
+            bn_dm += 3
+        elif star.lum_class == "III":
+            bn_dm += 2
+        elif star.lum_class == "IV":
+            bn_dm += 1
+        elif star.lum_class == "VI":
+            bn_dm -= 1
         bn_dm -= secondary_count
         tw = result.total_worlds
-        if tw < 6: bn_dm -= 4
-        elif tw <= 9: bn_dm -= 3
-        elif tw <= 12: bn_dm -= 2
-        elif tw <= 15: bn_dm -= 1
-        elif tw >= 18: bn_dm += 1
+        if tw < 6:
+            bn_dm -= 4
+        elif tw <= 9:
+            bn_dm -= 3
+        elif tw <= 12:
+            bn_dm -= 2
+        elif tw <= 15:
+            bn_dm -= 1
+        elif tw >= 18:
+            bn_dm += 1
         baseline_num = max(0, roll(2, bn_dm))
 
         # Baseline Orbit# (WBH p.44-46)
@@ -524,7 +554,8 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
             if si in empty_set:
                 wtype = "empty"
             elif pool_idx < len(pool):
-                wtype = pool[pool_idx]; pool_idx += 1
+                wtype = pool[pool_idx]
+                pool_idx += 1
             else:
                 wtype = "terrestrial"
             slot_gg_sah = (
@@ -565,16 +596,20 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:
         best.is_mainworld_candidate = True
         result.mainworld_orbit = best
         notes = []
-        if best.is_habitable_zone: notes.append("in HZ")
-        if best.hz_deviation < -0.5: notes.append("warm side")
-        elif best.hz_deviation > 0.5: notes.append("cool side")
+        if best.is_habitable_zone:
+            notes.append("in HZ")
+        if best.hz_deviation < -0.5:
+            notes.append("warm side")
+        elif best.hz_deviation > 0.5:
+            notes.append("cool side")
         best.notes = ", ".join(notes)
 
     return result
 
 
 def generate_full_system(seed=None):
-    from traveller_stellar_gen import generate_stellar_data
+    """Generate a stellar system with orbits, optionally seeding the RNG."""
+    from traveller_stellar_gen import generate_stellar_data  # pylint: disable=import-outside-toplevel
     if seed is not None:
         random.seed(seed)
     system = generate_stellar_data()
@@ -588,10 +623,11 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
-    system, orbits = generate_full_system(args.seed)
+    _system, _orbits = generate_full_system(args.seed)
     if args.json:
-        d = system.to_dict(); d["orbits"] = orbits.to_dict()
-        print(json.dumps(d, indent=2))
+        data = _system.to_dict()
+        data["orbits"] = _orbits.to_dict()
+        print(json.dumps(data, indent=2))
     else:
-        print(system.summary())
-        print(orbits.summary())
+        print(_system.summary())
+        print(_orbits.summary())

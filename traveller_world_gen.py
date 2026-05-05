@@ -32,6 +32,7 @@ This is an unofficial fan work, not affiliated with Mongoose Publishing.
 AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
+# pylint: disable=too-many-lines
 
 import json
 import random
@@ -175,16 +176,15 @@ def starport_class_from_roll(modified_roll: int) -> str:
     """Return the starport class letter for a given modified 2D roll."""
     if modified_roll <= 2:
         return "X"
-    elif modified_roll <= 4:
+    if modified_roll <= 4:
         return "E"
-    elif modified_roll <= 6:
+    if modified_roll <= 6:
         return "D"
-    elif modified_roll <= 8:
+    if modified_roll <= 8:
         return "C"
-    elif modified_roll <= 10:
+    if modified_roll <= 10:
         return "B"
-    else:
-        return "A"
+    return "A"
 
 # Starport quality labels (p.257) — the Quality column value
 STARPORT_QUALITY_LABEL = {
@@ -248,14 +248,13 @@ def temperature_category(modified_roll: int) -> str:
     """Return temperature category string from modified 2D roll (p.251)."""
     if modified_roll <= 2:
         return "Frozen"
-    elif modified_roll <= 4:
+    if modified_roll <= 4:
         return "Cold"
-    elif modified_roll <= 9:
+    if modified_roll <= 9:
         return "Temperate"
-    elif modified_roll <= 11:
+    if modified_roll <= 11:
         return "Hot"
-    else:
-        return "Boiling"
+    return "Boiling"
 
 
 # ---------------------------------------------------------------------------
@@ -263,7 +262,7 @@ def temperature_category(modified_roll: int) -> str:
 # ---------------------------------------------------------------------------
 
 @dataclass
-class World:
+class World:  # pylint: disable=too-many-instance-attributes
     """Holds all generated characteristics for one mainworld."""
     name:           str   = "Unknown"
     size:           int   = 0
@@ -403,9 +402,9 @@ class World:
             except (TypeError, ValueError):
                 return default
 
-        def _code(field: object) -> object:
-            """Return field['code'] when field is a dict, else field itself."""
-            return field.get("code") if isinstance(field, dict) else field
+        def _code(val: object) -> object:
+            """Return val['code'] when val is a dict, else val itself."""
+            return val.get("code") if isinstance(val, dict) else val  # type: ignore[union-attr]
 
         gas_giant_count = _int(_code(d.get("gas_giant_count", 0)))
 
@@ -471,7 +470,7 @@ class World:
             return "era-avgstellar"
         return "era-highstellar"
 
-    def to_html(self) -> str:
+    def to_html(self) -> str:  # pylint: disable=too-many-locals
         """Return a self-contained HTML card representing this world.
 
         The output matches the inline display widget shown in Claude
@@ -793,6 +792,7 @@ class World:
     # Human-readable summary
     # ------------------------------------------------------------------
     def summary(self) -> str:
+        """Return a human-readable summary of this world's characteristics."""
         pop_range = {
             0: "None", 1: "Few (1+)", 2: "Hundreds", 3: "Thousands",
             4: "Tens of thousands", 5: "Hundreds of thousands",
@@ -968,9 +968,10 @@ def generate_starport(population: int) -> str:
     return starport_class_from_roll(modified)
 
 
-def generate_tech_level(starport: str, size: int, atmosphere: int,
-                        hydrographics: int, population: int,
-                        government: int) -> int:
+def generate_tech_level(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        starport: str, size: int, atmosphere: int,
+        hydrographics: int, population: int,
+        government: int) -> int:
     """Step 9 — Tech Level (p.258-259): roll 1D + multiple DMs.
 
     DMs come from Starport, Size, Atmosphere, Hydrographics,
@@ -1131,16 +1132,15 @@ def generate_gas_giant_count() -> int:
     result = roll(2)
     if result <= 4:
         return 1
-    elif result <= 6:
+    if result <= 6:
         return 2
-    elif result <= 8:
+    if result <= 8:
         return 3
-    elif result <= 11:
+    if result <= 11:
         return 4
-    elif result == 12:
+    if result == 12:
         return 5
-    else:
-        return 6
+    return 6
 
 
 def generate_belt_count(has_gas_giant: bool, size: int) -> int:
@@ -1188,9 +1188,10 @@ def generate_gas_giant() -> bool:
     return roll(2) <= 9  # 10+ means no gas giant
 
 
-def assign_trade_codes(size: int, atmosphere: int, hydrographics: int,
-                       population: int, government: int,
-                       law_level: int, tech_level: int) -> List[str]:
+def assign_trade_codes(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+        size: int, atmosphere: int, hydrographics: int,
+        population: int, government: int,
+        law_level: int, tech_level: int) -> List[str]:
     """Step 12 — Trade Codes (p.260-261).
 
     Each code is awarded if ALL listed criteria are met.  Criteria are
@@ -1233,7 +1234,7 @@ def assign_trade_codes(size: int, atmosphere: int, hydrographics: int,
         codes.append("Ht")
 
     # Ice-Capped (Ic): thin, near-frozen atmosphere with some water ice
-    if atmosphere <= 1 and hydrographics >= 1:
+    if atmosphere <= 1 <= hydrographics:
         codes.append("Ic")
 
     # Industrial (In): heavy industrial base
@@ -1403,7 +1404,8 @@ def generate_world(name: str = "Unknown") -> World:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
-def main():
+def main():  # pylint: disable=too-many-branches
+    """Generate and print Traveller mainworlds from the command line."""
     parser = argparse.ArgumentParser(
         description="Generate Traveller (2022) mainworlds.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1462,7 +1464,7 @@ def main():
             # Multiple worlds: wrap all cards in one HTML page.
             # Strip the outer <html>…</body> wrapper from each card after
             # the first, keeping only the inner <div class="world-card">.
-            import re
+            import re  # pylint: disable=import-outside-toplevel
             cards_html = []
             for w in worlds:
                 full = w.to_html()

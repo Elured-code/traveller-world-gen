@@ -50,6 +50,7 @@ This is an unofficial fan work, not affiliated with Mongoose Publishing.
 AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
+# pylint: disable=too-many-lines,locally-disabled,suppressed-message
 
 from __future__ import annotations
 
@@ -323,7 +324,7 @@ def _interp_temp(spectral: str, subtype: int) -> Optional[int]:
 # ---------------------------------------------------------------------------
 
 @dataclass
-class Star:
+class Star:  # pylint: disable=too-many-instance-attributes
     """Represents one star in a system."""
 
     designation: str            # e.g. "Aa", "Ab", "B", "Ca"
@@ -351,9 +352,11 @@ class Star:
         return f"{self.spectral_type}{sub} {self.lum_class}"
 
     def colour(self) -> str:
+        """Return the display colour for this star's spectral type."""
         return SPECTRAL_COLOUR.get(self.spectral_type, "Unknown")
 
     def to_dict(self) -> dict:
+        """Serialise this star to a JSON-compatible dict."""
         return {
             "designation": self.designation,
             "role": self.role,
@@ -368,7 +371,8 @@ class Star:
             "orbit_number": round(self.orbit_number, 2) if self.orbit_number is not None else None,
             "orbit_au": round(self.orbit_au, 3) if self.orbit_au is not None else None,
             "age_gyr": round(self.age_gyr, 3) if self.age_gyr is not None else None,
-            "ms_lifespan_gyr": round(self.ms_lifespan_gyr, 2) if self.ms_lifespan_gyr is not None else None,
+            "ms_lifespan_gyr": (round(self.ms_lifespan_gyr, 2)
+                                if self.ms_lifespan_gyr is not None else None),
             "colour": self.colour(),
             "special_notes": self.special_notes,
         }
@@ -386,13 +390,16 @@ class StarSystem:
 
     @property
     def primary(self) -> Star:
+        """Return the primary star of the system."""
         return self.stars[0]
 
     @property
     def age_gyr(self) -> Optional[float]:
+        """Return the system age in Gyr (from the primary star)."""
         return self.primary.age_gyr
 
     def to_dict(self) -> dict:
+        """Serialise this star system to a JSON-compatible dict."""
         return {
             "star_count": len(self.stars),
             "age_gyr": round(self.age_gyr, 3) if self.age_gyr is not None else None,
@@ -400,13 +407,17 @@ class StarSystem:
         }
 
     def to_json(self, indent: int = 2) -> str:
+        """Serialise this star system to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
     def summary(self) -> str:
+        """Return a human-readable summary of this star system."""
+        age_str = (f"  System age   :  {self.age_gyr:.2f} Gyr"
+                   if self.age_gyr else "  System age   :  Unknown")
         lines = [
             "=" * 60,
             f"  Star system  —  {len(self.stars)} star(s)",
-            f"  System age   :  {self.age_gyr:.2f} Gyr" if self.age_gyr else "  System age   :  Unknown",
+            age_str,
             "=" * 60,
         ]
         for star in self.stars:
@@ -498,7 +509,7 @@ def _star_properties(
 # Subtype generation
 # ---------------------------------------------------------------------------
 
-def _roll_subtype(spectral: str, use_m_column: bool = False) -> int:
+def _roll_subtype(_spectral: str, use_m_column: bool = False) -> int:
     """
     Roll for numeric subtype using the Star Subtype table (WBH p.16).
     use_m_column=True for primary M-type stars.
@@ -551,7 +562,7 @@ def _orbit_to_au(orbit_num: float) -> float:
 # Primary star generation (WBH p.14-16)
 # ---------------------------------------------------------------------------
 
-def _generate_primary_star_type() -> Tuple[str, str]:
+def _generate_primary_star_type() -> Tuple[str, str]:  # pylint: disable=too-many-branches
     """
     Roll on the Star Type Determination table (WBH p.14-15).
     Returns (spectral_type, lum_class).
@@ -586,7 +597,7 @@ def _generate_primary_star_type() -> Tuple[str, str]:
                     spectral = "B"
             return spectral, lum_class
 
-        elif result == "Giants":
+        if result == "Giants":
             # Roll on Giants column
             r4 = roll(2)
             lum_class = GIANTS_COLUMN.get(r4, "Ia" if r4 >= 12 else "III")
@@ -596,8 +607,7 @@ def _generate_primary_star_type() -> Tuple[str, str]:
                 spectral = "G"
             return spectral, lum_class
 
-        else:
-            return "M", "V"
+        return "M", "V"
 
     if r == 12:
         # Hot column
@@ -650,7 +660,7 @@ def generate_primary_star(designation: str = "A") -> Star:
         )
 
     # Subtype
-    use_m_col = (spectral == "M")
+    use_m_col = spectral == "M"
     subtype = _roll_subtype(spectral, use_m_column=use_m_col)
 
     # Class IV special limits
@@ -758,7 +768,7 @@ def _multiple_star_dm(primary: Star) -> int:
     return 0
 
 
-def _determine_non_primary_type(
+def _determine_non_primary_type(  # pylint: disable=too-many-return-statements,too-many-branches,too-many-statements
     parent: Star,
     role: str,
     designation: str,
@@ -847,7 +857,8 @@ def _determine_non_primary_type(
 
     if result == "lesser":
         # Same class, one spectral type cooler; reroll subtype
-        sp_idx = SPECTRAL_ORDER.index(parent.spectral_type) if parent.spectral_type in SPECTRAL_ORDER else -1
+        sp_idx = (SPECTRAL_ORDER.index(parent.spectral_type)
+                  if parent.spectral_type in SPECTRAL_ORDER else -1)
         if sp_idx >= len(SPECTRAL_ORDER) - 1:
             # M-type lesser → M-type.
             # The lesser must be dimmer (higher subtype number) than the parent.
@@ -876,7 +887,8 @@ def _determine_non_primary_type(
         sub_reduction = random.randint(1, 6)
         new_sub = parent.subtype + sub_reduction  # higher number = dimmer
         # Wrap to next cooler type if needed
-        sp_idx = SPECTRAL_ORDER.index(parent.spectral_type) if parent.spectral_type in SPECTRAL_ORDER else -1
+        sp_idx = (SPECTRAL_ORDER.index(parent.spectral_type)
+                  if parent.spectral_type in SPECTRAL_ORDER else -1)
         if new_sub > 9:
             if sp_idx >= len(SPECTRAL_ORDER) - 1:
                 return _build_star("BD", "BD", designation, role)
@@ -987,7 +999,7 @@ def _secondary_orbit(slot: str) -> Tuple[float, float]:
 # Top-level system generation
 # ---------------------------------------------------------------------------
 
-def generate_stellar_data() -> StarSystem:
+def generate_stellar_data() -> StarSystem:  # pylint: disable=too-many-locals
     """
     Generate complete stellar data for a star system.
 
@@ -1068,7 +1080,8 @@ def generate_stellar_data() -> StarSystem:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    import argparse
+    """Generate and print Traveller stellar data from the command line."""
+    import argparse  # pylint: disable=import-outside-toplevel
 
     parser = argparse.ArgumentParser(
         description="Generate Traveller (WBH) stellar data for a star system."
