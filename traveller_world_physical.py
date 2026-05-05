@@ -4,12 +4,16 @@ traveller_world_physical.py
 Physical world characteristics derived from the UWP size and atmosphere
 codes, following the World Builder's Handbook (WBH pp. 74-77).
 
+Scope
+-----
+Applies to terrestrial worlds with integer size codes 1-A only.
+Size 0 (asteroid belts), Size S (small worldlets), and rings are
+excluded and will be handled separately.
+
 Rules implemented
 -----------------
 Diameter (WBH p.74):
   Size 1-A : base = size × 1,600 km; variation = (2D-7) × 200 km
-  Size S    : 200 + 1D × 100 km  (~300-700 km)
-  Size 0    : 0 km (belt — no single body diameter)
 
 Terrestrial Composition (WBH p.75):
   Roll 2D on the Terrestrial Composition Table, with DMs from size.
@@ -25,8 +29,6 @@ Derived properties (WBH p.76-77):
   Mass (Earth = 1)    = D*³ × d*
   Surface gravity (G) = D* × d*
   Escape velocity (km/s) = 11.186 × √(gravity × D*)
-
-  Size 0 (belt): mass, gravity and escape velocity are all 0.0.
 
 Licence
 -------
@@ -49,7 +51,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from traveller_world_gen import World
@@ -81,29 +83,24 @@ _COMPOSITION_THRESHOLDS: list[tuple[int, str]] = [
 # Size DM for the Terrestrial Composition Table roll (WBH p.75).
 # Larger worlds retain heavy elements more effectively.
 _COMPOSITION_SIZE_DM: dict[int, int] = {
-    0: -4,   # Belt
     1: -2, 2: -2,
     3: -1, 4: -1,
     5:  0, 6:  0,
     7:  1, 8:  1,
     9:  2, 10: 2,
 }
-# Size S (tiny worldlet) treated as between Size 0 and Size 1.
-_COMPOSITION_SIZE_S_DM = -3
 
 
-def _composition_dm(size_code: int | str) -> int:
+def _composition_dm(size: int) -> int:
     """Return the size DM for the Terrestrial Composition Table roll."""
-    if size_code == "S":
-        return _COMPOSITION_SIZE_S_DM
-    return _COMPOSITION_SIZE_DM.get(int(size_code), 0)
+    return _COMPOSITION_SIZE_DM.get(size, 0)
 
 
-def _roll_composition(size_code: int | str) -> str:
+def _roll_composition(size: int) -> str:
     """Roll on the Terrestrial Composition Table and return category name."""
-    roll = _roll(2, _composition_dm(size_code))
+    result = _roll(2, _composition_dm(size))
     for bound, label in _COMPOSITION_THRESHOLDS:
-        if roll <= bound:
+        if result <= bound:
             return label
     return "Icy"
 
@@ -133,23 +130,16 @@ def _roll_density(composition: str) -> float:
 # Diameter (WBH p.74)
 # ---------------------------------------------------------------------------
 
-# Base diameter in km for each integer size code.
+# Base diameter in km for each integer size code 1-A.
 _DIAMETER_BASE_KM: dict[int, int] = {
-    0: 0,
     1: 1600, 2: 3200,  3: 4800,  4: 6400,  5: 8000,
     6: 9600, 7: 11200, 8: 12800, 9: 14400, 10: 16000,
 }
 
 
-def _roll_diameter(size_code: int | str) -> int:
-    """Roll actual diameter in km for the given size code."""
-    if size_code == "S":
-        # Size S worldlet: ~600 km centre, 300-700 km range (WBH p.57)
-        return 200 + random.randint(1, 6) * 100
-    sz = int(size_code)
-    if sz == 0:
-        return 0   # Belt — no single body diameter
-    base = _DIAMETER_BASE_KM[sz]
+def _roll_diameter(size: int) -> int:
+    """Roll actual diameter in km for the given size code (1-A)."""
+    base = _DIAMETER_BASE_KM[size]
     variation = (_roll(2) - 7) * 200   # (2D-7) × 200 km, range ±1000 km
     return max(100, base + variation)
 
@@ -164,23 +154,23 @@ _EARTH_DENSITY_G_CM3 = 5.515
 
 @dataclass
 class WorldPhysical:
-    """Physical characteristics derived from world size and atmosphere codes."""
+    """Physical characteristics for a Size 1-A terrestrial world."""
 
-    composition: str      # Terrestrial Composition Table result
-    diameter_km: int      # Actual diameter in km (0 for belts)
-    density: float        # g/cm³
-    mass: float           # Relative to Earth (0.0 for belts)
-    gravity: float        # Surface gravity in G (0.0 for belts)
-    escape_velocity: float  # km/s (0.0 for belts)
+    composition: str        # Terrestrial Composition Table result
+    diameter_km: int        # Actual diameter in km
+    density: float          # g/cm³
+    mass: float             # Relative to Earth
+    gravity: float          # Surface gravity in G
+    escape_velocity: float  # km/s
 
     def to_dict(self) -> dict:
         """Return physical characteristics as a JSON-compatible dict."""
         return {
-            "composition":      self.composition,
-            "diameter_km":      self.diameter_km,
-            "density_g_cm3":    self.density,
-            "mass_earth":       self.mass,
-            "gravity_g":        self.gravity,
+            "composition":          self.composition,
+            "diameter_km":          self.diameter_km,
+            "density_g_cm3":        self.density,
+            "mass_earth":           self.mass,
+            "gravity_g":            self.gravity,
             "escape_velocity_km_s": self.escape_velocity,
         }
 
@@ -189,42 +179,32 @@ class WorldPhysical:
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_world_physical(world: "World") -> WorldPhysical:
+def generate_world_physical(world: "World") -> Optional[WorldPhysical]:
     """Generate physical characteristics for a mainworld.
 
     Implements WBH pp. 74-77: diameter, composition, density, mass,
-    surface gravity, and escape velocity.  Derived properties (mass,
-    gravity, escape velocity) are calculated from diameter and density
-    using standard formulae (WBH p.76-77).
+    surface gravity, and escape velocity.  Derived properties are
+    calculated from diameter and density using standard formulae
+    (WBH p.76-77).
 
-    Size 0 (asteroid belt) worlds receive composition and density rolls
-    but diameter, mass, gravity and escape velocity are all 0.
+    Returns None for Size 0 (belt), Size S, and ring worlds; these
+    body types are out of scope and will be handled separately.
 
     Parameters
     ----------
     world : World
-        The mainworld whose size and atmosphere codes drive generation.
+        The mainworld whose size code drives generation.
 
     Returns
     -------
-    WorldPhysical
-        Populated physical-characteristics object.
+    WorldPhysical or None
     """
-    size_code: int | str = world.size
+    if world.size == 0:
+        return None
 
-    composition = _roll_composition(size_code)
-    diameter_km = _roll_diameter(size_code)
+    composition = _roll_composition(world.size)
+    diameter_km = _roll_diameter(world.size)
     density = _roll_density(composition)
-
-    if diameter_km == 0:
-        return WorldPhysical(
-            composition=composition,
-            diameter_km=0,
-            density=density,
-            mass=0.0,
-            gravity=0.0,
-            escape_velocity=0.0,
-        )
 
     rel_d = diameter_km / _EARTH_DIAMETER_KM
     rel_rho = density / _EARTH_DENSITY_G_CM3
