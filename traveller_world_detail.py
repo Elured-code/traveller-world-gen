@@ -172,10 +172,9 @@ def _terrestrial_size() -> int:
     r = random.randint(1, 6)
     if r <= 2:
         return random.randint(1, 6)   # 1-6
-    elif r <= 4:
+    if r <= 4:
         return _roll(2)               # 2-12 (C)
-    else:
-        return _roll(2, 3)            # 5-15 (F)
+    return _roll(2, 3)                # 5-15 (F)
 
 
 def _gg_dm(star_spectral: str, star_lum_class: str) -> int:
@@ -194,10 +193,9 @@ def _gas_giant_sah(star_spectral: str, star_lum_class: str) -> str:
     cat = random.randint(1, 6) + _gg_dm(star_spectral, star_lum_class)
     if cat <= 2:
         return f"GS{_ehex(_d3() + _d3())}"         # 2-6
-    elif cat <= 4:
+    if cat <= 4:
         return f"GM{_ehex(random.randint(1,6) + 6)}" # 7-12
-    else:
-        return f"GL{_ehex(_roll(2, 6))}"             # 8-18
+    return f"GL{_ehex(_roll(2, 6))}"             # 8-18
 
 
 def _terrestrial_sah(orbit: OrbitSlot, hzco: float) -> tuple[int, int, int]:
@@ -237,8 +235,7 @@ def _secondary_population(max_pop: int) -> int:
     return random.randint(1, max_pop)
 
 
-def _secondary_government(population: int, mainworld_pop: int,
-                           mainworld_gov: int) -> int:
+def _secondary_government(mainworld_pop: int, mainworld_gov: int) -> int:
     """
     Government code for a dependent secondary world (WBH p.161-162).
     We use Case 1 (captive/dependent), which is the most common case.
@@ -251,15 +248,18 @@ def _secondary_government(population: int, mainworld_pop: int,
         r = max(1, r - 2)
     elif mainworld_gov == 6:
         r += mainworld_pop
-    if r <= 1:   return 0
-    elif r <= 2: return 1
-    elif r <= 3: return 2
-    elif r <= 4: return 3
-    else:        return 6
+    if r <= 1:
+        return 0
+    if r <= 2:
+        return 1
+    if r <= 3:
+        return 2
+    if r <= 4:
+        return 3
+    return 6
 
 
-def _secondary_law_level(government: int, mainworld_gov: int,
-                          mainworld_law: int) -> int:
+def _secondary_law_level(government: int, mainworld_law: int) -> int:
     """
     Law Level for a secondary world (WBH p.171).
     For captive governments (6): 1D determines relationship to mainworld.
@@ -269,14 +269,12 @@ def _secondary_law_level(government: int, mainworld_gov: int,
         r = random.randint(1, 6)
         if r <= 2:
             return max(0, _roll(2, -7 + 6))       # rerolled for Gov 6
-        elif r <= 4:
+        if r <= 4:
             return mainworld_law                    # equal to mainworld
-        elif r == 5:
+        if r == 5:
             return mainworld_law + 1                # mainworld + 1
-        else:
-            return mainworld_law + random.randint(1, 6)
-    else:
-        return max(0, _roll(2, -7 + government))
+        return mainworld_law + random.randint(1, 6)
+    return max(0, _roll(2, -7 + government))
 
 
 def _secondary_tech_level(atmosphere: int, mainworld_tl: int) -> int:
@@ -294,28 +292,34 @@ def _spaceport(population: int) -> str:
     Returns Y/H/G/F (not the full starport A-X scale).
     """
     dm = 0
-    if population >= 6:   dm = +2
-    elif population == 1: dm = -1
+    if population >= 6:
+        dm = 2
+    elif population == 1:
+        dm = -1
     r = random.randint(1, 6) + dm
-    if r <= 2:  return "Y"
-    elif r == 3: return "H"
-    elif r <= 5: return "G"
-    else:        return "F"
+    if r <= 2:
+        return "Y"
+    if r == 3:
+        return "H"
+    if r <= 5:
+        return "G"
+    return "F"
 
 
 # ---------------------------------------------------------------------------
 # WorldDetail dataclass attached to each OrbitSlot
 # ---------------------------------------------------------------------------
 
-class WorldDetail:
+class WorldDetail:  # pylint: disable=too-many-instance-attributes
     """Physical and social details for one orbit slot."""
 
     __slots__ = ("sah", "population", "government", "law_level",
                  "tech_level", "spaceport", "moons", "trade_codes")
 
-    def __init__(self, sah: str, population: int = 0, government: int = 0,
-                 law_level: int = 0, tech_level: int = 0, spaceport: str = "-",
-                 moons: list[Moon] | None = None):
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+            self, sah: str, population: int = 0, government: int = 0,
+            law_level: int = 0, tech_level: int = 0, spaceport: str = "-",
+            moons: list[Moon] | None = None):
         self.sah        = sah
         self.population = population
         self.government = government
@@ -339,6 +343,7 @@ class WorldDetail:
 
     @property
     def inhabited(self) -> bool:
+        """True if this world has a non-zero population."""
         return self.population > 0
 
     @property
@@ -371,6 +376,7 @@ class WorldDetail:
                 f"-{to_hex(self.tech_level)}")
 
     def to_dict(self) -> dict:
+        """Serialise this WorldDetail to a JSON-compatible dict."""
         return {
             "sah":         self.sah,
             "population":  self.population,
@@ -395,8 +401,7 @@ def _moons_for(detail: WorldDetail, orbit_number: float) -> list:
     if detail.is_gas_giant:
         cat = sah[1]                      # S, M, or L
         diam_hex = sah[2]
-        _EHEX2 = "0123456789ABCDEFGHIJ"
-        diam = _EHEX2.index(diam_hex) if diam_hex in _EHEX2 else 8
+        diam = _EHEX.index(diam_hex) if diam_hex in _EHEX else 8
         return generate_moons(
             size_code=diam, orbit_number=orbit_number,
             is_gas_giant=True, gg_category=cat, gg_diameter=diam,
@@ -409,7 +414,7 @@ def _moons_for(detail: WorldDetail, orbit_number: float) -> list:
     return generate_moons(size_code=sz, orbit_number=orbit_number)
 
 
-def _moon_detail(
+def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-return-statements
     moon: Moon,
     hz_deviation: float,
     hzco: float,
@@ -461,8 +466,8 @@ def _moon_detail(
             pop = 0
         if pop == 0:
             return WorldDetail(sah=sah)
-        gov  = _secondary_government(pop, mw_pop, mw_gov)
-        law  = _secondary_law_level(gov, mw_gov, mw_law)
+        gov  = _secondary_government(mw_pop, mw_gov)
+        law  = _secondary_law_level(gov, mw_law)
         tl   = _secondary_tech_level(0, mw_tl)
         port = _spaceport(pop)
         return WorldDetail(sah=sah, population=pop, government=gov,
@@ -487,8 +492,8 @@ def _moon_detail(
         pop = 0
     if pop == 0:
         return WorldDetail(sah=sah)
-    gov  = _secondary_government(pop, mw_pop, mw_gov)
-    law  = _secondary_law_level(gov, mw_gov, mw_law)
+    gov  = _secondary_government(mw_pop, mw_gov)
+    law  = _secondary_law_level(gov, mw_law)
     tl   = _secondary_tech_level(atmosphere, mw_tl)
     port = _spaceport(pop)
     return WorldDetail(sah=sah, population=pop, government=gov,
@@ -498,7 +503,7 @@ def _moon_detail(
 # Main generation function
 # ---------------------------------------------------------------------------
 
-def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:
+def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """
     Generate WorldDetail for every non-mainworld, non-empty orbit slot.
 
@@ -546,8 +551,8 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:
             if pop == 0:
                 result[key] = WorldDetail(sah="000")
             else:
-                gov  = _secondary_government(pop, mw_pop, mw_gov)
-                law  = _secondary_law_level(gov, mw_gov, mw_law)
+                gov  = _secondary_government(mw_pop, mw_gov)
+                law  = _secondary_law_level(gov, mw_law)
                 tl   = _secondary_tech_level(belt_atm, mw_tl)
                 port = _spaceport(pop)
                 result[key] = WorldDetail(
@@ -580,8 +585,8 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:
             if pop == 0:
                 result[key] = WorldDetail(sah=sah)
             else:
-                gov  = _secondary_government(pop, mw_pop, mw_gov)
-                law  = _secondary_law_level(gov, mw_gov, mw_law)
+                gov  = _secondary_government(mw_pop, mw_gov)
+                law  = _secondary_law_level(gov, mw_law)
                 tl   = _secondary_tech_level(atm, mw_tl)
                 port = _spaceport(pop)
                 result[key] = WorldDetail(
@@ -622,7 +627,7 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:
     return result
 
 
-def attach_detail(system: TravellerSystem) -> None:
+def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-locals
     """
     Compute WorldDetail for all orbits and attach as `orbit.detail`
     on each OrbitSlot. Also attaches detail for the mainworld orbit
@@ -675,7 +680,7 @@ def attach_detail(system: TravellerSystem) -> None:
             orbit.detail = detail_map.get(key)
 
 
-def system_body_table(system: TravellerSystem) -> str:
+def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-many-locals
     """
     Formatted table of all orbits with their physical and social profiles.
     Mainworld shows full UWP; inhabited secondaries show spaceport+SAH+PGL+TL;
@@ -717,7 +722,7 @@ def system_body_table(system: TravellerSystem) -> str:
         # Moon sub-rows: indented, showing SAH+social profile and trade codes
         for mi, moon in enumerate(moon_list, 1):
             if moon.is_ring:
-                ring_count = getattr(moon, "_ring_count", 1)
+                ring_count = moon.ring_count
                 moon_profile = f"R{ring_count:02d}"
                 moon_codes_str = ""
                 moon_sah_str = "ring system"
@@ -747,7 +752,7 @@ def system_body_table(system: TravellerSystem) -> str:
 
 if __name__ == "__main__":
     import argparse
-    from traveller_system_gen import generate_full_system
+    from traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
     parser = argparse.ArgumentParser(
         description="Generate a complete system with SAH/UWP for all worlds."

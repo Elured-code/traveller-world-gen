@@ -92,10 +92,11 @@ class Moon:
     is_ring: bool = False
     is_gas_giant_moon: bool = False  # True if moon is itself a small GG
     detail: Optional["WorldDetail"] = None  # full SAH+social, populated later
-    _ring_count: int = field(default=1, init=False, repr=False)  # collapsed ring count
+    ring_count: int = field(default=1, init=False, repr=False)  # collapsed ring count
 
     @property
     def size_str(self) -> str:
+        """Return the display string for this moon's size code."""
         if self.is_ring:
             return "R"
         if self.size_code == "S":
@@ -117,7 +118,7 @@ class Moon:
             "is_gas_giant_moon": self.is_gas_giant_moon,
         }
         if self.is_ring:
-            d["ring_count"] = getattr(self, "_ring_count", 1)
+            d["ring_count"] = self.ring_count
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
         return d
@@ -174,21 +175,20 @@ def _size_terrestrial_moon(parent_size: int) -> Moon:
     r = random.randint(1, 6)
     if r <= 3:
         return Moon(size_code="S")
-    elif r <= 5:
+    if r <= 5:
         sz = _d3() - 1            # D3-1: 0, 1, or 2
         if sz == 0:
             return Moon(size_code=0, is_ring=True)
         # Clamp: moon cannot exceed parent size (WBH p.57)
         sz = min(sz, parent_size)
         return Moon(size_code=sz)
-    else:
-        # Size = (parent_size - 1) - 1D; negative → S, zero → ring (WBH p.57)
-        sz = (parent_size - 1) - random.randint(1, 6)
-        if sz < 0:
-            return Moon(size_code="S")
-        if sz == 0:
-            return Moon(size_code=0, is_ring=True)
-        return Moon(size_code=sz)
+    # Size = (parent_size - 1) - 1D; negative → S, zero → ring (WBH p.57)
+    sz = (parent_size - 1) - random.randint(1, 6)
+    if sz < 0:
+        return Moon(size_code="S")
+    if sz == 0:
+        return Moon(size_code=0, is_ring=True)
+    return Moon(size_code=sz)
 
 
 def _size_gg_moon(gg_diameter: int) -> Moon:
@@ -196,29 +196,28 @@ def _size_gg_moon(gg_diameter: int) -> Moon:
     r = random.randint(1, 6)
     if r <= 3:
         return Moon(size_code="S")
-    elif r <= 5:
+    if r <= 5:
         sz = _d3() - 1
         if sz == 0:
             return Moon(size_code=0, is_ring=True)
         return Moon(size_code=sz)
+    # Gas Giant Special Moon Sizing
+    r2 = random.randint(1, 6)
+    if r2 <= 3:
+        sz = random.randint(1, 6)             # 1D → 1-6
+    elif r2 <= 5:
+        sz = max(0, _roll(2) - 2)             # 2D-2 → 0-A
     else:
-        # Gas Giant Special Moon Sizing
-        r2 = random.randint(1, 6)
-        if r2 <= 3:
-            sz = random.randint(1, 6)             # 1D → 1-6
-        elif r2 <= 5:
-            sz = max(0, _roll(2) - 2)             # 2D-2 → 0-A
-        else:
-            sz = _roll(2, 4)                      # 2D+4 → 6-G
-            if sz >= 16:
-                # Size G = this moon is a small gas giant
-                gg_sz = _d3() + _d3()             # D3+D3 for GS diameter
-                return Moon(size_code=gg_sz, is_gas_giant_moon=True)
-        if sz == 0:
-            return Moon(size_code=0, is_ring=True)
-        # Clamp moon to be smaller than parent
-        sz = min(sz, gg_diameter - 1)
-        return Moon(size_code=max(1, sz))
+        sz = _roll(2, 4)                      # 2D+4 → 6-G
+        if sz >= 16:
+            # Size G = this moon is a small gas giant
+            gg_sz = _d3() + _d3()             # D3+D3 for GS diameter
+            return Moon(size_code=gg_sz, is_gas_giant_moon=True)
+    if sz == 0:
+        return Moon(size_code=0, is_ring=True)
+    # Clamp moon to be smaller than parent
+    sz = min(sz, gg_diameter - 1)
+    return Moon(size_code=max(1, sz))
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +238,7 @@ def _twin_check(moon: Moon, parent_size: int) -> Moon:
         r = _roll(2)
         if r == 2:
             return Moon(size_code=parent_size - 1)
-        elif r == 12:
+        if r == 12:
             return Moon(size_code=parent_size)
     return moon
 
@@ -259,7 +258,7 @@ def _consolidate(moons: List[Moon]) -> List[Moon]:
         return others
     # Represent all rings as a single Moon with ring_count attribute
     ring_entry = Moon(size_code=0, is_ring=True)
-    ring_entry._ring_count = len(rings)
+    ring_entry.ring_count = len(rings)
     return [ring_entry] + others
 
 
@@ -301,7 +300,7 @@ def generate_moons(
         return []
     if raw == 0:
         ring = Moon(size_code=0, is_ring=True)
-        ring._ring_count = 1
+        ring.ring_count = 1
         return [ring]
 
     moons: List[Moon] = []
@@ -318,8 +317,10 @@ def generate_moons(
 
     # Sort: rings first, then S, then numeric ascending
     def sort_key(m: Moon):
-        if m.is_ring: return (0, 0)
-        if m.size_code == "S": return (1, 0)
+        if m.is_ring:
+            return (0, 0)
+        if m.size_code == "S":
+            return (1, 0)
         return (2, int(m.size_code))
 
     return sorted(moons, key=sort_key)
@@ -332,7 +333,7 @@ def moons_str(moons: List[Moon]) -> str:
     parts = []
     for m in moons:
         if m.is_ring:
-            count = getattr(m, "_ring_count", 1)
+            count = m.ring_count
             parts.append(f"R{count:02d}")
         elif m.is_gas_giant_moon:
             parts.append(f"GS{_ehex(int(m.size_code))}")
