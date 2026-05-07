@@ -275,14 +275,26 @@ class TravellerSystem:
                             else "type-inh" if mw and mw.population > 0
                             else "type-terr")
             elif detail is not None:
-                profile = esc(detail.profile)
-                type_cls = ("type-gg" if detail.is_gas_giant
-                            else "type-belt" if o.world_type == "belt"
-                            else "type-inh" if detail.inhabited
-                            else "type-terr")
+                # Gas giant orbits: use gg_sah as profile.  When the mainworld
+                # is a satellite, attach_detail() stores the satellite's SAH in
+                # detail, so detail.profile returns the satellite UWP instead of
+                # the gas giant profile.  gg_sah is always the correct value.
+                if o.world_type == "gas_giant":
+                    profile = esc(o.gg_sah or detail.profile)
+                    type_cls = "type-gg"
+                else:
+                    profile = esc(detail.profile)
+                    type_cls = ("type-belt" if o.world_type == "belt"
+                                else "type-inh" if detail.inhabited
+                                else "type-terr")
             else:
-                profile = ""
-                type_cls = "type-terr"
+                # No detail attached: gas giant orbits can still show gg_sah.
+                if o.world_type == "gas_giant" and o.gg_sah:
+                    profile = esc(o.gg_sah)
+                    type_cls = "type-gg"
+                else:
+                    profile = ""
+                    type_cls = "type-terr"
 
             mw_mark = " ← mainworld" if o.is_mainworld_candidate else ""
             row_cls  = "mw-row" if o.is_mainworld_candidate else ""
