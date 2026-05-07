@@ -665,7 +665,8 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                         mw_tl=mainworld.tech_level,
                         max_secondary_pop=max(0, mainworld.population - random.randint(1,6)),
                     )
-            orbit.detail = WorldDetail(
+            # WorldDetail for the satellite body itself (with its own moons).
+            satellite_detail = WorldDetail(
                 sah=sah,
                 population=mainworld.population,
                 government=mainworld.government,
@@ -674,6 +675,23 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                 spaceport=mainworld.starport,
                 moons=mw_moons,
             )
+            if orbit.world_type == "gas_giant":
+                # The orbit slot holds the gas giant; the mainworld is its
+                # satellite.  Represent the satellite as the first moon sub-row
+                # so the orbit table shows its UWP beneath the gas giant profile.
+                satellite_moon = Moon(size_code=mw_size)
+                satellite_moon.detail = satellite_detail
+                orbit.detail = WorldDetail(
+                    sah=orbit.gg_sah,
+                    population=0,
+                    government=0,
+                    law_level=0,
+                    tech_level=0,
+                    spaceport="-",
+                    moons=[satellite_moon],
+                )
+            else:
+                orbit.detail = satellite_detail
         elif orbit.world_type == "empty":
             orbit.detail = None
         else:

@@ -168,6 +168,12 @@ def _orbit_profile(orbit: object) -> str:
     cp = getattr(orbit, "canonical_profile", None)
     if cp:
         return cp
+    # Gas giant orbits: always show gg_sah (e.g. "GM7") as the profile.
+    # When the mainworld is a satellite of the gas giant, attach_detail() sets
+    # orbit.detail.sah to the satellite's SAH, hiding the gas giant profile.
+    gg_sah = getattr(orbit, "gg_sah", "")
+    if gg_sah:
+        return gg_sah
     detail = getattr(orbit, "detail", None)
     if detail is None:
         return "—"
