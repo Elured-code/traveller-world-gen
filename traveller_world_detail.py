@@ -525,16 +525,19 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
 
     primary = system.stellar_system.primary
 
-    # Belt physical: precompute system-wide values (WBH pp.131-133)
+    # Belt physical: precompute per-star orbit generation spreads (WBH p.131).
+    # Spread = (max Orbit# − MAO) / n_orbits — the per-slot step used in orbit
+    # placement; this is what WBH calls "system orbit spread" in the span formula.
     non_empty = [o for o in orbits.orbits if o.world_type != "empty"]
-    if len(non_empty) >= 2:
-        orbit_spread = (max(o.orbit_au for o in non_empty)
-                        - min(o.orbit_au for o in non_empty))
-    elif non_empty:
-        orbit_spread = non_empty[0].orbit_au
-    else:
-        orbit_spread = 0.0
     outermost_au = max((o.orbit_au for o in non_empty), default=0.0)
+    star_orbit_spreads: dict[str, float] = {}
+    for _desig in {o.star_designation for o in non_empty}:
+        _star_ne = [o for o in non_empty if o.star_designation == _desig]
+        _mao = orbits.star_mao.get(_desig, 0.0)
+        _max_orb = max(o.orbit_number for o in _star_ne)
+        star_orbit_spreads[_desig] = (
+            (_max_orb - _mao) / len(_star_ne) if _star_ne else 0.0
+        )
     is_exploited = (mainworld is not None
                     and "In" in mainworld.trade_codes
                     and mainworld.tech_level >= 8)
@@ -591,7 +594,7 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
                 orbit_au=orbit.orbit_au,
                 hz_deviation=orbit.hz_deviation,
                 age_gyr=primary.age_gyr,
-                orbit_spread=orbit_spread,
+                orbit_spread=star_orbit_spreads.get(orbit.star_designation, 0.0),
                 next_is_gas_giant=next_is_gg,
                 is_outermost=orbit.orbit_au >= outermost_au,
                 is_exploited=is_exploited,
@@ -742,15 +745,17 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
             and system.mainworld_orbit.detail is not None):
         orbits_obj = system.system_orbits
         non_empty = [o for o in orbits_obj.orbits if o.world_type != "empty"]
-        if len(non_empty) >= 2:
-            orbit_spread = (max(o.orbit_au for o in non_empty)
-                            - min(o.orbit_au for o in non_empty))
-        elif non_empty:
-            orbit_spread = non_empty[0].orbit_au
-        else:
-            orbit_spread = 0.0
         outermost_au = max((o.orbit_au for o in non_empty), default=0.0)
         mw_orbit = system.mainworld_orbit
+        mw_desig = mw_orbit.star_designation
+        mw_star_ne = [o for o in non_empty if o.star_designation == mw_desig]
+        mw_mao = orbits_obj.star_mao.get(mw_desig, 0.0)
+        mw_max_orb = max(
+            (o.orbit_number for o in mw_star_ne), default=mw_mao
+        )
+        orbit_spread = (
+            (mw_max_orb - mw_mao) / len(mw_star_ne) if mw_star_ne else 0.0
+        )
         same_star_outward = sorted(
             [o for o in orbits_obj.orbits
              if o.star_designation == mw_orbit.star_designation

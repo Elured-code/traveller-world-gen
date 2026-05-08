@@ -1172,7 +1172,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         physical = getattr(w, "physical", None)
         sz_hex = _to_hex(w.size)  # type: ignore[attr-defined]
-        if physical is not None:
+        if physical is not None and not isinstance(physical, BeltPhysical):
             size_value = f"{sz_hex} — {physical.diameter_km:,} km"
             size_sub = f"Gravity: {physical.gravity:.3f} G"
         else:
