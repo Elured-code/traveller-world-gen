@@ -40,6 +40,8 @@ import argparse
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
 
+from traveller_world_physical import TIDAL_STATUS_LABELS
+
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
 
@@ -579,6 +581,27 @@ class World:  # pylint: disable=too-many-instance-attributes
         gear_danger = gear not in ("None", "Varies")
         survival_row = row("Survival gear", gear, danger=gear_danger)
 
+        # --- physical detail card (only when WorldPhysical is attached) ---
+        if self.physical:
+            p = self.physical
+            physical_html = (
+                '<div class="inner-card" style="margin-top:12px">'
+                '<p class="inner-label">World body</p>'
+                + row("Composition", p.composition)
+                + row("Diameter", f"{p.diameter_km:,} km")
+                + row("Density", f"{p.density:.2f} g/cm³")
+                + row("Mass", f"{p.mass:.4f} M⊕")
+                + row("Surface gravity", f"{p.gravity:.3f} G")
+                + row("Escape velocity", f"{p.escape_velocity:.2f} km/s")
+                + row("Axial tilt", f"{p.axial_tilt}°")
+                + row("Day length", f"{p.day_length:.1f} h")
+                + (row("Tidal status", TIDAL_STATUS_LABELS[p.tidal_status])
+                   if p.tidal_status != "none" else "")
+                + '</div>'
+            )
+        else:
+            physical_html = ""
+
         return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -747,8 +770,8 @@ class World:  # pylint: disable=too-many-instance-attributes
     </div>
     <div class="stat">
       <p class="stat-label">Size</p>
-      <p class="stat-value">{esc(to_hex(self.size))} — {esc(d["size"]["diameter_km"])} km</p>
-      <p class="stat-sub">Surface gravity {esc(d["size"]["surface_gravity"])}</p>
+      <p class="stat-value">{esc(to_hex(self.size))} — {esc(f"{self.physical.diameter_km:,}" if self.physical else d["size"]["diameter_km"])} km</p>
+      <p class="stat-sub">Surface gravity {esc(f"{self.physical.gravity:.2f}G" if self.physical else d["size"]["surface_gravity"])}</p>
     </div>
     <div class="stat">
       <p class="stat-label">Tech level</p>
@@ -783,6 +806,7 @@ class World:  # pylint: disable=too-many-instance-attributes
   </div>
 
   {notes_html}
+  {physical_html}
 
   <details>
     <summary>Raw JSON</summary>
@@ -843,6 +867,21 @@ class World:  # pylint: disable=too-many-instance-attributes
             f"  Law Level   : {to_hex(self.law_level)}",
             f"  Tech Level  : {to_hex(self.tech_level)}",
         ]
+
+        if self.physical:
+            p = self.physical
+            lines.append(f"{'-'*56}")
+            lines.append("  World body")
+            lines.append(f"  Composition : {p.composition}")
+            lines.append(f"  Diameter    : {p.diameter_km:,} km")
+            lines.append(f"  Density     : {p.density:.2f} g/cm³")
+            lines.append(f"  Mass        : {p.mass:.4f} M⊕")
+            lines.append(f"  Gravity     : {p.gravity:.3f} G")
+            lines.append(f"  Esc. vel.   : {p.escape_velocity:.2f} km/s")
+            lines.append(f"  Axial tilt  : {p.axial_tilt}°")
+            lines.append(f"  Day length  : {p.day_length:.1f} h")
+            if p.tidal_status != "none":
+                lines.append(f"  Tidal status: {TIDAL_STATUS_LABELS[p.tidal_status]}")
 
         if self.notes:
             lines.append(f"{'-'*56}")

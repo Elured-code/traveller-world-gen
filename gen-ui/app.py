@@ -79,6 +79,7 @@ from traveller_world_gen import (  # noqa: E402
     generate_world,
     to_hex as _to_hex,
 )
+from traveller_world_physical import generate_world_physical, TIDAL_STATUS_LABELS  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -167,6 +168,12 @@ def _orbit_profile(orbit: object) -> str:
     cp = getattr(orbit, "canonical_profile", None)
     if cp:
         return cp
+    # Gas giant orbits: always show gg_sah (e.g. "GM7") as the profile.
+    # When the mainworld is a satellite of the gas giant, attach_detail() sets
+    # orbit.detail.sah to the satellite's SAH, hiding the gas giant profile.
+    gg_sah = getattr(orbit, "gg_sah", "")
+    if gg_sah:
+        return gg_sah
     detail = getattr(orbit, "detail", None)
     if detail is None:
         return "—"
@@ -426,6 +433,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_full_system.toggled.connect(self._on_full_system_toggled)
         self._check_attach_detail = QCheckBox("Attach detail")
         self._check_attach_detail.setEnabled(False)
+        self._check_physical = QCheckBox("Physical detail")
+        self._check_physical.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
@@ -433,6 +442,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout.setContentsMargins(0, 0, 0, 0)
         check_layout.addWidget(self._check_full_system)
         check_layout.addWidget(self._check_attach_detail)
+        check_layout.addWidget(self._check_physical)
         left_layout.addWidget(check_row)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
@@ -499,8 +509,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _on_full_system_toggled(self, checked: bool) -> None:
         self._check_attach_detail.setEnabled(checked)
+        self._check_physical.setEnabled(checked)
         if not checked:
             self._check_attach_detail.setChecked(False)
+            self._check_physical.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -585,6 +597,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _finish_generation(self, world: object) -> None:
         self._current_system = None
         self._current_world = world
+        if self._check_physical.isChecked():
+            world.physical = generate_world_physical(world)  # type: ignore[attr-defined]
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
         if path is not None:
             self._html_path = path
@@ -595,6 +609,18 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     ) -> None:
         self._current_system = system
         self._current_world = system.mainworld  # type: ignore[attr-defined]
+        if self._check_physical.isChecked():
+            world = system.mainworld  # type: ignore[attr-defined]
+            if world is not None:
+                stars = system.stellar_system.stars  # type: ignore[attr-defined]
+                age = stars[0].age_gyr if stars else 0.0
+                mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
+                orbit_number = mw_orbit.orbit_number if mw_orbit is not None else None
+                orbit_au = mw_orbit.orbit_au if mw_orbit is not None else None
+                star_mass = stars[0].mass if stars else None
+                world.physical = generate_world_physical(
+                    world, age, orbit_number, orbit_au, star_mass
+                )
         if attach_detail_flag:
             _attach_detail(system)  # type: ignore[arg-type]
         self._detail_attached = attach_detail_flag
@@ -931,9 +957,22 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _build_stellar_card(self, system: object) -> QGroupBox:  # pylint: disable=too-many-locals
         group = QGroupBox("Stellar System")
-        grid = QGridLayout(group)
+        outer = QVBoxLayout(group)
+        outer.setSpacing(6)
+        outer.setContentsMargins(8, 4, 8, 6)
+
+        stars = system.stellar_system.stars  # type: ignore[attr-defined]
+        age_gyr = stars[0].age_gyr if stars else 0.0
+        age_lbl = QLabel(f"System age: {age_gyr:.2f} Gyr")
+        age_lbl.setObjectName("row-label")
+        outer.addWidget(age_lbl)
+
+        grid_widget = QWidget()
+        grid = QGridLayout(grid_widget)
         grid.setSpacing(4)
         grid.setHorizontalSpacing(16)
+        grid.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(grid_widget)
 
         headers = ["Desig", "Type", "Mass (M☉)", "Temp (K)", "Lum (L☉)", "Orbit (AU)"]
         right_cols = {2, 3, 4, 5}
@@ -948,7 +987,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(lbl, 0, col)
 
-        stars = system.stellar_system.stars  # type: ignore[attr-defined]
         for row, star in enumerate(stars, start=1):
             orbit_str = f"{star.orbit_au:.3f}" if star.orbit_au else "—"
             cells = [
@@ -1090,6 +1128,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         layout.addWidget(self._build_stat_row(w, d))
         layout.addWidget(self._build_detail_cards(w, d))
         layout.addWidget(self._build_trade_codes(w))
+        physical_card = self._build_physical_card(w)
+        if physical_card is not None:
+            layout.addWidget(physical_card)
         notes = self._build_notes(w)
         if notes:
             layout.addWidget(notes)
@@ -1128,12 +1169,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             ),
             stretch=1,
         )
+        physical = getattr(w, "physical", None)
+        sz_hex = _to_hex(w.size)  # type: ignore[attr-defined]
+        if physical is not None:
+            size_value = f"{sz_hex} — {physical.diameter_km:,} km"
+            size_sub = f"Gravity: {physical.gravity:.3f} G"
+        else:
+            size_value = f"{sz_hex} — {d['size']['diameter_km']} km"
+            size_sub = f"Gravity: {d['size']['surface_gravity']}"
         layout.addWidget(
-            stat_group(
-                "Size",
-                f"{_to_hex(w.size)} — {d['size']['diameter_km']} km",  # type: ignore[attr-defined]
-                f"Gravity: {d['size']['surface_gravity']}",
-            ),
+            stat_group("Size", size_value, size_sub),
             stretch=1,
         )
         layout.addWidget(
@@ -1238,6 +1283,29 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         vbox.addWidget(badge_row)
         return box
+
+    def _build_physical_card(self, w: object) -> "QGroupBox | None":
+        physical = getattr(w, "physical", None)
+        if physical is None:
+            return None
+        group = QGroupBox("World Body")
+        inner = QVBoxLayout(group)
+        inner.setSpacing(0)
+        inner.setContentsMargins(8, 4, 8, 6)
+        for lbl_text, val_text in [
+            ("Composition",     physical.composition),
+            ("Diameter",        f"{physical.diameter_km:,} km"),
+            ("Density",         f"{physical.density:.2f} g/cm³"),
+            ("Mass",            f"{physical.mass:.4f} M⊕"),
+            ("Surface gravity", f"{physical.gravity:.3f} G"),
+            ("Escape velocity", f"{physical.escape_velocity:.2f} km/s"),
+            ("Axial tilt",      f"{physical.axial_tilt}°"),
+            ("Day length",      f"{physical.day_length:.1f} h"),
+            *([("Tidal status", TIDAL_STATUS_LABELS[physical.tidal_status])]
+              if physical.tidal_status != "none" else []),
+        ]:
+            inner.addWidget(_detail_row(lbl_text, val_text))
+        return group
 
     def _build_notes(self, w: object) -> "QGroupBox | None":
         if not w.notes:  # type: ignore[attr-defined]
