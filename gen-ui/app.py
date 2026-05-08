@@ -79,7 +79,7 @@ from traveller_world_gen import (  # noqa: E402
     generate_world,
     to_hex as _to_hex,
 )
-from traveller_world_physical import generate_world_physical  # noqa: E402
+from traveller_world_physical import generate_world_physical, TIDAL_STATUS_LABELS  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -614,7 +614,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             if world is not None:
                 stars = system.stellar_system.stars  # type: ignore[attr-defined]
                 age = stars[0].age_gyr if stars else 0.0
-                world.physical = generate_world_physical(world, age)
+                mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
+                orbit_number = mw_orbit.orbit_number if mw_orbit is not None else None
+                orbit_au = mw_orbit.orbit_au if mw_orbit is not None else None
+                star_mass = stars[0].mass if stars else None
+                world.physical = generate_world_physical(
+                    world, age, orbit_number, orbit_au, star_mass
+                )
         if attach_detail_flag:
             _attach_detail(system)  # type: ignore[arg-type]
         self._detail_attached = attach_detail_flag
@@ -1295,6 +1301,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             ("Escape velocity", f"{physical.escape_velocity:.2f} km/s"),
             ("Axial tilt",      f"{physical.axial_tilt}°"),
             ("Day length",      f"{physical.day_length:.1f} h"),
+            *([("Tidal status", TIDAL_STATUS_LABELS[physical.tidal_status])]
+              if physical.tidal_status != "none" else []),
         ]:
             inner.addWidget(_detail_row(lbl_text, val_text))
         return group
