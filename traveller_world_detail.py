@@ -118,6 +118,7 @@ from traveller_world_gen import (
     to_hex,
 )
 from traveller_moon_gen import generate_moons, moons_str, Moon
+from traveller_belt_physical import generate_belt_physical, BeltPhysical
 
 
 # ---------------------------------------------------------------------------
@@ -314,7 +315,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
     """Physical and social details for one orbit slot."""
 
     __slots__ = ("sah", "population", "government", "law_level",
-                 "tech_level", "spaceport", "moons", "trade_codes")
+                 "tech_level", "spaceport", "moons", "trade_codes", "physical")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -327,6 +328,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.tech_level = tech_level
         self.spaceport  = spaceport
         self.moons      = moons if moons is not None else []
+        self.physical: BeltPhysical | None = None
         # Gas giants and rings carry no trade codes
         if (len(sah) == 3 and sah[0] == "G" and sah[1] in ("S", "M", "L")) \
                 or (len(sah) >= 1 and sah[0] == "R"):
@@ -389,6 +391,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             "trade_codes": self.trade_codes,
             "moons_str":   moons_str(self.moons),
             "moons":       [m.to_dict() for m in self.moons],
+            "physical":    self.physical.to_dict() if self.physical is not None else None,
         }
 
 
@@ -521,6 +524,21 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
     max_secondary_pop = max(0, mw_pop - random.randint(1, 6))
 
     primary = system.stellar_system.primary
+
+    # Belt physical: precompute system-wide values (WBH pp.131-133)
+    non_empty = [o for o in orbits.orbits if o.world_type != "empty"]
+    if len(non_empty) >= 2:
+        orbit_spread = (max(o.orbit_au for o in non_empty)
+                        - min(o.orbit_au for o in non_empty))
+    elif non_empty:
+        orbit_spread = non_empty[0].orbit_au
+    else:
+        orbit_spread = 0.0
+    outermost_au = max((o.orbit_au for o in non_empty), default=0.0)
+    is_exploited = (mainworld is not None
+                    and "In" in mainworld.trade_codes
+                    and mainworld.tech_level >= 8)
+
     result: dict[str, WorldDetail] = {}
 
     for orbit in orbits.orbits:
@@ -559,6 +577,25 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
                     sah="000", population=pop, government=gov,
                     law_level=law, tech_level=tl, spaceport=port,
                 )
+            # Belt physical detail (WBH pp.131-133)
+            same_star_outward = sorted(
+                [o for o in orbits.orbits
+                 if o.star_designation == orbit.star_designation
+                 and o.orbit_au > orbit.orbit_au
+                 and o.world_type != "empty"],
+                key=lambda o: o.orbit_au,
+            )
+            next_is_gg = bool(same_star_outward
+                              and same_star_outward[0].world_type == "gas_giant")
+            result[key].physical = generate_belt_physical(
+                orbit_au=orbit.orbit_au,
+                hz_deviation=orbit.hz_deviation,
+                age_gyr=primary.age_gyr,
+                orbit_spread=orbit_spread,
+                next_is_gas_giant=next_is_gg,
+                is_outermost=orbit.orbit_au >= outermost_au,
+                is_exploited=is_exploited,
+            )
 
         elif orbit.world_type == "gas_giant":
             # Gas giants: never directly inhabited (moons are out of scope).
