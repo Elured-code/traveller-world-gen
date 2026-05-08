@@ -14,6 +14,8 @@ Rules implemented
 -----------------
 Belt Span (WBH p.131):
   Span (AU) = (system orbit spread × 2D) / 10
+  "System orbit spread" = (max Orbit# − MAO) / n_orbits — the per-slot step
+  used in orbit placement, NOT the AU range of the system.
   DM: +1 if next orbit slot is a gas giant; +2 if belt is the outermost slot.
 
 Belt Composition Percentages (WBH p.132):
@@ -23,7 +25,7 @@ Belt Composition Percentages (WBH p.132):
   Normalisation: if m+s+c > 100%, trim m first, then s.
 
 Belt Bulk (WBH p.132):
-  Bulk = 2D2 + DMs, minimum 1.
+  Bulk = 2D+2 + DMs, minimum 1.
   DM: -(age_gyr ÷ 2, round down); +(c_type% ÷ 10, round down).
 
 Belt Resource Rating (WBH p.133):
@@ -164,9 +166,9 @@ def _roll_belt_span(
 # ---------------------------------------------------------------------------
 
 def _roll_bulk(age_gyr: float, c_pct: int) -> int:
-    """Roll belt bulk (2D2 + DMs, minimum 1)."""
+    """Roll belt bulk (2D+2 + DMs, minimum 1)."""
     dm = -int(age_gyr / 2) + int(c_pct / 10)
-    return max(1, _d2() + _d2() + dm)
+    return max(1, _roll(2, 2 + dm))
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +292,8 @@ def generate_belt_physical(  # pylint: disable=too-many-arguments,too-many-posit
     age_gyr : float
         System age in Gyr (for bulk DM).
     orbit_spread : float
-        Full range of the system's orbit AUs (max - min), used in span formula.
+        Per-slot orbital step size in Orbit# units: (max Orbit# − MAO) / n_orbits.
+        This is the WBH "system orbit spread" used in the belt span formula (p.131).
     next_is_gas_giant : bool
         True if the next outward orbit slot is a gas giant (span DM).
     is_outermost : bool

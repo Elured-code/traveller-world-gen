@@ -155,23 +155,23 @@ class TestRollBulk:
 
     def test_age_dm_rounds_down(self):
         """DM for age = -int(age/2); age=3 → -1."""
-        # age=3 → dm_age=-1; c_pct=0 → dm_c=0; D2=2+2=4 → 4-1=3
+        # age=3 → dm_age=-1; c_pct=0 → dm_c=0; 2D+2-1 with d6=2: 2+2+1=5
         with patch("traveller_belt_physical.random.randint", return_value=2):
             bulk = _roll_bulk(age_gyr=3.0, c_pct=0)
-        assert bulk == 3
+        assert bulk == 5
 
     def test_c_pct_dm(self):
         """DM for c_pct = int(c_pct/10); c_pct=30 → +3."""
-        # age=0 → dm_age=0; c_pct=30 → dm_c=3; D2=1+1=2 → 2+3=5
+        # age=0 → dm_age=0; c_pct=30 → dm_c=3; 2D+2+3 with d6=1: 1+1+5=7
         with patch("traveller_belt_physical.random.randint", return_value=1):
             bulk = _roll_bulk(age_gyr=0.0, c_pct=30)
-        assert bulk == 5
+        assert bulk == 7
 
     def test_combined_dms(self):
-        """age=4 → DM-2, c_pct=20 → DM+2 → net DM=0; D2=1+1=2."""
+        """age=4 → DM-2, c_pct=20 → DM+2 → net variable DM=0; 2D+2 with d6=1: 1+1+2=4."""
         with patch("traveller_belt_physical.random.randint", return_value=1):
             bulk = _roll_bulk(age_gyr=4.0, c_pct=20)
-        assert bulk == 2
+        assert bulk == 4
 
 
 # ---------------------------------------------------------------------------
