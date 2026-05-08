@@ -38,9 +38,10 @@ import json
 import random
 import argparse
 from dataclasses import dataclass, field
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, Union, TYPE_CHECKING
 
 from traveller_world_physical import TIDAL_STATUS_LABELS
+from traveller_belt_physical import BeltPhysical
 
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
@@ -287,7 +288,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     trade_codes:    List[str] = field(default_factory=list)
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
-    physical:       Optional["WorldPhysical"] = field(default=None, init=False)
+    physical:       Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -581,24 +582,40 @@ class World:  # pylint: disable=too-many-instance-attributes
         gear_danger = gear not in ("None", "Varies")
         survival_row = row("Survival gear", gear, danger=gear_danger)
 
-        # --- physical detail card (only when WorldPhysical is attached) ---
+        # --- physical detail card (WorldPhysical or BeltPhysical) ---
         if self.physical:
             p = self.physical
-            physical_html = (
-                '<div class="inner-card" style="margin-top:12px">'
-                '<p class="inner-label">World body</p>'
-                + row("Composition", p.composition)
-                + row("Diameter", f"{p.diameter_km:,} km")
-                + row("Density", f"{p.density:.2f} g/cm³")
-                + row("Mass", f"{p.mass:.4f} M⊕")
-                + row("Surface gravity", f"{p.gravity:.3f} G")
-                + row("Escape velocity", f"{p.escape_velocity:.2f} km/s")
-                + row("Axial tilt", f"{p.axial_tilt}°")
-                + row("Day length", f"{p.day_length:.1f} h")
-                + (row("Tidal status", TIDAL_STATUS_LABELS[p.tidal_status])
-                   if p.tidal_status != "none" else "")
-                + '</div>'
-            )
+            if isinstance(p, BeltPhysical):
+                physical_html = (
+                    '<div class="inner-card" style="margin-top:12px">'
+                    '<p class="inner-label">Belt body</p>'
+                    + row("Belt span", f"{p.inner_au} – {p.outer_au} AU")
+                    + row("Composition",
+                          f"M: {p.m_type_pct}% / S: {p.s_type_pct}% / "
+                          f"C: {p.c_type_pct}% / Other: {p.other_pct}%")
+                    + row("Bulk", str(p.bulk))
+                    + row("Resource rating", str(p.resource_rating))
+                    + row("Significant bodies",
+                          f"{p.size_1_bodies} × Size 1, "
+                          f"{p.size_s_bodies} × Size S")
+                    + '</div>'
+                )
+            else:
+                physical_html = (
+                    '<div class="inner-card" style="margin-top:12px">'
+                    '<p class="inner-label">World body</p>'
+                    + row("Composition", p.composition)
+                    + row("Diameter", f"{p.diameter_km:,} km")
+                    + row("Density", f"{p.density:.2f} g/cm³")
+                    + row("Mass", f"{p.mass:.4f} M⊕")
+                    + row("Surface gravity", f"{p.gravity:.3f} G")
+                    + row("Escape velocity", f"{p.escape_velocity:.2f} km/s")
+                    + row("Axial tilt", f"{p.axial_tilt}°")
+                    + row("Day length", f"{p.day_length:.1f} h")
+                    + (row("Tidal status", TIDAL_STATUS_LABELS[p.tidal_status])
+                       if p.tidal_status != "none" else "")
+                    + '</div>'
+                )
         else:
             physical_html = ""
 
@@ -770,8 +787,8 @@ class World:  # pylint: disable=too-many-instance-attributes
     </div>
     <div class="stat">
       <p class="stat-label">Size</p>
-      <p class="stat-value">{esc(to_hex(self.size))} — {esc(f"{self.physical.diameter_km:,}" if self.physical else d["size"]["diameter_km"])} km</p>
-      <p class="stat-sub">Surface gravity {esc(f"{self.physical.gravity:.2f}G" if self.physical else d["size"]["surface_gravity"])}</p>
+      <p class="stat-value">{esc(to_hex(self.size))} — {esc(f"{self.physical.diameter_km:,}" if (self.physical and not isinstance(self.physical, BeltPhysical)) else d["size"]["diameter_km"])} km</p>
+      <p class="stat-sub">Surface gravity {esc(f"{self.physical.gravity:.2f}G" if (self.physical and not isinstance(self.physical, BeltPhysical)) else d["size"]["surface_gravity"])}</p>
     </div>
     <div class="stat">
       <p class="stat-label">Tech level</p>
@@ -871,17 +888,31 @@ class World:  # pylint: disable=too-many-instance-attributes
         if self.physical:
             p = self.physical
             lines.append(f"{'-'*56}")
-            lines.append("  World body")
-            lines.append(f"  Composition : {p.composition}")
-            lines.append(f"  Diameter    : {p.diameter_km:,} km")
-            lines.append(f"  Density     : {p.density:.2f} g/cm³")
-            lines.append(f"  Mass        : {p.mass:.4f} M⊕")
-            lines.append(f"  Gravity     : {p.gravity:.3f} G")
-            lines.append(f"  Esc. vel.   : {p.escape_velocity:.2f} km/s")
-            lines.append(f"  Axial tilt  : {p.axial_tilt}°")
-            lines.append(f"  Day length  : {p.day_length:.1f} h")
-            if p.tidal_status != "none":
-                lines.append(f"  Tidal status: {TIDAL_STATUS_LABELS[p.tidal_status]}")
+            if isinstance(p, BeltPhysical):
+                lines.append("  Belt body")
+                lines.append(f"  Belt span   : {p.inner_au} – {p.outer_au} AU")
+                lines.append(
+                    f"  Composition : M: {p.m_type_pct}% / S: {p.s_type_pct}%"
+                    f" / C: {p.c_type_pct}% / Other: {p.other_pct}%"
+                )
+                lines.append(f"  Bulk        : {p.bulk}")
+                lines.append(f"  Resource    : {p.resource_rating}")
+                lines.append(
+                    f"  Bodies      : {p.size_1_bodies} × Size 1,"
+                    f" {p.size_s_bodies} × Size S"
+                )
+            else:
+                lines.append("  World body")
+                lines.append(f"  Composition : {p.composition}")
+                lines.append(f"  Diameter    : {p.diameter_km:,} km")
+                lines.append(f"  Density     : {p.density:.2f} g/cm³")
+                lines.append(f"  Mass        : {p.mass:.4f} M⊕")
+                lines.append(f"  Gravity     : {p.gravity:.3f} G")
+                lines.append(f"  Esc. vel.   : {p.escape_velocity:.2f} km/s")
+                lines.append(f"  Axial tilt  : {p.axial_tilt}°")
+                lines.append(f"  Day length  : {p.day_length:.1f} h")
+                if p.tidal_status != "none":
+                    lines.append(f"  Tidal status: {TIDAL_STATUS_LABELS[p.tidal_status]}")
 
         if self.notes:
             lines.append(f"{'-'*56}")

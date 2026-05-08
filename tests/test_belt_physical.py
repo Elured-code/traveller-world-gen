@@ -25,6 +25,8 @@ from traveller_belt_physical import (
     _roll_size_s_bodies,
     generate_belt_physical,
 )
+from traveller_system_gen import generate_full_system
+from traveller_world_detail import attach_detail
 
 
 # ---------------------------------------------------------------------------
@@ -471,3 +473,55 @@ class TestGenerateBeltPhysical:
                 is_exploited=False,
             )
             assert result.size_s_bodies >= 0
+
+
+# ---------------------------------------------------------------------------
+# TestAttachDetailBeltMainworld
+# ---------------------------------------------------------------------------
+
+class TestAttachDetailBeltMainworld:
+    """attach_detail() generates BeltPhysical for belt mainworlds."""
+
+    def test_belt_mainworld_physical_set(self):
+        """attach_detail() sets mainworld.physical to BeltPhysical for size-0 mainworld."""
+        system = generate_full_system(seed=735659901)
+        assert system.mainworld is not None
+        assert system.mainworld.size == 0
+        attach_detail(system)
+        assert isinstance(system.mainworld.physical, BeltPhysical)
+
+    def test_orbit_detail_physical_matches_mainworld_physical(self):
+        """mainworld_orbit.detail.physical is the same object as mainworld.physical."""
+        system = generate_full_system(seed=735659901)
+        attach_detail(system)
+        assert system.mainworld_orbit is not None
+        assert system.mainworld_orbit.detail is not None
+        assert system.mainworld_orbit.detail.physical is system.mainworld.physical
+
+    def test_belt_physical_fields_valid(self):
+        """BeltPhysical values are within expected ranges after attach_detail()."""
+        system = generate_full_system(seed=735659901)
+        attach_detail(system)
+        bp = system.mainworld.physical
+        assert isinstance(bp, BeltPhysical)
+        assert bp.inner_au >= 0.0
+        assert bp.outer_au >= bp.inner_au
+        assert bp.m_type_pct + bp.s_type_pct + bp.c_type_pct + bp.other_pct == 100
+        assert 1 <= bp.bulk
+        assert 2 <= bp.resource_rating <= 12
+        assert bp.size_1_bodies >= 0
+        assert bp.size_s_bodies >= 0
+
+    def test_non_belt_mainworld_physical_unchanged(self):
+        """attach_detail() does not set mainworld.physical for non-belt mainworlds."""
+        # Seed 42 generates a terrestrial mainworld (size > 0).
+        import random
+        for seed in range(100):
+            system = generate_full_system(seed=seed)
+            if system.mainworld and system.mainworld.size > 0:
+                attach_detail(system)
+                assert system.mainworld.physical is None, (
+                    f"seed {seed}: expected None, got {system.mainworld.physical}"
+                )
+                return
+        pytest.skip("No terrestrial mainworld found in seeds 0-99")
