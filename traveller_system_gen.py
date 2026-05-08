@@ -60,6 +60,7 @@ from typing import Optional
 
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
+from traveller_belt_physical import BeltPhysical
 from traveller_world_gen import (
     World,
     generate_size,
@@ -379,6 +380,26 @@ class TravellerSystem:
       <p class="sv">{esc(to_hex(mw.law_level))}</p></div>
   </div>
   <div class="trade-row"><span class="trade-lbl">Trade codes</span>{trade_badges}</div>"""
+            if isinstance(mw.physical, BeltPhysical):
+                bp = mw.physical
+                mw_panel += (
+                    f'<div class="section-title">Belt body</div>'
+                    f'<div class="mw-grid">'
+                    f'<div class="stat"><p class="sl">Belt span</p>'
+                    f'<p class="sv mono">{esc(str(bp.inner_au))} –'
+                    f' {esc(str(bp.outer_au))} AU</p></div>'
+                    f'<div class="stat"><p class="sl">Bulk</p>'
+                    f'<p class="sv">{bp.bulk}</p></div>'
+                    f'<div class="stat"><p class="sl">Resource rating</p>'
+                    f'<p class="sv">{bp.resource_rating}</p></div>'
+                    f'<div class="stat"><p class="sl">Composition</p>'
+                    f'<p class="sv">M {bp.m_type_pct}% / S {bp.s_type_pct}%'
+                    f' / C {bp.c_type_pct}%</p></div>'
+                    f'<div class="stat"><p class="sl">Significant bodies</p>'
+                    f'<p class="sv">{bp.size_1_bodies} × Sz 1,'
+                    f' {bp.size_s_bodies} × Sz S</p></div>'
+                    f'</div>'
+                )
         else:
             mw_panel = '<p class="no-val">No mainworld determined.</p>'
 

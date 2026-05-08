@@ -664,7 +664,7 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
     return result
 
 
-def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-locals
+def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-locals,too-many-branches
     """
     Compute WorldDetail for all orbits and attach as `orbit.detail`
     on each OrbitSlot. Also attaches detail for the mainworld orbit
@@ -733,6 +733,45 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
             orbit.detail = None
         else:
             orbit.detail = detail_map.get(key)
+
+    # Belt physical for belt mainworld — mirrors secondary belt logic in
+    # generate_system_detail(), placed here to avoid seed disruption for
+    # secondary belts that are processed earlier in that function.
+    if (mainworld is not None and mainworld.size == 0
+            and system.mainworld_orbit is not None
+            and system.mainworld_orbit.detail is not None):
+        orbits_obj = system.system_orbits
+        non_empty = [o for o in orbits_obj.orbits if o.world_type != "empty"]
+        if len(non_empty) >= 2:
+            orbit_spread = (max(o.orbit_au for o in non_empty)
+                            - min(o.orbit_au for o in non_empty))
+        elif non_empty:
+            orbit_spread = non_empty[0].orbit_au
+        else:
+            orbit_spread = 0.0
+        outermost_au = max((o.orbit_au for o in non_empty), default=0.0)
+        mw_orbit = system.mainworld_orbit
+        same_star_outward = sorted(
+            [o for o in orbits_obj.orbits
+             if o.star_designation == mw_orbit.star_designation
+             and o.orbit_au > mw_orbit.orbit_au
+             and o.world_type != "empty"],
+            key=lambda o: o.orbit_au,
+        )
+        next_is_gg = bool(same_star_outward
+                          and same_star_outward[0].world_type == "gas_giant")
+        is_exploited = "In" in mainworld.trade_codes and mainworld.tech_level >= 8
+        bp = generate_belt_physical(
+            orbit_au=mw_orbit.orbit_au,
+            hz_deviation=mw_orbit.hz_deviation,
+            age_gyr=system.stellar_system.primary.age_gyr,
+            orbit_spread=orbit_spread,
+            next_is_gas_giant=next_is_gg,
+            is_outermost=mw_orbit.orbit_au >= outermost_au,
+            is_exploited=is_exploited,
+        )
+        mw_orbit.detail.physical = bp
+        mainworld.physical = bp
 
 
 def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-many-locals

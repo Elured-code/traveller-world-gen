@@ -80,6 +80,7 @@ from traveller_world_gen import (  # noqa: E402
     to_hex as _to_hex,
 )
 from traveller_world_physical import generate_world_physical, TIDAL_STATUS_LABELS  # noqa: E402
+from traveller_belt_physical import BeltPhysical  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -1288,6 +1289,25 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         physical = getattr(w, "physical", None)
         if physical is None:
             return None
+        if isinstance(physical, BeltPhysical):
+            group = QGroupBox("Belt Body")
+            inner = QVBoxLayout(group)
+            inner.setSpacing(0)
+            inner.setContentsMargins(8, 4, 8, 6)
+            for lbl_text, val_text in [
+                ("Belt span",
+                 f"{physical.inner_au} – {physical.outer_au} AU"),
+                ("Composition",
+                 f"M: {physical.m_type_pct}% / S: {physical.s_type_pct}% / "
+                 f"C: {physical.c_type_pct}% / Other: {physical.other_pct}%"),
+                ("Bulk",            str(physical.bulk)),
+                ("Resource rating", str(physical.resource_rating)),
+                ("Significant bodies",
+                 f"{physical.size_1_bodies} × Size 1, "
+                 f"{physical.size_s_bodies} × Size S"),
+            ]:
+                inner.addWidget(_detail_row(lbl_text, val_text))
+            return group
         group = QGroupBox("World Body")
         inner = QVBoxLayout(group)
         inner.setSpacing(0)
