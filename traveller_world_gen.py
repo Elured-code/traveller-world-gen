@@ -40,6 +40,8 @@ import argparse
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
 
+from traveller_world_physical import TIDAL_STATUS_LABELS
+
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
 
@@ -593,6 +595,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                 + row("Escape velocity", f"{p.escape_velocity:.2f} km/s")
                 + row("Axial tilt", f"{p.axial_tilt}°")
                 + row("Day length", f"{p.day_length:.1f} h")
+                + (row("Tidal status", TIDAL_STATUS_LABELS[p.tidal_status])
+                   if p.tidal_status != "none" else "")
                 + '</div>'
             )
         else:
@@ -876,6 +880,8 @@ class World:  # pylint: disable=too-many-instance-attributes
             lines.append(f"  Esc. vel.   : {p.escape_velocity:.2f} km/s")
             lines.append(f"  Axial tilt  : {p.axial_tilt}°")
             lines.append(f"  Day length  : {p.day_length:.1f} h")
+            if p.tidal_status != "none":
+                lines.append(f"  Tidal status: {TIDAL_STATUS_LABELS[p.tidal_status]}")
 
         if self.notes:
             lines.append(f"{'-'*56}")

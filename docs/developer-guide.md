@@ -393,11 +393,9 @@ class WorldPhysical:       # pylint: disable=too-many-instance-attributes
 | Derived | p.76–77 | D* = diameter/12742; ρ* = density/5.515; mass = D*³×ρ*; gravity = D*×ρ*; v_e = 11.186×√(gravity×D*) |
 | Axial tilt | p.77 | 2D selects band; per-band formula gives degrees (0.00–90°) |
 | Day length | p.103 | (2D−2)×4 + 2 + 1D + DMs; DM+1 per 2 full Gyrs of system age |
+| Tidal lock | pp.105–107 | 2D+DM on Tidal Lock Status table; 11 outcomes from no-effect through 1:1 lock |
 
-**Deferred within this module:**
-
-- *Extreme axial tilt sub-table* (2D ≥ 10, ~17% probability): placeholder returns 40–90°. GitHub issue #10.
-- *Tidal effects on rotation rate*: requires orbital data (`OrbitSlot`) and stellar data (`StarSystem`) not passed to this module. GitHub issue #11.
+**Deferred within this module:** eccentricity DM, moon-size DM in star-lock check, planet-locked-to-moon check, multi-star orbit DM (all blocked by upstream features not yet implemented).
 
 **Integration with `World`:** `World.physical` is an `Optional[WorldPhysical]` field (`field(default=None, init=False)`). The gen-ui sets it when the "Physical detail" checkbox is checked. If set, `World.to_dict()` includes a `"physical"` key; `World.to_html()` adds a "World Body" inner card below the main detail section; `World.summary()` adds a "World body" section. When `physical` is `None`, all output is unchanged.
 
@@ -828,10 +826,6 @@ The following WBH features are explicitly noted as not yet implemented. Page ref
 **Secondary world independent government (Case 2).** Secondary worlds with `Government != 6` can be independent, with government rolled as `2D-7 + Population`. Currently all secondary worlds use the dependent (Case 1) table.
 
 **Secondary world classifications** (WBH p.163). Colony, Farming, Freeport, Military Base, Mining Facility, Penal Colony, Research Base — trade codes for secondary worlds based on their characteristics and relationship to the mainworld. Not implemented.
-
-**Extreme axial tilt sub-table** (WBH p. 77). The Axial Tilt Table's ≥10 band (~17% of rolls) calls a sub-table. The current placeholder returns a random value in 40–90°. GitHub issue #10.
-
-**Tidal effects on rotation rate** (WBH p. 103). The basic rotation rate in `traveller_world_physical.py` applies only the age DM. Tidal locking and tidal braking require the orbital distance (AU) and the host star's mass — data from `OrbitSlot` and `StarSystem` that is not yet passed through to `generate_world_physical()`. GitHub issue #11.
 
 **World physical detail beyond basic** (WBH pp. 78–130). Basic physical characteristics (diameter, density, composition, mass, gravity, escape velocity, axial tilt, day length) are now implemented in `traveller_world_physical.py`. Remaining detail — seismic stress, tidal heating, atmospheric composition, hydrographic composition, native life ratings — is not yet implemented.
 
