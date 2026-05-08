@@ -14,12 +14,13 @@ A technical reference for developers working on the `traveller-world-gen` codeba
    - [traveller_orbit_gen.py](#42-traveller_orbit_genpy)
    - [traveller_system_gen.py](#43-traveller_system_genpy)
    - [traveller_world_gen.py](#44-traveller_world_genpy)
-   - [traveller_world_detail.py](#45-traveller_world_detailpy)
-   - [traveller_moon_gen.py](#46-traveller_moon_genpy)
-   - [function_app.py and shared/helpers.py](#47-function_apppy-and-sharedhelperspy)
-   - [traveller_map_fetch.py](#48-traveller_map_fetchpy)
-   - [system_map.py](#49-system_mappy)
-   - [gen-ui/app.py](#410-gen-uiapppy)
+   - [traveller_world_physical.py](#45-traveller_world_physicalpy)
+   - [traveller_world_detail.py](#46-traveller_world_detailpy)
+   - [traveller_moon_gen.py](#47-traveller_moon_genpy)
+   - [function_app.py and shared/helpers.py](#48-function_apppy-and-sharedhelperspy)
+   - [traveller_map_fetch.py](#49-traveller_map_fetchpy)
+   - [system_map.py](#410-system_mappy)
+   - [gen-ui/app.py](#411-gen-uiapppy)
 5. [Key design decisions](#5-key-design-decisions)
 6. [Compliance audit history](#6-compliance-audit-history)
 7. [Deferred and out-of-scope features](#7-deferred-and-out-of-scope-features)
@@ -49,6 +50,7 @@ traveller-world-gen/
 ├── traveller_orbit_gen.py      # Orbit placement: MAO, HZCO, spread, world slots
 ├── traveller_system_gen.py     # Integration: stellar + orbits + mainworld
 ├── traveller_world_gen.py      # Mainworld: all 13 CRB steps, UWP, trade codes
+├── traveller_world_physical.py # WBH pp.74-77,103: diameter, density, gravity, axial tilt, day length
 ├── traveller_world_detail.py   # Secondary worlds and satellites: SAH + social
 ├── traveller_moon_gen.py       # Moon quantity, sizing, and SAH/social detail
 ├── traveller_map_fetch.py      # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
@@ -335,6 +337,8 @@ class World:
     trade_codes: List[str]      # e.g. ["Ag","Ni","Ri"]
     travel_zone: str            # "Green" | "Amber" | "Red"
     notes: List[str]
+    physical: Optional["WorldPhysical"] = field(default=None, init=False)
+                                # set by generate_world_physical(); None until called
     # methods: .uwp(), .summary(), .to_dict(), .to_json(), .to_html()
 ```
 
@@ -346,7 +350,58 @@ class World:
 
 ---
 
-### 4.5 `traveller_world_detail.py`
+### 4.5 `traveller_world_physical.py`
+
+Implements WBH pp. 74–77, 103. Generates detailed physical characteristics for a mainworld given its size code.
+
+**Key public API:**
+
+```python
+physical: Optional[WorldPhysical] = generate_world_physical(
+    world: World,
+    age_gyr: float = 0.0,   # system age for rotation rate DM
+) -> Optional[WorldPhysical]
+# Returns None for size 0 (belts); size S/R worlds not yet handled here.
+```
+
+**Key dataclass:**
+
+```python
+@dataclass
+class WorldPhysical:       # pylint: disable=too-many-instance-attributes
+    composition: str       # Terrestrial Composition Table category
+    diameter_km: int       # actual rolled diameter in km
+    density: float         # g/cm³
+    mass: float            # relative to Earth (D*³ × ρ*)
+    gravity: float         # surface gravity in G (D* × ρ*)
+    escape_velocity: float # km/s  (11.186 × √(gravity × D*))
+    axial_tilt: float      # degrees, 0–90
+    day_length: float      # basic rotation period in hours
+
+    def to_dict(self) -> dict: ...
+    # keys: composition, diameter_km, density_g_cm3, mass_earth,
+    #       gravity_g, escape_velocity_km_s, axial_tilt_deg, day_length_hours
+```
+
+**Generation tables:**
+
+| Step | WBH | Procedure |
+|------|-----|-----------|
+| Composition | p.75 | Roll 2D + size DM on Terrestrial Composition Table → 5 categories (Heavy Iron Core / Dense Core / Standard / Low Density / Icy) |
+| Density | p.75–76 | Roll 1D on Terrestrial Density Table for the composition category → base + 1D × multiplier g/cm³ |
+| Diameter | p.74 | Base = size × 1,600 km; variation = (2D−7) × 200 km |
+| Derived | p.76–77 | D* = diameter/12742; ρ* = density/5.515; mass = D*³×ρ*; gravity = D*×ρ*; v_e = 11.186×√(gravity×D*) |
+| Axial tilt | p.77 | 2D selects band; per-band formula gives degrees (0.00–90°) |
+| Day length | p.103 | (2D−2)×4 + 2 + 1D + DMs; DM+1 per 2 full Gyrs of system age |
+| Tidal lock | pp.105–107 | 2D+DM on Tidal Lock Status table; 11 outcomes from no-effect through 1:1 lock |
+
+**Deferred within this module:** eccentricity DM, moon-size DM in star-lock check, planet-locked-to-moon check, multi-star orbit DM (all blocked by upstream features not yet implemented).
+
+**Integration with `World`:** `World.physical` is an `Optional[WorldPhysical]` field (`field(default=None, init=False)`). The gen-ui sets it when the "Physical detail" checkbox is checked. If set, `World.to_dict()` includes a `"physical"` key; `World.to_html()` adds a "World Body" inner card below the main detail section; `World.summary()` adds a "World body" section. When `physical` is `None`, all output is unchanged.
+
+---
+
+### 4.6 `traveller_world_detail.py`
 
 Generates SAH (Size/Atmosphere/Hydrographics) profiles and full social data for every non-mainworld body in the system — orbital secondaries, belts, and significant moons.
 
@@ -405,7 +460,7 @@ class WorldDetail:
 
 ---
 
-### 4.6 `traveller_moon_gen.py`
+### 4.7 `traveller_moon_gen.py`
 
 Implements WBH pp. 55–57.
 
@@ -446,7 +501,7 @@ class Moon:
 
 ---
 
-### 4.7 `function_app.py` and `shared/helpers.py`
+### 4.8 `function_app.py` and `shared/helpers.py`
 
 The Azure Functions REST API layer. Not required for local use of the generation modules.
 
@@ -484,7 +539,7 @@ Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` e
 
 ---
 
-### 4.8 `traveller_map_fetch.py`
+### 4.9 `traveller_map_fetch.py`
 
 Fetches canonical world data from the public TravellerMap REST API and uses it
 to seed a full system generation. Uses only Python stdlib (`urllib.request`) —
@@ -595,7 +650,7 @@ python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detai
 
 ---
 
-### 4.9 `system_map.py`
+### 4.10 `system_map.py`
 
 Generates an SVG diagram of a complete star system. The canvas has two zones stacked vertically:
 
@@ -651,7 +706,7 @@ python system_map.py --name Mora --seed 7
 
 ---
 
-### 4.10 `gen-ui/app.py`
+### 4.11 `gen-ui/app.py`
 
 PySide6 (Qt6) desktop UI for local interactive use. Run with:
 
@@ -670,7 +725,21 @@ python gen-ui/app.py
 | `_map_btn` | `QPushButton \| None` | Reference to the active "System Map" button; `None` when no system result is displayed |
 | `_map_windows` | `list[object]` | Open `SystemMapWindow` instances; list keeps them alive (Python GC otherwise collects shown windows) |
 
+**Source row checkboxes:** Three checkboxes live below the Procedural/TravellerMap radio buttons:
+
+| Checkbox | Enabled when | Effect |
+|----------|-------------|--------|
+| "Full system" | Always | Calls `generate_full_system()` instead of `generate_world()` |
+| "Attach detail" | "Full system" checked | Calls `attach_detail()` after system generation |
+| "Physical detail" | "Full system" checked | Calls `generate_world_physical(world, age_gyr)` on the mainworld after generation; populates `world.physical` |
+
+`_on_full_system_toggled()` enables/disables "Attach detail" and "Physical detail" together, and unchecks both when "Full system" is turned off.
+
 The "System Map" button lives in `_build_system_summary_header()` (system results only; not shown in world-only mode). It is enabled/disabled in sync with the "Full system" checkbox: `_on_full_system_toggled()` calls `_map_btn.setEnabled(checked)` when the reference is set, and `_clear_status()` nulls `_map_btn` whenever the result panel is replaced.
+
+**`_build_physical_card(w)`** — returns a `QGroupBox("World Body")` when `w.physical` is set, or `None` otherwise. Displays all eight `WorldPhysical` fields (composition, diameter, density, mass, surface gravity, escape velocity, axial tilt, day length) as `_detail_row` label/value pairs. Added to `_build_world_card()` below the trade codes section.
+
+**`_build_stellar_card(system)`** — displays system age (`stars[0].age_gyr`) as a plain label above the star table, inside the `QGroupBox`. Age is read from the first star in the stellar system (all stars share the same age).
 
 **`SystemMapWindow`** — a non-modal `QMainWindow` opened by the "System Map" button. One window is created per click; multiple windows can coexist.
 
@@ -736,6 +805,8 @@ Fixed by adding `min_spread = avail / max(total_slots * 2, 1)` as a floor so tha
 
 **Ag trade code applied to unpopulated worlds (medium severity).** `assign_trade_codes()` in `traveller_world_gen.py` checked `4 <= size <= 9` (a spurious size criterion not present in CRB p.260), `4 <= atmosphere <= 8` (upper bound off by one), and `5 <= hydrographics <= 7` (range shifted vs. CRB). The population criterion `5 <= population <= 7` was missing entirely, allowing uninhabited worlds (population 0) and underpopulated or overpopulated worlds to receive the Ag code. Fix (Session 15): replaced the check with the correct CRB p.260 criteria — `4 <= atmosphere <= 9`, `4 <= hydrographics <= 8`, `5 <= population <= 7`. Six boundary tests added. No RNG sequence change — `assign_trade_codes()` is deterministic given its arguments and calls no dice rolls.
 
+**Gas giant mainworld orbit displays satellite UWP instead of gas giant profile (medium severity).** When `attach_detail()` ran on a system whose mainworld was a satellite of a gas giant, `orbit.detail` was built using the satellite's SAH (`uwp[1:4]`). This made `orbit.detail.is_gas_giant == False` and `orbit.detail.profile` return the satellite's UWP (e.g. `A689521-B`) in the gas giant orbit row — hiding the gas giant's own profile (`orbit.gg_sah`, e.g. `GM7`). A secondary symptom: after a display-layer fix, the satellite disappeared entirely from the orbit table when the gas giant had no additional moons, because there were no moon sub-rows to show it. Three-layer fix (Session 24): (1) `attach_detail()` in `traveller_world_detail.py` — `orbit.detail` now uses `sah=orbit.gg_sah`, making `is_gas_giant=True` and `profile="GM7"`; the satellite is wrapped as `Moon(size_code=mw_size)` and inserted as `moons[0]`, appearing as a moon sub-row beneath the gas giant profile; (2) `_orbit_profile()` in `gen-ui/app.py` — returns `gg_sah` for any gas giant orbit before falling through to `detail.profile`, acting as a display-layer safety net independent of whether `attach_detail()` has run; (3) `to_html()` in `traveller_system_gen.py` — gas giant orbits now use `gg_sah` and the `type-gg` CSS class in both the "detail attached" and "no detail" code paths. The fix is consistent across gen-ui display, HTML output, and JSON output (`orbit.detail.profile` = `"GM7"`, satellite reachable as `orbit.detail.moons[0].detail`). No RNG sequence change — `attach_detail()` creates no new dice rolls. (GitHub issue #22.)
+
 ---
 
 ## 7. Deferred and out-of-scope features
@@ -756,7 +827,7 @@ The following WBH features are explicitly noted as not yet implemented. Page ref
 
 **Secondary world classifications** (WBH p.163). Colony, Farming, Freeport, Military Base, Mining Facility, Penal Colony, Research Base — trade codes for secondary worlds based on their characteristics and relationship to the mainworld. Not implemented.
 
-**World physical detail beyond SAH** (WBH pp. 74–130). Precise diameter, density, gravity, mass, escape velocity, axial tilt, day length, seismic stress, tidal heating, atmospheric composition, hydrographic composition, native life ratings. The codebase stops at the SAH level.
+**World physical detail beyond basic** (WBH pp. 78–130). Basic physical characteristics (diameter, density, composition, mass, gravity, escape velocity, axial tilt, day length) are now implemented in `traveller_world_physical.py`. Remaining detail — seismic stress, tidal heating, atmospheric composition, hydrographic composition, native life ratings — is not yet implemented.
 
 **Moon orbit placement** (WBH pp. 74–77). Hill sphere calculation, Roche limit, Moon Orbit Range, and orbital distances in planetary diameters. Moons are sized and detailed but not given orbital positions within their parent's system.
 
