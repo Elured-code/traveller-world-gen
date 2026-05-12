@@ -1356,6 +1356,14 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         ]
         for lbl_text, val_text in rows:
             inner.addWidget(_detail_row(lbl_text, val_text))
+        for i, taint in enumerate(detail.taints):
+            prefix = f"Taint {i + 1}" if len(detail.taints) > 1 else "Taint"
+            for lbl, val in [
+                (prefix,          taint.subtype),
+                ("  Severity",    taint.severity),
+                ("  Persistence", taint.persistence),
+            ]:
+                inner.addWidget(_detail_row(lbl, val))
         return group
 
     def _build_notes(self, w: object) -> "QGroupBox | None":
