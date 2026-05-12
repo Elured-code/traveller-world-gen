@@ -633,7 +633,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     trade_codes:    List[str] = field(default_factory=list)
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
-    physical:       Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
+    size_detail:    Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -742,7 +742,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             "trade_codes": self.trade_codes,
             "travel_zone": self.travel_zone,
             "notes": self.notes,
-            **({"physical": self.physical.to_dict()} if self.physical else {}),
+            **({"size_detail": self.size_detail.to_dict()} if self.size_detail else {}),
         }
 
     def to_json(self, indent: int = 2) -> str:
@@ -946,8 +946,8 @@ class World:  # pylint: disable=too-many-instance-attributes
         survival_row = row("Survival gear", gear, danger=gear_danger)
 
         # --- physical detail card (WorldPhysical or BeltPhysical) ---
-        if self.physical:
-            p = self.physical
+        if self.size_detail:
+            p = self.size_detail
             if isinstance(p, BeltPhysical):
                 physical_html = (
                     '<div class="inner-card" style="margin-top:12px">'
@@ -1150,8 +1150,8 @@ class World:  # pylint: disable=too-many-instance-attributes
     </div>
     <div class="stat">
       <p class="stat-label">Size</p>
-      <p class="stat-value">{esc(to_hex(self.size))} — {esc(f"{self.physical.diameter_km:,}" if (self.physical and not isinstance(self.physical, BeltPhysical)) else d["size"]["diameter_km"])} km</p>
-      <p class="stat-sub">Surface gravity {esc(f"{self.physical.gravity:.2f}G" if (self.physical and not isinstance(self.physical, BeltPhysical)) else d["size"]["surface_gravity"])}</p>
+      <p class="stat-value">{esc(to_hex(self.size))} — {esc(f"{self.size_detail.diameter_km:,}" if (self.size_detail and not isinstance(self.size_detail, BeltPhysical)) else d["size"]["diameter_km"])} km</p>
+      <p class="stat-sub">Surface gravity {esc(f"{self.size_detail.gravity:.2f}G" if (self.size_detail and not isinstance(self.size_detail, BeltPhysical)) else d["size"]["surface_gravity"])}</p>
     </div>
     <div class="stat">
       <p class="stat-label">Tech level</p>
@@ -1248,8 +1248,8 @@ class World:  # pylint: disable=too-many-instance-attributes
             f"  Tech Level  : {to_hex(self.tech_level)}",
         ]
 
-        if self.physical:
-            p = self.physical
+        if self.size_detail:
+            p = self.size_detail
             lines.append(f"{'-'*56}")
             if isinstance(p, BeltPhysical):
                 lines.append("  Belt body")

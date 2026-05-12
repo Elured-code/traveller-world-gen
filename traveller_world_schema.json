@@ -378,7 +378,7 @@
       "minimum": 0,
       "description": "The RNG seed used to generate this world. Pass this value as the 'seed' parameter to reproduce identical output."
     },
-    "physical": {
+    "size_detail": {
       "description": "Physical characteristics of the mainworld. Present only when physical detail has been generated. Exactly one of two shapes: WorldPhysical (terrestrial) or BeltPhysical (asteroid belt).",
       "oneOf": [
         {

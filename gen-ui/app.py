@@ -76,6 +76,7 @@ from traveller_world_detail import attach_detail as _attach_detail  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
     AtmosphereDetail,
     format_atmosphere_profile,
+    generate_atmosphere_detail,
     STARPORT_FACILITY_DETAIL,
     STARPORT_QUALITY_LABEL,
     generate_world,
@@ -596,7 +597,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._current_system = None
         self._current_world = world
         if self._check_physical.isChecked():
-            world.physical = generate_world_physical(world)  # type: ignore[attr-defined]
+            world.size_detail = generate_world_physical(world)  # type: ignore[attr-defined]
+            if world.atmosphere_detail is None:  # type: ignore[attr-defined]
+                world.atmosphere_detail = generate_atmosphere_detail(  # type: ignore[attr-defined]
+                    world.atmosphere, world.size  # type: ignore[attr-defined]
+                )
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
         if path is not None:
             self._html_path = path
@@ -616,9 +621,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 orbit_number = mw_orbit.orbit_number if mw_orbit is not None else None
                 orbit_au = mw_orbit.orbit_au if mw_orbit is not None else None
                 star_mass = stars[0].mass if stars else None
-                world.physical = generate_world_physical(
+                world.size_detail = generate_world_physical(
                     world, age, orbit_number, orbit_au, star_mass
                 )
+                if world.atmosphere_detail is None:
+                    world.atmosphere_detail = generate_atmosphere_detail(
+                        world.atmosphere, world.size, age
+                    )
         if attach_detail_flag:
             _attach_detail(system)  # type: ignore[arg-type]
         self._detail_attached = attach_detail_flag
@@ -1170,7 +1179,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             ),
             stretch=1,
         )
-        physical = getattr(w, "physical", None)
+        physical = getattr(w, "size_detail", None)
         sz_hex = _to_hex(w.size)  # type: ignore[attr-defined]
         if physical is not None and not isinstance(physical, BeltPhysical):
             size_value = f"{sz_hex} — {physical.diameter_km:,} km"
@@ -1286,7 +1295,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         return box
 
     def _build_physical_card(self, w: object) -> "QGroupBox | None":
-        physical = getattr(w, "physical", None)
+        physical = getattr(w, "size_detail", None)
         if physical is None:
             return None
         if isinstance(physical, BeltPhysical):
