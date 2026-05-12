@@ -128,6 +128,48 @@
         "survival_gear": {
           "type": "string",
           "description": "Minimum survival gear required for unprotected exposure (e.g. 'Vacc Suit', 'Filter', 'None')."
+        },
+        "detail": {
+          "type": "object",
+          "description": "Quantitative atmosphere characteristics per WBH pp. 78-82. Fields are omitted when not applicable to the atmosphere code.",
+          "additionalProperties": false,
+          "properties": {
+            "pressure_bar": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total atmospheric pressure at mean baseline altitude, in bar (WBH p.79)."
+            },
+            "oxygen_partial_pressure_bar": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Partial pressure of oxygen at mean baseline altitude, in bar (WBH p.80). Only present for nitrogen-oxygen atmospheres."
+            },
+            "scale_height_km": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Atmospheric scale height in km, approximated as 8.5/gravity (WBH p.81)."
+            },
+            "taints": {
+              "type": "array",
+              "description": "Atmosphere taints (WBH pp.82-85). Present only for tainted atmosphere codes (2, 4, 7, 9).",
+              "items": {
+                "type": "object",
+                "required": ["subtype", "severity_code", "severity", "persistence_code", "persistence"],
+                "additionalProperties": false,
+                "properties": {
+                  "subtype":          { "type": "string" },
+                  "severity_code":    { "type": "integer", "minimum": 1, "maximum": 9 },
+                  "severity":         { "type": "string" },
+                  "persistence_code": { "type": "integer", "minimum": 2, "maximum": 9 },
+                  "persistence":      { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "profile": {
+          "type": "string",
+          "description": "WBH p.82 atmosphere profile string in 'A-bar-ppo' form (e.g. '6-1.013-0.212' for Terra)."
         }
       }
     },

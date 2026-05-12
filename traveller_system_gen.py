@@ -65,6 +65,7 @@ from traveller_world_gen import (
     World,
     generate_size,
     generate_atmosphere,
+    generate_atmosphere_detail,
     temperature_category,
     generate_hydrographics,
     generate_population,
@@ -524,12 +525,13 @@ def _gg_diameter(gg_sah: str) -> int:
     return 8  # fallback: mid-range GM diameter
 
 
-def generate_mainworld_at_orbit(
+def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     name: str,
     orbit: OrbitSlot,
     hzco: float,
     gas_giant_count: int,
     belt_count: int,
+    system_age_gyr: Optional[float] = None,
 ) -> World:
     """
     Generate a mainworld whose temperature is constrained by its orbital
@@ -539,6 +541,9 @@ def generate_mainworld_at_orbit(
     - Temperature uses the orbital HZ deviation instead of a random roll
     - gas_giant_count, belt_count, and population_multiplier come from
       the orbit generation rather than being re-rolled independently
+    - WBH atmosphere detail (pressure, ppo, scale height) is attached
+      via ``generate_atmosphere_detail()``; *system_age_gyr* feeds the
+      WBH p.80 DM+1 to oxygen fraction for systems older than 4 Gyr.
     """
     world = World(name=name)
 
@@ -566,6 +571,9 @@ def generate_mainworld_at_orbit(
         gg_diam = _gg_diameter(gg_sah)
         world.size = min(max(generate_size(), 1), gg_diam - 1)
         world.atmosphere = generate_atmosphere(world.size)
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, system_age_gyr,
+        )
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=orbit.hz_deviation,
@@ -583,6 +591,9 @@ def generate_mainworld_at_orbit(
         # Steps 1-2: Size and Atmosphere (random as normal)
         world.size = generate_size()
         world.atmosphere = generate_atmosphere(world.size)
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, system_age_gyr,
+        )
 
         # Step 3: Temperature — derived from orbital position (WBH p.46-47)
         world.temperature = generate_temperature_from_orbit(
@@ -700,6 +711,7 @@ def generate_full_system(
             hzco=hzco,
             gas_giant_count=orbits.gas_giant_count,
             belt_count=orbits.belt_count,
+            system_age_gyr=stellar.age_gyr,
         )
 
     return TravellerSystem(
@@ -768,6 +780,13 @@ def generate_system_from_world(
             f"HZ deviation {mw_orbit.hz_deviation:+.2f}; "
             f"temperature recalculated as {world.temperature}."
         )
+
+    world.atmosphere_detail = generate_atmosphere_detail(
+        world.atmosphere,
+        world.size,
+        stellar.age_gyr,
+        world.temperature,
+    )
 
     return TravellerSystem(
         stellar_system=stellar,

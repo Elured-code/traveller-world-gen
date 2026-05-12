@@ -57,6 +57,7 @@ from traveller_world_gen import (
     temperature_category,
     generate_size,
     generate_atmosphere,
+    generate_atmosphere_detail,
     generate_temperature,
     generate_hydrographics,
     generate_population,
@@ -71,12 +72,27 @@ from traveller_world_gen import (
     assign_trade_codes,
     assign_travel_zone,
     generate_world,
+    format_atmosphere_profile,
+    AtmosphereDetail,
+    Taint,
     World,
     ATMOSPHERE_MIN_TL,
     ATMOSPHERE_NAMES,
+    ATMOSPHERE_PRESSURE_SPAN_BAR,
+    SIZE_GRAVITY_G,
     BASE_THRESHOLDS,
     _highport_dm,
     _corsair_dm,
+    _TAINTED_CODES,
+    _TAINT_SUBTYPE_TABLE,
+    _TAINT_SEVERITY_TABLE,
+    _TAINT_PERSISTENCE_TABLE,
+    _BIOLOGIC_SUBTYPE_ROLLS,
+    _TAINT_SUBTYPE_DM,
+    _O2_TAINT_CODES,
+    _roll_single_taint,
+    _taint_severity_code,
+    _taint_persistence_code,
 )
 
 
@@ -262,6 +278,572 @@ class TestGenerateAtmosphere:
         for _ in range(200):
             atm = generate_atmosphere(8)
             assert atm >= 0, f"Atmosphere {atm} is negative"
+
+
+# ===========================================================================
+# TestAtmosphereDetailPressure — WBH p.79 pressure span rolls
+# ===========================================================================
+
+class TestAtmosphereDetailPressure:
+    """Tests for the pressure-bar component of generate_atmosphere_detail()."""
+
+    def test_vacuum_has_no_pressure(self):
+        # Code 0 has no defined span — pressure_bar is None.
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(0, 8)
+        assert detail.pressure_bar is None
+
+    def test_standard_min_with_all_ones(self):
+        # 1D=1 → (0)*5 + 0 = 0, variance 0.0, pressure = 0.70 (minimum).
+        with fixed_roll(1):
+            detail = generate_atmosphere_detail(6, 8)
+        assert detail.pressure_bar == 0.70
+
+    def test_standard_max_with_all_sixes(self):
+        # 1D=6 → (5)*5 + 5 = 30, variance 1.0, pressure = 0.70 + 0.79 = 1.49.
+        with fixed_roll(6):
+            detail = generate_atmosphere_detail(6, 8)
+        assert detail.pressure_bar == 1.49
+
+    def test_very_dense_max(self):
+        # Code 13 span is 2.50–10.00 bar.
+        with fixed_roll(6):
+            detail = generate_atmosphere_detail(13, 8)
+        assert detail.pressure_bar == 10.0
+
+    def test_trace_pressure_low_end(self):
+        # Code 1 span starts at 0.001 bar.
+        with fixed_roll(1):
+            detail = generate_atmosphere_detail(1, 4)
+        assert detail.pressure_bar == 0.001
+
+    def test_exotic_has_no_defined_pressure(self):
+        # Codes A/B/C/F/G/H have variable pressure — None.
+        for code in (10, 11, 12, 15):
+            with fixed_roll(3):
+                detail = generate_atmosphere_detail(code, 8)
+            assert detail.pressure_bar is None, (
+                f"Code {code} unexpectedly has pressure {detail.pressure_bar}"
+            )
+
+    def test_pressure_within_span_for_random_rolls(self):
+        # 50 random rolls across all coded spans must stay within bounds.
+        for code, (minimum, span) in ATMOSPHERE_PRESSURE_SPAN_BAR.items():
+            for _ in range(50):
+                detail = generate_atmosphere_detail(code, 8)
+                assert minimum <= detail.pressure_bar <= minimum + span + 1e-6, (
+                    f"Code {code} pressure {detail.pressure_bar} outside span"
+                )
+
+
+# ===========================================================================
+# TestAtmosphereDetailOxygen — WBH p.80 oxygen partial pressure
+# ===========================================================================
+
+class TestAtmosphereDetailOxygen:
+    """Tests for oxygen partial pressure on generate_atmosphere_detail()."""
+
+    def test_vacuum_has_no_ppo(self):
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(0, 8)
+        assert detail.oxygen_partial_pressure is None
+
+    def test_exotic_has_no_ppo(self):
+        # Exotic / corrosive / insidious are not nitrogen-oxygen mixes.
+        for code in (10, 11, 12, 15):
+            with fixed_roll(4):
+                detail = generate_atmosphere_detail(code, 8)
+            assert detail.oxygen_partial_pressure is None
+
+    def test_standard_ppo_proportional_to_pressure(self):
+        # With fixed_roll(6) and no age DM: fraction =
+        # 6/20 + (12-7)/100 = 0.30 + 0.05 = 0.35.  Pressure is 1.49.
+        # ppo = 0.35 * 1.49 ≈ 0.5215; IEEE-754 product is slightly
+        # below that, so Python's round() yields 0.521.
+        with fixed_roll(6):
+            detail = generate_atmosphere_detail(6, 8)
+        assert detail.pressure_bar == 1.49
+        assert detail.oxygen_partial_pressure == 0.521
+
+    def test_low_fraction_triggers_reroll(self):
+        # With fixed_roll(1): 1/20 + (2-7)/100 = 0.05 - 0.05 = 0.0
+        # → rerolled as 1D*0.01 = 0.01. ppo = 0.01 * 0.70 = 0.007.
+        with fixed_roll(1):
+            detail = generate_atmosphere_detail(6, 8)
+        assert detail.oxygen_partial_pressure == 0.007
+
+    def test_old_system_gets_dm_plus_one(self):
+        # With fixed_roll(3) and age=5 Gyr: DM+1 applied to the 1D term.
+        # fraction = (3+1)/20 + (6-7)/100 = 0.20 - 0.01 = 0.19.
+        # Pressure = 0.70 + 0.79 * (10/30) = 0.70 + 0.2633 = 0.963.
+        # ppo = 0.19 * 0.963 = 0.183.
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(6, 8, system_age_gyr=5.0)
+        # Old-system DM+1 must raise ppo above the no-DM baseline.
+        with fixed_roll(3):
+            baseline = generate_atmosphere_detail(6, 8, system_age_gyr=None)
+        assert detail.oxygen_partial_pressure > baseline.oxygen_partial_pressure
+
+    def test_young_system_no_dm(self):
+        # Age <= 4 Gyr does not give the DM+1.
+        with fixed_roll(3):
+            d_young = generate_atmosphere_detail(6, 8, system_age_gyr=4.0)
+        with fixed_roll(3):
+            d_none = generate_atmosphere_detail(6, 8, system_age_gyr=None)
+        assert (
+            d_young.oxygen_partial_pressure
+            == d_none.oxygen_partial_pressure
+        )
+
+
+# ===========================================================================
+# TestAtmosphereDetailScaleHeight — WBH p.81 scale height
+# ===========================================================================
+
+class TestAtmosphereDetailScaleHeight:
+    """Tests for scale height on generate_atmosphere_detail()."""
+
+    def test_vacuum_has_no_scale_height(self):
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(0, 8)
+        assert detail.scale_height_km is None
+
+    def test_size_zero_has_no_scale_height(self):
+        # Size 0 has gravity 0 → division would error, so we return None.
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(6, 0)
+        assert detail.scale_height_km is None
+
+    def test_terra_sized_scale_height(self):
+        # Size 8 gravity 1.0G → 8.5/1.0 = 8.5 km.
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(6, 8)
+        assert detail.scale_height_km == 8.5
+
+    def test_low_gravity_world_has_higher_atmosphere(self):
+        # Size 4 gravity 0.35G → 8.5/0.35 = 24.29 km.
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(6, 4)
+        assert detail.scale_height_km == round(8.5 / 0.35, 2)
+
+    def test_scale_height_matches_size_gravity_table(self):
+        # Every size with non-zero gravity should produce the matching
+        # scale height when an atmosphere is present.
+        for size, gravity in SIZE_GRAVITY_G.items():
+            if not gravity:
+                continue
+            with fixed_roll(3):
+                detail = generate_atmosphere_detail(6, size)
+            assert detail.scale_height_km == round(8.5 / gravity, 2)
+
+
+# ===========================================================================
+# TestFormatAtmosphereProfile — WBH p.82 profile string
+# ===========================================================================
+
+class TestFormatAtmosphereProfile:
+    """Tests for format_atmosphere_profile()."""
+
+    def test_profile_with_no_detail_is_just_code(self):
+        assert format_atmosphere_profile(6, None) == "6"
+
+    def test_profile_for_vacuum(self):
+        # Code 0 atmosphere with empty detail renders as just "0".
+        detail = AtmosphereDetail()
+        assert format_atmosphere_profile(0, detail) == "0"
+
+    def test_profile_for_terran_world(self):
+        # Hand-built detail matching Terra's example from the WBH.
+        detail = AtmosphereDetail(
+            pressure_bar=1.013,
+            oxygen_partial_pressure=0.212,
+            scale_height_km=8.5,
+        )
+        assert format_atmosphere_profile(6, detail) == "6-1.013-0.212"
+
+    def test_profile_uses_ehex_for_high_codes(self):
+        # Atmosphere 10 (Exotic) becomes 'A' in profile.
+        detail = AtmosphereDetail()
+        assert format_atmosphere_profile(10, detail) == "A"
+
+    def test_profile_drops_missing_ppo(self):
+        # Trace atmosphere (code 1) has pressure but no ppo.
+        detail = AtmosphereDetail(pressure_bar=0.05)
+        assert format_atmosphere_profile(1, detail) == "1-0.05"
+
+
+# ===========================================================================
+# TestWorldAtmosphereJSON — World.to_dict() integration
+# ===========================================================================
+
+class TestWorldAtmosphereJSON:
+    """Tests for the atmosphere block of World.to_dict()."""
+
+    def test_atmosphere_block_without_detail(self):
+        # A bare World has no atmosphere_detail — JSON has no detail/profile.
+        world = World(name="Bare", size=8, atmosphere=6)
+        block = world.to_dict()["atmosphere"]
+        assert block["code"] == 6
+        assert "detail" not in block
+        assert "profile" not in block
+
+    def test_atmosphere_block_with_full_detail(self):
+        # Attached detail produces both the detail block and a profile.
+        world = World(
+            name="Detailed",
+            size=8,
+            atmosphere=6,
+            atmosphere_detail=AtmosphereDetail(
+                pressure_bar=1.013,
+                oxygen_partial_pressure=0.212,
+                scale_height_km=8.5,
+            ),
+        )
+        block = world.to_dict()["atmosphere"]
+        assert block["detail"] == {
+            "pressure_bar": 1.013,
+            "oxygen_partial_pressure_bar": 0.212,
+            "scale_height_km": 8.5,
+        }
+        assert block["profile"] == "6-1.013-0.212"
+
+    def test_atmosphere_block_with_partial_detail_omits_none_fields(self):
+        # Trace atmosphere: pressure present, ppo absent.
+        world = World(
+            name="Trace",
+            size=4,
+            atmosphere=1,
+            atmosphere_detail=AtmosphereDetail(
+                pressure_bar=0.05,
+                scale_height_km=24.29,
+            ),
+        )
+        block = world.to_dict()["atmosphere"]
+        assert block["detail"] == {
+            "pressure_bar": 0.05,
+            "scale_height_km": 24.29,
+        }
+        assert "oxygen_partial_pressure_bar" not in block["detail"]
+        assert block["profile"] == "1-0.05"
+
+
+# ===========================================================================
+# TestTaintHelpers — _taint_severity_code, _taint_persistence_code
+# ===========================================================================
+
+class TestTaintHelpers:
+    """Unit tests for the severity and persistence code mapping functions."""
+
+    def test_severity_code_floor_is_one(self):
+        assert _taint_severity_code(2) == 1
+        assert _taint_severity_code(1) == 1
+        assert _taint_severity_code(0) == 1
+
+    def test_severity_code_four_gives_one(self):
+        assert _taint_severity_code(4) == 1
+
+    def test_severity_code_five_gives_two(self):
+        assert _taint_severity_code(5) == 2
+
+    def test_severity_code_twelve_gives_nine(self):
+        assert _taint_severity_code(12) == 9
+
+    def test_severity_code_ceiling_is_nine(self):
+        assert _taint_severity_code(20) == 9
+
+    def test_severity_code_midpoints(self):
+        assert _taint_severity_code(7) == 4
+        assert _taint_severity_code(9) == 6
+        assert _taint_severity_code(11) == 8
+
+    def test_persistence_code_floor_is_two(self):
+        assert _taint_persistence_code(1) == 2
+        assert _taint_persistence_code(0) == 2
+
+    def test_persistence_code_two_gives_two(self):
+        assert _taint_persistence_code(2) == 2
+
+    def test_persistence_code_nine_gives_nine(self):
+        assert _taint_persistence_code(9) == 9
+
+    def test_persistence_code_ceiling_is_nine(self):
+        assert _taint_persistence_code(15) == 9
+
+    def test_persistence_code_midpoints(self):
+        assert _taint_persistence_code(4) == 4
+        assert _taint_persistence_code(7) == 7
+
+
+# ===========================================================================
+# TestTaintSubtypeRoll — subtype, Biologic reroll, cascade flag, DMs
+# ===========================================================================
+
+class TestTaintSubtypeRoll:
+    """Tests for the subtype portion of _roll_single_taint."""
+
+    def test_biologic_never_produced_code_2(self):
+        random.seed(0)
+        for _ in range(200):
+            taint, _ = _roll_single_taint(2)
+            assert taint.subtype_code not in ("B",), (
+                f"Biologic produced: {taint.subtype}"
+            )
+
+    def test_biologic_never_produced_code_7(self):
+        random.seed(1)
+        for _ in range(200):
+            taint, _ = _roll_single_taint(7)
+            assert taint.subtype_code not in ("B",)
+
+    def test_subtype_code_always_in_table(self):
+        valid_codes = {v[1] for v in _TAINT_SUBTYPE_TABLE.values()}
+        random.seed(42)
+        for code in _TAINTED_CODES:
+            for _ in range(50):
+                taint, _ = _roll_single_taint(code)
+                assert taint.subtype_code in valid_codes
+
+    def test_needs_second_only_on_result_10(self):
+        # With DM-2 on code 4, raw 2D of 12 → 10 → needs_second.
+        with patch("traveller_world_gen.roll", return_value=12):
+            taint, needs_second = _roll_single_taint(4)
+        assert taint.subtype_code == "P"
+        assert needs_second is True
+
+    def test_no_second_roll_needed_for_non_10(self):
+        # Force raw 2D of 8 on code 4 → 8-2=6 → Particulates (no second).
+        with patch("traveller_world_gen.roll", return_value=8):
+            taint, needs_second = _roll_single_taint(4)
+        assert taint.subtype_code == "P"
+        assert needs_second is False
+
+    def test_dm_minus_2_applied_for_code_4(self):
+        # With DM-2, a raw roll of 4 (minimum non-Biologic after DM) → roll 2 → Low Oxygen.
+        with patch("traveller_world_gen.roll", return_value=4):
+            taint, _ = _roll_single_taint(4)
+        assert taint.subtype_code == "L"
+
+    def test_dm_plus_2_applied_for_code_9(self):
+        # With DM+2, a raw roll of 10 → 12 → High Oxygen.
+        with patch("traveller_world_gen.roll", return_value=10):
+            taint, _ = _roll_single_taint(9)
+        assert taint.subtype_code == "H"
+
+    def test_no_dm_for_code_2(self):
+        assert _TAINT_SUBTYPE_DM.get(2, 0) == 0
+
+    def test_no_dm_for_code_7(self):
+        assert _TAINT_SUBTYPE_DM.get(7, 0) == 0
+
+    def test_subtype_name_matches_code(self):
+        random.seed(99)
+        for _ in range(100):
+            taint, _ = _roll_single_taint(7)
+            # Look up expected name for this code in the table.
+            match = next(
+                (name for name, code in _TAINT_SUBTYPE_TABLE.values()
+                 if code == taint.subtype_code),
+                None,
+            )
+            assert match is not None
+            assert taint.subtype == match
+
+
+# ===========================================================================
+# TestTaintSeverityAndPersistence — DMs, ranges, O2 escalation
+# ===========================================================================
+
+class TestTaintSeverityAndPersistence:
+    """Tests for severity and persistence rolls in _roll_single_taint."""
+
+    def test_severity_always_in_range(self):
+        random.seed(7)
+        for code in _TAINTED_CODES:
+            for _ in range(50):
+                taint, _ = _roll_single_taint(code)
+                assert 1 <= taint.severity_code <= 9
+                assert taint.severity == _TAINT_SEVERITY_TABLE[taint.severity_code]
+
+    def test_persistence_always_in_range(self):
+        random.seed(8)
+        for code in _TAINTED_CODES:
+            for _ in range(50):
+                taint, _ = _roll_single_taint(code)
+                assert 2 <= taint.persistence_code <= 9
+                assert taint.persistence == _TAINT_PERSISTENCE_TABLE[taint.persistence_code]
+
+    def test_o2_taint_dm4_shifts_severity_up(self):
+        # Force Low Oxygen subtype (roll 2 on code 2 → raw 2 → L).
+        # Then roll 2 for severity → raw 2+4=6 → code 3.
+        rolls = iter([2, 2, 5])   # subtype=2→L, severity=2→2+4=6→code3, persistence=5
+        with patch("traveller_world_gen.roll", side_effect=rolls):
+            taint, _ = _roll_single_taint(2)
+        assert taint.subtype_code == "L"
+        assert taint.severity_code == 3    # 2+4=6 → code 3
+
+    def test_o2_taint_persistence_dm6_when_severity_ge_8(self):
+        # L subtype, severity roll such that code >= 8 → persistence gets DM+6.
+        # Force: subtype roll=2 on code 2 → L.
+        # Severity roll=9 → 9+4=13 → clamped to 9.
+        # Persistence roll=2 → 2+6=8 → code 8.
+        rolls = iter([2, 9, 2])
+        with patch("traveller_world_gen.roll", side_effect=rolls):
+            taint, _ = _roll_single_taint(2)
+        assert taint.subtype_code == "L"
+        assert taint.severity_code == 9
+        assert taint.persistence_code == 8   # 2+6=8
+
+    def test_o2_taint_persistence_dm4_when_severity_lt_8(self):
+        # L subtype, severity code < 8 → persistence DM is +4.
+        # Force: subtype=2→L, severity=2→2+4=6→code3, persistence=2→2+4=6→code6.
+        rolls = iter([2, 2, 2])
+        with patch("traveller_world_gen.roll", side_effect=rolls):
+            taint, _ = _roll_single_taint(2)
+        assert taint.subtype_code == "L"
+        assert taint.severity_code == 3
+        assert taint.persistence_code == 6   # 2+4=6
+
+    def test_non_o2_subtype_no_severity_dm(self):
+        # Force Gas Mix (roll 5 on code 2 → raw 5 → G).
+        # Severity roll=7, no DM → raw 7 → code 4.
+        rolls = iter([5, 7, 3])
+        with patch("traveller_world_gen.roll", side_effect=rolls):
+            taint, _ = _roll_single_taint(2)
+        assert taint.subtype_code == "G"
+        assert taint.severity_code == 4   # 7-3=4, no DM
+        assert taint.persistence_code == 3  # max(2,min(9,3))=3, no DM
+
+
+# ===========================================================================
+# TestTaintDataclass — Taint.to_dict(), field values
+# ===========================================================================
+
+class TestTaintDataclass:
+    """Tests for the Taint dataclass and its to_dict() output."""
+
+    def test_to_dict_contains_required_keys(self):
+        t = Taint("Gas Mix", "G", 4, "Major irritant", 5, "Fluctuating")
+        d = t.to_dict()
+        assert set(d.keys()) == {
+            "subtype", "severity_code", "severity",
+            "persistence_code", "persistence",
+        }
+
+    def test_to_dict_subtype_code_absent(self):
+        t = Taint("Gas Mix", "G", 4, "Major irritant", 5, "Fluctuating")
+        assert "subtype_code" not in t.to_dict()
+
+    def test_to_dict_values_correct(self):
+        t = Taint("Radioactivity", "R", 6, "Hazardous irritant", 9, "Constant")
+        d = t.to_dict()
+        assert d["subtype"] == "Radioactivity"
+        assert d["severity_code"] == 6
+        assert d["severity"] == "Hazardous irritant"
+        assert d["persistence_code"] == 9
+        assert d["persistence"] == "Constant"
+
+    def test_severity_name_matches_table(self):
+        random.seed(5)
+        for code in _TAINTED_CODES:
+            taint, _ = _roll_single_taint(code)
+            assert taint.severity == _TAINT_SEVERITY_TABLE[taint.severity_code]
+
+    def test_persistence_name_matches_table(self):
+        random.seed(6)
+        for code in _TAINTED_CODES:
+            taint, _ = _roll_single_taint(code)
+            assert taint.persistence == _TAINT_PERSISTENCE_TABLE[taint.persistence_code]
+
+
+# ===========================================================================
+# TestAtmosphereDetailTaints — integration into generate_atmosphere_detail
+# ===========================================================================
+
+class TestAtmosphereDetailTaints:
+    """Tests for taint generation wired into generate_atmosphere_detail()."""
+
+    def test_tainted_codes_produce_at_least_one_taint(self):
+        random.seed(10)
+        for code in _TAINTED_CODES:
+            detail = generate_atmosphere_detail(code, size=6)
+            assert len(detail.taints) >= 1, (
+                f"Code {code} produced no taints"
+            )
+
+    def test_untainted_codes_produce_no_taints(self):
+        random.seed(11)
+        for code in (3, 5, 6, 8):
+            detail = generate_atmosphere_detail(code, size=6)
+            assert detail.taints == [], f"Code {code} should have no taints"
+
+    def test_non_breathable_codes_produce_no_taints(self):
+        random.seed(12)
+        for code in (0, 1, 10, 11, 12):
+            detail = generate_atmosphere_detail(code, size=6)
+            assert detail.taints == []
+
+    def test_result_10_produces_two_taints(self):
+        # Force needs_second: subtype roll = 12 on code 4 → 12-2=10 → Particulates+reroll.
+        # Three calls to roll: subtype(12), severity(5), persistence(3),
+        # then second taint subtype(6), severity(4), persistence(2).
+        rolls = iter([12, 5, 3, 5, 4, 2])
+        with patch("traveller_world_gen.roll", side_effect=rolls):
+            detail = generate_atmosphere_detail(4, size=5)
+        assert len(detail.taints) == 2
+        assert detail.taints[0].subtype_code == "P"
+
+    def test_second_taint_has_valid_fields(self):
+        # Verify second taint from result-10 is fully populated.
+        rolls = iter([12, 5, 3, 7, 6, 4])
+        with patch("traveller_world_gen.roll", side_effect=rolls):
+            detail = generate_atmosphere_detail(4, size=5)
+        second = detail.taints[1]
+        assert 1 <= second.severity_code <= 9
+        assert 2 <= second.persistence_code <= 9
+
+    def test_taints_omitted_from_detail_dict_when_empty(self):
+        detail = AtmosphereDetail(pressure_bar=1.0, taints=[])
+        assert "taints" not in detail.to_dict()
+
+    def test_taints_present_in_detail_dict_when_populated(self):
+        t = Taint("Gas Mix", "G", 3, "Minor irritant", 4, "Irregular")
+        detail = AtmosphereDetail(pressure_bar=1.0, taints=[t])
+        d = detail.to_dict()
+        assert "taints" in d
+        assert len(d["taints"]) == 1
+        assert d["taints"][0]["subtype"] == "Gas Mix"
+
+    def test_taints_in_world_to_dict(self):
+        random.seed(20)
+        detail = generate_atmosphere_detail(7, size=6)
+        world = World(name="T", size=6, atmosphere=7,
+                      atmosphere_detail=detail)
+        block = world.to_dict()["atmosphere"]
+        assert "taints" in block["detail"]
+        assert len(block["detail"]["taints"]) >= 1
+
+    def test_statistical_single_taint_majority(self):
+        # Most runs should produce exactly 1 taint (result 10 is rare).
+        random.seed(30)
+        counts = [
+            len(generate_atmosphere_detail(7, size=6).taints)
+            for _ in range(200)
+        ]
+        assert counts.count(1) > 150
+
+    def test_schema_validates_tainted_world(self):
+        import jsonschema
+        schema_path = os.path.join(
+            os.path.dirname(__file__), "..", "traveller_world_schema.json"
+        )
+        with open(schema_path) as f:
+            schema = json.load(f)
+        for code in _TAINTED_CODES:
+            random.seed(code)
+            world = generate_world()
+            world.atmosphere = code
+            world.atmosphere_detail = generate_atmosphere_detail(code, size=6)
+            jsonschema.validate(world.to_dict(), schema)
 
 
 # ===========================================================================

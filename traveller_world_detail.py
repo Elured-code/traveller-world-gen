@@ -593,7 +593,7 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
             result[key].physical = generate_belt_physical(
                 orbit_au=orbit.orbit_au,
                 hz_deviation=orbit.hz_deviation,
-                age_gyr=primary.age_gyr,
+                age_gyr=primary.age_gyr or 0.0,
                 orbit_spread=star_orbit_spreads.get(orbit.star_designation, 0.0),
                 next_is_gas_giant=next_is_gg,
                 is_outermost=orbit.orbit_au >= outermost_au,
@@ -741,12 +741,11 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
     # generate_system_detail(), placed here to avoid seed disruption for
     # secondary belts that are processed earlier in that function.
     if (mainworld is not None and mainworld.size == 0
-            and system.mainworld_orbit is not None
-            and system.mainworld_orbit.detail is not None):
+            and system.mainworld_orbit is not None):
+        mw_orbit = system.mainworld_orbit
         orbits_obj = system.system_orbits
         non_empty = [o for o in orbits_obj.orbits if o.world_type != "empty"]
         outermost_au = max((o.orbit_au for o in non_empty), default=0.0)
-        mw_orbit = system.mainworld_orbit
         mw_desig = mw_orbit.star_designation
         mw_star_ne = [o for o in non_empty if o.star_designation == mw_desig]
         mw_mao = orbits_obj.star_mao.get(mw_desig, 0.0)
@@ -769,13 +768,14 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
         bp = generate_belt_physical(
             orbit_au=mw_orbit.orbit_au,
             hz_deviation=mw_orbit.hz_deviation,
-            age_gyr=system.stellar_system.primary.age_gyr,
+            age_gyr=system.stellar_system.primary.age_gyr or 0.0,
             orbit_spread=orbit_spread,
             next_is_gas_giant=next_is_gg,
             is_outermost=mw_orbit.orbit_au >= outermost_au,
             is_exploited=is_exploited,
         )
-        mw_orbit.detail.physical = bp
+        if mw_orbit.detail is not None:
+            mw_orbit.detail.physical = bp
         mainworld.physical = bp
 
 

@@ -87,7 +87,7 @@ from traveller_stellar_gen import (
 )
 from traveller_orbit_gen import SystemOrbits, generate_orbits
 from traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
-from traveller_world_gen import World
+from traveller_world_gen import World, generate_atmosphere_detail
 from traveller_world_detail import attach_detail
 
 
@@ -645,6 +645,13 @@ def generate_system_from_map(
             f"({mw_orbit.orbit_au:.3f} AU)  "
             f"HZ dev {mw_orbit.hz_deviation:+.2f}"
         )
+
+    world.atmosphere_detail = generate_atmosphere_detail(
+        world.atmosphere,
+        world.size,
+        stellar.age_gyr,
+        world.temperature,
+    )
 
     system = TravellerSystem(
         stellar_system  = stellar,

@@ -74,6 +74,8 @@ from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  #
 from traveller_system_gen import generate_full_system  # noqa: E402
 from traveller_world_detail import attach_detail as _attach_detail  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
+    AtmosphereDetail,
+    format_atmosphere_profile,
     STARPORT_FACILITY_DETAIL,
     STARPORT_QUALITY_LABEL,
     generate_world,
@@ -430,19 +432,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         radio_layout.addWidget(self._radio_travellermap)
         left_layout.addWidget(radio_row)
 
-        self._check_full_system = QCheckBox("Full system")
-        self._check_full_system.toggled.connect(self._on_full_system_toggled)
-        self._check_attach_detail = QCheckBox("Attach detail")
-        self._check_attach_detail.setEnabled(False)
-        self._check_physical = QCheckBox("Physical detail")
+        self._check_system_detail = QCheckBox("System detail")
+        self._check_system_detail.toggled.connect(self._on_system_detail_toggled)
+        self._check_physical = QCheckBox("Mainworld detail")
         self._check_physical.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
         check_layout.setSpacing(12)
         check_layout.setContentsMargins(0, 0, 0, 0)
-        check_layout.addWidget(self._check_full_system)
-        check_layout.addWidget(self._check_attach_detail)
+        check_layout.addWidget(self._check_system_detail)
         check_layout.addWidget(self._check_physical)
         left_layout.addWidget(check_row)
 
@@ -508,11 +507,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             return
         self._seed_auto = False
 
-    def _on_full_system_toggled(self, checked: bool) -> None:
-        self._check_attach_detail.setEnabled(checked)
+    def _on_system_detail_toggled(self, checked: bool) -> None:
         self._check_physical.setEnabled(checked)
         if not checked:
-            self._check_attach_detail.setChecked(False)
             self._check_physical.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
@@ -540,8 +537,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto = True
         self._seed_entry.setText(str(seed))
 
-        full_system = self._check_full_system.isChecked()
-        attach_detail_flag = full_system and self._check_attach_detail.isChecked()
+        full_system = self._check_system_detail.isChecked()
+        attach_detail_flag = full_system
 
         if self._radio_travellermap.isChecked():
             sector = self._sector_entry.text().strip()
@@ -876,7 +873,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         map_btn = QPushButton("System Map")
         map_btn.clicked.connect(self._on_map_clicked)
-        map_btn.setEnabled(self._check_full_system.isChecked())
+        map_btn.setEnabled(self._check_system_detail.isChecked())
         self._map_btn = map_btn
         layout.addWidget(map_btn)
 
@@ -1128,10 +1125,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         layout.addWidget(self._build_stat_row(w, d))
         layout.addWidget(self._build_detail_cards(w, d))
-        layout.addWidget(self._build_trade_codes(w))
         physical_card = self._build_physical_card(w)
         if physical_card is not None:
             layout.addWidget(physical_card)
+        atm_card = self._build_atmosphere_card(w)
+        if atm_card is not None:
+            layout.addWidget(atm_card)
+        layout.addWidget(self._build_trade_codes(w))
         notes = self._build_notes(w)
         if notes:
             layout.addWidget(notes)
@@ -1324,6 +1324,28 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             *([("Tidal status", TIDAL_STATUS_LABELS[physical.tidal_status])]
               if physical.tidal_status != "none" else []),
         ]:
+            inner.addWidget(_detail_row(lbl_text, val_text))
+        return group
+
+    def _build_atmosphere_card(self, w: object) -> "QGroupBox | None":
+        detail = getattr(w, "atmosphere_detail", None)
+        if not isinstance(detail, AtmosphereDetail):
+            return None
+        group = QGroupBox("Atmosphere Detail")
+        inner = QVBoxLayout(group)
+        inner.setSpacing(0)
+        inner.setContentsMargins(8, 4, 8, 6)
+        rows = [
+            ("Profile", format_atmosphere_profile(
+                w.atmosphere, detail)),  # type: ignore[attr-defined]
+            *([("Pressure", f"{detail.pressure_bar:.3f} bar")]
+              if detail.pressure_bar is not None else []),
+            *([("O₂ partial pressure", f"{detail.oxygen_partial_pressure:.3f} bar")]
+              if detail.oxygen_partial_pressure is not None else []),
+            *([("Scale height", f"{detail.scale_height_km:.1f} km")]
+              if detail.scale_height_km is not None else []),
+        ]
+        for lbl_text, val_text in rows:
             inner.addWidget(_detail_row(lbl_text, val_text))
         return group
 
