@@ -585,17 +585,16 @@ def format_atmosphere_profile(
 ) -> str:
     """Return the WBH p.82 atmosphere profile string.
 
-    Format is ``A-bar-ppo`` where A is the eHex atmosphere code,
-    ``bar`` is the total pressure and ``ppo`` is the oxygen partial
-    pressure.  Pressure and ppo are dropped from the string when
-    ``None``.  Examples::
+    Format is ``A-bar-ppo[-T.S.P...]`` where A is the eHex atmosphere
+    code, ``bar`` is the total pressure, ``ppo`` is the oxygen partial
+    pressure, and each ``T.S.P`` triplet encodes a taint (subtype code,
+    severity code, persistence code).  Pressure and ppo are dropped when
+    ``None``; taint suffixes are appended only when taints are present.
+    Examples::
 
         format_atmosphere_profile(6, detail)   # "6-1.013-0.212"
+        format_atmosphere_profile(7, detail)   # "7-1.148-0.138-P.7.9"
         format_atmosphere_profile(0, None)     # "0"
-
-    Kept as a free function so later WBH phases can extend the format
-    with taint, gas-mix and altitude suffixes computed from the same
-    ``AtmosphereDetail`` fields.
     """
     if detail is None:
         return to_hex(code)
@@ -604,6 +603,8 @@ def format_atmosphere_profile(
         parts.append(f"{detail.pressure_bar:g}")
     if detail.oxygen_partial_pressure is not None:
         parts.append(f"{detail.oxygen_partial_pressure:g}")
+    for taint in detail.taints:
+        parts.append(f"{taint.subtype_code}.{taint.severity_code}.{taint.persistence_code}")
     return "-".join(parts)
 
 

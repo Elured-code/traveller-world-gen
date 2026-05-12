@@ -471,6 +471,108 @@ class TestFormatAtmosphereProfile:
         detail = AtmosphereDetail(pressure_bar=0.05)
         assert format_atmosphere_profile(1, detail) == "1-0.05"
 
+    def test_profile_empty_taints_no_suffix(self):
+        # Tainted code with taints=[] (shouldn't normally happen, but
+        # verifies the guard: empty list produces no extra components).
+        detail = AtmosphereDetail(
+            pressure_bar=1.013, oxygen_partial_pressure=0.212,
+            scale_height_km=8.5, taints=[],
+        )
+        assert format_atmosphere_profile(6, detail) == "6-1.013-0.212"
+
+    def test_profile_single_taint_appends_suffix(self):
+        # Tainted standard atmosphere (code 7) with one Particulate taint.
+        taint = Taint(
+            subtype="Particulates", subtype_code="P",
+            severity_code=7, severity="Long term lethal: DM-2 to aging rolls",
+            persistence_code=9, persistence="Constant",
+        )
+        detail = AtmosphereDetail(
+            pressure_bar=1.148, oxygen_partial_pressure=0.138,
+            scale_height_km=12.14, taints=[taint],
+        )
+        assert format_atmosphere_profile(7, detail) == "7-1.148-0.138-P.7.9"
+
+    def test_profile_two_taints_both_appended_in_order(self):
+        # Result-10 cascade produces two taints; both appear in order.
+        t1 = Taint(
+            subtype="Particulates", subtype_code="P",
+            severity_code=5, severity="Serious irritant",
+            persistence_code=9, persistence="Constant",
+        )
+        t2 = Taint(
+            subtype="Gas Mix", subtype_code="G",
+            severity_code=3, severity="Minor irritant",
+            persistence_code=6, persistence="Varying: 2D daily on 6-, reduce severity 1D h",
+        )
+        detail = AtmosphereDetail(
+            pressure_bar=1.0, oxygen_partial_pressure=0.15,
+            scale_height_km=10.0, taints=[t1, t2],
+        )
+        assert format_atmosphere_profile(7, detail) == "7-1-0.15-P.5.9-G.3.6"
+
+    def test_profile_low_oxygen_taint_code(self):
+        taint = Taint(
+            subtype="Low Oxygen", subtype_code="L",
+            severity_code=6, severity="Hazardous irritant",
+            persistence_code=7, persistence="Varying: 2D daily on 4-, reduce severity 1D h",
+        )
+        detail = AtmosphereDetail(
+            pressure_bar=0.5, oxygen_partial_pressure=0.05,
+            scale_height_km=15.0, taints=[taint],
+        )
+        assert format_atmosphere_profile(2, detail) == "2-0.5-0.05-L.6.7"
+
+    def test_profile_high_oxygen_taint_code(self):
+        taint = Taint(
+            subtype="High Oxygen", subtype_code="H",
+            severity_code=8, severity="Inevitably lethal: death within 1D days",
+            persistence_code=9, persistence="Constant",
+        )
+        detail = AtmosphereDetail(
+            pressure_bar=1.3, oxygen_partial_pressure=0.38,
+            scale_height_km=9.0, taints=[taint],
+        )
+        assert format_atmosphere_profile(9, detail) == "9-1.3-0.38-H.8.9"
+
+    def test_profile_taint_suffix_without_pressure(self):
+        # Exotic atmosphere (code A=10): no pressure or ppo, but a taint
+        # code still appended directly after the atmosphere letter.
+        taint = Taint(
+            subtype="Radioactivity", subtype_code="R",
+            severity_code=4, severity="Major irritant",
+            persistence_code=5, persistence="Fluctuating",
+        )
+        detail = AtmosphereDetail(taints=[taint])
+        assert format_atmosphere_profile(10, detail) == "A-R.4.5"
+
+    def test_profile_sulphur_compounds_taint(self):
+        taint = Taint(
+            subtype="Sulphur Compounds", subtype_code="S",
+            severity_code=2, severity="Surmountable irritant",
+            persistence_code=4, persistence="Irregular",
+        )
+        detail = AtmosphereDetail(
+            pressure_bar=0.7, oxygen_partial_pressure=0.1,
+            scale_height_km=11.0, taints=[taint],
+        )
+        assert format_atmosphere_profile(4, detail) == "4-0.7-0.1-S.2.4"
+
+    def test_profile_taint_suffix_reflects_severity_and_persistence_codes(self):
+        # Verify the numeric codes in the suffix match severity/persistence fields.
+        taint = Taint(
+            subtype="Radioactivity", subtype_code="R",
+            severity_code=1, severity="Trivial irritant",
+            persistence_code=2, persistence="Occasional and brief",
+        )
+        detail = AtmosphereDetail(
+            pressure_bar=0.8, oxygen_partial_pressure=0.17,
+            scale_height_km=10.0, taints=[taint],
+        )
+        profile = format_atmosphere_profile(9, detail)
+        suffix = profile.split("-")[-1]
+        assert suffix == f"R.{taint.severity_code}.{taint.persistence_code}"
+
 
 # ===========================================================================
 # TestWorldAtmosphereJSON — World.to_dict() integration
