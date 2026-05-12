@@ -556,11 +556,9 @@ def generate_atmosphere_detail(
     Safe to call for any atmosphere code: fields that do not apply to
     the given code are left as ``None``.
 
-    ``temperature`` is unused in Phase 1 but is reserved for Phases 3
-    and 4 (exotic subtypes and gas composition), which branch on
-    temperature zone.  Passing it now keeps the interface stable; callers
-    will need to reorder the pipeline so temperature is derived before
-    this function is called.
+    ``temperature`` is used by Phase 3 (exotic/corrosive/insidious subtypes,
+    WBH pp.85-90) to branch on temperature zone; pass ``world.temperature``
+    after ``generate_temperature_from_orbit()`` has been called.
     """
     pressure = _atmosphere_pressure_bar(code)
     taints: list = []

@@ -571,14 +571,14 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         gg_diam = _gg_diameter(gg_sah)
         world.size = min(max(generate_size(), 1), gg_diam - 1)
         world.atmosphere = generate_atmosphere(world.size)
-        world.atmosphere_detail = generate_atmosphere_detail(
-            world.atmosphere, world.size, system_age_gyr,
-        )
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=orbit.hz_deviation,
             hzco=hzco,
             orbit=orbit.orbit_number,
+        )
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, system_age_gyr, world.temperature,
         )
         world.hydrographics = generate_hydrographics(
             world.size, world.atmosphere, world.temperature
@@ -591,9 +591,6 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         # Steps 1-2: Size and Atmosphere (random as normal)
         world.size = generate_size()
         world.atmosphere = generate_atmosphere(world.size)
-        world.atmosphere_detail = generate_atmosphere_detail(
-            world.atmosphere, world.size, system_age_gyr,
-        )
 
         # Step 3: Temperature — derived from orbital position (WBH p.46-47)
         world.temperature = generate_temperature_from_orbit(
@@ -601,6 +598,11 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
             hz_deviation=orbit.hz_deviation,
             hzco=hzco,
             orbit=orbit.orbit_number,
+        )
+
+        # Atmosphere detail needs temperature to characterise exotic/corrosive subtypes
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, system_age_gyr, world.temperature,
         )
 
         # Step 4: Hydrographics (uses orbital-constrained temperature)
