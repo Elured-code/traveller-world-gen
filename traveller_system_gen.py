@@ -579,6 +579,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         )
         world.atmosphere_detail = generate_atmosphere_detail(
             world.atmosphere, world.size, system_age_gyr, world.temperature,
+            hz_deviation=orbit.hz_deviation,
         )
         world.hydrographics = generate_hydrographics(
             world.size, world.atmosphere, world.temperature
@@ -603,6 +604,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         # Atmosphere detail needs temperature to characterise exotic/corrosive subtypes
         world.atmosphere_detail = generate_atmosphere_detail(
             world.atmosphere, world.size, system_age_gyr, world.temperature,
+            hz_deviation=orbit.hz_deviation,
         )
 
         # Step 4: Hydrographics (uses orbital-constrained temperature)
@@ -788,6 +790,7 @@ def generate_system_from_world(
         world.size,
         stellar.age_gyr,
         world.temperature,
+        hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
     )
 
     return TravellerSystem(

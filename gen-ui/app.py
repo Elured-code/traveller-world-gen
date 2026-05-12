@@ -626,7 +626,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 )
                 if world.atmosphere_detail is None:
                     world.atmosphere_detail = generate_atmosphere_detail(
-                        world.atmosphere, world.size, age
+                        world.atmosphere, world.size, age,
+                        hz_deviation=(
+                            mw_orbit.hz_deviation if mw_orbit is not None else None
+                        ),
                     )
         if attach_detail_flag:
             _attach_detail(system)  # type: ignore[arg-type]
@@ -1344,18 +1347,22 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         inner = QVBoxLayout(group)
         inner.setSpacing(0)
         inner.setContentsMargins(8, 4, 8, 6)
-        rows = [
-            ("Profile", format_atmosphere_profile(
-                w.atmosphere, detail)),  # type: ignore[attr-defined]
-            *([("Pressure", f"{detail.pressure_bar:.3f} bar")]
-              if detail.pressure_bar is not None else []),
-            *([("O₂ partial pressure", f"{detail.oxygen_partial_pressure:.3f} bar")]
-              if detail.oxygen_partial_pressure is not None else []),
-            *([("Scale height", f"{detail.scale_height_km:.1f} km")]
-              if detail.scale_height_km is not None else []),
-        ]
-        for lbl_text, val_text in rows:
-            inner.addWidget(_detail_row(lbl_text, val_text))
+        inner.addWidget(_detail_row(
+            "Profile",
+            format_atmosphere_profile(w.atmosphere, detail),  # type: ignore[attr-defined]
+        ))
+        if detail.subtype_name is not None:
+            inner.addWidget(_detail_row("Subtype", detail.subtype_name))
+        if detail.pressure_bar is not None:
+            inner.addWidget(_detail_row("Pressure", f"{detail.pressure_bar:.3f} bar"))
+        elif detail.subtype_code in ("C", "D", "E"):
+            inner.addWidget(_detail_row("Pressure", "> 10.0 bar (extremely dense)"))
+        if detail.oxygen_partial_pressure is not None:
+            inner.addWidget(_detail_row(
+                "O₂ partial pressure", f"{detail.oxygen_partial_pressure:.3f} bar"
+            ))
+        if detail.scale_height_km is not None:
+            inner.addWidget(_detail_row("Scale height", f"{detail.scale_height_km:.1f} km"))
         for i, taint in enumerate(detail.taints):
             prefix = f"Taint {i + 1}" if len(detail.taints) > 1 else "Taint"
             for lbl, val in [
@@ -1364,6 +1371,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 ("  Persistence", taint.persistence),
             ]:
                 inner.addWidget(_detail_row(lbl, val))
+        for hazard in detail.hazards:
+            inner.addWidget(_detail_row("Hazard", hazard.hazard))
+            if hazard.gases:
+                inner.addWidget(_detail_row("  Gas mix", ", ".join(hazard.gases)))
         return group
 
     def _build_notes(self, w: object) -> "QGroupBox | None":
