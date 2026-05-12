@@ -381,8 +381,8 @@ class TravellerSystem:
       <p class="sv">{esc(to_hex(mw.law_level))}</p></div>
   </div>
   <div class="trade-row"><span class="trade-lbl">Trade codes</span>{trade_badges}</div>"""
-            if isinstance(mw.physical, BeltPhysical):
-                bp = mw.physical
+            if isinstance(mw.size_detail, BeltPhysical):
+                bp = mw.size_detail
                 mw_panel += (
                     f'<div class="section-title">Belt body</div>'
                     f'<div class="mw-grid">'

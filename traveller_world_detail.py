@@ -776,7 +776,7 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
         )
         if mw_orbit.detail is not None:
             mw_orbit.detail.physical = bp
-        mainworld.physical = bp
+        mainworld.size_detail = bp
 
 
 def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-many-locals
