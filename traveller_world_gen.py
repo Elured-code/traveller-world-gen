@@ -946,6 +946,30 @@ class World:  # pylint: disable=too-many-instance-attributes
         gear_danger = gear not in ("None", "Varies")
         survival_row = row("Survival gear", gear, danger=gear_danger)
 
+        # --- atmosphere detail card ---
+        if self.atmosphere_detail is not None:
+            ad = self.atmosphere_detail
+            atm_rows = row("Profile", format_atmosphere_profile(self.atmosphere, ad))
+            if ad.pressure_bar is not None:
+                atm_rows += row("Pressure", f"{ad.pressure_bar:.3f} bar")
+            if ad.oxygen_partial_pressure is not None:
+                atm_rows += row("O₂ partial pressure", f"{ad.oxygen_partial_pressure:.3f} bar")
+            if ad.scale_height_km is not None:
+                atm_rows += row("Scale height", f"{ad.scale_height_km:.1f} km")
+            for i, taint in enumerate(ad.taints):
+                prefix = f"Taint {i + 1}" if len(ad.taints) > 1 else "Taint"
+                atm_rows += row(prefix, taint.subtype)
+                atm_rows += row("Severity", taint.severity)
+                atm_rows += row("Persistence", taint.persistence)
+            atmosphere_html = (
+                '<div class="inner-card" style="margin-top:12px">'
+                '<p class="inner-label">Atmosphere detail</p>'
+                + atm_rows
+                + '</div>'
+            )
+        else:
+            atmosphere_html = ""
+
         # --- physical detail card (WorldPhysical or BeltPhysical) ---
         if self.size_detail:
             p = self.size_detail
@@ -1187,6 +1211,7 @@ class World:  # pylint: disable=too-many-instance-attributes
   </div>
 
   {notes_html}
+  {atmosphere_html}
   {physical_html}
 
   <details>
@@ -1248,6 +1273,24 @@ class World:  # pylint: disable=too-many-instance-attributes
             f"  Law Level   : {to_hex(self.law_level)}",
             f"  Tech Level  : {to_hex(self.tech_level)}",
         ]
+
+        if self.atmosphere_detail is not None:
+            ad = self.atmosphere_detail
+            lines.append(f"{'-'*56}")
+            profile = format_atmosphere_profile(self.atmosphere, ad)
+            lines.append(f"  {'Atm. profile':<12}: {profile}")
+            if ad.pressure_bar is not None:
+                lines.append(f"  {'Pressure':<12}: {ad.pressure_bar:.3f} bar")
+            if ad.oxygen_partial_pressure is not None:
+                lines.append(f"  {'O2 ppo':<12}: {ad.oxygen_partial_pressure:.3f} bar")
+            if ad.scale_height_km is not None:
+                lines.append(f"  {'Scale ht.':<12}: {ad.scale_height_km:.1f} km")
+            for i, taint in enumerate(ad.taints):
+                label = f"Taint {i + 1}" if len(ad.taints) > 1 else "Taint"
+                lines.append(
+                    f"  {label:<12}: {taint.subtype}"
+                    f"  sev {taint.severity_code}  per {taint.persistence_code}"
+                )
 
         if self.size_detail:
             p = self.size_detail

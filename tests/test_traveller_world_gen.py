@@ -630,6 +630,130 @@ class TestWorldAtmosphereJSON:
 
 
 # ===========================================================================
+# TestWorldAtmosphereHTMLAndSummary — to_html() / summary() with detail
+# ===========================================================================
+
+class TestWorldAtmosphereHTMLAndSummary:
+    """Tests for atmosphere detail rendering in to_html() and summary()."""
+
+    @staticmethod
+    def _world_with_detail(**kwargs):
+        return World(
+            name="Test", size=6, atmosphere=7,
+            atmosphere_detail=AtmosphereDetail(
+                pressure_bar=1.148,
+                oxygen_partial_pressure=0.138,
+                scale_height_km=12.14,
+                **kwargs,
+            ),
+        )
+
+    @staticmethod
+    def _taint(subtype="Particulates", subtype_code="P",
+               severity_code=7, severity="Long term lethal: DM-2 to aging rolls",
+               persistence_code=9, persistence="Constant"):
+        return Taint(
+            subtype=subtype, subtype_code=subtype_code,
+            severity_code=severity_code, severity=severity,
+            persistence_code=persistence_code, persistence=persistence,
+        )
+
+    # --- to_html() ---
+
+    def test_to_html_contains_atmosphere_detail_section(self):
+        html = self._world_with_detail().to_html()
+        assert "Atmosphere detail" in html
+
+    def test_to_html_shows_profile_string(self):
+        html = self._world_with_detail().to_html()
+        assert "7-1.148-0.138" in html
+
+    def test_to_html_no_atmosphere_detail_section_when_none(self):
+        world = World(name="Test", size=6, atmosphere=7)
+        assert "Atmosphere detail" not in world.to_html()
+
+    def test_to_html_shows_taint_subtype(self):
+        html = self._world_with_detail(taints=[self._taint()]).to_html()
+        assert "Particulates" in html
+
+    def test_to_html_shows_taint_severity(self):
+        html = self._world_with_detail(taints=[self._taint()]).to_html()
+        assert "Long term lethal" in html
+
+    def test_to_html_shows_taint_persistence(self):
+        html = self._world_with_detail(taints=[self._taint()]).to_html()
+        assert "Constant" in html
+
+    def test_to_html_single_taint_uses_plain_label(self):
+        html = self._world_with_detail(taints=[self._taint()]).to_html()
+        assert "Taint 1" not in html
+        assert "Taint" in html
+
+    def test_to_html_two_taints_uses_numbered_labels(self):
+        taints = [
+            self._taint(),
+            self._taint(subtype="Gas Mix", subtype_code="G",
+                        severity_code=3, severity="Minor irritant",
+                        persistence_code=6,
+                        persistence="Varying: 2D daily on 6-, reduce severity 1D h"),
+        ]
+        html = self._world_with_detail(taints=taints).to_html()
+        assert "Taint 1" in html
+        assert "Taint 2" in html
+
+    def test_to_html_profile_includes_taint_suffix(self):
+        html = self._world_with_detail(taints=[self._taint()]).to_html()
+        assert "P.7.9" in html
+
+    # --- summary() ---
+
+    def test_summary_contains_atmosphere_profile_line(self):
+        summary = self._world_with_detail().summary()
+        assert "Atm. profile" in summary
+
+    def test_summary_profile_value_correct(self):
+        summary = self._world_with_detail().summary()
+        assert "7-1.148-0.138" in summary
+
+    def test_summary_no_atmosphere_section_when_none(self):
+        world = World(name="Test", size=6, atmosphere=7)
+        assert "Atm. profile" not in world.summary()
+
+    def test_summary_shows_pressure(self):
+        summary = self._world_with_detail().summary()
+        assert "1.148 bar" in summary
+
+    def test_summary_shows_o2_ppo(self):
+        summary = self._world_with_detail().summary()
+        assert "0.138 bar" in summary
+
+    def test_summary_shows_scale_height(self):
+        summary = self._world_with_detail().summary()
+        assert "12.1 km" in summary
+
+    def test_summary_shows_taint_subtype(self):
+        summary = self._world_with_detail(taints=[self._taint()]).summary()
+        assert "Particulates" in summary
+
+    def test_summary_taint_includes_severity_and_persistence_codes(self):
+        summary = self._world_with_detail(taints=[self._taint()]).summary()
+        assert "sev 7" in summary
+        assert "per 9" in summary
+
+    def test_summary_two_taints_numbered(self):
+        taints = [
+            self._taint(),
+            self._taint(subtype="Gas Mix", subtype_code="G",
+                        severity_code=3, severity="Minor irritant",
+                        persistence_code=6,
+                        persistence="Varying: 2D daily on 6-, reduce severity 1D h"),
+        ]
+        summary = self._world_with_detail(taints=taints).summary()
+        assert "Taint 1" in summary
+        assert "Taint 2" in summary
+
+
+# ===========================================================================
 # TestTaintHelpers — _taint_severity_code, _taint_persistence_code
 # ===========================================================================
 
