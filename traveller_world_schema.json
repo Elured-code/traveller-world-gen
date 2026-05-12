@@ -377,6 +377,151 @@
       "type": "integer",
       "minimum": 0,
       "description": "The RNG seed used to generate this world. Pass this value as the 'seed' parameter to reproduce identical output."
+    },
+    "physical": {
+      "description": "Physical characteristics of the mainworld. Present only when physical detail has been generated. Exactly one of two shapes: WorldPhysical (terrestrial) or BeltPhysical (asteroid belt).",
+      "oneOf": [
+        {
+          "title": "WorldPhysical",
+          "description": "Physical characteristics of a terrestrial mainworld (WBH pp. 74–77, 103–107).",
+          "type": "object",
+          "required": [
+            "composition",
+            "diameter_km",
+            "density_g_cm3",
+            "mass_earth",
+            "gravity_g",
+            "escape_velocity_km_s",
+            "axial_tilt_deg",
+            "day_length_hours",
+            "tidal_status"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "composition": {
+              "type": "string",
+              "enum": ["Heavy Iron Core", "Dense Core", "Standard", "Low Density", "Icy"],
+              "description": "Terrestrial Composition Table result (WBH p.75)."
+            },
+            "diameter_km": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Actual rolled diameter in km."
+            },
+            "density_g_cm3": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Density in g/cm³."
+            },
+            "mass_earth": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Mass relative to Earth (D*³ × ρ*)."
+            },
+            "gravity_g": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Surface gravity in G (D* × ρ*)."
+            },
+            "escape_velocity_km_s": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Escape velocity in km/s."
+            },
+            "axial_tilt_deg": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 180,
+              "description": "Axial tilt in degrees. Values above 90° indicate retrograde rotation."
+            },
+            "day_length_hours": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Rotation period in hours."
+            },
+            "tidal_status": {
+              "type": "string",
+              "enum": ["none", "braking", "prograde", "retrograde", "3:2_lock", "1:1_lock"],
+              "description": "Tidal lock status with the primary star (WBH pp. 105–107)."
+            }
+          }
+        },
+        {
+          "title": "BeltPhysical",
+          "description": "Physical characteristics of an asteroid belt mainworld (WBH pp. 131–133).",
+          "type": "object",
+          "required": [
+            "inner_au",
+            "outer_au",
+            "m_type_pct",
+            "s_type_pct",
+            "c_type_pct",
+            "other_pct",
+            "bulk",
+            "resource_rating",
+            "size_1_bodies",
+            "size_s_bodies"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "inner_au": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Inner boundary of belt span in AU."
+            },
+            "outer_au": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Outer boundary of belt span in AU."
+            },
+            "m_type_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Metallic asteroid percentage."
+            },
+            "s_type_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Silicate (rocky) asteroid percentage."
+            },
+            "c_type_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Carbonaceous asteroid percentage."
+            },
+            "other_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Residual 'other' percentage. m_type_pct + s_type_pct + c_type_pct + other_pct == 100."
+            },
+            "bulk": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Belt bulk rating."
+            },
+            "resource_rating": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 12,
+              "description": "Resource rating (clamped to [2, 12])."
+            },
+            "size_1_bodies": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of Size 1 significant planetoids."
+            },
+            "size_s_bodies": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of Size S significant planetoids."
+            }
+          }
+        }
+      ]
     }
   },
   "$defs": {
