@@ -131,13 +131,21 @@
         },
         "detail": {
           "type": "object",
-          "description": "Quantitative atmosphere characteristics per WBH pp. 78-82. Fields are omitted when not applicable to the atmosphere code.",
+          "description": "Quantitative atmosphere characteristics per WBH pp. 78-87. Fields are omitted when not applicable to the atmosphere code.",
           "additionalProperties": false,
           "properties": {
+            "subtype_code": {
+              "type": "string",
+              "description": "Atmosphere subtype code from the Exotic or Corrosive/Insidious Atmosphere Subtype table (WBH pp.85-86). Present only for codes A (10), B (11), C (12)."
+            },
+            "subtype_name": {
+              "type": "string",
+              "description": "Atmosphere subtype name, e.g. 'Standard, Irritant' or 'Extremely Dense, Temperature 500K+'."
+            },
             "pressure_bar": {
               "type": "number",
               "minimum": 0,
-              "description": "Total atmospheric pressure at mean baseline altitude, in bar (WBH p.79)."
+              "description": "Total atmospheric pressure at mean baseline altitude, in bar (WBH p.79). Omitted when pressure is unbound (subtype C/D/E)."
             },
             "oxygen_partial_pressure_bar": {
               "type": "number",
@@ -162,6 +170,24 @@
                   "severity":         { "type": "string" },
                   "persistence_code": { "type": "integer", "minimum": 2, "maximum": 9 },
                   "persistence":      { "type": "string" }
+                }
+              }
+            },
+            "hazards": {
+              "type": "array",
+              "description": "Insidious atmosphere hazards (WBH p.87). Present only for insidious (code C/12) atmospheres.",
+              "items": {
+                "type": "object",
+                "required": ["hazard_code", "hazard"],
+                "additionalProperties": false,
+                "properties": {
+                  "hazard_code": { "type": "string", "enum": ["B", "R", "G", "T"] },
+                  "hazard":      { "type": "string" },
+                  "gases": {
+                    "type": "array",
+                    "description": "Randomly selected hazardous gas components. Present only for Gas Mix (G) hazards.",
+                    "items": { "type": "string" }
+                  }
                 }
               }
             }

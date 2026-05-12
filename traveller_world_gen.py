@@ -342,6 +342,23 @@ def _atmosphere_pressure_bar(code: int) -> Optional[float]:
     return round(minimum + width * variance, 3)
 
 
+def _subtype_pressure_bar(
+    min_bar: float,
+    span_bar: Optional[float],
+) -> Optional[float]:
+    """Roll pressure within a subtype's defined range (WBH pp.85-86).
+
+    Uses the same WBH variance formula as ``_atmosphere_pressure_bar()``.
+    Returns ``None`` when ``span_bar`` is ``None`` (unbound pressure ≥ 10.0 bar).
+    """
+    if span_bar is None:
+        return None
+    variance = (
+        (random.randint(1, 6) - 1) * 5 + (random.randint(1, 6) - 1)
+    ) / 30
+    return round(max(0.0, min_bar + span_bar * variance), 3)
+
+
 def _oxygen_partial_pressure(
     code: int,
     total_pressure_bar: Optional[float],
@@ -379,6 +396,85 @@ def _scale_height_km(size: int, code: int) -> Optional[float]:
         return None
     return round(8.5 / gravity, 2)
 
+
+# ---------------------------------------------------------------------------
+# Exotic / Corrosive / Insidious atmosphere tables (WBH pp.85-87)
+# ---------------------------------------------------------------------------
+
+_EXOTIC_CODES = frozenset({10})
+_CI_CODES     = frozenset({11, 12})   # Corrosive (B) and Insidious (C)
+
+# Exotic Atmosphere Subtype table (WBH p.85).
+# 2D+DM → (subtype_code, type_name, pressure_min_bar, pressure_span_bar)
+# pressure_span_bar=None means pressure is unbound (≥ 10.0 bar).
+_EXOTIC_SUBTYPE_TABLE: dict = {
+    2:  ("2", "Very Thin, Irritant",                   0.10, 0.32),
+    3:  ("3", "Very Thin",                              0.10, 0.32),
+    4:  ("4", "Thin, Irritant",                         0.43, 0.27),
+    5:  ("5", "Thin",                                   0.43, 0.27),
+    6:  ("6", "Standard",                               0.70, 0.79),
+    7:  ("7", "Standard, Irritant",                     0.70, 0.79),
+    8:  ("8", "Dense",                                  1.50, 0.99),
+    9:  ("9", "Dense, Irritant",                        1.50, 0.99),
+    10: ("A", "Very Dense",                             2.50, 7.50),
+    11: ("B", "Very Dense, Irritant",                   2.50, 7.50),
+    12: ("C", "Very Dense, Occasionally Corrosive",     2.50, 7.50),
+    13: ("A", "Very Dense",                             2.50, 7.50),
+    14: ("B", "Very Dense, Irritant",                   2.50, 7.50),
+}
+
+# Corrosive and Insidious Atmosphere Subtype table (WBH p.86).
+# 2D+DM → (subtype_code, type_name, pressure_min_bar, pressure_span_bar)
+_CI_SUBTYPE_TABLE: dict = {
+    1:  ("1", "Very Thin, Temperature 50K or less",            0.10, 0.32),
+    2:  ("2", "Very Thin, Irritant",                           0.10, 0.32),
+    3:  ("3", "Very Thin",                                     0.10, 0.32),
+    4:  ("4", "Thin, Irritant",                                0.43, 0.27),
+    5:  ("5", "Thin",                                          0.43, 0.27),
+    6:  ("6", "Standard",                                      0.70, 0.79),
+    7:  ("7", "Standard, Irritant",                            0.70, 0.79),
+    8:  ("8", "Dense",                                         1.50, 0.99),
+    9:  ("9", "Dense, Irritant",                               1.50, 0.99),
+    10: ("A", "Very Dense",                                    2.50, 7.50),
+    11: ("B", "Very Dense, Irritant",                          2.50, 7.50),
+    12: ("C", "Extremely Dense",                              10.00, None),
+    13: ("D", "Extremely Dense, Temperature 500K+",           10.00, None),
+    14: ("E", "Extremely Dense, Temperature 500K+, Irritant", 10.00, None),
+}
+
+# Insidious Atmosphere Hazard table (WBH p.87).
+# 2D+DM → (hazard_code, hazard_name)
+_INSIDIOUS_HAZARD_TABLE: dict = {
+    4:  ("B", "Biologic"),
+    5:  ("R", "Radioactivity"),
+    6:  ("G", "Gas Mix"),
+    7:  ("G", "Gas Mix"),
+    8:  ("T", "Temperature"),
+    9:  ("G", "Gas Mix"),
+    10: ("T", "Temperature"),
+    11: ("R", "Radioactivity"),
+    12: ("T", "Temperature"),
+}
+
+# Hazardous atmospheric gases (Taint=Y) from the Atmospheric Gas Composition
+# table (WBH pp.88-89). Used when rolling a Gas Mix hazard.
+_HAZARDOUS_GASES = [
+    "Methane (CH₄)",
+    "Ammonia (NH₃)",
+    "Hydrofluoric Acid (HF)",
+    "Sodium (Na)",
+    "Carbon Monoxide (CO)",
+    "Hydrogen Cyanide (HCN)",
+    "Ethane (C₂H₆)",
+    "Hydrochloric Acid (HCl)",
+    "Fluorine (F₂)",
+    "Carbon Dioxide (CO₂)",
+    "Formamide (CH₃NO)",
+    "Formic Acid (CH₂O₂)",
+    "Sulphur Dioxide (SO₂)",
+    "Chlorine (Cl₂)",
+    "Sulphuric Acid (H₂SO₄)",
+]
 
 # ---------------------------------------------------------------------------
 # Atmosphere taint tables (WBH pp.82-85)
@@ -509,30 +605,129 @@ class Taint:
 
 
 @dataclass
+class InsidiousHazard:
+    """One hazard present in an insidious atmosphere (WBH p.87).
+
+    ``gases`` is populated only for Gas Mix hazards; it lists randomly-
+    selected hazardous atmospheric components from the Atmospheric Gas
+    Composition table (WBH pp.88-89).
+    """
+    hazard_code: str
+    hazard:      str
+    gases:       list = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict.  ``gases`` is omitted when empty."""
+        d: dict = {"hazard_code": self.hazard_code, "hazard": self.hazard}
+        if self.gases:
+            d["gases"] = self.gases
+        return d
+
+
+def _roll_exotic_subtype(
+    size: int,
+    hz_deviation: Optional[float],
+) -> tuple:
+    """Roll and look up an Exotic Atmosphere subtype (WBH p.85).
+
+    Returns ``(subtype_code, subtype_name, pressure_bar_or_None)``.
+    DMs: Size 2–4 = DM-2; Orbit < HZCO-1 (hz_deviation < -1.0) = DM-2;
+    Orbit > HZCO+2 (hz_deviation > +2.0) = DM+2.
+    """
+    dm = 0
+    if 2 <= size <= 4:
+        dm -= 2
+    if hz_deviation is not None:
+        if hz_deviation < -1.0:
+            dm -= 2
+        elif hz_deviation > 2.0:
+            dm += 2
+    raw = max(2, min(14, _dice(2) + dm))
+    s_code, s_name, min_bar, span_bar = _EXOTIC_SUBTYPE_TABLE[raw]
+    return s_code, s_name, _subtype_pressure_bar(min_bar, span_bar)
+
+
+def _roll_ci_subtype(
+    atm_code: int,
+    size: int,
+    hz_deviation: Optional[float],
+) -> tuple:
+    """Roll and look up a Corrosive/Insidious Atmosphere subtype (WBH p.86).
+
+    Returns ``(subtype_code, subtype_name, pressure_bar_or_None)``.
+    DMs: Size 2–4 = DM-3; Size 8+ = DM+2; Orbit < HZCO-1 = DM+4;
+    Orbit > HZCO+2 = DM-2; Insidious (code 12) = DM+2.
+    """
+    dm = 0
+    if 2 <= size <= 4:
+        dm -= 3
+    elif size >= 8:
+        dm += 2
+    if hz_deviation is not None:
+        if hz_deviation < -1.0:
+            dm += 4
+        elif hz_deviation > 2.0:
+            dm -= 2
+    if atm_code == 12:
+        dm += 2
+    raw = max(1, min(14, _dice(2) + dm))
+    s_code, s_name, min_bar, span_bar = _CI_SUBTYPE_TABLE[raw]
+    return s_code, s_name, _subtype_pressure_bar(min_bar, span_bar)
+
+
+def _roll_insidious_hazard(subtype_code: str) -> list:
+    """Roll the Insidious Atmosphere Hazard table (WBH p.87).
+
+    Returns a list of ``InsidiousHazard`` objects.  Subtype D or E
+    automatically adds a Temperature hazard before the table roll.
+    Subtype C/D/E applies DM+2 to the hazard roll.  Gas Mix hazards
+    randomly select 1–3 components from ``_HAZARDOUS_GASES``.
+    """
+    hazards: list = []
+    dm = 2 if subtype_code in ("C", "D", "E") else 0
+    if subtype_code in ("D", "E"):
+        hazards.append(InsidiousHazard(hazard_code="T", hazard="Temperature"))
+    raw = max(4, min(12, _dice(2) + dm))
+    h_code, h_name = _INSIDIOUS_HAZARD_TABLE[raw]
+    gases: list = []
+    if h_code == "G":
+        n_roll = _dice(1)
+        n = 1 if n_roll <= 2 else (2 if n_roll <= 4 else 3)
+        gases = random.sample(_HAZARDOUS_GASES, n)
+    hazards.append(InsidiousHazard(hazard_code=h_code, hazard=h_name, gases=gases))
+    return hazards
+
+
+@dataclass
 class AtmosphereDetail:
-    """Quantitative atmosphere characteristics (WBH pp. 78-85).
+    """Quantitative atmosphere characteristics (WBH pp. 78-87).
 
     Supplements the UWP single-digit atmosphere code with pressure,
-    oxygen partial pressure, scale height, and taint detail.
+    oxygen partial pressure, scale height, taint detail, and (for
+    exotic/corrosive/insidious codes) the rolled subtype and hazards.
     Each field is optional because the relevant rule does not apply
     to every code.
-
-    Phases 3–5 will extend this dataclass with exotic subtypes, gas
-    composition and altitude limits.
     """
     pressure_bar:            Optional[float] = None
     oxygen_partial_pressure: Optional[float] = None
     scale_height_km:         Optional[float] = None
     taints:                  list = field(default_factory=list)
+    subtype_code:            Optional[str]   = None
+    subtype_name:            Optional[str]   = None
+    hazards:                 list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Return the detail as a JSON-friendly dict.
 
-        Numeric fields are omitted when ``None``; ``taints`` is omitted
+        Numeric fields are omitted when ``None``; list fields are omitted
         when empty.  Both conventions keep the JSON compact for worlds
         where the rule does not apply.
         """
         out: dict = {}
+        if self.subtype_code is not None:
+            out["subtype_code"] = self.subtype_code
+        if self.subtype_name is not None:
+            out["subtype_name"] = self.subtype_name
         if self.pressure_bar is not None:
             out["pressure_bar"] = self.pressure_bar
         if self.oxygen_partial_pressure is not None:
@@ -541,6 +736,8 @@ class AtmosphereDetail:
             out["scale_height_km"] = self.scale_height_km
         if self.taints:
             out["taints"] = [t.to_dict() for t in self.taints]
+        if self.hazards:
+            out["hazards"] = [h.to_dict() for h in self.hazards]
         return out
 
 
@@ -549,18 +746,36 @@ def generate_atmosphere_detail(
     size: int,
     system_age_gyr: Optional[float] = None,
     temperature: Optional[str] = None,  # pylint: disable=unused-argument
+    hz_deviation: Optional[float] = None,
 ) -> AtmosphereDetail:
     """Generate quantitative atmosphere characteristics for a world.
 
-    Combines the WBH p.79-81 helpers into a single ``AtmosphereDetail``.
+    Combines the WBH pp.79-87 helpers into a single ``AtmosphereDetail``.
     Safe to call for any atmosphere code: fields that do not apply to
     the given code are left as ``None``.
 
-    ``temperature`` is used by Phase 3 (exotic/corrosive/insidious subtypes,
-    WBH pp.85-90) to branch on temperature zone; pass ``world.temperature``
-    after ``generate_temperature_from_orbit()`` has been called.
+    ``hz_deviation`` drives the orbit-position DMs on the exotic and
+    corrosive/insidious subtype tables.  Pass ``orbit.hz_deviation`` from
+    the orbit slot; standalone worlds with no orbit pass ``None``.
+    ``temperature`` is reserved for Phases 4–5 (gas composition).
     """
-    pressure = _atmosphere_pressure_bar(code)
+    subtype_code: Optional[str] = None
+    subtype_name: Optional[str] = None
+    hazards: list = []
+
+    if code in _EXOTIC_CODES:
+        subtype_code, subtype_name, pressure = _roll_exotic_subtype(
+            size, hz_deviation
+        )
+    elif code in _CI_CODES:
+        subtype_code, subtype_name, pressure = _roll_ci_subtype(
+            code, size, hz_deviation
+        )
+        if code == 12 and subtype_code is not None:
+            hazards = _roll_insidious_hazard(subtype_code)
+    else:
+        pressure = _atmosphere_pressure_bar(code)
+
     taints: list = []
     if code in _TAINTED_CODES:
         taint, needs_second = _roll_single_taint(code)
@@ -575,6 +790,9 @@ def generate_atmosphere_detail(
         ),
         scale_height_km=_scale_height_km(size, code),
         taints=taints,
+        subtype_code=subtype_code,
+        subtype_name=subtype_name,
+        hazards=hazards,
     )
 
 
@@ -840,7 +1058,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             return "era-avgstellar"
         return "era-highstellar"
 
-    def to_html(self) -> str:  # pylint: disable=too-many-locals
+    def to_html(self) -> str:  # pylint: disable=too-many-locals,too-many-branches
         """Return a self-contained HTML card representing this world.
 
         The output matches the inline display widget shown in Claude
@@ -948,8 +1166,12 @@ class World:  # pylint: disable=too-many-instance-attributes
         if self.atmosphere_detail is not None:
             ad = self.atmosphere_detail
             atm_rows = row("Profile", format_atmosphere_profile(self.atmosphere, ad))
+            if ad.subtype_name is not None:
+                atm_rows += row("Subtype", ad.subtype_name)
             if ad.pressure_bar is not None:
                 atm_rows += row("Pressure", f"{ad.pressure_bar:.3f} bar")
+            elif ad.subtype_code in ("C", "D", "E"):
+                atm_rows += row("Pressure", "&gt; 10.0 bar (extremely dense)")
             if ad.oxygen_partial_pressure is not None:
                 atm_rows += row("O₂ partial pressure", f"{ad.oxygen_partial_pressure:.3f} bar")
             if ad.scale_height_km is not None:
@@ -959,6 +1181,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                 atm_rows += row(prefix, taint.subtype)
                 atm_rows += row("Severity", taint.severity)
                 atm_rows += row("Persistence", taint.persistence)
+            for hazard in ad.hazards:
+                atm_rows += row("Hazard", hazard.hazard)
+                if hazard.gases:
+                    atm_rows += row("  Gas mix", ", ".join(hazard.gases))
             atmosphere_html = (
                 '<div class="inner-card" style="margin-top:12px">'
                 '<p class="inner-label">Atmosphere detail</p>'
@@ -1224,7 +1450,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     # ------------------------------------------------------------------
     # Human-readable summary
     # ------------------------------------------------------------------
-    def summary(self) -> str:
+    def summary(self) -> str:  # pylint: disable=too-many-branches,too-many-statements
         """Return a human-readable summary of this world's characteristics."""
         pop_range = {
             0: "None", 1: "Few (1+)", 2: "Hundreds", 3: "Thousands",
@@ -1277,8 +1503,12 @@ class World:  # pylint: disable=too-many-instance-attributes
             lines.append(f"{'-'*56}")
             profile = format_atmosphere_profile(self.atmosphere, ad)
             lines.append(f"  {'Atm. profile':<12}: {profile}")
+            if ad.subtype_name is not None:
+                lines.append(f"  {'Subtype':<12}: {ad.subtype_name}")
             if ad.pressure_bar is not None:
                 lines.append(f"  {'Pressure':<12}: {ad.pressure_bar:.3f} bar")
+            elif ad.subtype_code in ("C", "D", "E"):
+                lines.append(f"  {'Pressure':<12}: > 10.0 bar (extremely dense)")
             if ad.oxygen_partial_pressure is not None:
                 lines.append(f"  {'O2 ppo':<12}: {ad.oxygen_partial_pressure:.3f} bar")
             if ad.scale_height_km is not None:
@@ -1289,6 +1519,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                     f"  {label:<12}: {taint.subtype}"
                     f"  sev {taint.severity_code}  per {taint.persistence_code}"
                 )
+            for hazard in ad.hazards:
+                lines.append(f"  {'Hazard':<12}: {hazard.hazard}")
+                if hazard.gases:
+                    lines.append(f"  {'  Gas mix':<12}: {', '.join(hazard.gases)}")
 
         if self.size_detail:
             p = self.size_detail
