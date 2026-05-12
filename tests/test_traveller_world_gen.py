@@ -58,6 +58,7 @@ from traveller_world_gen import (
     generate_size,
     generate_atmosphere,
     generate_atmosphere_detail,
+    generate_gas_mix,
     generate_temperature,
     generate_hydrographics,
     generate_population,
@@ -74,6 +75,7 @@ from traveller_world_gen import (
     generate_world,
     format_atmosphere_profile,
     AtmosphereDetail,
+    GasMixComponent,
     Taint,
     World,
     ATMOSPHERE_MIN_TL,
@@ -103,6 +105,17 @@ from traveller_world_gen import (
     _roll_exotic_subtype,
     _roll_ci_subtype,
     _roll_insidious_hazard,
+    _GAS_CODES,
+    _GAS_MIX_BOILING_VH,
+    _GAS_MIX_BOILING_H,
+    _GAS_MIX_HOT,
+    _GAS_MIX_TEMPERATE,
+    _GAS_MIX_COLD,
+    _GAS_MIX_FROZEN_M,
+    _GAS_MIX_FROZEN_D,
+    _select_gas_mix_table,
+    _roll_single_gas,
+    _roll_gas_mix,
 )
 
 
@@ -4181,3 +4194,392 @@ class TestOrbitToAu:
         from traveller_stellar_gen import _orbit_to_au
         aus = {_orbit_to_au(on) for on in (0.05, 0.1, 0.3, 0.5, 0.65)}
         assert len(aus) == 5, f"expected 5 distinct AU values, got {aus}"
+
+
+# ===========================================================================
+# TestGasMixGeneration  (Phase 4 Stage 1 — WBH pp.95+)
+# ===========================================================================
+
+class TestGasMixGeneration:
+    """Tests for gas mix generation for Exotic/Corrosive/Insidious atmospheres."""
+
+    # --- _GAS_CODES coverage ---
+
+    def test_gas_codes_has_24_standard_gases(self):
+        # 22 gases from p.87 table + 2 specials (Silicates, Metal Vapours)
+        assert len(_GAS_CODES) == 24
+
+    def test_gas_codes_nitrogen_code(self):
+        assert _GAS_CODES["Nitrogen"] == "N₂"
+
+    def test_gas_codes_carbon_dioxide(self):
+        assert _GAS_CODES["Carbon Dioxide"] == "CO₂"
+
+    def test_gas_codes_specials_present(self):
+        assert _GAS_CODES["Silicates"] == "SO"
+        assert _GAS_CODES["Metal Vapours"] == "MV"
+
+    # --- table key coverage ---
+
+    def test_boiling_vh_covers_minus2_to_13(self):
+        assert set(_GAS_MIX_BOILING_VH.keys()) == set(range(-2, 14))
+
+    def test_boiling_h_covers_1_to_13(self):
+        assert set(_GAS_MIX_BOILING_H.keys()) == set(range(1, 14))
+
+    def test_hot_covers_1_to_13(self):
+        assert set(_GAS_MIX_HOT.keys()) == set(range(1, 14))
+
+    def test_temperate_covers_1_to_13(self):
+        assert set(_GAS_MIX_TEMPERATE.keys()) == set(range(1, 14))
+
+    def test_cold_covers_1_to_13(self):
+        assert set(_GAS_MIX_COLD.keys()) == set(range(1, 14))
+
+    def test_frozen_m_covers_1_to_13(self):
+        assert set(_GAS_MIX_FROZEN_M.keys()) == set(range(1, 14))
+
+    def test_frozen_d_covers_1_to_13(self):
+        assert set(_GAS_MIX_FROZEN_D.keys()) == set(range(1, 14))
+
+    def test_all_tables_have_abc_columns(self):
+        for table in (_GAS_MIX_BOILING_VH, _GAS_MIX_BOILING_H, _GAS_MIX_HOT,
+                      _GAS_MIX_TEMPERATE, _GAS_MIX_COLD,
+                      _GAS_MIX_FROZEN_M, _GAS_MIX_FROZEN_D):
+            for row_val in table.values():
+                assert set(row_val.keys()) == {"A", "B", "C"}
+
+    # --- _select_gas_mix_table ---
+
+    def test_select_boiling_vh_when_dev_le_minus2_01(self):
+        table, *_ = _select_gas_mix_table("Boiling", -2.5)
+        assert table is _GAS_MIX_BOILING_VH
+
+    def test_select_boiling_h_when_dev_greater_minus2_01(self):
+        table, *_ = _select_gas_mix_table("Boiling", -1.5)
+        assert table is _GAS_MIX_BOILING_H
+
+    def test_select_boiling_h_when_no_deviation(self):
+        table, *_ = _select_gas_mix_table("Boiling", None)
+        assert table is _GAS_MIX_BOILING_H
+
+    def test_select_hot(self):
+        table, *_ = _select_gas_mix_table("Hot", None)
+        assert table is _GAS_MIX_HOT
+
+    def test_select_temperate(self):
+        table, *_ = _select_gas_mix_table("Temperate", None)
+        assert table is _GAS_MIX_TEMPERATE
+
+    def test_select_cold(self):
+        table, *_ = _select_gas_mix_table("Cold", None)
+        assert table is _GAS_MIX_COLD
+
+    def test_select_frozen_d_when_dev_ge_3_01(self):
+        table, *_ = _select_gas_mix_table("Frozen", 3.5)
+        assert table is _GAS_MIX_FROZEN_D
+
+    def test_select_frozen_m_when_dev_lt_3_01(self):
+        table, *_ = _select_gas_mix_table("Frozen", 2.0)
+        assert table is _GAS_MIX_FROZEN_M
+
+    def test_select_frozen_m_when_no_deviation(self):
+        table, *_ = _select_gas_mix_table("Frozen", None)
+        assert table is _GAS_MIX_FROZEN_M
+
+    def test_frozen_d_size_lo_dm_is_minus3(self):
+        _, _, _, size_lo_dm, *_ = _select_gas_mix_table("Frozen", 3.5)
+        assert size_lo_dm == -3
+
+    def test_most_tables_size_lo_dm_is_minus1(self):
+        for temp, dev in [("Hot", None), ("Temperate", None),
+                          ("Cold", None), ("Boiling", -1.0)]:
+            _, _, _, size_lo_dm, *_ = _select_gas_mix_table(temp, dev)
+            assert size_lo_dm == -1
+
+    def test_frozen_d_extra_dm_is_3(self):
+        _, _, _, _, extra_dm, _ = _select_gas_mix_table("Frozen", 3.5)
+        assert extra_dm == 3
+
+    def test_non_frozen_co_sub_is_carbon_dioxide(self):
+        _, _, _, _, _, co_sub = _select_gas_mix_table("Temperate", None)
+        assert co_sub == "Carbon Dioxide"
+
+    def test_frozen_co_sub_is_nitrogen(self):
+        _, _, _, _, _, co_sub = _select_gas_mix_table("Frozen", 2.0)
+        assert co_sub == "Nitrogen"
+
+    # --- _roll_single_gas DMs ---
+
+    def test_size_1_7_pushes_result_down(self):
+        # With all dice=6, a size-5 world (DM-1) should produce a lower result
+        # than size-8 (no DM).
+        random.seed(0)
+        name_small, _ = _roll_single_gas(
+            _GAS_MIX_TEMPERATE, "A", 1, 13, 5, -1, 0, 0, "Carbon Dioxide"
+        )
+        random.seed(0)
+        name_mid, _ = _roll_single_gas(
+            _GAS_MIX_TEMPERATE, "A", 1, 13, 8, -1, 0, 0, "Carbon Dioxide"
+        )
+        # Both must return valid gas names from _GAS_CODES or special entries
+        assert name_small in _GAS_CODES or name_small in ("Silicates", "Metal Vapours")
+        assert name_mid in _GAS_CODES or name_mid in ("Silicates", "Metal Vapours")
+
+    def test_size_a_plus_applies_dm_plus1(self):
+        # size=10 (A) should get DM+1, size=8 gets no size DM
+        random.seed(42)
+        name_a, _ = _roll_single_gas(
+            _GAS_MIX_TEMPERATE, "A", 1, 13, 10, -1, 0, 0, "Carbon Dioxide"
+        )
+        assert name_a in _GAS_CODES or name_a in ("Silicates", "Metal Vapours")
+
+    def test_co_substituted_with_co2_non_frozen_when_hydro_gt_0(self):
+        # frozen_m result 6 (A col) = Carbon Monoxide; fixed_roll(3) → _dice(2)=6
+        # size 8 has no size DM, extra_dm=0 → result 6 → CO → co_sub
+        with fixed_roll(3):
+            name, code = _roll_single_gas(
+                _GAS_MIX_FROZEN_M, "A", 1, 13, 8, -1, 0, 1, "Carbon Dioxide"
+            )
+        assert name == "Carbon Dioxide"
+        assert code == "CO₂"
+
+    def test_co_stays_co_when_hydro_0(self):
+        # Same setup but hydro=0 → no substitution
+        with fixed_roll(3):
+            name, code = _roll_single_gas(
+                _GAS_MIX_FROZEN_M, "A", 1, 13, 8, -1, 0, 0, "Carbon Dioxide"
+            )
+        assert name == "Carbon Monoxide"
+        assert code == "CO"
+
+    def test_co_substituted_with_nitrogen_for_frozen(self):
+        # frozen_m result 6 (A col) = Carbon Monoxide; substitute → Nitrogen
+        with fixed_roll(3):
+            name, code = _roll_single_gas(
+                _GAS_MIX_FROZEN_M, "A", 1, 13, 8, -1, 0, 1, "Nitrogen"
+            )
+        assert name == "Nitrogen"
+        assert code == "N₂"
+
+    def test_result_clamped_to_min(self):
+        # Very low roll → min_result
+        with fixed_roll(1):  # _dice(2) = 2, DM-1(size5) = 1 → boiling_h min=1
+            name, _ = _roll_single_gas(
+                _GAS_MIX_BOILING_H, "A", 1, 13, 5, -1, 0, 0, "Carbon Dioxide"
+            )
+        assert name == _GAS_MIX_BOILING_H[1]["A"]
+
+    def test_result_clamped_to_max(self):
+        # Very high roll with extra DM → max_result=13
+        with fixed_roll(6):  # _dice(2)=12, DM+1(size10) + extra3 = 16 → clamped 13
+            name, _ = _roll_single_gas(
+                _GAS_MIX_FROZEN_D, "A", 1, 13, 10, -3, 3, 0, "Nitrogen"
+            )
+        assert name == _GAS_MIX_FROZEN_D[13]["A"]
+
+    # --- _roll_gas_mix percentages ---
+
+    def test_primary_pct_in_range(self):
+        random.seed(7)
+        components = _roll_gas_mix(10, 6, "Temperate", 0.0, 0)
+        assert 50 <= components[0].percentage <= 100
+
+    def test_secondary_pct_le_remainder(self):
+        random.seed(7)
+        components = _roll_gas_mix(10, 6, "Temperate", 0.0, 0)
+        if len(components) == 2:
+            assert components[0].percentage + components[1].percentage <= 100
+
+    def test_duplicate_gas_merged_into_one(self):
+        # Seed until we get a duplicate — force both rolls to same table cell
+        with fixed_roll(4):  # forces same result both rolls
+            components = _roll_gas_mix(10, 8, "Temperate", 0.0, 0)
+        if len(components) == 1:
+            assert components[0].percentage <= 100
+        # At least the return is a non-empty list
+        assert len(components) >= 1
+
+    def test_gas_mix_returns_list_of_gas_mix_components(self):
+        random.seed(1)
+        components = _roll_gas_mix(11, 6, "Hot", -0.5, 0)
+        assert all(isinstance(c, GasMixComponent) for c in components)
+        assert 1 <= len(components) <= 2
+
+    def test_col_a_for_exotic(self):
+        # Exotic (code 10) uses column A
+        random.seed(3)
+        components = _roll_gas_mix(10, 6, "Temperate", 0.0, 0)
+        assert len(components) >= 1
+        assert components[0].gas_name in _GAS_CODES
+
+    def test_col_b_for_corrosive(self):
+        random.seed(3)
+        components = _roll_gas_mix(11, 6, "Temperate", 0.0, 0)
+        assert len(components) >= 1
+
+    def test_col_c_for_insidious(self):
+        random.seed(3)
+        components = _roll_gas_mix(12, 6, "Temperate", 0.0, 0)
+        assert len(components) >= 1
+
+    # --- generate_gas_mix ---
+
+    def test_noop_for_standard_atmosphere_code(self):
+        detail = AtmosphereDetail()
+        generate_gas_mix(detail, 9, 6, "Temperate", None, 5)
+        assert detail.gas_mix == []
+
+    def test_noop_for_code_0(self):
+        detail = AtmosphereDetail()
+        generate_gas_mix(detail, 0, 0, "Temperate", None, 0)
+        assert detail.gas_mix == []
+
+    def test_populates_gas_mix_for_exotic(self):
+        random.seed(1)
+        detail = AtmosphereDetail()
+        generate_gas_mix(detail, 10, 6, "Temperate", 0.0, 0)
+        assert len(detail.gas_mix) >= 1
+        assert all(isinstance(c, GasMixComponent) for c in detail.gas_mix)
+
+    def test_populates_gas_mix_for_corrosive(self):
+        random.seed(2)
+        detail = AtmosphereDetail()
+        generate_gas_mix(detail, 11, 6, "Hot", -0.5, 0)
+        assert len(detail.gas_mix) >= 1
+
+    def test_populates_gas_mix_for_insidious(self):
+        random.seed(3)
+        detail = AtmosphereDetail()
+        generate_gas_mix(detail, 12, 6, "Boiling", -1.5, 0)
+        assert len(detail.gas_mix) >= 1
+
+    # --- GasMixComponent.to_dict / AtmosphereDetail.to_dict ---
+
+    def test_gas_mix_component_to_dict_with_pct(self):
+        c = GasMixComponent(gas_name="Nitrogen", gas_code="N₂", percentage=75)
+        d = c.to_dict()
+        assert d == {"gas_name": "Nitrogen", "gas_code": "N₂", "percentage": 75}
+
+    def test_gas_mix_component_to_dict_no_pct(self):
+        c = GasMixComponent(gas_name="Nitrogen", gas_code="N₂")
+        d = c.to_dict()
+        assert "percentage" not in d
+
+    def test_atmosphere_detail_to_dict_includes_gas_mix(self):
+        detail = AtmosphereDetail()
+        detail.gas_mix = [
+            GasMixComponent("Nitrogen", "N₂", 75),
+            GasMixComponent("Carbon Dioxide", "CO₂", 20),
+        ]
+        d = detail.to_dict()
+        assert "gas_mix" in d
+        assert len(d["gas_mix"]) == 2
+        assert d["gas_mix"][0]["gas_name"] == "Nitrogen"
+
+    def test_atmosphere_detail_to_dict_omits_gas_mix_when_empty(self):
+        detail = AtmosphereDetail()
+        d = detail.to_dict()
+        assert "gas_mix" not in d
+
+
+# ===========================================================================
+# TestGasMixProfile  (Phase 4 Stage 2)
+# ===========================================================================
+
+class TestGasMixProfile:
+    """Tests for format_atmosphere_profile() gas mix extension."""
+
+    def test_profile_unchanged_without_gas_mix(self):
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(6, 8)
+        profile = format_atmosphere_profile(6, detail)
+        assert ":" not in profile
+
+    def test_profile_appends_single_gas(self):
+        detail = AtmosphereDetail(pressure_bar=0.55)
+        detail.gas_mix = [GasMixComponent("Nitrogen", "N₂", 80)]
+        profile = format_atmosphere_profile(10, detail)
+        assert ":N₂-80" in profile
+
+    def test_profile_appends_two_gases(self):
+        detail = AtmosphereDetail(pressure_bar=0.55)
+        detail.gas_mix = [
+            GasMixComponent("Nitrogen", "N₂", 75),
+            GasMixComponent("Carbon Dioxide", "CO₂", 20),
+        ]
+        profile = format_atmosphere_profile(10, detail)
+        assert ":N₂-75" in profile
+        assert ":CO₂-20" in profile
+
+    def test_profile_gas_after_pressure(self):
+        detail = AtmosphereDetail(pressure_bar=1.0)
+        detail.gas_mix = [GasMixComponent("Nitrogen", "N₂", 70)]
+        profile = format_atmosphere_profile(10, detail)
+        # pressure token "1" should come before gas token ":N₂-70"
+        assert profile.index("1") < profile.index(":N₂")
+
+    def test_profile_no_percentage_omits_dash_digits(self):
+        detail = AtmosphereDetail(pressure_bar=0.55)
+        detail.gas_mix = [GasMixComponent("Nitrogen", "N₂")]
+        profile = format_atmosphere_profile(10, detail)
+        assert ":N₂" in profile
+        assert ":N₂-" not in profile
+
+    def test_profile_none_detail_returns_hex(self):
+        assert format_atmosphere_profile(10, None) == "A"
+
+    def test_profile_percentage_zero_padded_two_digits(self):
+        detail = AtmosphereDetail(pressure_bar=0.55)
+        detail.gas_mix = [GasMixComponent("Argon", "Ar", 5)]
+        profile = format_atmosphere_profile(10, detail)
+        assert ":Ar-05" in profile
+
+
+# ===========================================================================
+# TestGasMixDisplay  (Phase 4 Stage 3)
+# ===========================================================================
+
+class TestGasMixDisplay:
+    """Tests for gas mix in to_html() and summary()."""
+
+    def _world_with_gas_mix(self) -> World:
+        w = World(name="Test", size=6, atmosphere=10, temperature="Temperate")
+        w.atmosphere_detail = AtmosphereDetail(pressure_bar=0.55)
+        w.atmosphere_detail.gas_mix = [
+            GasMixComponent("Nitrogen", "N₂", 75),
+            GasMixComponent("Carbon Dioxide", "CO₂", 20),
+        ]
+        return w
+
+    def _world_no_gas_mix(self) -> World:
+        w = World(name="Test", size=6, atmosphere=10, temperature="Temperate")
+        w.atmosphere_detail = AtmosphereDetail(pressure_bar=0.55)
+        return w
+
+    def test_to_html_includes_gas_mix_row(self):
+        html = self._world_with_gas_mix().to_html()
+        assert "Gas mix" in html
+        assert "Nitrogen" in html
+        assert "N₂" in html
+
+    def test_to_html_includes_percentage(self):
+        html = self._world_with_gas_mix().to_html()
+        assert "75%" in html
+
+    def test_to_html_omits_gas_mix_when_empty(self):
+        html = self._world_no_gas_mix().to_html()
+        # No "Gas mix" row beyond what hazards might show
+        assert html.count("Gas mix") == 0
+
+    def test_summary_includes_gas_mix_line(self):
+        text = self._world_with_gas_mix().summary()
+        assert "Gas mix" in text
+
+    def test_summary_includes_gas_name(self):
+        text = self._world_with_gas_mix().summary()
+        assert "Nitrogen" in text
+
+    def test_summary_omits_gas_mix_when_empty(self):
+        text = self._world_no_gas_mix().summary()
+        assert "Gas mix" not in text

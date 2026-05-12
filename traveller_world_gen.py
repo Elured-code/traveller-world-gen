@@ -477,6 +477,165 @@ _HAZARDOUS_GASES = [
 ]
 
 # ---------------------------------------------------------------------------
+# Atmosphere Gas Mix tables (WBH pp.95+)
+# ---------------------------------------------------------------------------
+
+# Gas name → chemical code (from Atmospheric Gas Composition table, WBH p.87).
+# "Silicates" and "Metal Vapours" are not in the p.87 table; codes are assigned.
+_GAS_CODES: dict = {
+    "Silicates":          "SO",
+    "Metal Vapours":      "MV",
+    "Hydrogen":           "H₂",
+    "Helium":             "He",
+    "Methane":            "CH₄",
+    "Ammonia":            "NH₃",
+    "Water Vapour":       "H₂O",
+    "Hydrofluoric Acid":  "HF",
+    "Neon":               "Ne",
+    "Sodium":             "Na",
+    "Nitrogen":           "N₂",
+    "Carbon Monoxide":    "CO",
+    "Hydrogen Cyanide":   "HCN",
+    "Ethane":             "C₂H₆",
+    "Hydrochloric Acid":  "HCl",
+    "Fluorine":           "F₂",
+    "Argon":              "Ar",
+    "Carbon Dioxide":     "CO₂",
+    "Formamide":          "CH₃NO",
+    "Formic Acid":        "CH₂O₂",
+    "Sulphur Dioxide":    "SO₂",
+    "Chlorine":           "Cl₂",
+    "Krypton":            "Kr",
+    "Sulphuric Acid":     "H₂SO₄",
+}
+
+# Each table maps a 2D+DM result to {A: gas_name, B: gas_name, C: gas_name}
+# where A=Exotic, B=Corrosive, C=Insidious.  Carbon Monoxide entries
+# (CO*) are replaced by _roll_single_gas() per the CO* footnote.
+
+# Boiling Atmosphere Gas Mix — HZCO ≤ -2.01 (453 K+)
+_GAS_MIX_BOILING_VH: dict = {
+    -2: {"A": "Silicates",       "B": "Silicates",       "C": "Metal Vapours"},
+    -1: {"A": "Sodium",          "B": "Sodium",          "C": "Silicates"},
+     0: {"A": "Krypton",         "B": "Krypton",         "C": "Sodium"},
+     1: {"A": "Argon",           "B": "Argon",           "C": "Sulphuric Acid"},
+     2: {"A": "Sulphur Dioxide", "B": "Sulphur Dioxide", "C": "Hydrochloric Acid"},
+     3: {"A": "Carbon Monoxide", "B": "Hydrogen Cyanide","C": "Chlorine"},
+     4: {"A": "Carbon Dioxide",  "B": "Formamide",       "C": "Fluorine"},
+     5: {"A": "Nitrogen",        "B": "Carbon Dioxide",  "C": "Formic Acid"},
+     6: {"A": "Carbon Dioxide",  "B": "Nitrogen",        "C": "Water Vapour"},
+     7: {"A": "Nitrogen",        "B": "Carbon Dioxide",  "C": "Nitrogen"},
+     8: {"A": "Water Vapour",    "B": "Sulphur Dioxide", "C": "Carbon Dioxide"},
+     9: {"A": "Sulphur Dioxide", "B": "Water Vapour",    "C": "Sulphur Dioxide"},
+    10: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Hydrogen Cyanide"},
+    11: {"A": "Methane",         "B": "Ammonia",         "C": "Ammonia"},
+    12: {"A": "Water Vapour",    "B": "Ammonia",         "C": "Hydrofluoric Acid"},
+    13: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+}
+
+# Boiling Atmosphere Gas Mix — HZCO -1.01 to -2.0 (353-453 K)
+_GAS_MIX_BOILING_H: dict = {
+     1: {"A": "Krypton",         "B": "Argon",           "C": "Hydrochloric Acid"},
+     2: {"A": "Argon",           "B": "Sulphur Dioxide", "C": "Chlorine"},
+     3: {"A": "Sulphur Dioxide", "B": "Hydrogen Cyanide","C": "Fluorine"},
+     4: {"A": "Ethane",          "B": "Ethane",          "C": "Formic Acid"},
+     5: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Water Vapour"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Dioxide"},
+     8: {"A": "Nitrogen",        "B": "Sulphur Dioxide", "C": "Sulphur Dioxide"},
+     9: {"A": "Water Vapour",    "B": "Water Vapour",    "C": "Hydrogen Cyanide"},
+    10: {"A": "Sulphur Dioxide", "B": "Nitrogen",        "C": "Ammonia"},
+    11: {"A": "Methane",         "B": "Ammonia",         "C": "Methane"},
+    12: {"A": "Neon",            "B": "Ammonia",         "C": "Hydrofluoric Acid"},
+    13: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+}
+
+# Hot Atmosphere Gas Mix (303-353 K)
+_GAS_MIX_HOT: dict = {
+     1: {"A": "Krypton",         "B": "Argon",           "C": "Hydrochloric Acid"},
+     2: {"A": "Argon",           "B": "Sulphur Dioxide", "C": "Chlorine"},
+     3: {"A": "Sulphur Dioxide", "B": "Hydrogen Cyanide","C": "Fluorine"},
+     4: {"A": "Ethane",          "B": "Ethane",          "C": "Sulphur Dioxide"},
+     5: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Monoxide"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Dioxide"},
+     8: {"A": "Nitrogen",        "B": "Sulphur Dioxide", "C": "Ethane"},
+     9: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Hydrogen Cyanide"},
+    10: {"A": "Sulphur Dioxide", "B": "Nitrogen",        "C": "Ammonia"},
+    11: {"A": "Methane",         "B": "Ammonia",         "C": "Methane"},
+    12: {"A": "Neon",            "B": "Ammonia",         "C": "Hydrofluoric Acid"},
+    13: {"A": "Methane",         "B": "Methane",         "C": "Helium"},
+}
+
+# Temperate Atmosphere Gas Mix (273-303 K)
+_GAS_MIX_TEMPERATE: dict = {
+     1: {"A": "Krypton",         "B": "Krypton",         "C": "Argon"},
+     2: {"A": "Argon",           "B": "Chlorine",        "C": "Chlorine"},
+     3: {"A": "Sulphur Dioxide", "B": "Argon",           "C": "Fluorine"},
+     4: {"A": "Nitrogen",        "B": "Sulphur Dioxide", "C": "Sulphur Dioxide"},
+     5: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Carbon Monoxide"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Dioxide"},
+     8: {"A": "Ethane",          "B": "Ethane",          "C": "Ethane"},
+     9: {"A": "Nitrogen",        "B": "Ammonia",         "C": "Ammonia"},
+    10: {"A": "Neon",            "B": "Ammonia",         "C": "Ammonia"},
+    11: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+    12: {"A": "Methane",         "B": "Helium",          "C": "Helium"},
+    13: {"A": "Helium",          "B": "Hydrogen",        "C": "Hydrogen"},
+}
+
+# Cold Atmosphere Gas Mix (223-273 K)
+_GAS_MIX_COLD: dict = {
+     1: {"A": "Krypton",         "B": "Krypton",         "C": "Argon"},
+     2: {"A": "Argon",           "B": "Chlorine",        "C": "Chlorine"},
+     3: {"A": "Ethane",          "B": "Argon",           "C": "Fluorine"},
+     4: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Ethane"},
+     5: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Carbon Monoxide"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Dioxide"},
+     8: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     9: {"A": "Ethane",          "B": "Ethane",          "C": "Ethane"},
+    10: {"A": "Methane",         "B": "Ammonia",         "C": "Ammonia"},
+    11: {"A": "Neon",            "B": "Methane",         "C": "Methane"},
+    12: {"A": "Methane",         "B": "Helium",          "C": "Helium"},
+    13: {"A": "Helium",          "B": "Hydrogen",        "C": "Hydrogen"},
+}
+
+# Frozen Atmosphere Gas Mix — HZCO +1.01 to +3.0 (123-223 K)
+_GAS_MIX_FROZEN_M: dict = {
+     1: {"A": "Krypton",         "B": "Krypton",         "C": "Krypton"},
+     2: {"A": "Argon",           "B": "Argon",           "C": "Argon"},
+     3: {"A": "Argon",           "B": "Argon",           "C": "Fluorine"},
+     4: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     5: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     6: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Carbon Monoxide"},
+     7: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     8: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+     9: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+    10: {"A": "Methane",         "B": "Neon",            "C": "Neon"},
+    11: {"A": "Neon",            "B": "Methane",         "C": "Helium"},
+    12: {"A": "Methane",         "B": "Helium",          "C": "Hydrogen"},
+    13: {"A": "Helium",          "B": "Hydrogen",        "C": "Hydrogen"},
+}
+
+# Frozen Atmosphere Gas Mix — HZCO +3.01+ (below 123 K)
+_GAS_MIX_FROZEN_D: dict = {
+     1: {"A": "Krypton",         "B": "Krypton",         "C": "Krypton"},
+     2: {"A": "Argon",           "B": "Argon",           "C": "Argon"},
+     3: {"A": "Argon",           "B": "Argon",           "C": "Fluorine"},
+     4: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+     5: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Carbon Monoxide"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     8: {"A": "Neon",            "B": "Neon",            "C": "Neon"},
+     9: {"A": "Helium",          "B": "Helium",          "C": "Helium"},
+    10: {"A": "Helium",          "B": "Helium",          "C": "Helium"},
+    11: {"A": "Hydrogen",        "B": "Hydrogen",        "C": "Hydrogen"},
+    12: {"A": "Hydrogen",        "B": "Hydrogen",        "C": "Hydrogen"},
+    13: {"A": "Hydrogen",        "B": "Hydrogen",        "C": "Hydrogen"},
+}
+
+# ---------------------------------------------------------------------------
 # Atmosphere taint tables (WBH pp.82-85)
 # ---------------------------------------------------------------------------
 
@@ -699,12 +858,32 @@ def _roll_insidious_hazard(subtype_code: str) -> list:
 
 
 @dataclass
-class AtmosphereDetail:
-    """Quantitative atmosphere characteristics (WBH pp. 78-87).
+class GasMixComponent:
+    """One gas component in an atmosphere's gas mix (WBH pp.95+).
+
+    ``percentage`` is the whole-number percentage of this gas in the
+    atmosphere (e.g. 75 for 75%).  It is omitted when not determined.
+    """
+    gas_name:   str
+    gas_code:   str
+    percentage: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict."""
+        d: dict = {"gas_name": self.gas_name, "gas_code": self.gas_code}
+        if self.percentage is not None:
+            d["percentage"] = self.percentage
+        return d
+
+
+@dataclass
+class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
+    """Quantitative atmosphere characteristics (WBH pp. 78-95+).
 
     Supplements the UWP single-digit atmosphere code with pressure,
     oxygen partial pressure, scale height, taint detail, and (for
-    exotic/corrosive/insidious codes) the rolled subtype and hazards.
+    exotic/corrosive/insidious codes) the rolled subtype, hazards,
+    and gas mix components.
     Each field is optional because the relevant rule does not apply
     to every code.
     """
@@ -715,6 +894,7 @@ class AtmosphereDetail:
     subtype_code:            Optional[str]   = None
     subtype_name:            Optional[str]   = None
     hazards:                 list = field(default_factory=list)
+    gas_mix:                 list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Return the detail as a JSON-friendly dict.
@@ -738,7 +918,112 @@ class AtmosphereDetail:
             out["taints"] = [t.to_dict() for t in self.taints]
         if self.hazards:
             out["hazards"] = [h.to_dict() for h in self.hazards]
+        if self.gas_mix:
+            out["gas_mix"] = [c.to_dict() for c in self.gas_mix]
         return out
+
+
+def _select_gas_mix_table(  # pylint: disable=too-many-return-statements
+    temperature: str,
+    hz_deviation: Optional[float],
+) -> tuple:
+    """Select the gas mix table and generation parameters for an atmosphere.
+
+    Returns ``(table, min_result, max_result, size_lo_dm, extra_dm, co_sub)``
+    where ``size_lo_dm`` is the DM for size 1–7 (always DM+1 for size A+),
+    ``extra_dm`` is a fixed additional DM (e.g. estimated temperature
+    sub-range), and ``co_sub`` is the CO* substitute gas name when the
+    world has water hydrographics.
+
+    Boiling very-hot (~600 K estimated) falls below the 700 K threshold so
+    no extra temperature DM is applied.  Frozen deep (~80 K estimated) is
+    in the 70–100 K band so DM+3 is applied as a fixed estimate.  A GitHub
+    issue tracks refining these DMs once mean temperature in K is available.
+    """
+    if temperature == "Boiling" and hz_deviation is not None and hz_deviation <= -2.01:
+        return (_GAS_MIX_BOILING_VH, -2, 13, -1, 0, "Carbon Dioxide")
+    if temperature == "Boiling":
+        return (_GAS_MIX_BOILING_H, 1, 13, -1, 0, "Carbon Dioxide")
+    if temperature == "Hot":
+        return (_GAS_MIX_HOT, 1, 13, -1, 0, "Carbon Dioxide")
+    if temperature == "Cold":
+        return (_GAS_MIX_COLD, 1, 13, -1, 0, "Carbon Dioxide")
+    if temperature == "Frozen" and hz_deviation is not None and hz_deviation >= 3.01:
+        return (_GAS_MIX_FROZEN_D, 1, 13, -3, 3, "Nitrogen")
+    if temperature == "Frozen":
+        return (_GAS_MIX_FROZEN_M, 1, 13, -1, 0, "Nitrogen")
+    return (_GAS_MIX_TEMPERATE, 1, 13, -1, 0, "Carbon Dioxide")
+
+
+def _roll_single_gas(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    table: dict,
+    col: str,
+    min_result: int,
+    max_result: int,
+    size: int,
+    size_lo_dm: int,
+    extra_dm: int,
+    hydro: int,
+    co_sub: str,
+) -> tuple:
+    """Roll on one column of a gas mix table and return ``(gas_name, gas_code)``.
+
+    Applies size DMs (``size_lo_dm`` for size 1–7, DM+1 for size A+) and
+    ``extra_dm``, then clamps to ``[min_result, max_result]``.  Carbon
+    Monoxide results are replaced with ``co_sub`` when ``hydro > 0``
+    (WBH CO* footnote).
+    """
+    dm = extra_dm
+    if 1 <= size <= 7:
+        dm += size_lo_dm
+    elif size >= 10:
+        dm += 1
+    result = max(min_result, min(max_result, _dice(2) + dm))
+    gas_name = table[result][col]
+    if gas_name == "Carbon Monoxide" and hydro > 0:
+        gas_name = co_sub
+    return gas_name, _GAS_CODES.get(gas_name, gas_name)
+
+
+def _roll_gas_mix(  # pylint: disable=too-many-locals
+    atm_code: int,
+    size: int,
+    temperature: str,
+    hz_deviation: Optional[float],
+    hydro: int,
+) -> list:
+    """Roll primary and secondary gas components for an A/B/C atmosphere.
+
+    Returns a list of up to two ``GasMixComponent`` entries.  Primary
+    percentage is ``(_dice(1) + 4) × 10``, capped at 100.  Secondary
+    percentage is ``(_dice(1) + 4) × 10`` of the remainder.  When both
+    rolls yield the same gas the percentages are summed into one entry.
+    """
+    col = {10: "A", 11: "B", 12: "C"}[atm_code]
+    table, min_r, max_r, size_lo_dm, extra_dm, co_sub = _select_gas_mix_table(
+        temperature, hz_deviation
+    )
+    prim_name, prim_code = _roll_single_gas(
+        table, col, min_r, max_r, size, size_lo_dm, extra_dm, hydro, co_sub
+    )
+    prim_pct = min(100, (_dice(1) + 4) * 10)
+    sec_name, sec_code = _roll_single_gas(
+        table, col, min_r, max_r, size, size_lo_dm, extra_dm, hydro, co_sub
+    )
+    sec_pct = (_dice(1) + 4) * 10 * (100 - prim_pct) // 100
+    if prim_name == sec_name:
+        return [GasMixComponent(
+            gas_name=prim_name, gas_code=prim_code,
+            percentage=min(100, prim_pct + sec_pct),
+        )]
+    components: list = [GasMixComponent(
+        gas_name=prim_name, gas_code=prim_code, percentage=prim_pct,
+    )]
+    if sec_pct > 0:
+        components.append(GasMixComponent(
+            gas_name=sec_name, gas_code=sec_code, percentage=sec_pct,
+        ))
+    return components
 
 
 def generate_atmosphere_detail(
@@ -796,21 +1081,41 @@ def generate_atmosphere_detail(
     )
 
 
+def generate_gas_mix(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    detail: AtmosphereDetail,
+    atm_code: int,
+    size: int,
+    temperature: str,
+    hz_deviation: Optional[float],
+    hydro: int,
+) -> None:
+    """Populate ``detail.gas_mix`` for Exotic/Corrosive/Insidious atmospheres.
+
+    No-op for codes outside {10, 11, 12}.  Call this after
+    ``generate_hydrographics()`` so the CO* substitution rule can check
+    whether the world has water hydrographics.
+    """
+    if atm_code not in _EXOTIC_CODES | _CI_CODES:
+        return
+    detail.gas_mix = _roll_gas_mix(atm_code, size, temperature, hz_deviation, hydro)
+
+
 def format_atmosphere_profile(
     code: int, detail: Optional[AtmosphereDetail],
 ) -> str:
-    """Return the WBH p.82 atmosphere profile string.
+    """Return the WBH p.82/p.88 atmosphere profile string.
 
-    Format is ``A-bar-ppo[-T.S.P...]`` where A is the eHex atmosphere
-    code, ``bar`` is the total pressure, ``ppo`` is the oxygen partial
-    pressure, and each ``T.S.P`` triplet encodes a taint (subtype code,
-    severity code, persistence code).  Pressure and ppo are dropped when
-    ``None``; taint suffixes are appended only when taints are present.
-    Examples::
+    Format is ``A-bar-ppo[-T.S.P...][:XX-##:YY-##]`` where A is the eHex
+    atmosphere code, ``bar`` is the total pressure, ``ppo`` is the oxygen
+    partial pressure, each ``T.S.P`` triplet encodes a taint (subtype code,
+    severity code, persistence code), and ``:XX-##`` entries are gas-mix
+    components (code and two-digit percentage).  Any field is dropped when
+    not applicable.  Examples::
 
         format_atmosphere_profile(6, detail)   # "6-1.013-0.212"
         format_atmosphere_profile(7, detail)   # "7-1.148-0.138-P.7.9"
         format_atmosphere_profile(0, None)     # "0"
+        format_atmosphere_profile(10, detail)  # "A-St4-0.55:N₂-75:CO₂-20"
     """
     if detail is None:
         return to_hex(code)
@@ -821,7 +1126,15 @@ def format_atmosphere_profile(
         parts.append(f"{detail.oxygen_partial_pressure:g}")
     for taint in detail.taints:
         parts.append(f"{taint.subtype_code}.{taint.severity_code}.{taint.persistence_code}")
-    return "-".join(parts)
+    base = "-".join(parts)
+    if detail.gas_mix:
+        gas_tokens = "".join(
+            f":{c.gas_code}-{c.percentage:02d}" if c.percentage is not None
+            else f":{c.gas_code}"
+            for c in detail.gas_mix
+        )
+        return base + gas_tokens
+    return base
 
 
 # ---------------------------------------------------------------------------
@@ -1058,7 +1371,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             return "era-avgstellar"
         return "era-highstellar"
 
-    def to_html(self) -> str:  # pylint: disable=too-many-locals,too-many-branches
+    def to_html(self) -> str:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         """Return a self-contained HTML card representing this world.
 
         The output matches the inline display widget shown in Claude
@@ -1185,6 +1498,13 @@ class World:  # pylint: disable=too-many-instance-attributes
                 atm_rows += row("Hazard", hazard.hazard)
                 if hazard.gases:
                     atm_rows += row("  Gas mix", ", ".join(hazard.gases))
+            if ad.gas_mix:
+                gas_parts = " &middot; ".join(
+                    f"{c.gas_name} ({c.gas_code})"
+                    + (f" {c.percentage}%" if c.percentage is not None else "")
+                    for c in ad.gas_mix
+                )
+                atm_rows += row("Gas mix", gas_parts)
             atmosphere_html = (
                 '<div class="inner-card" style="margin-top:12px">'
                 '<p class="inner-label">Atmosphere detail</p>'
@@ -1523,6 +1843,13 @@ class World:  # pylint: disable=too-many-instance-attributes
                 lines.append(f"  {'Hazard':<12}: {hazard.hazard}")
                 if hazard.gases:
                     lines.append(f"  {'  Gas mix':<12}: {', '.join(hazard.gases)}")
+            if ad.gas_mix:
+                gas_parts = ", ".join(
+                    f"{c.gas_name} ({c.gas_code})"
+                    + (f" {c.percentage}%" if c.percentage is not None else "")
+                    for c in ad.gas_mix
+                )
+                lines.append(f"  {'Gas mix':<12}: {gas_parts}")
 
         if self.size_detail:
             p = self.size_detail
