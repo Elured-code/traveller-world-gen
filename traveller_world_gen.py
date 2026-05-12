@@ -264,6 +264,350 @@ def temperature_category(modified_roll: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# WBH atmosphere detail (pp. 78-82)
+# ---------------------------------------------------------------------------
+#
+# The Core Rulebook atmosphere code is a single digit (0-15).  The
+# World Builder's Handbook expands each code with quantitative
+# characteristics: pressure in bar, oxygen partial pressure, and
+# atmospheric scale height.  This block adds those derived values
+# without disturbing the canonical UWP code.
+
+# Pressure spans (WBH p.79 "Atmosphere Codes" table).  Each entry is
+# (minimum_bar, span_bar); actual pressure is minimum + span * variance
+# where variance is a linear 0..1 value.  Codes without a defined span
+# (0, A=10, B=11, C=12, F=15, G=16, H=17) are intentionally absent —
+# vacuum, exotic, corrosive, insidious, unusual and gas-dwarf
+# atmospheres do not have a single representative pressure.
+ATMOSPHERE_PRESSURE_SPAN_BAR = {
+    1:  (0.001, 0.089),  # Trace
+    2:  (0.10,  0.32),   # Very Thin, Tainted
+    3:  (0.10,  0.32),   # Very Thin
+    4:  (0.43,  0.27),   # Thin, Tainted
+    5:  (0.43,  0.27),   # Thin
+    6:  (0.70,  0.79),   # Standard
+    7:  (0.70,  0.79),   # Standard, Tainted
+    8:  (1.50,  0.99),   # Dense
+    9:  (1.50,  0.99),   # Dense, Tainted
+    13: (2.50,  7.50),   # Very Dense
+    14: (0.10,  0.32),   # Low
+}
+
+# Atmosphere codes for which oxygen partial pressure is meaningful
+# (nitrogen-oxygen mixes per WBH p.80).  Trace (1) has a pressure but
+# no defined oxygen content, so it is excluded.
+_PPO_CODES = frozenset({2, 3, 4, 5, 6, 7, 8, 9, 13, 14})
+
+# Surface gravity in G by Size code, matching the dict already used
+# in World.to_dict().  Used by the scale-height approximation.
+SIZE_GRAVITY_G = {
+    0:  0.00,
+    1:  0.05,
+    2:  0.15,
+    3:  0.25,
+    4:  0.35,
+    5:  0.45,
+    6:  0.70,
+    7:  0.90,
+    8:  1.00,
+    9:  1.25,
+    10: 1.40,
+}
+
+
+def _dice(num: int) -> int:
+    """Sum *num* d6 rolls without clamping.
+
+    ``roll()`` clamps negative results to zero, which is wrong for
+    WBH formulas where a negative variance term is legitimate
+    (e.g. the (2D-7)/100 term in the oxygen-fraction formula).
+    """
+    return sum(random.randint(1, 6) for _ in range(num))
+
+
+def _atmosphere_pressure_bar(code: int) -> Optional[float]:
+    """Return total atmospheric pressure in bar (WBH p.79).
+
+    Rolls a linear variance across the code's defined span using
+    ``((1D-1)*5 + (1D-1)) / 30`` per the WBH formula.  Returns ``None``
+    for codes without a defined pressure span.
+    """
+    span = ATMOSPHERE_PRESSURE_SPAN_BAR.get(code)
+    if span is None:
+        return None
+    minimum, width = span
+    variance = (
+        (random.randint(1, 6) - 1) * 5 + (random.randint(1, 6) - 1)
+    ) / 30
+    return round(minimum + width * variance, 3)
+
+
+def _oxygen_partial_pressure(
+    code: int,
+    total_pressure_bar: Optional[float],
+    system_age_gyr: Optional[float] = None,
+) -> Optional[float]:
+    """Return oxygen partial pressure in bar (WBH p.80).
+
+    Only meaningful for nitrogen-oxygen atmospheres (codes 2-9, D, E).
+    The WBH oxygen-fraction formula is ``(1D + DMs)/20 + (2D-7)/100``
+    with DM+1 when system age exceeds 4 Gyr.  If the rolled fraction
+    is zero or negative it is rerolled as ``1D * 0.01`` per WBH.
+    Returns ``None`` if the code is not breathable or pressure is
+    unknown.
+    """
+    if code not in _PPO_CODES or total_pressure_bar is None:
+        return None
+    dm = 1 if (system_age_gyr is not None and system_age_gyr > 4.0) else 0
+    fraction = (random.randint(1, 6) + dm) / 20 + (_dice(2) - 7) / 100
+    if fraction <= 0:
+        fraction = random.randint(1, 6) * 0.01
+    return round(fraction * total_pressure_bar, 3)
+
+
+def _scale_height_km(size: int, code: int) -> Optional[float]:
+    """Return atmospheric scale height in km (WBH p.81).
+
+    Uses the simple approximation ``8.5 / gravity`` from p.81, which
+    assumes near-Terran temperature and gas mix.  Returns ``None`` for
+    code 0 (no atmosphere) or sizes whose gravity is effectively zero.
+    """
+    if code == 0:
+        return None
+    gravity = SIZE_GRAVITY_G.get(size)
+    if not gravity:
+        return None
+    return round(8.5 / gravity, 2)
+
+
+# ---------------------------------------------------------------------------
+# Atmosphere taint tables (WBH pp.82-85)
+# ---------------------------------------------------------------------------
+
+# Atmosphere codes that always carry a taint (per UWP definition).
+_TAINTED_CODES = frozenset({2, 4, 7, 9})
+
+# Single-char profile codes that identify O2-driven subtypes.
+_O2_TAINT_CODES = frozenset({"L", "H"})
+
+# Subtype rolls that map to Biologic — rerolled per issue #28.
+_BIOLOGIC_SUBTYPE_ROLLS = frozenset({4, 9})
+
+# DM applied to the subtype 2D roll by atmosphere code (others: 0).
+_TAINT_SUBTYPE_DM = {4: -2, 9: 2}
+
+# 2D+DM → (subtype name, single-char profile code).
+# Entries 4 and 9 (Biologic) are absent — the roll function rerolls them.
+_TAINT_SUBTYPE_TABLE = {
+    2:  ("Low Oxygen",        "L"),
+    3:  ("Radioactivity",     "R"),
+    5:  ("Gas Mix",           "G"),
+    6:  ("Particulates",      "P"),
+    7:  ("Gas Mix",           "G"),
+    8:  ("Sulphur Compounds", "S"),
+    10: ("Particulates",      "P"),   # result 10: Particulates + roll again
+    11: ("Radioactivity",     "R"),
+    12: ("High Oxygen",       "H"),
+}
+
+# Severity code (1-9) → descriptive name (WBH p.83).
+_TAINT_SEVERITY_TABLE = {
+    1: "Trivial irritant",
+    2: "Surmountable irritant",
+    3: "Minor irritant",
+    4: "Major irritant",
+    5: "Serious irritant",
+    6: "Hazardous irritant",
+    7: "Long term lethal: DM-2 to aging rolls",
+    8: "Inevitably lethal: death within 1D days",
+    9: "Rapidly lethal: death within 1D minutes",
+}
+
+# Persistence code (2-9) → descriptive name (WBH p.83).
+_TAINT_PERSISTENCE_TABLE = {
+    2: "Occasional and brief",
+    3: "Occasional and lingering",
+    4: "Irregular",
+    5: "Fluctuating",
+    6: "Varying: 2D daily on 6-, reduce severity 1D h",
+    7: "Varying: 2D daily on 4-, reduce severity 1D h",
+    8: "Varying: 2D daily on 2, reduce severity 1D h",
+    9: "Constant",
+}
+
+
+def _taint_severity_code(raw: int) -> int:
+    """Map a raw 2D+DM roll to a severity code 1–9 (WBH p.83)."""
+    return max(1, min(9, raw - 3))
+
+
+def _taint_persistence_code(raw: int) -> int:
+    """Map a raw 2D+DM roll to a persistence code 2–9 (WBH p.83)."""
+    return max(2, min(9, raw))
+
+
+def _roll_single_taint(atm_code: int) -> tuple:
+    """Roll one taint for a tainted atmosphere (WBH pp.82-83).
+
+    Returns ``(Taint, needs_second_roll)``.  ``needs_second_roll`` is
+    ``True`` only when the subtype roll is 10 (Particulates and roll
+    again).  Biologic results (subtype rolls 4 and 9) are rerolled
+    until a non-Biologic subtype is obtained (issue #28).
+
+    Severity and persistence DMs:
+    - L/H subtypes: +4 to severity, +4 to persistence (or +6 if
+      severity code ≥ 8).
+    """
+    dm = _TAINT_SUBTYPE_DM.get(atm_code, 0)
+    while True:
+        raw_sub = max(2, min(12, roll(2) + dm))
+        if raw_sub not in _BIOLOGIC_SUBTYPE_ROLLS:
+            break
+    subtype_name, subtype_code = _TAINT_SUBTYPE_TABLE[raw_sub]
+    needs_second = raw_sub == 10
+
+    sev_dm = 4 if subtype_code in _O2_TAINT_CODES else 0
+    sev_code = _taint_severity_code(roll(2) + sev_dm)
+
+    per_dm = (6 if sev_code >= 8 else 4) if subtype_code in _O2_TAINT_CODES else 0
+    per_code = _taint_persistence_code(roll(2) + per_dm)
+
+    return Taint(
+        subtype=subtype_name,
+        subtype_code=subtype_code,
+        severity_code=sev_code,
+        severity=_TAINT_SEVERITY_TABLE[sev_code],
+        persistence_code=per_code,
+        persistence=_TAINT_PERSISTENCE_TABLE[per_code],
+    ), needs_second
+
+
+@dataclass
+class Taint:
+    """One atmosphere taint (WBH pp.82-85).
+
+    Stores both the human-readable names and the compact profile codes
+    used in the WBH p.82 atmosphere profile string.
+    """
+    subtype:          str   # descriptive name, e.g. "Particulates"
+    subtype_code:     str   # single-char profile code, e.g. "P"
+    severity_code:    int   # 1–9
+    severity:         str   # e.g. "Major irritant"
+    persistence_code: int   # 2–9
+    persistence:      str   # e.g. "Irregular"
+
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict.  ``subtype_code`` is omitted
+        as it is derivable from ``subtype``."""
+        return {
+            "subtype":          self.subtype,
+            "severity_code":    self.severity_code,
+            "severity":         self.severity,
+            "persistence_code": self.persistence_code,
+            "persistence":      self.persistence,
+        }
+
+
+@dataclass
+class AtmosphereDetail:
+    """Quantitative atmosphere characteristics (WBH pp. 78-85).
+
+    Supplements the UWP single-digit atmosphere code with pressure,
+    oxygen partial pressure, scale height, and taint detail.
+    Each field is optional because the relevant rule does not apply
+    to every code.
+
+    Phases 3–5 will extend this dataclass with exotic subtypes, gas
+    composition and altitude limits.
+    """
+    pressure_bar:            Optional[float] = None
+    oxygen_partial_pressure: Optional[float] = None
+    scale_height_km:         Optional[float] = None
+    taints:                  list = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Return the detail as a JSON-friendly dict.
+
+        Numeric fields are omitted when ``None``; ``taints`` is omitted
+        when empty.  Both conventions keep the JSON compact for worlds
+        where the rule does not apply.
+        """
+        out: dict = {}
+        if self.pressure_bar is not None:
+            out["pressure_bar"] = self.pressure_bar
+        if self.oxygen_partial_pressure is not None:
+            out["oxygen_partial_pressure_bar"] = self.oxygen_partial_pressure
+        if self.scale_height_km is not None:
+            out["scale_height_km"] = self.scale_height_km
+        if self.taints:
+            out["taints"] = [t.to_dict() for t in self.taints]
+        return out
+
+
+def generate_atmosphere_detail(
+    code: int,
+    size: int,
+    system_age_gyr: Optional[float] = None,
+    temperature: Optional[str] = None,  # pylint: disable=unused-argument
+) -> AtmosphereDetail:
+    """Generate quantitative atmosphere characteristics for a world.
+
+    Combines the WBH p.79-81 helpers into a single ``AtmosphereDetail``.
+    Safe to call for any atmosphere code: fields that do not apply to
+    the given code are left as ``None``.
+
+    ``temperature`` is unused in Phase 1 but is reserved for Phases 3
+    and 4 (exotic subtypes and gas composition), which branch on
+    temperature zone.  Passing it now keeps the interface stable; callers
+    will need to reorder the pipeline so temperature is derived before
+    this function is called.
+    """
+    pressure = _atmosphere_pressure_bar(code)
+    taints: list = []
+    if code in _TAINTED_CODES:
+        taint, needs_second = _roll_single_taint(code)
+        taints.append(taint)
+        if needs_second:
+            second, _ = _roll_single_taint(code)
+            taints.append(second)
+    return AtmosphereDetail(
+        pressure_bar=pressure,
+        oxygen_partial_pressure=_oxygen_partial_pressure(
+            code, pressure, system_age_gyr
+        ),
+        scale_height_km=_scale_height_km(size, code),
+        taints=taints,
+    )
+
+
+def format_atmosphere_profile(
+    code: int, detail: Optional[AtmosphereDetail],
+) -> str:
+    """Return the WBH p.82 atmosphere profile string.
+
+    Format is ``A-bar-ppo`` where A is the eHex atmosphere code,
+    ``bar`` is the total pressure and ``ppo`` is the oxygen partial
+    pressure.  Pressure and ppo are dropped from the string when
+    ``None``.  Examples::
+
+        format_atmosphere_profile(6, detail)   # "6-1.013-0.212"
+        format_atmosphere_profile(0, None)     # "0"
+
+    Kept as a free function so later WBH phases can extend the format
+    with taint, gas-mix and altitude suffixes computed from the same
+    ``AtmosphereDetail`` fields.
+    """
+    if detail is None:
+        return to_hex(code)
+    parts = [to_hex(code)]
+    if detail.pressure_bar is not None:
+        parts.append(f"{detail.pressure_bar:g}")
+    if detail.oxygen_partial_pressure is not None:
+        parts.append(f"{detail.oxygen_partial_pressure:g}")
+    return "-".join(parts)
+
+
+# ---------------------------------------------------------------------------
 # World dataclass
 # ---------------------------------------------------------------------------
 
@@ -273,6 +617,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     name:           str   = "Unknown"
     size:           int   = 0
     atmosphere:     int   = 0
+    atmosphere_detail: Optional[AtmosphereDetail] = None
     temperature:    str   = "Temperate"
     hydrographics:  int   = 0
     population:     int   = 0
@@ -307,8 +652,30 @@ class World:  # pylint: disable=too-many-instance-attributes
         )
 
     # ------------------------------------------------------------------
-    # JSON output
+    # JSON output helpers
     # ------------------------------------------------------------------
+    def _atmosphere_dict(self) -> dict:
+        """Return the atmosphere block for ``to_dict()``.
+
+        Always includes ``code``, ``name`` and ``survival_gear``.  When
+        an ``AtmosphereDetail`` is attached, its non-None fields are
+        nested under ``detail`` and a derived WBH profile string is
+        added under ``profile``.
+        """
+        block: dict = {
+            "code": self.atmosphere,
+            "name": ATMOSPHERE_NAMES.get(self.atmosphere, "Unknown"),
+            "survival_gear": ATMOSPHERE_GEAR.get(self.atmosphere, "Unknown"),
+        }
+        if self.atmosphere_detail is not None:
+            detail = self.atmosphere_detail.to_dict()
+            if detail:
+                block["detail"] = detail
+            block["profile"] = format_atmosphere_profile(
+                self.atmosphere, self.atmosphere_detail
+            )
+        return block
+
     def to_dict(self) -> dict:
         """Return all world data as a plain Python dict.
 
@@ -338,11 +705,7 @@ class World:  # pylint: disable=too-many-instance-attributes
                     8: "1.00G", 9: "1.25G", 10: "1.40G",
                 }.get(self.size, "Unknown"),
             },
-            "atmosphere": {
-                "code": self.atmosphere,
-                "name": ATMOSPHERE_NAMES.get(self.atmosphere, "Unknown"),
-                "survival_gear": ATMOSPHERE_GEAR.get(self.atmosphere, "Unknown"),
-            },
+            "atmosphere": self._atmosphere_dict(),
             "temperature": self.temperature,
             "hydrographics": {
                 "code": self.hydrographics,
