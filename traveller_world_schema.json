@@ -190,6 +190,20 @@
                   }
                 }
               }
+            },
+            "gas_mix": {
+              "type": "array",
+              "description": "Rolled gas components for Exotic/Corrosive/Insidious atmospheres (WBH pp.95+). Present only for codes 10/11/12.",
+              "items": {
+                "type": "object",
+                "required": ["gas_name", "gas_code"],
+                "additionalProperties": false,
+                "properties": {
+                  "gas_name":   { "type": "string" },
+                  "gas_code":   { "type": "string" },
+                  "percentage": { "type": "integer", "minimum": 1, "maximum": 100 }
+                }
+              }
             }
           }
         },

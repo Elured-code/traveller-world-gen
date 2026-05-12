@@ -1375,6 +1375,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             inner.addWidget(_detail_row("Hazard", hazard.hazard))
             if hazard.gases:
                 inner.addWidget(_detail_row("  Gas mix", ", ".join(hazard.gases)))
+        for i, comp in enumerate(detail.gas_mix):
+            label = "Gas mix" if i == 0 else "  +"
+            val = f"{comp.gas_name} ({comp.gas_code})"
+            if comp.percentage is not None:
+                val += f" {comp.percentage}%"
+            inner.addWidget(_detail_row(label, val))
         return group
 
     def _build_notes(self, w: object) -> "QGroupBox | None":
