@@ -77,6 +77,7 @@ from traveller_world_gen import (  # noqa: E402
     AtmosphereDetail,
     format_atmosphere_profile,
     generate_atmosphere_detail,
+    generate_gas_mix,
     STARPORT_FACILITY_DETAIL,
     STARPORT_QUALITY_LABEL,
     generate_world,
@@ -600,7 +601,14 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             world.size_detail = generate_world_physical(world)  # type: ignore[attr-defined]
             if world.atmosphere_detail is None:  # type: ignore[attr-defined]
                 world.atmosphere_detail = generate_atmosphere_detail(  # type: ignore[attr-defined]
-                    world.atmosphere, world.size  # type: ignore[attr-defined]
+                    world.atmosphere, world.size,  # type: ignore[attr-defined]
+                    temperature=world.temperature,  # type: ignore[attr-defined]
+                )
+                generate_gas_mix(
+                    world.atmosphere_detail,  # type: ignore[attr-defined]
+                    world.atmosphere, world.size,  # type: ignore[attr-defined]
+                    world.temperature, None,  # type: ignore[attr-defined]
+                    world.hydrographics,  # type: ignore[attr-defined]
                 )
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
         if path is not None:
@@ -625,11 +633,15 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     world, age, orbit_number, orbit_au, star_mass
                 )
                 if world.atmosphere_detail is None:
+                    hz_dev = mw_orbit.hz_deviation if mw_orbit is not None else None
                     world.atmosphere_detail = generate_atmosphere_detail(
                         world.atmosphere, world.size, age,
-                        hz_deviation=(
-                            mw_orbit.hz_deviation if mw_orbit is not None else None
-                        ),
+                        temperature=world.temperature,
+                        hz_deviation=hz_dev,
+                    )
+                    generate_gas_mix(
+                        world.atmosphere_detail, world.atmosphere, world.size,
+                        world.temperature, hz_dev, world.hydrographics,
                     )
         if attach_detail_flag:
             _attach_detail(system)  # type: ignore[arg-type]
