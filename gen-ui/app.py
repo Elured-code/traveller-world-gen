@@ -78,6 +78,7 @@ from traveller_world_gen import (  # noqa: E402
     format_atmosphere_profile,
     generate_atmosphere_detail,
     generate_gas_mix,
+    generate_unusual_subtype,
     STARPORT_FACILITY_DETAIL,
     STARPORT_QUALITY_LABEL,
     generate_world,
@@ -610,6 +611,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 world.temperature, None,  # type: ignore[attr-defined]
                 world.hydrographics,  # type: ignore[attr-defined]
             )
+            generate_unusual_subtype(
+                world.atmosphere_detail, world.atmosphere,  # type: ignore[attr-defined]
+                world.size, world.hydrographics,  # type: ignore[attr-defined]
+            )
         if self._check_physical.isChecked():
             world.size_detail = generate_world_physical(world)  # type: ignore[attr-defined]
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
@@ -644,6 +649,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     generate_gas_mix(
                         world.atmosphere_detail, world.atmosphere, world.size,
                         world.temperature, hz_dev, world.hydrographics,
+                    )
+                    generate_unusual_subtype(
+                        world.atmosphere_detail, world.atmosphere,
+                        world.size, world.hydrographics,
                     )
         if attach_detail_flag:
             _attach_detail(system)  # type: ignore[arg-type]
@@ -1353,7 +1362,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             inner.addWidget(_detail_row(lbl_text, val_text))
         return group
 
-    def _build_atmosphere_card(self, w: object) -> "QGroupBox | None":
+    def _build_atmosphere_card(self, w: object) -> "QGroupBox | None":  # pylint: disable=too-many-branches
         detail = getattr(w, "atmosphere_detail", None)
         if not isinstance(detail, AtmosphereDetail):
             return None
@@ -1377,6 +1386,23 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             ))
         if detail.scale_height_km is not None:
             inner.addWidget(_detail_row("Scale height", f"{detail.scale_height_km:.1f} km"))
+        if detail.no_safe_altitude:
+            inner.addWidget(_detail_row("Safe altitude", "None (no breathable level)"))
+        elif detail.min_safe_altitude_km is not None:
+            if detail.min_safe_altitude_km >= 0:
+                inner.addWidget(_detail_row(
+                    "Min safe altitude",
+                    f"{detail.min_safe_altitude_km:.1f} km above baseline",
+                ))
+            else:
+                inner.addWidget(_detail_row(
+                    "Max safe depth",
+                    f"{abs(detail.min_safe_altitude_km):.1f} km below baseline",
+                ))
+        for sub in detail.unusual_subtypes:
+            inner.addWidget(_detail_row(
+                "Unusual subtype", f"{sub.subtype_name} ({sub.subtype_code})"
+            ))
         for i, taint in enumerate(detail.taints):
             prefix = f"Taint {i + 1}" if len(detail.taints) > 1 else "Taint"
             for lbl, val in [

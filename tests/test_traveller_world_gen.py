@@ -116,6 +116,13 @@ from traveller_world_gen import (
     _select_gas_mix_table,
     _roll_single_gas,
     _roll_gas_mix,
+    _compute_very_dense_altitude,
+    _compute_low_altitude,
+    _d26,
+    _roll_unusual_subtype,
+    _UNUSUAL_SUBTYPE_TABLE,
+    generate_unusual_subtype,
+    UnusualSubtype,
 )
 
 
@@ -4617,3 +4624,422 @@ class TestGasMixDisplay:
     def test_summary_omits_gas_mix_when_empty(self):
         text = self._world_no_gas_mix().summary()
         assert "Gas mix" not in text
+
+
+# ===========================================================================
+# Phase 5 — Altitude bands (codes 13/D and 14/E)
+# ===========================================================================
+
+class TestComputeVeryDenseAltitude:
+    """Unit tests for _compute_very_dense_altitude()."""
+
+    def test_surface_safe_when_bad_ratio_le_1(self):
+        # ppo=0.4 bar, N2=1.5 bar → bad_ratio_o2=0.8, bad_ratio_n2=0.75 → max=0.8 < 1
+        alt, no_alt = _compute_very_dense_altitude(1.9, 0.4, 6.0)
+        assert alt == 0.0
+        assert no_alt is False
+
+    def test_o2_worst_offender_positive_altitude(self):
+        # ppo=0.8 bar (bad_ratio_o2=1.6), n2=1.6 (bad_ratio_n2=0.8)
+        # bad_ratio=1.6, min_alt = ln(1.6)*6 ≈ 2.8 km; o2_at_alt=0.8/1.6=0.5 bar ≥ 0.1
+        alt, no_alt = _compute_very_dense_altitude(2.4, 0.8, 6.0)
+        assert alt is not None
+        assert alt > 0
+        assert no_alt is False
+
+    def test_n2_worst_offender_positive_altitude(self):
+        # ppo=0.4 bar (bad_ratio_o2=0.8), n2=6.0 bar (bad_ratio_n2=3.0)
+        # bad_ratio=3.0; o2_at_alt=0.4/3.0≈0.133 > 0.1 → viable
+        alt, no_alt = _compute_very_dense_altitude(6.4, 0.4, 5.0)
+        assert alt is not None
+        assert alt > 0
+        assert no_alt is False
+
+    def test_no_safe_altitude_when_o2_too_thin_at_n2_altitude(self):
+        # ppo=0.2 bar (bad_ratio_o2=0.4), n2=8.0 bar (bad_ratio_n2=4.0)
+        # bad_ratio=4.0; o2_at_alt=0.2/4.0=0.05 bar < 0.1 → no safe altitude
+        alt, no_alt = _compute_very_dense_altitude(8.2, 0.2, 5.0)
+        assert alt is None
+        assert no_alt is True
+
+    def test_altitude_is_rounded_to_one_decimal(self):
+        alt, _ = _compute_very_dense_altitude(3.0, 0.8, 6.0)
+        if alt is not None and alt != 0.0:
+            assert alt == round(alt, 1)
+
+    def test_result_is_tuple_of_two(self):
+        result = _compute_very_dense_altitude(3.0, 0.5, 5.0)
+        assert len(result) == 2
+
+
+class TestComputeLowAltitude:
+    """Unit tests for _compute_low_altitude()."""
+
+    def test_typical_case_returns_negative_depth(self):
+        # ppo=0.05 bar; low_bad_ratio=0.1/0.05=2.0; n2=0.1 bar; n2_at_depth=0.1*2=0.2 <2.0
+        depth, no_alt = _compute_low_altitude(0.15, 0.05, 5.0)
+        assert depth is not None
+        assert depth < 0
+        assert no_alt is False
+
+    def test_n2_narcosis_returns_no_safe_altitude(self):
+        # ppo=0.05 bar; low_bad_ratio=2.0; n2=2.0 bar; n2_at_depth=2.0*2=4.0 > 2.0
+        depth, no_alt = _compute_low_altitude(2.05, 0.05, 5.0)
+        assert depth is None
+        assert no_alt is True
+
+    def test_zero_ppo_guard(self):
+        depth, no_alt = _compute_low_altitude(0.2, 0.0, 5.0)
+        assert depth is None
+        assert no_alt is True
+
+    def test_depth_is_rounded_to_one_decimal(self):
+        depth, _ = _compute_low_altitude(0.15, 0.05, 5.0)
+        if depth is not None:
+            assert depth == round(depth, 1)
+
+    def test_result_is_tuple_of_two(self):
+        result = _compute_low_altitude(0.2, 0.06, 4.0)
+        assert len(result) == 2
+
+
+class TestAltitudeInAtmosphereDetail:
+    """Integration tests: altitude fields set by generate_atmosphere_detail()."""
+
+    def test_code_13_populates_altitude(self):
+        detail = generate_atmosphere_detail(13, 8)
+        assert detail.min_safe_altitude_km is not None or detail.no_safe_altitude
+
+    def test_code_13_altitude_not_negative_when_set(self):
+        # Very Dense must be above baseline
+        detail = generate_atmosphere_detail(13, 8)
+        if detail.min_safe_altitude_km is not None:
+            assert detail.min_safe_altitude_km >= 0
+
+    def test_code_14_altitude_negative_or_no_safe_when_set(self):
+        # Low must be below baseline
+        detail = generate_atmosphere_detail(14, 9)
+        if detail.min_safe_altitude_km is not None:
+            assert detail.min_safe_altitude_km <= 0
+
+    def test_code_6_no_altitude_fields(self):
+        detail = generate_atmosphere_detail(6, 7)
+        assert detail.min_safe_altitude_km is None
+        assert detail.no_safe_altitude is False
+
+    def test_code_8_no_altitude_fields(self):
+        detail = generate_atmosphere_detail(8, 8)
+        assert detail.min_safe_altitude_km is None
+        assert detail.no_safe_altitude is False
+
+    def test_to_dict_emits_min_safe_altitude_when_set(self):
+        detail = generate_atmosphere_detail(13, 8)
+        d = detail.to_dict()
+        if detail.min_safe_altitude_km is not None:
+            assert "min_safe_altitude_km" in d
+        else:
+            assert "min_safe_altitude_km" not in d
+
+    def test_to_dict_emits_no_safe_altitude_true_only(self):
+        detail = generate_atmosphere_detail(13, 8)
+        d = detail.to_dict()
+        if detail.no_safe_altitude:
+            assert d.get("no_safe_altitude") is True
+        else:
+            assert "no_safe_altitude" not in d
+
+    def test_to_dict_no_altitude_keys_for_code_6(self):
+        d = generate_atmosphere_detail(6, 7).to_dict()
+        assert "min_safe_altitude_km" not in d
+        assert "no_safe_altitude" not in d
+
+
+class TestOptionalTaintCodes13And14:
+    """Tests for the 1D≥4 optional taint for Very Dense and Low atmospheres."""
+
+    def test_taint_fires_when_die_ge_4(self):
+        from unittest.mock import patch
+        with patch("traveller_world_gen.random.randint", return_value=4):
+            detail = generate_atmosphere_detail(13, 8)
+        assert len(detail.taints) >= 1
+
+    def test_taint_suppressed_when_die_lt_4(self):
+        from unittest.mock import patch
+        with patch("traveller_world_gen.random.randint", return_value=3):
+            detail = generate_atmosphere_detail(13, 8)
+        assert len(detail.taints) == 0
+
+    def test_taint_fires_for_code_14(self):
+        from unittest.mock import patch
+        with patch("traveller_world_gen.random.randint", return_value=6):
+            detail = generate_atmosphere_detail(14, 9)
+        assert len(detail.taints) >= 1
+
+
+# ===========================================================================
+# Phase 5 — Unusual atmosphere subtypes (code 15 / F)
+# ===========================================================================
+
+class TestD26Roll:
+    """Tests for the _d26() dice helper."""
+
+    def test_always_in_valid_range(self):
+        results = {_d26() for _ in range(200)}
+        valid = set(range(11, 17)) | set(range(21, 27))
+        assert results.issubset(valid)
+
+    def test_never_produces_17_to_20(self):
+        for _ in range(200):
+            r = _d26()
+            assert r not in range(17, 21)
+
+    def test_never_produces_27_plus(self):
+        for _ in range(200):
+            assert _d26() <= 26
+
+    def test_table_covers_all_valid_keys(self):
+        valid = set(range(11, 17)) | set(range(21, 27))
+        assert set(_UNUSUAL_SUBTYPE_TABLE.keys()) == valid
+
+
+class TestUnusualSubtypeRoll:
+    """Tests for _roll_unusual_subtype() prerequisite logic."""
+
+    def test_returns_unusual_subtype_instance(self):
+        result = _roll_unusual_subtype(10, 8)
+        assert isinstance(result, UnusualSubtype)
+
+    def test_layered_rerolls_when_gravity_le_1_2(self):
+        """Size 5 → gravity=0.45, should never return Layered."""
+        from unittest.mock import patch
+        call_count = [0]
+        def side_effect():
+            call_count[0] += 1
+            return 16 if call_count[0] <= 5 else 26
+        with patch("traveller_world_gen._d26", side_effect=side_effect):
+            result = _roll_unusual_subtype(5, 7)
+        assert result.subtype_code != "6"
+
+    def test_layered_accepted_when_gravity_gt_1_2(self):
+        """Size 9 → gravity=1.25 > 1.2, Layered should be accepted."""
+        from unittest.mock import patch
+        with patch("traveller_world_gen._d26", return_value=16):
+            result = _roll_unusual_subtype(9, 7)
+        assert result.subtype_code == "6"
+        assert result.subtype_name == "Layered"
+
+    def test_panthalassic_rerolls_when_hydro_ne_10(self):
+        from unittest.mock import patch
+        call_count = [0]
+        def side_effect():
+            call_count[0] += 1
+            return 21 if call_count[0] <= 5 else 26
+        with patch("traveller_world_gen._d26", side_effect=side_effect):
+            result = _roll_unusual_subtype(10, 8)
+        assert result.subtype_code != "7"
+
+    def test_steam_rerolls_when_hydro_lt_5(self):
+        from unittest.mock import patch
+        call_count = [0]
+        def side_effect():
+            call_count[0] += 1
+            return 22 if call_count[0] <= 5 else 26
+        with patch("traveller_world_gen._d26", side_effect=side_effect):
+            result = _roll_unusual_subtype(8, 3)
+        assert result.subtype_code != "8"
+
+    def test_combination_rerolls_when_not_allowed(self):
+        from unittest.mock import patch
+        call_count = [0]
+        def side_effect():
+            call_count[0] += 1
+            return 25 if call_count[0] <= 3 else 26
+        with patch("traveller_world_gen._d26", side_effect=side_effect):
+            result = _roll_unusual_subtype(8, 7, allow_combination=False)
+        assert result.subtype_code != ""
+
+    def test_combination_allowed_returns_empty_code(self):
+        from unittest.mock import patch
+        with patch("traveller_world_gen._d26", return_value=25):
+            result = _roll_unusual_subtype(8, 7, allow_combination=True)
+        assert result.subtype_code == ""
+
+
+class TestGenerateUnusualSubtype:
+    """Tests for generate_unusual_subtype() public function."""
+
+    def test_noop_for_code_14(self):
+        detail = AtmosphereDetail()
+        generate_unusual_subtype(detail, 14, 8, 7)
+        assert detail.unusual_subtypes == []
+
+    def test_noop_for_code_6(self):
+        detail = AtmosphereDetail()
+        generate_unusual_subtype(detail, 6, 7, 5)
+        assert detail.unusual_subtypes == []
+
+    def test_populates_for_code_15(self):
+        detail = AtmosphereDetail()
+        generate_unusual_subtype(detail, 15, 8, 7)
+        assert len(detail.unusual_subtypes) >= 1
+
+    def test_combination_yields_two_subtypes(self):
+        from unittest.mock import patch
+        detail = AtmosphereDetail()
+        call_count = [0]
+        def side_effect(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return 25  # Combination on first roll
+            return 26      # "Other" for both subsequent rolls
+        with patch("traveller_world_gen._d26", side_effect=side_effect):
+            generate_unusual_subtype(detail, 15, 8, 7)
+        assert len(detail.unusual_subtypes) == 2
+
+    def test_combination_no_entry_with_empty_code(self):
+        from unittest.mock import patch
+        detail = AtmosphereDetail()
+        with patch("traveller_world_gen._d26", side_effect=[25, 26, 23]):
+            generate_unusual_subtype(detail, 15, 8, 7)
+        for sub in detail.unusual_subtypes:
+            assert sub.subtype_code != ""
+
+    def test_unusual_subtypes_exported(self):
+        import traveller_world_gen as twg
+        assert hasattr(twg, "generate_unusual_subtype")
+        assert hasattr(twg, "UnusualSubtype")
+
+
+class TestUnusualSubtypeProfile:
+    """Tests for format_atmosphere_profile() with code 15."""
+
+    def test_single_subtype_profile(self):
+        detail = AtmosphereDetail()
+        detail.unusual_subtypes = [UnusualSubtype("5", "High Radiation", "...")]
+        assert format_atmosphere_profile(15, detail) == "F-S5"
+
+    def test_two_subtypes_profile_dot_separated(self):
+        detail = AtmosphereDetail()
+        detail.unusual_subtypes = [
+            UnusualSubtype("5", "High Radiation", "..."),
+            UnusualSubtype("7", "Panthalassic", "..."),
+        ]
+        assert format_atmosphere_profile(15, detail) == "F-S5.7"
+
+    def test_no_subtypes_returns_F(self):
+        detail = AtmosphereDetail()
+        assert format_atmosphere_profile(15, detail) == "F"
+
+    def test_none_detail_returns_F(self):
+        assert format_atmosphere_profile(15, None) == "F"
+
+    def test_to_dict_emits_unusual_subtypes_when_set(self):
+        detail = AtmosphereDetail()
+        detail.unusual_subtypes = [UnusualSubtype("9", "Variable Pressure", "...")]
+        d = detail.to_dict()
+        assert "unusual_subtypes" in d
+        assert d["unusual_subtypes"][0]["subtype_code"] == "9"
+
+    def test_to_dict_omits_unusual_subtypes_when_empty(self):
+        d = AtmosphereDetail().to_dict()
+        assert "unusual_subtypes" not in d
+
+    def test_unusual_subtype_to_dict_keys(self):
+        sub = UnusualSubtype("A", "Variable Composition", "desc text")
+        d = sub.to_dict()
+        assert set(d.keys()) == {"subtype_code", "subtype_name", "description"}
+
+
+# ===========================================================================
+# Phase 5 — Altitude and unusual subtype display (to_html / summary)
+# ===========================================================================
+
+class TestAltitudeDisplay:
+    """Tests for altitude rows in to_html() and summary()."""
+
+    def _world_with_min_alt(self, alt_km: float) -> World:
+        w = World(name="Test", size=8, atmosphere=13, temperature="Hot")
+        w.atmosphere_detail = AtmosphereDetail(min_safe_altitude_km=alt_km)
+        return w
+
+    def _world_no_safe_alt(self) -> World:
+        w = World(name="Test", size=8, atmosphere=13, temperature="Boiling")
+        w.atmosphere_detail = AtmosphereDetail(no_safe_altitude=True)
+        return w
+
+    def _world_no_alt(self) -> World:
+        w = World(name="Test", size=6, atmosphere=6, temperature="Temperate")
+        w.atmosphere_detail = AtmosphereDetail(pressure_bar=1.0)
+        return w
+
+    def test_to_html_min_safe_altitude_row_positive(self):
+        html = self._world_with_min_alt(4.2).to_html()
+        assert "Min safe altitude" in html
+        assert "above baseline" in html
+
+    def test_to_html_max_safe_depth_row_negative(self):
+        html = self._world_with_min_alt(-3.1).to_html()
+        assert "Max safe depth" in html
+        assert "below baseline" in html
+
+    def test_to_html_no_safe_altitude_row(self):
+        html = self._world_no_safe_alt().to_html()
+        assert "Safe altitude" in html
+        assert "no breathable level" in html
+
+    def test_to_html_no_altitude_row_for_standard_atm(self):
+        html = self._world_no_alt().to_html()
+        assert "Min safe altitude" not in html
+        assert "Max safe depth" not in html
+        assert "Safe altitude" not in html
+
+    def test_summary_min_safe_altitude_line_positive(self):
+        text = self._world_with_min_alt(4.2).summary()
+        assert "above baseline" in text
+
+    def test_summary_max_safe_depth_line_negative(self):
+        text = self._world_with_min_alt(-3.1).summary()
+        assert "below baseline" in text
+
+    def test_summary_no_safe_altitude_line(self):
+        text = self._world_no_safe_alt().summary()
+        assert "no breathable level" in text
+
+    def test_summary_no_altitude_line_for_standard_atm(self):
+        text = self._world_no_alt().summary()
+        assert "above baseline" not in text
+        assert "below baseline" not in text
+
+
+class TestUnusualSubtypeDisplay:
+    """Tests for unusual subtype rows in to_html() and summary()."""
+
+    def _world_with_unusual(self) -> World:
+        w = World(name="Test", size=10, atmosphere=15, temperature="Temperate")
+        w.atmosphere_detail = AtmosphereDetail()
+        w.atmosphere_detail.unusual_subtypes = [
+            UnusualSubtype("9", "Variable Pressure", "desc")
+        ]
+        return w
+
+    def _world_no_unusual(self) -> World:
+        w = World(name="Test", size=6, atmosphere=14, temperature="Temperate")
+        w.atmosphere_detail = AtmosphereDetail(pressure_bar=0.2)
+        return w
+
+    def test_to_html_includes_unusual_subtype_row(self):
+        html = self._world_with_unusual().to_html()
+        assert "Unusual subtype" in html
+        assert "Variable Pressure" in html
+
+    def test_to_html_no_unusual_row_for_code_14(self):
+        html = self._world_no_unusual().to_html()
+        assert "Unusual subtype" not in html
+
+    def test_summary_includes_unusual_subtype_line(self):
+        text = self._world_with_unusual().summary()
+        assert "Variable Pressure" in text
+
+    def test_summary_no_unusual_line_for_code_14(self):
+        text = self._world_no_unusual().summary()
+        assert "Unusual subtype" not in text

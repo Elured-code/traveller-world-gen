@@ -67,6 +67,7 @@ from traveller_world_gen import (
     generate_atmosphere,
     generate_atmosphere_detail,
     generate_gas_mix,
+    generate_unusual_subtype,
     temperature_category,
     generate_hydrographics,
     generate_population,
@@ -590,6 +591,10 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, orbit.hz_deviation, world.hydrographics,
             )
+            generate_unusual_subtype(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
+            )
         world.notes.append(
             f"Mainworld is a satellite of gas giant {gg_sah or '?'} "
             f"at Orbit# {orbit.orbit_number:.2f} ({orbit.orbit_au:.2f} AU)"
@@ -621,6 +626,10 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
             generate_gas_mix(
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, orbit.hz_deviation, world.hydrographics,
+            )
+            generate_unusual_subtype(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
             )
 
     # Steps 5-7: Population, Government, Law Level
@@ -809,6 +818,10 @@ def generate_system_from_world(
             world.temperature,
             mw_orbit.hz_deviation if mw_orbit is not None else None,
             world.hydrographics,
+        )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
         )
 
     return TravellerSystem(

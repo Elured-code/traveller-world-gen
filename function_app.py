@@ -142,6 +142,7 @@ import azure.functions as func
 
 from traveller_world_gen import (
     World, generate_world, generate_atmosphere_detail, generate_gas_mix,
+    generate_unusual_subtype,
 )
 from traveller_world_physical import generate_world_physical
 from traveller_system_gen import generate_full_system, generate_system_from_world
@@ -203,6 +204,10 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
             world.atmosphere_detail, world.atmosphere, world.size,
             world.temperature, None, world.hydrographics,
         )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
+        )
         world.size_detail = generate_world_physical(world)
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
@@ -242,6 +247,10 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
         generate_gas_mix(
             world.atmosphere_detail, world.atmosphere, world.size,
             world.temperature, None, world.hydrographics,
+        )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
         )
         world.size_detail = generate_world_physical(world)
     except Exception as exc:
@@ -305,6 +314,10 @@ def generate_world_batch(req: func.HttpRequest) -> func.HttpResponse:
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, None, world.hydrographics,
             )
+            generate_unusual_subtype(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
+            )
             world.size_detail = generate_world_physical(world)
             d = world.to_dict()
             d["seed"] = seed
@@ -346,6 +359,10 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
         generate_gas_mix(
             world.atmosphere_detail, world.atmosphere, world.size,
             world.temperature, None, world.hydrographics,
+        )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
         )
         world.size_detail = generate_world_physical(world)
         html = world.to_html()
@@ -695,7 +712,8 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
 
 
 @app.route(route="map/system", methods=["GET", "POST"])
-def generate_map_system(req: func.HttpRequest) -> func.HttpResponse:
+def generate_map_system(  # pylint: disable=too-many-return-statements
+        req: func.HttpRequest) -> func.HttpResponse:
     """Fetch canonical data from TravellerMap, then generate a full system.
 
     Sector is always required.  Identify the world by name (within that

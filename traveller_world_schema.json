@@ -204,6 +204,28 @@
                   "percentage": { "type": "integer", "minimum": 1, "maximum": 100 }
                 }
               }
+            },
+            "min_safe_altitude_km": {
+              "type": "number",
+              "description": "Code 13 (D): km above mean baseline (positive) where atmosphere becomes breathable. Code 14 (E): km below mean baseline (negative) required for breathability. Absent when no_safe_altitude is true or not applicable."
+            },
+            "no_safe_altitude": {
+              "type": "boolean",
+              "description": "True when no breathable altitude exists on this world (code 13: O2 too thin at N2-safe altitude; code 14: N2 narcosis at O2-safe depth)."
+            },
+            "unusual_subtypes": {
+              "type": "array",
+              "description": "Rolled subtypes for Unusual (F) atmospheres (WBH pp.92-93). Present only for code 15.",
+              "items": {
+                "type": "object",
+                "required": ["subtype_code", "subtype_name", "description"],
+                "additionalProperties": false,
+                "properties": {
+                  "subtype_code": { "type": "string" },
+                  "subtype_name": { "type": "string" },
+                  "description":  { "type": "string" }
+                }
+              }
             }
           }
         },

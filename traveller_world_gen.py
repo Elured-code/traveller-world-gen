@@ -35,6 +35,7 @@ The human author reviewed, directed, and is responsible for the code.
 # pylint: disable=too-many-lines
 
 import json
+import math
 import random
 import argparse
 from dataclasses import dataclass, field
@@ -893,6 +894,9 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
     subtype_name:            Optional[str]   = None
     hazards:                 list = field(default_factory=list)
     gas_mix:                 list = field(default_factory=list)
+    min_safe_altitude_km:    Optional[float] = None
+    no_safe_altitude:        bool = field(default=False)
+    unusual_subtypes:        list = field(default_factory=list)
 
     def to_dict(self) -> dict:
         """Return the detail as a JSON-friendly dict.
@@ -918,6 +922,12 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
             out["hazards"] = [h.to_dict() for h in self.hazards]
         if self.gas_mix:
             out["gas_mix"] = [c.to_dict() for c in self.gas_mix]
+        if self.min_safe_altitude_km is not None:
+            out["min_safe_altitude_km"] = self.min_safe_altitude_km
+        if self.no_safe_altitude:
+            out["no_safe_altitude"] = True
+        if self.unusual_subtypes:
+            out["unusual_subtypes"] = [s.to_dict() for s in self.unusual_subtypes]
         return out
 
 
@@ -1024,7 +1034,45 @@ def _roll_gas_mix(  # pylint: disable=too-many-locals
     return components
 
 
-def generate_atmosphere_detail(
+def _compute_very_dense_altitude(
+    pressure_bar: float, ppo: float, scale_height_km: float,
+) -> tuple:
+    """Return ``(min_safe_altitude_km, no_safe_altitude)`` for a Very Dense (D) atmosphere.
+
+    Habitable locations require N₂ < 2.0 bar AND O₂ < 0.5 bar.
+    Bad ratio = max(ppo / 0.5, n2 / 2.0).  Min safe altitude = ln(bad_ratio) × H.
+    If O₂ at that altitude < 0.1 bar no breathable level exists.
+    """
+    n2 = pressure_bar - ppo
+    bad_ratio = max(ppo / 0.5, n2 / 2.0)
+    if bad_ratio <= 1.0:
+        return 0.0, False
+    min_alt = math.log(bad_ratio) * scale_height_km
+    if ppo / bad_ratio < 0.1:
+        return None, True
+    return round(min_alt, 1), False
+
+
+def _compute_low_altitude(
+    pressure_bar: float, ppo: float, scale_height_km: float,
+) -> tuple:
+    """Return ``(safe_depth_km as negative float, no_safe_altitude)`` for a Low (E) atmosphere.
+
+    Surface O₂ < 0.1 bar; must descend into depressions.
+    Low bad ratio = 0.1 / ppo.  Safe depth = ln(low_bad_ratio) × H, stored negative.
+    If N₂ at that depth > 2.0 bar no breathable level exists.
+    """
+    if ppo <= 0:
+        return None, True
+    low_bad_ratio = 0.1 / ppo
+    safe_depth = math.log(low_bad_ratio) * scale_height_km
+    n2_at_depth = (pressure_bar - ppo) * low_bad_ratio
+    if n2_at_depth > 2.0:
+        return None, True
+    return -round(safe_depth, 1), False
+
+
+def generate_atmosphere_detail(  # pylint: disable=too-many-locals
     code: int,
     size: int,
     system_age_gyr: Optional[float] = None,
@@ -1033,14 +1081,14 @@ def generate_atmosphere_detail(
 ) -> AtmosphereDetail:
     """Generate quantitative atmosphere characteristics for a world.
 
-    Combines the WBH pp.79-87 helpers into a single ``AtmosphereDetail``.
+    Combines the WBH pp.79-93 helpers into a single ``AtmosphereDetail``.
     Safe to call for any atmosphere code: fields that do not apply to
     the given code are left as ``None``.
 
     ``hz_deviation`` drives the orbit-position DMs on the exotic and
     corrosive/insidious subtype tables.  Pass ``orbit.hz_deviation`` from
     the orbit slot; standalone worlds with no orbit pass ``None``.
-    ``temperature`` is reserved for Phases 4–5 (gas composition).
+    ``temperature`` is reserved for gas composition (Phase 4).
     """
     subtype_code: Optional[str] = None
     subtype_name: Optional[str] = None
@@ -1066,16 +1114,33 @@ def generate_atmosphere_detail(
         if needs_second:
             second, _ = _roll_single_taint(code)
             taints.append(second)
+    if code in (13, 14) and random.randint(1, 6) >= 4:
+        taint, needs_second = _roll_single_taint(code)
+        taints.append(taint)
+        if needs_second:
+            second, _ = _roll_single_taint(code)
+            taints.append(second)
+
+    ppo = _oxygen_partial_pressure(code, pressure, system_age_gyr)
+    scale = _scale_height_km(size, code)
+
+    min_safe_alt: Optional[float] = None
+    no_safe_alt: bool = False
+    if code == 13 and pressure is not None and ppo is not None and scale is not None:
+        min_safe_alt, no_safe_alt = _compute_very_dense_altitude(pressure, ppo, scale)
+    elif code == 14 and pressure is not None and ppo is not None and scale is not None:
+        min_safe_alt, no_safe_alt = _compute_low_altitude(pressure, ppo, scale)
+
     return AtmosphereDetail(
         pressure_bar=pressure,
-        oxygen_partial_pressure=_oxygen_partial_pressure(
-            code, pressure, system_age_gyr
-        ),
-        scale_height_km=_scale_height_km(size, code),
+        oxygen_partial_pressure=ppo,
+        scale_height_km=scale,
         taints=taints,
         subtype_code=subtype_code,
         subtype_name=subtype_name,
         hazards=hazards,
+        min_safe_altitude_km=min_safe_alt,
+        no_safe_altitude=no_safe_alt,
     )
 
 
@@ -1098,17 +1163,123 @@ def generate_gas_mix(  # pylint: disable=too-many-arguments,too-many-positional-
     detail.gas_mix = _roll_gas_mix(atm_code, size, temperature, hz_deviation, hydro)
 
 
+# ---------------------------------------------------------------------------
+# Unusual atmosphere subtype generation (WBH pp.92-93, code 15 / F)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class UnusualSubtype:
+    """One subtype of an Unusual (F) atmosphere (WBH pp.92-93)."""
+    subtype_code: str   # "1"–"9", "A", "F"; "" only for the Combination sentinel
+    subtype_name: str
+    description:  str
+
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict."""
+        return {
+            "subtype_code": self.subtype_code,
+            "subtype_name": self.subtype_name,
+            "description":  self.description,
+        }
+
+
+# D26 table (roll random.randint(1,2)*10 + random.randint(1,6) → 11–26).
+# Entries: (subtype_code, subtype_name, atmospheric_conditions_description)
+_UNUSUAL_SUBTYPE_TABLE: dict = {
+    11: ("1", "Dense, Extreme",
+         "Density between 10 and 100 bar, possibly with free oxygen"),
+    12: ("2", "Dense, Very Extreme",
+         "Density between 100 and 1,000 bar, possibly with free oxygen"),
+    13: ("3", "Dense, Crushing",
+         "Density above 1,000 bar; surface may be unreachable or indistinct"),
+    14: ("4", "Ellipsoid",
+         "Tidal forces or fast rotation elongate one axis; "
+         "pressure may range from near vacuum to very dense"),
+    15: ("5", "High Radiation",
+         "Internal or external factors bombard the world with constant high radiation"),
+    16: ("6", "Layered",
+         "Different altitudes have different gas compositions"),
+    21: ("7", "Panthalassic",
+         "A world ocean hundreds of km deep; pressure at least standard, often very dense"),
+    22: ("8", "Steam",
+         "Water vapor merges with oceans; very dense or above pressures"),
+    23: ("9", "Variable Pressure",
+         "Tides or storms cause large variations in atmospheric pressure"),
+    24: ("A", "Variable Composition",
+         "Composition varies with seasons, lifeform lifecycles, or other factors"),
+    25: ("",  "Combination",          "Roll two compatible types"),
+    26: ("F", "Other",                "Something else entirely"),
+}
+
+
+def _d26() -> int:
+    """Roll D26 (1D2 × 10 + 1D6), giving results 11–26."""
+    return random.randint(1, 2) * 10 + random.randint(1, 6)
+
+
+def _roll_unusual_subtype(
+    size: int,
+    hydro: int,
+    allow_combination: bool = True,
+) -> UnusualSubtype:
+    """Roll one Unusual atmosphere subtype, rerolling if prerequisites not met.
+
+    Prerequisites (WBH pp.92-93):
+    - Layered (D26=16):      SIZE_GRAVITY_G[size] > 1.2  →  size ≥ 9
+    - Panthalassic (D26=21): hydro == 10
+    - Steam (D26=22):        hydro >= 5
+    Pressure prerequisites for Panthalassic/Steam are not checked here
+    because code-15 worlds have no defined pressure span.
+    """
+    while True:
+        result = _d26()
+        code, name, desc = _UNUSUAL_SUBTYPE_TABLE[result]
+        if code == "" and not allow_combination:
+            continue
+        if result == 16 and SIZE_GRAVITY_G.get(size, 0.0) <= 1.2:
+            continue
+        if result == 21 and hydro != 10:
+            continue
+        if result == 22 and hydro < 5:
+            continue
+        return UnusualSubtype(subtype_code=code, subtype_name=name, description=desc)
+
+
+def generate_unusual_subtype(
+    detail: AtmosphereDetail,
+    atm_code: int,
+    size: int,
+    hydro: int,
+) -> None:
+    """Populate ``detail.unusual_subtypes`` for Unusual (F) atmospheres.
+
+    No-op for codes other than 15.  Call this after
+    ``generate_hydrographics()`` so Panthalassic/Steam prerequisites
+    can be evaluated against actual hydro.
+    """
+    if atm_code != 15:
+        return
+    first = _roll_unusual_subtype(size, hydro, allow_combination=True)
+    if first.subtype_code == "":
+        sub1 = _roll_unusual_subtype(size, hydro, allow_combination=False)
+        sub2 = _roll_unusual_subtype(size, hydro, allow_combination=False)
+        detail.unusual_subtypes = [sub1, sub2]
+    else:
+        detail.unusual_subtypes = [first]
+
+
 def format_atmosphere_profile(
     code: int, detail: Optional[AtmosphereDetail],
 ) -> str:
-    """Return the WBH p.82/p.88 atmosphere profile string.
+    """Return the WBH p.82/p.88/p.93 atmosphere profile string.
 
     Format is ``A-bar-ppo[-T.S.P...][:XX-##:YY-##]`` where A is the eHex
     atmosphere code, ``bar`` is the total pressure, ``ppo`` is the oxygen
     partial pressure, each ``T.S.P`` triplet encodes a taint (subtype code,
     severity code, persistence code), and ``:XX-##`` entries are gas-mix
     components (code and two-digit percentage).  Any field is dropped when
-    not applicable.  Examples::
+    not applicable.  For Unusual (F, code 15) the format is ``F-S#[.#]``
+    per WBH p.93.  Examples::
 
         format_atmosphere_profile(6, detail)   # "6-1.013-0.212"
         format_atmosphere_profile(7, detail)   # "7-1.148-0.138-P.7.9"
@@ -1117,6 +1288,13 @@ def format_atmosphere_profile(
     """
     if detail is None:
         return to_hex(code)
+    if code == 15:
+        if detail.unusual_subtypes:
+            codes = ".".join(
+                s.subtype_code for s in detail.unusual_subtypes if s.subtype_code
+            )
+            return f"F-S{codes}"
+        return "F"
     parts = [to_hex(code)]
     if detail.pressure_bar is not None:
         parts.append(f"{detail.pressure_bar:g}")
@@ -1487,6 +1665,18 @@ class World:  # pylint: disable=too-many-instance-attributes
                 atm_rows += row("O₂ partial pressure", f"{ad.oxygen_partial_pressure:.3f} bar")
             if ad.scale_height_km is not None:
                 atm_rows += row("Scale height", f"{ad.scale_height_km:.1f} km")
+            if ad.no_safe_altitude:
+                atm_rows += row("Safe altitude", "None (no breathable level)")
+            elif ad.min_safe_altitude_km is not None:
+                if ad.min_safe_altitude_km >= 0:
+                    atm_rows += row("Min safe altitude",
+                                    f"{ad.min_safe_altitude_km:.1f} km above baseline")
+                else:
+                    atm_rows += row("Max safe depth",
+                                    f"{abs(ad.min_safe_altitude_km):.1f} km below baseline")
+            for sub in ad.unusual_subtypes:
+                atm_rows += row("Unusual subtype",
+                                f"{sub.subtype_name} ({sub.subtype_code})")
             for i, taint in enumerate(ad.taints):
                 prefix = f"Taint {i + 1}" if len(ad.taints) > 1 else "Taint"
                 atm_rows += row(prefix, taint.subtype)
@@ -1768,7 +1958,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     # ------------------------------------------------------------------
     # Human-readable summary
     # ------------------------------------------------------------------
-    def summary(self) -> str:  # pylint: disable=too-many-branches,too-many-statements
+    def summary(self) -> str:  # pylint: disable=too-many-branches,too-many-statements,too-many-locals
         """Return a human-readable summary of this world's characteristics."""
         pop_range = {
             0: "None", 1: "Few (1+)", 2: "Hundreds", 3: "Thousands",
@@ -1831,6 +2021,20 @@ class World:  # pylint: disable=too-many-instance-attributes
                 lines.append(f"  {'O2 ppo':<12}: {ad.oxygen_partial_pressure:.3f} bar")
             if ad.scale_height_km is not None:
                 lines.append(f"  {'Scale ht.':<12}: {ad.scale_height_km:.1f} km")
+            if ad.no_safe_altitude:
+                lines.append(f"  {'Safe alt.':<12}: None (no breathable level)")
+            elif ad.min_safe_altitude_km is not None:
+                if ad.min_safe_altitude_km >= 0:
+                    lines.append(
+                        f"  {'Min safe alt':<12}: {ad.min_safe_altitude_km:.1f} km above baseline"
+                    )
+                else:
+                    depth = abs(ad.min_safe_altitude_km)
+                    lines.append(
+                        f"  {'Max safe dep':<12}: {depth:.1f} km below baseline"
+                    )
+            for sub in ad.unusual_subtypes:
+                lines.append(f"  {'Subtype':<12}: {sub.subtype_name} ({sub.subtype_code})")
             for i, taint in enumerate(ad.taints):
                 label = f"Taint {i + 1}" if len(ad.taints) > 1 else "Taint"
                 lines.append(
