@@ -61,6 +61,7 @@ from typing import Optional
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
 from traveller_belt_physical import BeltPhysical
+from traveller_world_physical import TIDAL_STATUS_LABELS, WorldPhysical
 from traveller_world_gen import (
     World,
     generate_size,
@@ -86,6 +87,7 @@ from traveller_world_gen import (
     HYDROGRAPHIC_NAMES,
     STARPORT_QUALITY_LABEL,
     TEMPERATURE_DM,
+    format_atmosphere_profile,
 )
 
 
@@ -247,6 +249,10 @@ class TravellerSystem:
             return (str(s).replace("&","&amp;").replace("<","&lt;")
                          .replace(">","&gt;").replace('"',"&quot;"))
 
+        def drow(label: str, value: str) -> str:
+            return (f'<div class="drow"><span class="dlbl">{esc(label)}</span>'
+                    f'<span>{esc(value)}</span></div>')
+
         # ── Stellar summary ───────────────────────────────────────────────
         star_rows = ""
         for star in self.stellar_system.stars:
@@ -403,6 +409,72 @@ class TravellerSystem:
                     f' {bp.size_s_bodies} × Sz S</p></div>'
                     f'</div>'
                 )
+            elif isinstance(mw.size_detail, WorldPhysical):
+                p = mw.size_detail
+                phys_rows = (
+                    drow("Composition", p.composition)
+                    + drow("Diameter", f"{p.diameter_km:,} km")
+                    + drow("Density", f"{p.density:.2f} g/cm³")
+                    + drow("Mass", f"{p.mass:.4f} M⊕")
+                    + drow("Surface gravity", f"{p.gravity:.3f} G")
+                    + drow("Escape velocity", f"{p.escape_velocity:.2f} km/s")
+                    + drow("Axial tilt", f"{p.axial_tilt}°")
+                    + drow("Day length", f"{p.day_length:.1f} h")
+                    + (drow("Tidal status", TIDAL_STATUS_LABELS[p.tidal_status])
+                       if p.tidal_status != "none" else "")
+                )
+                mw_panel += (
+                    '<div class="inner-card">'
+                    '<p class="inner-lbl">World body</p>'
+                    + phys_rows + '</div>'
+                )
+            if mw.atmosphere_detail is not None:
+                ad = mw.atmosphere_detail
+                atm_rows = drow("Profile", format_atmosphere_profile(mw.atmosphere, ad))
+                if ad.subtype_name is not None:
+                    atm_rows += drow("Subtype", ad.subtype_name)
+                if ad.pressure_bar is not None:
+                    atm_rows += drow("Pressure", f"{ad.pressure_bar:.3f} bar")
+                elif ad.subtype_code in ("C", "D", "E"):
+                    atm_rows += drow("Pressure", "> 10.0 bar (extremely dense)")
+                if ad.oxygen_partial_pressure is not None:
+                    atm_rows += drow("O₂ partial pressure",
+                                     f"{ad.oxygen_partial_pressure:.3f} bar")
+                if ad.scale_height_km is not None:
+                    atm_rows += drow("Scale height", f"{ad.scale_height_km:.1f} km")
+                if ad.no_safe_altitude:
+                    atm_rows += drow("Safe altitude", "None (no breathable level)")
+                elif ad.min_safe_altitude_km is not None:
+                    if ad.min_safe_altitude_km >= 0:
+                        atm_rows += drow("Min safe altitude",
+                                         f"{ad.min_safe_altitude_km:.1f} km above baseline")
+                    else:
+                        atm_rows += drow("Max safe depth",
+                                         f"{abs(ad.min_safe_altitude_km):.1f} km below baseline")
+                for sub in ad.unusual_subtypes:
+                    atm_rows += drow("Unusual subtype",
+                                     f"{sub.subtype_name} ({sub.subtype_code})")
+                for i, taint in enumerate(ad.taints):
+                    prefix = f"Taint {i + 1}" if len(ad.taints) > 1 else "Taint"
+                    atm_rows += drow(prefix, taint.subtype)
+                    atm_rows += drow("  Severity", taint.severity)
+                    atm_rows += drow("  Persistence", taint.persistence)
+                for hazard in ad.hazards:
+                    atm_rows += drow("Hazard", hazard.hazard)
+                    if hazard.gases:
+                        atm_rows += drow("  Gas mix", ", ".join(hazard.gases))
+                if ad.gas_mix:
+                    gas_parts = " · ".join(
+                        f"{c.gas_name} ({c.gas_code})"
+                        + (f" {c.percentage}%" if c.percentage is not None else "")
+                        for c in ad.gas_mix
+                    )
+                    atm_rows += drow("Gas mix", gas_parts)
+                mw_panel += (
+                    '<div class="inner-card">'
+                    '<p class="inner-lbl">Atmosphere detail</p>'
+                    + atm_rows + '</div>'
+                )
         else:
             mw_panel = '<p class="no-val">No mainworld determined.</p>'
 
@@ -478,6 +550,13 @@ tr:last-child td{{border-bottom:none}}
 .codes-cell{{white-space:nowrap}}
 .trade-lbl{{font-size:12px;color:var(--txt2)}}
 .no-val{{font-size:13px;color:var(--txt2);margin:0}}
+.inner-card{{background:var(--bg1);border:0.5px solid var(--bdr);border-radius:var(--r8);
+  padding:10px 12px;margin-top:10px}}
+.inner-lbl{{font-size:11px;color:var(--txt2);margin:0 0 6px}}
+.drow{{display:flex;justify-content:space-between;align-items:baseline;
+  padding:4px 0;border-bottom:0.5px solid var(--bdr);font-size:12px}}
+.drow:last-child{{border-bottom:none}}
+.dlbl{{color:var(--txt2);flex-shrink:0;margin-right:8px}}
 details summary{{font-size:12px;color:var(--txt2);cursor:pointer;padding:4px 0;margin-top:12px}}
 pre{{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
   white-space:pre-wrap;line-height:1.6;margin:8px 0 0}}
