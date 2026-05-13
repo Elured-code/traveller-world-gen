@@ -143,6 +143,7 @@ import azure.functions as func
 from traveller_world_gen import (
     World, generate_world, generate_atmosphere_detail, generate_gas_mix,
 )
+from traveller_world_physical import generate_world_physical
 from traveller_system_gen import generate_full_system, generate_system_from_world
 from traveller_world_detail import attach_detail
 from traveller_map_fetch import generate_system_from_map
@@ -157,6 +158,21 @@ from shared.helpers import (
 logger = logging.getLogger(__name__)
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
+
+
+def _attach_mainworld_physical(system) -> None:
+    """Populate size_detail on the system mainworld using full orbital parameters."""
+    mw = system.mainworld
+    if mw is None:
+        return
+    mw_orbit = system.mainworld_orbit
+    mw.size_detail = generate_world_physical(
+        mw,
+        age_gyr=system.stellar_system.primary.age_gyr,
+        orbit_number=mw_orbit.orbit_number if mw_orbit is not None else None,
+        orbit_au=mw_orbit.orbit_au if mw_orbit is not None else None,
+        star_mass=system.stellar_system.primary.mass,
+    )
 
 
 # ===========================================================================
@@ -187,6 +203,7 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
             world.atmosphere_detail, world.atmosphere, world.size,
             world.temperature, None, world.hydrographics,
         )
+        world.size_detail = generate_world_physical(world)
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
@@ -226,6 +243,7 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
             world.atmosphere_detail, world.atmosphere, world.size,
             world.temperature, None, world.hydrographics,
         )
+        world.size_detail = generate_world_physical(world)
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
@@ -287,6 +305,7 @@ def generate_world_batch(req: func.HttpRequest) -> func.HttpResponse:
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, None, world.hydrographics,
             )
+            world.size_detail = generate_world_physical(world)
             d = world.to_dict()
             d["seed"] = seed
             worlds.append(d)
@@ -328,6 +347,7 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
             world.atmosphere_detail, world.atmosphere, world.size,
             world.temperature, None, world.hydrographics,
         )
+        world.size_detail = generate_world_physical(world)
         html = world.to_html()
     except Exception as exc:
         logger.exception("Error generating world card: %s", exc)
@@ -374,6 +394,7 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
+        _attach_mainworld_physical(system)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -413,6 +434,7 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
+        _attach_mainworld_physical(system)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -468,6 +490,7 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
         seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1")
         attach_detail(system)
+        _attach_mainworld_physical(system)
     except Exception as exc:
         logger.exception("Error generating full system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -522,6 +545,7 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
         system = generate_full_system(name=name or "World-1")
         if want_detail:
             attach_detail(system)
+        _attach_mainworld_physical(system)
         html = system.to_html(detail_attached=want_detail)
     except Exception as exc:
         logger.exception("Error generating system card: %s", exc)
@@ -568,6 +592,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
             "An unexpected error occurred while generating the map system.",
             ERR_INTERNAL, status_code=500,
         )
+    _attach_mainworld_physical(system)
     mw = system.mainworld
     logger.info(
         "Generated map system name=%s stars=%d worlds=%d detail=%s format=%s uwp=%s",
@@ -638,6 +663,7 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
         system = generate_system_from_world(world, seed=seed)
         if want_detail:
             attach_detail(system)
+        _attach_mainworld_physical(system)
     except Exception as exc:
         logger.exception("Error generating system from world: %s", exc)
         return error(
