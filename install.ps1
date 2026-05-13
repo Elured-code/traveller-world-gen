@@ -33,7 +33,7 @@ Write-Host "Traveller World Generator — Installation" -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 
-# ── 1. Locate Python 3.9+ ─────────────────────────────────────────────────────
+# 1. Locate Python 3.9+
 Info "Checking Python..."
 
 $Python = $null
@@ -62,7 +62,7 @@ if (-not $Python) {
 
 Info "Found Python $PyVer  ($Python)"
 
-# ── 2. Create virtual environment ─────────────────────────────────────────────
+# 2. Create virtual environment
 $VenvDir = Join-Path $ScriptDir '.venv'
 
 if (Test-Path $VenvDir) {
@@ -79,7 +79,7 @@ if (-not (Test-Path $VenvPython)) {
     Fail "Python was not found in the virtual environment. Try deleting .venv\ and re-running."
 }
 
-# ── 3. Install PySide6 ────────────────────────────────────────────────────────
+# 3. Install PySide6
 Info "Upgrading pip..."
 & $VenvPython -m pip install --quiet --upgrade pip
 if ($LASTEXITCODE -ne 0) { Fail "Failed to upgrade pip." }
@@ -91,17 +91,17 @@ if ($LASTEXITCODE -ne 0) {
 }
 Info "PySide6 installed."
 
-# ── 4. Create launcher batch files ────────────────────────────────────────────
+# 4. Create launcher batch files
 Info "Creating launcher scripts..."
 
-# -- Desktop GUI ---------------------------------------------------------------
+# Desktop GUI
 $guiBat = @'
 @echo off
 "%~dp0.venv\Scripts\python.exe" "%~dp0gen-ui\app.py"
 '@
 $guiBat | Set-Content (Join-Path $ScriptDir 'run-gui.bat') -Encoding ASCII
 
-# -- World generator CLI -------------------------------------------------------
+# World generator CLI
 $worldBat = @'
 @echo off
 rem Generate one or more Traveller mainworlds.
@@ -121,7 +121,7 @@ rem   run-world --name Zhodane --seed 42 --json
 '@
 $worldBat | Set-Content (Join-Path $ScriptDir 'run-world.bat') -Encoding ASCII
 
-# -- TravellerMap lookup CLI ---------------------------------------------------
+# TravellerMap lookup CLI
 $mapBat = @'
 @echo off
 rem Fetch a world from TravellerMap and generate a full star system.
@@ -143,7 +143,7 @@ rem   run-mapfetch --sector "Spinward Marches" --hex 1910 --detail
 '@
 $mapBat | Set-Content (Join-Path $ScriptDir 'run-mapfetch.bat') -Encoding ASCII
 
-# ── 5. Done ───────────────────────────────────────────────────────────────────
+# 5. Done
 Write-Host ""
 Info "Installation complete!"
 Write-Host ""
