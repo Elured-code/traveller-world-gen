@@ -536,8 +536,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             seed = secrets.randbelow(2 ** 31)
 
         random.seed(seed)
-        self._seed_auto = True
+        self._seed_entry.blockSignals(True)
         self._seed_entry.setText(str(seed))
+        self._seed_entry.blockSignals(False)
+        self._seed_auto = True
 
         full_system = self._check_system_detail.isChecked()
         attach_detail_flag = full_system
@@ -597,19 +599,19 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _finish_generation(self, world: object) -> None:
         self._current_system = None
         self._current_world = world
+        if world.atmosphere_detail is None:  # type: ignore[attr-defined]
+            world.atmosphere_detail = generate_atmosphere_detail(  # type: ignore[attr-defined]
+                world.atmosphere, world.size,  # type: ignore[attr-defined]
+                temperature=world.temperature,  # type: ignore[attr-defined]
+            )
+            generate_gas_mix(
+                world.atmosphere_detail,  # type: ignore[attr-defined]
+                world.atmosphere, world.size,  # type: ignore[attr-defined]
+                world.temperature, None,  # type: ignore[attr-defined]
+                world.hydrographics,  # type: ignore[attr-defined]
+            )
         if self._check_physical.isChecked():
             world.size_detail = generate_world_physical(world)  # type: ignore[attr-defined]
-            if world.atmosphere_detail is None:  # type: ignore[attr-defined]
-                world.atmosphere_detail = generate_atmosphere_detail(  # type: ignore[attr-defined]
-                    world.atmosphere, world.size,  # type: ignore[attr-defined]
-                    temperature=world.temperature,  # type: ignore[attr-defined]
-                )
-                generate_gas_mix(
-                    world.atmosphere_detail,  # type: ignore[attr-defined]
-                    world.atmosphere, world.size,  # type: ignore[attr-defined]
-                    world.temperature, None,  # type: ignore[attr-defined]
-                    world.hydrographics,  # type: ignore[attr-defined]
-                )
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
         if path is not None:
             self._html_path = path
