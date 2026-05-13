@@ -270,7 +270,9 @@ class TravellerSystem:
     system_orbits: SystemOrbits
     mainworld: Optional[World]
     mainworld_orbit: Optional[OrbitSlot]
-    # methods: .to_dict(), .to_json(), .summary(), .to_html(detail_attached)
+    # methods: .to_dict(), .to_json(), .summary(), .to_html(detail_attached: bool)
+    # to_html() renders a full system card including a mainworld panel with
+    # WorldPhysical and atmosphere detail inner-cards when present.
 ```
 
 **Gas giant mainworld (WBH p.57):** When the selected mainworld orbit is a gas giant, `generate_mainworld_at_orbit()` generates the mainworld as a satellite of that giant rather than the giant itself. The helper `_gg_diameter(gg_sah: str) -> int` decodes the eHex diameter digit from the gas giant's `gg_sah` string (e.g. `"GM9"` → 9 Terran diameters). The satellite's size is clamped to `min(max(generate_size(), 1), gg_diameter - 1)`. A note recording the host giant's SAH and orbital position is appended to `world.notes`. The `gg_sah` value used here was rolled at orbit-gen time and stored in `OrbitSlot.gg_sah`, so there is no second SAH roll.
@@ -647,8 +649,9 @@ If `hex_pos` is provided directly (bypassing name search), step 1 is skipped.
 5. `reconstruct_world(map_data)` — canonical UWP digits extracted via eHex decoding; no dice rolled; gas/belt counts from PBG override the procedural counts in `SystemOrbits`
 6. Stamp the best mainworld orbit slot: `mw_orbit.canonical_profile = world.uwp()` and correct `mw_orbit.world_type` to `"terrestrial"` or `"belt"` based on the canonical size digit
 7. `generate_temperature_from_orbit()` — canonical temperature derived from orbital position (temperature is not in the UWP)
-8. Assemble `TravellerSystem`
-9. `attach_detail()` if `attach=True`
+8. `generate_atmosphere_detail()` with `hz_deviation` for orbit-position DMs; then `generate_gas_mix()` and `generate_unusual_subtype()` — mirrors the pipeline in `generate_mainworld_at_orbit()`
+9. Assemble `TravellerSystem`
+10. `attach_detail()` if `attach=True`
 
 **Uninhabited mainworlds:** Worlds with population = 0 (social string `000`) are handled
 correctly. `reconstruct_world()` sets `population = 0` from the UWP. The canonical UWP
