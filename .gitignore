@@ -45,6 +45,15 @@ Thumbs.db
 ehthumbs.db
 Desktop.ini
 
+# ── Install-generated launchers ─────────────────────────────────────────────
+# Created by install.sh / install.ps1 — user-specific, not committed.
+run-gui.command
+run-gui.bat
+run-world.sh
+run-world.bat
+run-mapfetch.sh
+run-mapfetch.bat
+
 # ── Generated outputs ───────────────────────────────────────────────────────
 # The examples/ directory contains generated HTML cards for illustration.
 # Regenerate with: python traveller_world_gen.py --name <name> --html
