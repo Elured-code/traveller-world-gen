@@ -140,7 +140,9 @@ from typing import Optional
 
 import azure.functions as func
 
-from traveller_world_gen import World, generate_world
+from traveller_world_gen import (
+    World, generate_world, generate_atmosphere_detail, generate_gas_mix,
+)
 from traveller_system_gen import generate_full_system, generate_system_from_world
 from traveller_world_detail import attach_detail
 from traveller_map_fetch import generate_system_from_map
@@ -178,6 +180,13 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
     try:
         seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, temperature=world.temperature
+        )
+        generate_gas_mix(
+            world.atmosphere_detail, world.atmosphere, world.size,
+            world.temperature, None, world.hydrographics,
+        )
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
@@ -210,6 +219,13 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
     try:
         seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, temperature=world.temperature
+        )
+        generate_gas_mix(
+            world.atmosphere_detail, world.atmosphere, world.size,
+            world.temperature, None, world.hydrographics,
+        )
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
@@ -263,7 +279,15 @@ def generate_world_batch(req: func.HttpRequest) -> func.HttpResponse:
         seed = apply_seed(seed)
         worlds = []
         for i in range(count):
-            d = generate_world(name=f"{prefix}{i+1}").to_dict()
+            world = generate_world(name=f"{prefix}{i+1}")
+            world.atmosphere_detail = generate_atmosphere_detail(
+                world.atmosphere, world.size, temperature=world.temperature
+            )
+            generate_gas_mix(
+                world.atmosphere_detail, world.atmosphere, world.size,
+                world.temperature, None, world.hydrographics,
+            )
+            d = world.to_dict()
             d["seed"] = seed
             worlds.append(d)
     except Exception as exc:
@@ -297,6 +321,13 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
     try:
         seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, temperature=world.temperature
+        )
+        generate_gas_mix(
+            world.atmosphere_detail, world.atmosphere, world.size,
+            world.temperature, None, world.hydrographics,
+        )
         html = world.to_html()
     except Exception as exc:
         logger.exception("Error generating world card: %s", exc)
