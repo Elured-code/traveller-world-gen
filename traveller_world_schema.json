@@ -40,8 +40,8 @@
     },
     "uwp": {
       "type": "string",
-      "pattern": "^[ABCDEX][0-9A-G]{6}-[0-9A-G]$",
-      "description": "Universal World Profile string. Format: Starport + Size + Atmosphere + Hydrographics + Population + Government + Law – TechLevel, all in Traveller hexadecimal (0–9, A–G).",
+      "pattern": "^[ABCDEX][0-9A-Z]{6}-[0-9A-Z]$",
+      "description": "Universal World Profile string. Format: Starport + Size + Atmosphere + Hydrographics + Population + Government + Law – TechLevel, all in Traveller eHex (0–9, A–Z).",
       "examples": [
         "CA6A643-9",
         "A867A69-F",

@@ -191,6 +191,25 @@ class TestToHex:
     def test_zero(self):
         assert to_hex(0) == "0"
 
+    def test_extended_range_h(self):
+        assert to_hex(17) == "H"
+
+    def test_extended_range_i(self):
+        assert to_hex(18) == "I"
+
+    def test_extended_range_max_tl(self):
+        # Theoretical CRB maximum TL is 28 (2D=12 + max DMs=16)
+        assert to_hex(28) == "S"
+
+    def test_extended_range_single_char(self):
+        # All values 0–35 must return exactly one character
+        for v in range(36):
+            assert len(to_hex(v)) == 1
+
+    def test_very_high_value_clamped(self):
+        # Values beyond the table are clamped to the last entry
+        assert to_hex(999) == "Z"
+
 
 # ===========================================================================
 # TestStarportClassFromRoll
