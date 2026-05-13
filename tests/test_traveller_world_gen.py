@@ -1879,40 +1879,55 @@ class TestAssignTravelZone:
 
     def test_green_for_safe_normal_world(self):
         # Standard atmosphere, benign government, moderate law
-        assert assign_travel_zone(6, 4, 5) == "Green"
+        assert assign_travel_zone(6, 4, 5, "A") == "Green"
 
     def test_amber_for_high_atmosphere(self):
         # Atmosphere 10 (Exotic) → Amber
-        assert assign_travel_zone(10, 4, 5) == "Amber"
+        assert assign_travel_zone(10, 4, 5, "A") == "Amber"
 
     def test_amber_for_government_zero(self):
         # No government → Amber (anarchy)
-        assert assign_travel_zone(6, 0, 5) == "Amber"
+        assert assign_travel_zone(6, 0, 5, "A") == "Amber"
 
     def test_amber_for_balkanised_government(self):
         # Government 7 (Balkanisation) → Amber
-        assert assign_travel_zone(6, 7, 5) == "Amber"
+        assert assign_travel_zone(6, 7, 5, "A") == "Amber"
 
     def test_amber_for_government_ten(self):
         # Government 10 (Charismatic Dictator) → Amber
-        assert assign_travel_zone(6, 10, 5) == "Amber"
+        assert assign_travel_zone(6, 10, 5, "A") == "Amber"
 
     def test_amber_for_law_level_zero(self):
         # Law Level 0 (no restrictions — lawless) → Amber
-        assert assign_travel_zone(6, 4, 0) == "Amber"
+        assert assign_travel_zone(6, 4, 0, "A") == "Amber"
 
     def test_amber_for_high_law_level(self):
         # Law Level 9+ → Amber
-        assert assign_travel_zone(6, 4, 9) == "Amber"
-        assert assign_travel_zone(6, 4, 15) == "Amber"
+        assert assign_travel_zone(6, 4, 9, "A") == "Amber"
+        assert assign_travel_zone(6, 4, 15, "A") == "Amber"
 
     def test_amber_boundary_law_8_is_green(self):
         # Law Level 8 is below the Amber threshold
-        assert assign_travel_zone(6, 4, 8) == "Green"
+        assert assign_travel_zone(6, 4, 8, "A") == "Green"
 
     def test_amber_boundary_atmosphere_9_is_green(self):
         # Atmosphere 9 is below the Amber threshold
-        assert assign_travel_zone(9, 4, 5) == "Green"
+        assert assign_travel_zone(9, 4, 5, "A") == "Green"
+
+
+class TestTravelZoneRedZone:
+    """Starport X worlds must always be Red zones (issue #34)."""
+
+    def test_starport_x_is_red(self):
+        assert assign_travel_zone(6, 4, 5, "X") == "Red"
+
+    def test_starport_x_overrides_amber_criteria(self):
+        # Even when all Amber triggers fire, X beats them to Red
+        assert assign_travel_zone(10, 0, 0, "X") == "Red"
+
+    def test_non_x_starports_not_red(self):
+        for port in ("A", "B", "C", "D", "E"):
+            assert assign_travel_zone(6, 4, 5, port) != "Red"
 
 
 

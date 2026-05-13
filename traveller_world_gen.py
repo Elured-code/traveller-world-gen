@@ -2321,18 +2321,20 @@ def assign_trade_codes(  # pylint: disable=too-many-arguments,too-many-positiona
 
 
 def assign_travel_zone(atmosphere: int, government: int,
-                       law_level: int) -> str:
+                       law_level: int, starport: str) -> str:
     """Step 13 — Travel Zone (p.260).
 
-    Green is the default safe zone (no special designation).
+    Starport X worlds are automatically Red zones — no facilities means
+    the world is inaccessible or under interdiction.
     Amber worlds warrant caution: unusual atmosphere, unstable government,
     or extreme law level.
-    Red zones are referee-assigned interdictions (e.g. quarantine, Imperium
-    edict) and are only suggested here — the referee makes the final call.
+    Green is the default safe zone.
 
     Amber criteria (p.260):
       Atmosphere 10+, OR Government 0/7/10, OR Law Level 0 or 9+
     """
+    if starport == "X":
+        return "Red"
     amber = (
         atmosphere >= 10
         or government in (0, 7, 10)
@@ -2340,7 +2342,6 @@ def assign_travel_zone(atmosphere: int, government: int,
         or law_level >= 9
     )
     return "Amber" if amber else "Green"
-    # Note: Red zones are not randomly generated — they are referee decisions.
 
 
 # ---------------------------------------------------------------------------
@@ -2435,7 +2436,7 @@ def generate_world(name: str = "Unknown") -> World:
 
     # --- Step 13: Travel Zone ---
     world.travel_zone = assign_travel_zone(
-        world.atmosphere, world.government, world.law_level
+        world.atmosphere, world.government, world.law_level, world.starport
     )
 
     return world

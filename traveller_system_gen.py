@@ -673,7 +673,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
 
     # Step 13: Travel Zone
     world.travel_zone = assign_travel_zone(
-        world.atmosphere, world.government, world.law_level
+        world.atmosphere, world.government, world.law_level, world.starport
     )
 
     # Record orbital context in notes
