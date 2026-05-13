@@ -882,10 +882,24 @@ class TestDeterminism:
             w["uwp"] for w in response_json(generate_world_batch(req_batch))["worlds"]
         ]
 
-        # Sequential calls using the same seed progression
+        # Sequential calls mirroring exactly what the batch endpoint does
         random.seed(seed)
-        from traveller_world_gen import generate_world as _gen
-        sequential_uwps = [_gen(name=f"World-{i+1}").uwp() for i in range(count)]
+        from traveller_world_gen import (
+            generate_world as _gen,
+            generate_atmosphere_detail as _gen_atm,
+            generate_gas_mix as _gen_gas,
+        )
+        sequential_uwps = []
+        for i in range(count):
+            world = _gen(name=f"World-{i+1}")
+            world.atmosphere_detail = _gen_atm(
+                world.atmosphere, world.size, temperature=world.temperature
+            )
+            _gen_gas(
+                world.atmosphere_detail, world.atmosphere, world.size,
+                world.temperature, None, world.hydrographics,
+            )
+            sequential_uwps.append(world.uwp())
 
         assert batch_uwps == sequential_uwps
 
@@ -974,3 +988,56 @@ class TestGenerateWorldCard:
             resp = generate_world_card(req)
         assert resp.status_code == 500
         assert response_json(resp)["error"]["code"] == ERR_INTERNAL
+
+
+# ===========================================================================
+# TestMainworldDetailInResponse
+# ===========================================================================
+
+class TestMainworldDetailInResponse:
+    """Verify atmosphere detail is populated in mainworld API responses."""
+
+    def test_single_world_atmosphere_has_profile(self):
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert "profile" in body["atmosphere"]
+
+    def test_single_world_atmosphere_has_detail(self):
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert "detail" in body["atmosphere"]
+
+    def test_named_world_atmosphere_has_profile(self):
+        req = make_request(params={"seed": "5"}, route_params={"name": "Mora"})
+        body = response_json(generate_named_world(req))
+        assert "profile" in body["atmosphere"]
+
+    def test_batch_worlds_all_have_atmosphere_profile(self):
+        req = make_request(method="POST", body={"count": 3, "seed": 7})
+        body = response_json(generate_world_batch(req))
+        for world in body["worlds"]:
+            assert "profile" in world["atmosphere"]
+
+    def test_batch_worlds_all_have_atmosphere_detail(self):
+        req = make_request(method="POST", body={"count": 3, "seed": 7})
+        body = response_json(generate_world_batch(req))
+        for world in body["worlds"]:
+            assert "detail" in world["atmosphere"]
+
+    def test_world_card_html_contains_atmosphere_detail(self):
+        from function_app import generate_world_card
+        req = make_request(params={"seed": "3"}, route_params={"name": "Aramis"})
+        html = generate_world_card(req).get_body().decode("utf-8")
+        assert "Atmosphere" in html
+
+    def test_atmosphere_profile_is_string(self):
+        req = make_request(params={"seed": "2"})
+        body = response_json(generate_single_world(req))
+        assert isinstance(body["atmosphere"]["profile"], str)
+        assert len(body["atmosphere"]["profile"]) > 0
+
+    def test_atmosphere_detail_is_dict(self):
+        # seed=1 produces a non-vacuum atmosphere so detail is present
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert isinstance(body["atmosphere"]["detail"], dict)
