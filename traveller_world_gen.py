@@ -65,15 +65,13 @@ def roll(num_dice: int, modifier: int = 0) -> int:
 # Hexadecimal helper
 # ---------------------------------------------------------------------------
 
-# Traveller uses base-16 for UWP digits above 9: A=10, B=11 ... F=15, G=16
-_HEX_DIGITS = "0123456789ABCDEFG"
+# Traveller eHex: 0–9 then A=10 … G=16, H=17, I=18 … Z=35 (covers max TL 28)
+_HEX_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 def to_hex(value: int) -> str:
-    """Convert an integer to a single Traveller hexadecimal character."""
-    value = max(0, value)
-    if value < len(_HEX_DIGITS):
-        return _HEX_DIGITS[value]
-    return str(value)   # fallback for very high values
+    """Convert an integer to a single Traveller eHex character."""
+    value = max(0, min(value, len(_HEX_DIGITS) - 1))
+    return _HEX_DIGITS[value]
 
 
 # ---------------------------------------------------------------------------

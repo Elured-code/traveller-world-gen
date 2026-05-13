@@ -481,7 +481,7 @@ class TestGenerateSingleWorld:
         import re
         req = make_request(params={"seed": "1"})
         body = response_json(generate_single_world(req))
-        assert re.match(r"^[ABCDEX][0-9A-G]{6}-[0-9A-G]$", body["uwp"])
+        assert re.match(r"^[ABCDEX][0-9A-Z]{6}-[0-9A-Z]$", body["uwp"])
 
     def test_temperature_is_valid_enum(self):
         req = make_request(params={"seed": "7"})
