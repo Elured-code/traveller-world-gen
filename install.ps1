@@ -55,9 +55,46 @@ foreach ($cmd in @('python', 'python3', 'py')) {
 }
 
 if (-not $Python) {
-    Fail ("Python 3.9 or later is required but was not found.`n" +
-          "         Download from: https://www.python.org/downloads/`n" +
-          "         Tick 'Add Python to PATH' during installation, then re-run this script.")
+    Warn "Python 3.9 or later was not found."
+    Info "Attempting to install Python 3.11 via winget..."
+
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        Fail ("winget is not available on this system.`n" +
+              "         Download Python 3.11 from: https://www.python.org/downloads/`n" +
+              "         Tick 'Add Python to PATH' during installation, then re-run this script.")
+    }
+
+    & winget install --id Python.Python.3.11 --silent --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -ne 0) {
+        Fail ("winget failed to install Python.`n" +
+              "         Download Python 3.11 from: https://www.python.org/downloads/`n" +
+              "         Tick 'Add Python to PATH' during installation, then re-run this script.")
+    }
+
+    Info "Python installed. Refreshing PATH..."
+    $machinePath   = [System.Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $userPath      = [System.Environment]::GetEnvironmentVariable('Path', 'User')
+    $env:Path      = "$machinePath;$userPath"
+
+    foreach ($cmd in @('python', 'python3', 'py')) {
+        try {
+            $output = & $cmd --version 2>&1
+            if ($output -match 'Python (\d+)\.(\d+)') {
+                $major = [int]$Matches[1]
+                $minor = [int]$Matches[2]
+                if ($major -gt 3 -or ($major -eq 3 -and $minor -ge 9)) {
+                    $Python = $cmd
+                    $PyVer  = "$major.$minor"
+                    break
+                }
+            }
+        } catch { continue }
+    }
+
+    if (-not $Python) {
+        Fail ("Python was installed but cannot be found yet.`n" +
+              "         Close this window, open a new PowerShell, and re-run install.ps1")
+    }
 }
 
 Info "Found Python $PyVer  ($Python)"
