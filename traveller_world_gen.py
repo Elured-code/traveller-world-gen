@@ -43,6 +43,7 @@ from typing import List, Optional, Union, TYPE_CHECKING
 
 from traveller_world_physical import TIDAL_STATUS_LABELS
 from traveller_belt_physical import BeltPhysical
+from traveller_hydro_detail import HydrographicDetail
 
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
@@ -79,7 +80,7 @@ def to_hex(value: int) -> str:
 # Lookup tables  (all directly from the 2022 Core Rulebook)
 # ---------------------------------------------------------------------------
 
-# Atmosphere descriptions (p.250), indexed by atmosphere code 0-15
+# Atmosphere descriptions (p.250 + WBH NHZ), indexed by atmosphere code 0-17
 ATMOSPHERE_NAMES = {
     0:  "None",
     1:  "Trace",
@@ -97,6 +98,8 @@ ATMOSPHERE_NAMES = {
     13: "Very Dense",
     14: "Low",
     15: "Unusual",
+    16: "Gas, Helium",
+    17: "Gas, Hydrogen",
 }
 
 # Survival gear required by atmosphere (p.250)
@@ -117,6 +120,8 @@ ATMOSPHERE_GEAR = {
     13: "None",   # Very Dense: may be habitable at altitude
     14: "None",   # Low: breathable in lowlands
     15: "Varies",
+    16: "Vacc Suit",
+    17: "Vacc Suit",
 }
 
 # Hydrographic descriptions (p.251), indexed by code 0-10
@@ -247,6 +252,7 @@ TEMPERATURE_DM = {
     8:  1,  9:  1,
     10: 2,  13: 2,  15: 2,
     11: 6,  12: 6,
+    16: 0,  17: 0,
 }
 
 def temperature_category(modified_roll: int) -> str:
@@ -439,6 +445,102 @@ _CI_SUBTYPE_TABLE: dict = {
     12: ("C", "Extremely Dense",                              10.00, None),
     13: ("D", "Extremely Dense, Temperature 500K+",           10.00, None),
     14: ("E", "Extremely Dense, Temperature 500K+, Irritant", 10.00, None),
+}
+
+# ---------------------------------------------------------------------------
+# Non-Habitable Zone (NHZ) Atmosphere tables (WBH pp.78-79)
+# ---------------------------------------------------------------------------
+# Each entry: (atm_code, base_exotic_key, irritant_exotic_key, star, dagger)
+#   atm_code          — UWP atmosphere code result
+#   base_exotic_key   — _EXOTIC_SUBTYPE_TABLE key when no irritant (code 10 only)
+#   irritant_exotic_key — key used when irritant roll succeeds (code 10 only)
+#   star              — True: roll 1D ≥4 to apply irritant_exotic_key
+#   dagger            — True: DM+1 to irritant roll when hz_deviation ≤ -3.0
+# Keys are 2D-7+Size roll results (clamped to 0; max reachable is 15).
+# Entries 16–17 exist for theoretical completeness only.
+
+_NHZ_HOT_A: dict = {   # HZCO ≤ -2.01
+     0: ( 0, None, None, False, False),
+     1: ( 0, None, None, False, False),
+     2: ( 1, None, None, False, False),
+     3: ( 1, None, None, False, False),
+     4: (10,    3,    2,  True, False),
+     5: (10,    5,    4,  True, False),
+     6: (10,    6,    7,  True, False),
+     7: (10,    8,    9,  True,  True),
+     8: (10,   10,   11,  True,  True),
+     9: (11, None, None, False, False),
+    10: (11, None, None, False, False),
+    11: (11, None, None, False, False),
+    12: (12, None, None, False, False),
+    13: (11, None, None, False, False),
+    14: (12, None, None, False, False),
+    15: (15, None, None, False, False),
+    16: (16, None, None, False, False),
+    17: (17, None, None, False, False),
+}
+
+_NHZ_HOT_B: dict = {   # HZCO -1.01 to -2.0
+     0: ( 0, None, None, False, False),
+     1: ( 1, None, None, False, False),
+     2: (10,    2, None, False, False),
+     3: (10,    3, None, False, False),
+     4: (10,    4, None, False, False),
+     5: (10,    5, None, False, False),
+     6: (10,    6, None, False, False),
+     7: (10,    7, None, False, False),
+     8: (10,    8, None, False, False),
+     9: (10,    9, None, False, False),
+    10: (10,   10,   11,  True, False),
+    11: (11, None, None, False, False),
+    12: (12, None, None, False, False),
+    13: (11, None, None, False, False),
+    14: (12, None, None, False, False),
+    15: (15, None, None, False, False),
+    16: (16, None, None, False, False),
+    17: (17, None, None, False, False),
+}
+
+_NHZ_COLD_A: dict = {   # HZCO +1.01 to +3.0
+     0: ( 0, None, None, False, False),
+     1: ( 1, None, None, False, False),
+     2: ( 1, None, None, False, False),
+     3: (10,    3,    2,  True, False),
+     4: (10,    4, None, False, False),
+     5: (10,    5, None, False, False),
+     6: (10,    6, None, False, False),
+     7: (10,    7, None, False, False),
+     8: (10,    8, None, False, False),
+     9: (10,    9, None, False, False),
+    10: (10,   10,   11,  True, False),
+    11: (11, None, None, False, False),
+    12: (12, None, None, False, False),
+    13: (13, None, None, False, False),
+    14: (14, None, None, False, False),
+    15: (15, None, None, False, False),
+    16: (16, None, None, False, False),
+    17: (17, None, None, False, False),
+}
+
+_NHZ_COLD_B: dict = {   # HZCO ≥ +3.01 — same as Cold A except 13→Gas Helium, 14→Gas Hydrogen
+     0: ( 0, None, None, False, False),
+     1: ( 1, None, None, False, False),
+     2: ( 1, None, None, False, False),
+     3: (10,    3,    2,  True, False),
+     4: (10,    4, None, False, False),
+     5: (10,    5, None, False, False),
+     6: (10,    6, None, False, False),
+     7: (10,    7, None, False, False),
+     8: (10,    8, None, False, False),
+     9: (10,    9, None, False, False),
+    10: (10,   10,   11,  True, False),
+    11: (11, None, None, False, False),
+    12: (12, None, None, False, False),
+    13: (16, None, None, False, False),
+    14: (17, None, None, False, False),
+    15: (15, None, None, False, False),
+    16: (16, None, None, False, False),
+    17: (17, None, None, False, False),
 }
 
 # Insidious Atmosphere Hazard table (WBH p.87).
@@ -700,13 +802,18 @@ def _taint_persistence_code(raw: int) -> int:
     return max(2, min(9, raw))
 
 
-def _roll_single_taint(atm_code: int) -> tuple:
+def _roll_single_taint(atm_code: int, ppo: Optional[float] = None) -> tuple:
     """Roll one taint for a tainted atmosphere (WBH pp.82-83).
 
     Returns ``(Taint, needs_second_roll)``.  ``needs_second_roll`` is
     ``True`` only when the subtype roll is 10 (Particulates and roll
     again).  Biologic results (subtype rolls 4 and 9) are rerolled
     until a non-Biologic subtype is obtained (issue #28).
+
+    ``ppo`` constrains H/L subtypes to physically valid ranges (issue #55):
+    High Oxygen (H) is only accepted when ppo > 0.5 bar; Low Oxygen (L)
+    is only accepted when ppo < 0.1 bar.  When ``ppo`` is ``None`` the
+    constraint is not applied (backwards-compatible default).
 
     Severity and persistence DMs:
     - L/H subtypes: +4 to severity, +4 to persistence (or +6 if
@@ -715,9 +822,14 @@ def _roll_single_taint(atm_code: int) -> tuple:
     dm = _TAINT_SUBTYPE_DM.get(atm_code, 0)
     while True:
         raw_sub = max(2, min(12, roll(2) + dm))
-        if raw_sub not in _BIOLOGIC_SUBTYPE_ROLLS:
-            break
-    subtype_name, subtype_code = _TAINT_SUBTYPE_TABLE[raw_sub]
+        if raw_sub in _BIOLOGIC_SUBTYPE_ROLLS:
+            continue
+        subtype_name, subtype_code = _TAINT_SUBTYPE_TABLE[raw_sub]
+        if subtype_code == "H" and ppo is not None and ppo <= 0.5:
+            continue
+        if subtype_code == "L" and ppo is not None and ppo >= 0.1:
+            continue
+        break
     needs_second = raw_sub == 10
 
     sev_dm = 4 if subtype_code in _O2_TAINT_CODES else 0
@@ -1072,12 +1184,13 @@ def _compute_low_altitude(
     return -round(safe_depth, 1), False
 
 
-def generate_atmosphere_detail(  # pylint: disable=too-many-locals
+def generate_atmosphere_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-positional-arguments,too-many-arguments
     code: int,
     size: int,
     system_age_gyr: Optional[float] = None,
     temperature: Optional[str] = None,  # pylint: disable=unused-argument
     hz_deviation: Optional[float] = None,
+    exotic_key_override: Optional[int] = None,
 ) -> AtmosphereDetail:
     """Generate quantitative atmosphere characteristics for a world.
 
@@ -1089,15 +1202,27 @@ def generate_atmosphere_detail(  # pylint: disable=too-many-locals
     corrosive/insidious subtype tables.  Pass ``orbit.hz_deviation`` from
     the orbit slot; standalone worlds with no orbit pass ``None``.
     ``temperature`` is reserved for gas composition (Phase 4).
+
+    ``exotic_key_override`` bypasses the normal exotic subtype roll when
+    set; the value is used as a direct key into ``_EXOTIC_SUBTYPE_TABLE``.
+    Used by NHZ atmosphere generation to pass a pre-determined subtype.
     """
+    if code in (16, 17):
+        return AtmosphereDetail()
+
     subtype_code: Optional[str] = None
     subtype_name: Optional[str] = None
     hazards: list = []
 
     if code in _EXOTIC_CODES:
-        subtype_code, subtype_name, pressure = _roll_exotic_subtype(
-            size, hz_deviation
-        )
+        if exotic_key_override is not None:
+            s_code, s_name, min_bar, span_bar = _EXOTIC_SUBTYPE_TABLE[exotic_key_override]
+            subtype_code, subtype_name = s_code, s_name
+            pressure = _subtype_pressure_bar(min_bar, span_bar)
+        else:
+            subtype_code, subtype_name, pressure = _roll_exotic_subtype(
+                size, hz_deviation
+            )
     elif code in _CI_CODES:
         subtype_code, subtype_name, pressure = _roll_ci_subtype(
             code, size, hz_deviation
@@ -1107,21 +1232,22 @@ def generate_atmosphere_detail(  # pylint: disable=too-many-locals
     else:
         pressure = _atmosphere_pressure_bar(code)
 
+    ppo = _oxygen_partial_pressure(code, pressure, system_age_gyr)
+
     taints: list = []
     if code in _TAINTED_CODES:
-        taint, needs_second = _roll_single_taint(code)
+        taint, needs_second = _roll_single_taint(code, ppo)
         taints.append(taint)
         if needs_second:
-            second, _ = _roll_single_taint(code)
+            second, _ = _roll_single_taint(code, ppo)
             taints.append(second)
     if code in (13, 14) and random.randint(1, 6) >= 4:
-        taint, needs_second = _roll_single_taint(code)
+        taint, needs_second = _roll_single_taint(code, ppo)
         taints.append(taint)
         if needs_second:
-            second, _ = _roll_single_taint(code)
+            second, _ = _roll_single_taint(code, ppo)
             taints.append(second)
 
-    ppo = _oxygen_partial_pressure(code, pressure, system_age_gyr)
     scale = _scale_height_km(size, code)
 
     min_safe_alt: Optional[float] = None
@@ -1288,6 +1414,8 @@ def format_atmosphere_profile(
     """
     if detail is None:
         return to_hex(code)
+    if code in (16, 17):
+        return to_hex(code)
     if code == 15:
         if detail.unusual_subtypes:
             codes = ".".join(
@@ -1323,9 +1451,10 @@ class World:  # pylint: disable=too-many-instance-attributes
     name:           str   = "Unknown"
     size:           int   = 0
     atmosphere:     int   = 0
-    atmosphere_detail: Optional[AtmosphereDetail] = None
-    temperature:    str   = "Temperate"
-    hydrographics:  int   = 0
+    atmosphere_detail:    Optional[AtmosphereDetail]    = None
+    temperature:          str   = "Temperate"
+    hydrographics:        int   = 0
+    hydrographic_detail:  Optional[HydrographicDetail]  = None
     population:     int   = 0
     government:     int   = 0
     law_level:      int   = 0
@@ -1418,6 +1547,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                 "description": HYDROGRAPHIC_NAMES.get(
                     self.hydrographics, "Unknown"
                 ),
+                **({"detail": self.hydrographic_detail.to_dict()}
+                   if self.hydrographic_detail is not None else {}),
             },
             "population": {
                 "code": self.population,
@@ -1702,6 +1833,18 @@ class World:  # pylint: disable=too-many-instance-attributes
         else:
             atmosphere_html = ""
 
+        # --- hydrographic detail card ---
+        if self.hydrographic_detail is not None:
+            hd = self.hydrographic_detail
+            hydrographic_html = (
+                '<div class="inner-card" style="margin-top:12px">'
+                '<p class="inner-label">Hydrographic detail</p>'
+                + row("Surface liquid", f"{hd.surface_liquid_pct}%")
+                + '</div>'
+            )
+        else:
+            hydrographic_html = ""
+
         # --- physical detail card (WorldPhysical or BeltPhysical) ---
         if self.size_detail:
             p = self.size_detail
@@ -1944,6 +2087,7 @@ class World:  # pylint: disable=too-many-instance-attributes
 
   {notes_html}
   {atmosphere_html}
+  {hydrographic_html}
   {physical_html}
 
   <details>
@@ -2053,6 +2197,13 @@ class World:  # pylint: disable=too-many-instance-attributes
                 )
                 lines.append(f"  {'Gas mix':<12}: {gas_parts}")
 
+        if self.hydrographic_detail is not None:
+            lines.append(f"{'-'*56}")
+            lines.append(
+                f"  {'Surface liq.':<12}: "
+                f"{self.hydrographic_detail.surface_liquid_pct}%"
+            )
+
         if self.size_detail:
             p = self.size_detail
             lines.append(f"{'-'*56}")
@@ -2114,6 +2265,45 @@ def generate_atmosphere(size: int) -> int:
     return max(0, roll(2, -7 + size))
 
 
+def generate_nhz_atmosphere(size: int, hz_deviation: float) -> tuple:
+    """Generate atmosphere for a Non-Habitable Zone world (WBH pp.78-79).
+
+    Rolls 2D-7+Size and looks up the result in the appropriate NHZ column
+    based on ``hz_deviation``.  Returns ``(atm_code, exotic_key)`` where
+    ``exotic_key`` is the ``_EXOTIC_SUBTYPE_TABLE`` key when
+    ``atm_code == 10``; ``None`` otherwise.
+
+    The caller is responsible for ensuring ``abs(hz_deviation) > 1.0``.
+    Worlds with size ≤ 1 cannot retain an atmosphere and return ``(0, None)``.
+    """
+    if size <= 1:
+        return 0, None
+
+    result = max(0, roll(2, -7 + size))
+
+    if hz_deviation <= -2.01:
+        table = _NHZ_HOT_A
+    elif hz_deviation <= -1.01:
+        table = _NHZ_HOT_B
+    elif hz_deviation <= 3.0:
+        table = _NHZ_COLD_A
+    else:
+        table = _NHZ_COLD_B
+
+    result = min(result, max(table))
+    atm_code, base_key, irr_key, star, dagger = table[result]
+
+    exotic_key: Optional[int] = None
+    if atm_code == 10:
+        if star:
+            dm = 1 if (dagger and hz_deviation <= -3.0) else 0
+            exotic_key = irr_key if random.randint(1, 6) + dm >= 4 else base_key
+        else:
+            exotic_key = base_key
+
+    return atm_code, exotic_key
+
+
 def generate_temperature(atmosphere: int) -> str:
     """Step 3 — Temperature (p.251): roll 2D + Atmosphere DM.
 
@@ -2138,6 +2328,8 @@ def generate_hydrographics(size: int, atmosphere: int, temperature: str) -> int:
         notes they keep their hydrographics even when hot/boiling.
     """
     if size <= 1:
+        return 0
+    if atmosphere in (16, 17):
         return 0
 
     # Base roll: 2D-7 + Atmosphere code

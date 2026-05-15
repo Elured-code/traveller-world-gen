@@ -107,13 +107,27 @@ errors even when the package is correctly installed in `.venv-1`.
 
 ```json
 "pylint.path": ["${workspaceFolder}/.venv-1/bin/pylint"],
-"pylint.interpreter": ["${workspaceFolder}/.venv-1/bin/python"]
+"pylint.interpreter": ["${workspaceFolder}/.venv-1/bin/python"],
+"pylint.args": ["--disable=duplicate-code,too-many-lines"]
 ```
 
 The Pylint extension runs as a separate process with its own path resolution.
-Without these settings it falls back to whatever `pylint` is on your system
-`$PATH` — typically a global install that lacks the project packages and
-produces different results from Claude's terminal runs.
+Without `pylint.path` and `pylint.interpreter` it falls back to whatever
+`pylint` is on your system `$PATH` — typically a global install that lacks
+the project packages and produces different results from terminal runs.
+
+`pylint.args` suppresses two known false positives that appear when the
+extension analyses multiple open files simultaneously:
+
+- **R0801 `duplicate-code`** — fires on `traveller_system_gen.py` and
+  `traveller_world_gen.py` because they share HTML boilerplate. The code
+  is intentionally separate (different data structures); only the per-file
+  score matters.
+- **`too-many-lines`** — fires at cross-file thresholds that single-file
+  runs do not hit.
+
+These suppressions apply to the IDE only. The authoritative per-file check
+remains `.venv-1/bin/pylint <file>` in the terminal.
 
 ---
 

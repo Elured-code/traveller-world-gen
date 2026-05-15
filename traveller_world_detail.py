@@ -114,6 +114,7 @@ from traveller_system_gen import TravellerSystem, generate_temperature_from_orbi
 from traveller_world_gen import (
     assign_trade_codes,
     generate_atmosphere,
+    generate_nhz_atmosphere,
     generate_hydrographics,
     to_hex,
 )
@@ -199,15 +200,21 @@ def _gas_giant_sah(star_spectral: str, star_lum_class: str) -> str:
     return f"GL{_ehex(_roll(2, 6))}"             # 8-18
 
 
-def _terrestrial_sah(orbit: OrbitSlot, hzco: float) -> tuple[int, int, int]:
+def _terrestrial_sah(
+    orbit: OrbitSlot,
+    hzco: float,
+    nhz_atmospheres: bool = False,
+) -> tuple[int, int, int]:
     """
     Generate (size, atmosphere, hydrographics) for a terrestrial world.
     Temperature is derived from orbital position for physical consistency.
     Returns (size, atmosphere, hydrographics) as integers.
     """
     size = _terrestrial_size()
-    atm_size = min(size, 9)
-    atmosphere = generate_atmosphere(atm_size)
+    if nhz_atmospheres and abs(orbit.hz_deviation) > 1.0:
+        atmosphere, _ = generate_nhz_atmosphere(size, orbit.hz_deviation)
+    else:
+        atmosphere = generate_atmosphere(min(size, 9))
     temperature = generate_temperature_from_orbit(
         atmosphere=atmosphere,
         hz_deviation=orbit.hz_deviation,
@@ -427,6 +434,7 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
     mw_law: int,
     mw_tl: int,
     max_secondary_pop: int,
+    nhz_atmospheres: bool = False,
 ) -> "WorldDetail":
     """
     Generate full WorldDetail for a significant moon (WBH pp.57, 78-99, 155-180).
@@ -477,8 +485,10 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
                            law_level=law, tech_level=tl, spaceport=port)
 
     # Size 2+: generate atmosphere and hydrographics
-    atm_size = min(sz, 9)
-    atmosphere = generate_atmosphere(atm_size)
+    if nhz_atmospheres and abs(hz_deviation) > 1.0:
+        atmosphere, _ = generate_nhz_atmosphere(sz, hz_deviation)
+    else:
+        atmosphere = generate_atmosphere(min(sz, 9))
     temperature = generate_temperature_from_orbit(
         atmosphere=atmosphere,
         hz_deviation=hz_deviation,
@@ -506,7 +516,10 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
 # Main generation function
 # ---------------------------------------------------------------------------
 
-def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    system: TravellerSystem,
+    nhz_atmospheres: bool = False,
+) -> dict[str, WorldDetail]:
     """
     Generate WorldDetail for every non-mainworld, non-empty orbit slot.
 
@@ -610,7 +623,7 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
 
         else:
             # Terrestrial world
-            size, atm, hydro = _terrestrial_sah(orbit, hzco)
+            size, atm, hydro = _terrestrial_sah(orbit, hzco, nhz_atmospheres)
             sah = f"{to_hex(size)}{to_hex(atm)}{to_hex(hydro)}"
 
             # Check for population
@@ -662,6 +675,7 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
                     mw_law=mw_law,
                     mw_tl=mw_tl,
                     max_secondary_pop=max_secondary_pop,
+                    nhz_atmospheres=nhz_atmospheres,
                 )
 
     return result
@@ -673,7 +687,8 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
     on each OrbitSlot. Also attaches detail for the mainworld orbit
     (extracting values from the mainworld World object).
     """
-    detail_map = generate_system_detail(system)
+    nhz = system.nhz_atmospheres
+    detail_map = generate_system_detail(system, nhz_atmospheres=nhz)
     mainworld  = system.mainworld
 
     for orbit in system.system_orbits.orbits:
@@ -704,6 +719,7 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                         mw_law=mainworld.law_level,
                         mw_tl=mainworld.tech_level,
                         max_secondary_pop=max(0, mainworld.population - random.randint(1,6)),
+                        nhz_atmospheres=nhz,
                     )
             # WorldDetail for the satellite body itself (with its own moons).
             satellite_detail = WorldDetail(

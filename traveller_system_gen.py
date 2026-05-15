@@ -52,6 +52,7 @@ The human author reviewed, directed, and is responsible for the code.
 
 from __future__ import annotations
 
+# pylint: disable=too-many-lines
 import json
 import random
 import secrets
@@ -62,10 +63,12 @@ from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
 from traveller_belt_physical import BeltPhysical
 from traveller_world_physical import TIDAL_STATUS_LABELS, WorldPhysical
+from traveller_hydro_detail import generate_hydrographic_detail
 from traveller_world_gen import (
     World,
     generate_size,
     generate_atmosphere,
+    generate_nhz_atmosphere,
     generate_atmosphere_detail,
     generate_gas_mix,
     generate_unusual_subtype,
@@ -180,6 +183,7 @@ class TravellerSystem:
     system_orbits: SystemOrbits
     mainworld: Optional[World]
     mainworld_orbit: Optional[OrbitSlot]
+    nhz_atmospheres: bool = False
 
     def to_dict(self) -> dict:
         """Serialise this system to a JSON-compatible dict."""
@@ -475,6 +479,14 @@ class TravellerSystem:
                     '<p class="inner-lbl">Atmosphere detail</p>'
                     + atm_rows + '</div>'
                 )
+            if mw.hydrographic_detail is not None:
+                hd = mw.hydrographic_detail
+                mw_panel += (
+                    '<div class="inner-card">'
+                    '<p class="inner-lbl">Hydrographic detail</p>'
+                    + drow("Surface liquid", f"{hd.surface_liquid_pct}%")
+                    + '</div>'
+                )
         else:
             mw_panel = '<p class="no-val">No mainworld determined.</p>'
 
@@ -606,13 +618,14 @@ def _gg_diameter(gg_sah: str) -> int:
     return 8  # fallback: mid-range GM diameter
 
 
-def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements
     name: str,
     orbit: OrbitSlot,
     hzco: float,
     gas_giant_count: int,
     belt_count: int,
     system_age_gyr: Optional[float] = None,
+    nhz_atmospheres: bool = False,
 ) -> World:
     """
     Generate a mainworld whose temperature is constrained by its orbital
@@ -651,7 +664,16 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         gg_sah = getattr(orbit, "gg_sah", "")
         gg_diam = _gg_diameter(gg_sah)
         world.size = min(max(generate_size(), 1), gg_diam - 1)
-        world.atmosphere = generate_atmosphere(world.size)
+        _nhz = (nhz_atmospheres
+                and orbit.hz_deviation is not None
+                and abs(orbit.hz_deviation) > 1.0)
+        if _nhz:
+            world.atmosphere, _nhz_key = generate_nhz_atmosphere(
+                world.size, orbit.hz_deviation
+            )
+        else:
+            world.atmosphere = generate_atmosphere(world.size)
+            _nhz_key = None
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=orbit.hz_deviation,
@@ -661,6 +683,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.atmosphere_detail = generate_atmosphere_detail(
             world.atmosphere, world.size, system_age_gyr, world.temperature,
             hz_deviation=orbit.hz_deviation,
+            exotic_key_override=_nhz_key,
         )
         world.hydrographics = generate_hydrographics(
             world.size, world.atmosphere, world.temperature
@@ -679,9 +702,18 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
             f"at Orbit# {orbit.orbit_number:.2f} ({orbit.orbit_au:.2f} AU)"
         )
     else:
-        # Steps 1-2: Size and Atmosphere (random as normal)
+        # Steps 1-2: Size and Atmosphere (random as normal, or NHZ override)
         world.size = generate_size()
-        world.atmosphere = generate_atmosphere(world.size)
+        _nhz = (nhz_atmospheres
+                and orbit.hz_deviation is not None
+                and abs(orbit.hz_deviation) > 1.0)
+        if _nhz:
+            world.atmosphere, _nhz_key = generate_nhz_atmosphere(
+                world.size, orbit.hz_deviation
+            )
+        else:
+            world.atmosphere = generate_atmosphere(world.size)
+            _nhz_key = None
 
         # Step 3: Temperature — derived from orbital position (WBH p.46-47)
         world.temperature = generate_temperature_from_orbit(
@@ -695,6 +727,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.atmosphere_detail = generate_atmosphere_detail(
             world.atmosphere, world.size, system_age_gyr, world.temperature,
             hz_deviation=orbit.hz_deviation,
+            exotic_key_override=_nhz_key,
         )
 
         # Step 4: Hydrographics (uses orbital-constrained temperature)
@@ -710,6 +743,11 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
                 world.atmosphere_detail, world.atmosphere,
                 world.size, world.hydrographics,
             )
+
+    # Hydrographic detail — precise surface-liquid percentage (WBH p.93)
+    world.hydrographic_detail = generate_hydrographic_detail(
+        world.hydrographics, world.size
+    )
 
     # Steps 5-7: Population, Government, Law Level
     world.population = generate_population()
@@ -779,14 +817,18 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
 def generate_full_system(
     name: str = "Unknown",
     seed: Optional[int] = None,
+    nhz_atmospheres: bool = False,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system with stellar data, orbital
     structure, and a fully characterised mainworld.
 
     Args:
-        name:  Mainworld name.
-        seed:  Optional RNG seed for reproducible results.
+        name:             Mainworld name.
+        seed:             Optional RNG seed for reproducible results.
+        nhz_atmospheres:  When True, worlds outside the habitable zone use the
+                          WBH Non-Habitable Zone atmosphere tables instead of
+                          the standard CRB roll.
 
     Returns:
         A TravellerSystem containing stellar data, orbits, and mainworld.
@@ -815,6 +857,7 @@ def generate_full_system(
             gas_giant_count=orbits.gas_giant_count,
             belt_count=orbits.belt_count,
             system_age_gyr=stellar.age_gyr,
+            nhz_atmospheres=nhz_atmospheres,
         )
 
     return TravellerSystem(
@@ -822,6 +865,7 @@ def generate_full_system(
         system_orbits=orbits,
         mainworld=mainworld,
         mainworld_orbit=mw_orbit,
+        nhz_atmospheres=nhz_atmospheres,
     )
 
 
@@ -935,6 +979,8 @@ def main() -> None:
                         help="Number of systems to generate")
     parser.add_argument("--detail", action="store_true",
                         help="Attach all secondary world SAH/social profiles and moon data")
+    parser.add_argument("--nhz-atmospheres", action="store_true",
+                        help="Use WBH Non-Habitable Zone atmosphere tables for out-of-HZ worlds")
     # --format supersedes the legacy --json flag; --json kept for back-compat
     fmt_group = parser.add_mutually_exclusive_group()
     fmt_group.add_argument("--format", choices=["text", "json", "html"],
@@ -966,6 +1012,7 @@ def main() -> None:
         system = generate_full_system(
             name=args.name if args.count == 1 else f"{args.name}-{i+1}",
             seed=args.seed if i == 0 else None,
+            nhz_atmospheres=args.nhz_atmospheres,
         )
 
         if want_detail:

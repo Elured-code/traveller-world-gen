@@ -35,5 +35,8 @@
   ],
   "pylint.interpreter": [
     "${workspaceFolder}/.venv-1/bin/python"
+  ],
+  "pylint.args": [
+    "--disable=duplicate-code,too-many-lines"
   ]
 }

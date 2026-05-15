@@ -117,8 +117,8 @@
         "code": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 15,
-          "description": "Atmosphere code (0 = None; 6 = Standard/Earth-like; 11 = Corrosive; etc.)."
+          "maximum": 17,
+          "description": "Atmosphere code (0 = None; 6 = Standard/Earth-like; 11 = Corrosive; 16 = Gas, Helium; 17 = Gas, Hydrogen — WBH NHZ codes)."
         },
         "name": {
           "type": "string",
@@ -265,6 +265,20 @@
           "type": "string",
           "minLength": 1,
           "description": "Human-readable description of surface liquid coverage."
+        },
+        "detail": {
+          "type": "object",
+          "description": "Precise hydrographic characteristics. Absent for size-0 (belt) worlds.",
+          "required": ["surface_liquid_pct"],
+          "additionalProperties": false,
+          "properties": {
+            "surface_liquid_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Precise surface liquid coverage to the nearest 1%, drawn from a flat random distribution over the code's defined range (WBH p.93)."
+            }
+          }
         }
       }
     },

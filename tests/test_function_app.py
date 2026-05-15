@@ -891,8 +891,10 @@ class TestDeterminism:
             generate_world as _gen,
             generate_atmosphere_detail as _gen_atm,
             generate_gas_mix as _gen_gas,
+            generate_unusual_subtype as _gen_unusual,
         )
         from traveller_world_physical import generate_world_physical as _gen_phys
+        from traveller_hydro_detail import generate_hydrographic_detail as _gen_hydro
         sequential_uwps = []
         for i in range(count):
             world = _gen(name=f"World-{i+1}")
@@ -903,6 +905,11 @@ class TestDeterminism:
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, None, world.hydrographics,
             )
+            _gen_unusual(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
+            )
+            world.hydrographic_detail = _gen_hydro(world.hydrographics, world.size)
             world.size_detail = _gen_phys(world)
             sequential_uwps.append(world.uwp())
 
@@ -1024,8 +1031,8 @@ class TestMainworldDetailInResponse:
             assert "profile" in world["atmosphere"]
 
     def test_batch_worlds_all_have_atmosphere_detail(self):
-        # seed=4, count=3 confirmed to produce only non-zero atmosphere worlds
-        req = make_request(method="POST", body={"count": 3, "seed": 4})
+        # seed=1, count=3 confirmed to produce only non-zero atmosphere worlds
+        req = make_request(method="POST", body={"count": 3, "seed": 1})
         body = response_json(generate_world_batch(req))
         for world in body["worlds"]:
             assert "detail" in world["atmosphere"]

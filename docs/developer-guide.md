@@ -993,6 +993,8 @@ All six generation modules target **10.00/10 per file** with Pylint 4.x. Check a
 
 Multi-file runs will show R0801 (duplicate-code) due to shared HTML boilerplate in `traveller_system_gen.py` and `traveller_world_gen.py`. This is expected — the code is intentionally kept separate (different data structures) and the per-file target is what matters.
 
+The VS Code Pylint extension can trigger the same false positives when it analyses multiple open files. `.vscode/settings.json` suppresses them via `"pylint.args": ["--disable=duplicate-code,too-many-lines"]`. See `docs/VSCODE.md` for details.
+
 Common inline suppression comments used in this codebase (with `# pylint: disable=`):
 
 | Message | Reason |

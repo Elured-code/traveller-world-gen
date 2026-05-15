@@ -145,6 +145,7 @@ from traveller_world_gen import (
     generate_unusual_subtype,
 )
 from traveller_world_physical import generate_world_physical
+from traveller_hydro_detail import generate_hydrographic_detail
 from traveller_system_gen import generate_full_system, generate_system_from_world
 from traveller_world_detail import attach_detail
 from traveller_map_fetch import generate_system_from_map
@@ -208,6 +209,9 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
             world.atmosphere_detail, world.atmosphere,
             world.size, world.hydrographics,
         )
+        world.hydrographic_detail = generate_hydrographic_detail(
+            world.hydrographics, world.size
+        )
         world.size_detail = generate_world_physical(world)
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
@@ -251,6 +255,9 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
         generate_unusual_subtype(
             world.atmosphere_detail, world.atmosphere,
             world.size, world.hydrographics,
+        )
+        world.hydrographic_detail = generate_hydrographic_detail(
+            world.hydrographics, world.size
         )
         world.size_detail = generate_world_physical(world)
     except Exception as exc:
@@ -318,6 +325,9 @@ def generate_world_batch(req: func.HttpRequest) -> func.HttpResponse:
                 world.atmosphere_detail, world.atmosphere,
                 world.size, world.hydrographics,
             )
+            world.hydrographic_detail = generate_hydrographic_detail(
+                world.hydrographics, world.size
+            )
             world.size_detail = generate_world_physical(world)
             d = world.to_dict()
             d["seed"] = seed
@@ -363,6 +373,9 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
         generate_unusual_subtype(
             world.atmosphere_detail, world.atmosphere,
             world.size, world.hydrographics,
+        )
+        world.hydrographic_detail = generate_hydrographic_detail(
+            world.hydrographics, world.size
         )
         world.size_detail = generate_world_physical(world)
         html = world.to_html()
