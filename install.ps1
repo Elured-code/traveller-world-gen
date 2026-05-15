@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Traveller World Generator — Quick Install (Windows)
+    Traveller World Generator - Quick Install (Windows)
 
 .DESCRIPTION
     Creates a Python virtual environment, installs the GUI library (PySide6),
@@ -29,7 +29,7 @@ function Fail { param([string]$Msg) Write-Host "[error]   $Msg" -ForegroundColor
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 Write-Host ""
-Write-Host "Traveller World Generator — Installation" -ForegroundColor Cyan
+Write-Host "Traveller World Generator - Installation" -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -66,7 +66,7 @@ Info "Found Python $PyVer  ($Python)"
 $VenvDir = Join-Path $ScriptDir '.venv'
 
 if (Test-Path $VenvDir) {
-    Info "Virtual environment already exists — will update packages."
+    Info "Virtual environment already exists - will update packages."
 } else {
     Info "Creating virtual environment in .venv\ ..."
     & $Python -m venv $VenvDir
@@ -84,7 +84,7 @@ Info "Upgrading pip..."
 & $VenvPython -m pip install --quiet --upgrade pip
 if ($LASTEXITCODE -ne 0) { Fail "Failed to upgrade pip." }
 
-Info "Installing PySide6 (desktop GUI library) — this may take a few minutes..."
+Info "Installing PySide6 (desktop GUI library) - this may take a few minutes..."
 & $VenvPython -m pip install --quiet "PySide6>=6.4.0"
 if ($LASTEXITCODE -ne 0) {
     Fail "Failed to install PySide6. Check your internet connection and try again."
