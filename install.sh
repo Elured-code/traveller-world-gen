@@ -49,9 +49,61 @@ for cmd in python3 python python3.11 python3.10 python3.9; do
 done
 
 if [ -z "$PYTHON" ]; then
-    fail "Python 3.9 or later is required but was not found.
-       Download from: https://www.python.org/downloads/
+    warn "Python 3.9 or later was not found."
+
+    OS_TYPE="$(uname -s)"
+
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        # macOS
+        if command -v brew &>/dev/null; then
+            info "Installing Python 3.11 via Homebrew..."
+            brew install python@3.11 \
+                || fail "Homebrew failed to install Python. Download from: https://www.python.org/downloads/"
+        else
+            fail "Python 3.9 or later is required but was not found.
+       Install Homebrew (https://brew.sh) first, then run: brew install python@3.11
+       Or download Python directly from: https://www.python.org/downloads/"
+        fi
+    elif [ "$OS_TYPE" = "Linux" ]; then
+        # Linux — detect package manager
+        if command -v apt-get &>/dev/null; then
+            info "Installing Python 3 via apt..."
+            sudo apt-get update -qq \
+                && sudo apt-get install -y python3 python3-venv \
+                || fail "apt failed to install Python. Try: sudo apt-get install python3 python3-venv"
+        elif command -v dnf &>/dev/null; then
+            info "Installing Python 3 via dnf..."
+            sudo dnf install -y python3 \
+                || fail "dnf failed to install Python. Try: sudo dnf install python3"
+        elif command -v pacman &>/dev/null; then
+            info "Installing Python 3 via pacman..."
+            sudo pacman -Sy --noconfirm python \
+                || fail "pacman failed to install Python. Try: sudo pacman -S python"
+        else
+            fail "No supported package manager found (apt, dnf, pacman).
+       Download Python 3.11 from: https://www.python.org/downloads/
        After installing, re-run this script."
+        fi
+    else
+        fail "Unsupported OS: $OS_TYPE.
+       Download Python 3.11 from: https://www.python.org/downloads/"
+    fi
+
+    # Re-check after auto-install
+    for cmd in python3.11 python3 python; do
+        if command -v "$cmd" &>/dev/null; then
+            major=$("$cmd" -c "import sys; print(sys.version_info.major)" 2>/dev/null || echo 0)
+            minor=$("$cmd" -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo 0)
+            if [ "$major" -gt 3 ] || { [ "$major" -eq 3 ] && [ "$minor" -ge 9 ]; }; then
+                PYTHON="$cmd"
+                break
+            fi
+        fi
+    done
+
+    if [ -z "$PYTHON" ]; then
+        fail "Python was installed but cannot be found. Open a new terminal and re-run install.sh"
+    fi
 fi
 
 PY_VER=$("$PYTHON" -c "import sys; print('%d.%d' % sys.version_info[:2])")
