@@ -91,6 +91,7 @@ from traveller_world_gen import (
     World, generate_atmosphere_detail, generate_gas_mix, generate_unusual_subtype,
 )
 from traveller_world_detail import attach_detail
+from traveller_hydro_detail import generate_hydrographic_detail
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +667,9 @@ def generate_system_from_map(
             world.atmosphere_detail, world.atmosphere,
             world.size, world.hydrographics,
         )
+    world.hydrographic_detail = generate_hydrographic_detail(
+        world.hydrographics, world.size
+    )
 
     system = TravellerSystem(
         stellar_system  = stellar,

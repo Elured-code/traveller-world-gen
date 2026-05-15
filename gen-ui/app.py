@@ -86,6 +86,10 @@ from traveller_world_gen import (  # noqa: E402
 )
 from traveller_world_physical import generate_world_physical, TIDAL_STATUS_LABELS  # noqa: E402
 from traveller_belt_physical import BeltPhysical  # noqa: E402
+from traveller_hydro_detail import (  # noqa: E402
+    HydrographicDetail,
+    generate_hydrographic_detail,
+)
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -439,6 +443,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_system_detail.toggled.connect(self._on_system_detail_toggled)
         self._check_physical = QCheckBox("Mainworld detail")
         self._check_physical.setEnabled(False)
+        self._check_nhz = QCheckBox("NHZ Atmospheres")
+        self._check_nhz.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
@@ -446,6 +452,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout.setContentsMargins(0, 0, 0, 0)
         check_layout.addWidget(self._check_system_detail)
         check_layout.addWidget(self._check_physical)
+        check_layout.addWidget(self._check_nhz)
         left_layout.addWidget(check_row)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
@@ -512,8 +519,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _on_system_detail_toggled(self, checked: bool) -> None:
         self._check_physical.setEnabled(checked)
+        self._check_nhz.setEnabled(checked)
         if not checked:
             self._check_physical.setChecked(False)
+            self._check_nhz.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -560,7 +569,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             )
         else:
             if full_system:
-                system = generate_full_system(name, seed=seed)
+                system = generate_full_system(
+                    name, seed=seed,
+                    nhz_atmospheres=self._check_nhz.isChecked(),
+                )
                 self._finish_system_generation(system, attach_detail_flag)
             else:
                 world = generate_world(name)
@@ -615,6 +627,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 world.atmosphere_detail, world.atmosphere,  # type: ignore[attr-defined]
                 world.size, world.hydrographics,  # type: ignore[attr-defined]
             )
+        if world.hydrographic_detail is None:  # type: ignore[attr-defined]
+            world.hydrographic_detail = generate_hydrographic_detail(  # type: ignore[attr-defined]
+                world.hydrographics, world.size  # type: ignore[attr-defined]
+            )
         if self._check_physical.isChecked():
             world.size_detail = generate_world_physical(world)  # type: ignore[attr-defined]
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
@@ -653,6 +669,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     generate_unusual_subtype(
                         world.atmosphere_detail, world.atmosphere,
                         world.size, world.hydrographics,
+                    )
+                if world.hydrographic_detail is None:
+                    world.hydrographic_detail = generate_hydrographic_detail(
+                        world.hydrographics, world.size
                     )
         if attach_detail_flag:
             _attach_detail(system)  # type: ignore[arg-type]
@@ -1166,6 +1186,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         atm_card = self._build_atmosphere_card(w)
         if atm_card is not None:
             layout.addWidget(atm_card)
+        hydro_card = self._build_hydrographic_card(w)
+        if hydro_card is not None:
+            layout.addWidget(hydro_card)
         layout.addWidget(self._build_trade_codes(w))
         notes = self._build_notes(w)
         if notes:
@@ -1421,6 +1444,17 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             if comp.percentage is not None:
                 val += f" {comp.percentage}%"
             inner.addWidget(_detail_row(label, val))
+        return group
+
+    def _build_hydrographic_card(self, w: object) -> "QGroupBox | None":
+        detail = getattr(w, "hydrographic_detail", None)
+        if not isinstance(detail, HydrographicDetail):
+            return None
+        group = QGroupBox("Hydrographic Detail")
+        inner = QVBoxLayout(group)
+        inner.setSpacing(0)
+        inner.setContentsMargins(8, 4, 8, 6)
+        inner.addWidget(_detail_row("Surface liquid", f"{detail.surface_liquid_pct}%"))
         return group
 
     def _build_notes(self, w: object) -> "QGroupBox | None":

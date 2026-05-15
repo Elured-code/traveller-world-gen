@@ -57,6 +57,7 @@ from traveller_world_gen import (
     temperature_category,
     generate_size,
     generate_atmosphere,
+    generate_nhz_atmosphere,
     generate_atmosphere_detail,
     generate_gas_mix,
     generate_temperature,
@@ -124,6 +125,8 @@ from traveller_world_gen import (
     generate_unusual_subtype,
     UnusualSubtype,
 )
+from traveller_system_gen import generate_full_system
+from traveller_world_detail import attach_detail, _ehex_to_int
 
 
 # ===========================================================================
@@ -908,15 +911,15 @@ class TestTaintSubtypeRoll:
         assert needs_second is False
 
     def test_dm_minus_2_applied_for_code_4(self):
-        # With DM-2, a raw roll of 4 (minimum non-Biologic after DM) → roll 2 → Low Oxygen.
+        # With DM-2, a raw roll of 4 → Low Oxygen; ppo < 0.1 so L is accepted.
         with patch("traveller_world_gen.roll", return_value=4):
-            taint, _ = _roll_single_taint(4)
+            taint, _ = _roll_single_taint(4, ppo=0.05)
         assert taint.subtype_code == "L"
 
     def test_dm_plus_2_applied_for_code_9(self):
-        # With DM+2, a raw roll of 10 → 12 → High Oxygen.
+        # With DM+2, a raw roll of 10 → 12 → High Oxygen; ppo > 0.5 so H is accepted.
         with patch("traveller_world_gen.roll", return_value=10):
-            taint, _ = _roll_single_taint(9)
+            taint, _ = _roll_single_taint(9, ppo=0.6)
         assert taint.subtype_code == "H"
 
     def test_no_dm_for_code_2(self):
@@ -937,6 +940,56 @@ class TestTaintSubtypeRoll:
             )
             assert match is not None
             assert taint.subtype == match
+
+
+# ===========================================================================
+# TestTaintPpoValidation — High/Low Oxygen gated by ppo (issue #55)
+# ===========================================================================
+
+class TestTaintPpoValidation:
+    """Tests for the ppo-based H/L taint validation added in issue #55."""
+
+    def test_high_oxygen_rerolled_when_ppo_normal(self):
+        # Force a 2D roll of 12 (H) but ppo is in the normal range → must reroll.
+        rolls = iter([12, 6, 6, 6])  # first → H (rejected), second → result 6 (Gas Mix)
+        with patch("traveller_world_gen.roll", side_effect=rolls):
+            taint, _ = _roll_single_taint(7, ppo=0.3)
+        assert taint.subtype_code != "H"
+
+    def test_high_oxygen_accepted_when_ppo_above_threshold(self):
+        with patch("traveller_world_gen.roll", return_value=10):
+            taint, _ = _roll_single_taint(9, ppo=0.6)
+        assert taint.subtype_code == "H"
+
+    def test_low_oxygen_rerolled_when_ppo_normal(self):
+        # Force a 2D roll of 2 (L) but ppo is in the normal range → must reroll.
+        rolls = iter([2, 6, 6, 6])  # first → L (rejected), second → result 6 (Gas Mix)
+        with patch("traveller_world_gen.roll", side_effect=rolls):
+            taint, _ = _roll_single_taint(7, ppo=0.3)
+        assert taint.subtype_code != "L"
+
+    def test_low_oxygen_accepted_when_ppo_below_threshold(self):
+        with patch("traveller_world_gen.roll", return_value=4):
+            taint, _ = _roll_single_taint(4, ppo=0.05)
+        assert taint.subtype_code == "L"
+
+    def test_h_and_l_allowed_when_ppo_none(self):
+        # ppo=None disables the constraint — H and L must be reachable.
+        with patch("traveller_world_gen.roll", return_value=10):
+            taint_h, _ = _roll_single_taint(9, ppo=None)
+        assert taint_h.subtype_code == "H"
+        with patch("traveller_world_gen.roll", return_value=4):
+            taint_l, _ = _roll_single_taint(4, ppo=None)
+        assert taint_l.subtype_code == "L"
+
+    def test_no_high_oxygen_for_code2_with_typical_ppo(self):
+        # Code 2 (Very Thin Tainted) max ppo ≈ 0.17 bar — H must never appear.
+        random.seed(0)
+        for _ in range(200):
+            taint, _ = _roll_single_taint(2, ppo=0.15)
+            assert taint.subtype_code != "H", (
+                f"High Oxygen rolled for code 2 with ppo=0.15 bar: {taint}"
+            )
 
 
 # ===========================================================================
@@ -3974,9 +4027,9 @@ class TestJsonSchema:
         atm_props = self._load_schema()["properties"]["atmosphere"]["properties"]
         assert atm_props["code"]["minimum"] == 0
 
-    def test_schema_atmosphere_code_maximum_fifteen(self):
+    def test_schema_atmosphere_code_maximum_seventeen(self):
         atm_props = self._load_schema()["properties"]["atmosphere"]["properties"]
-        assert atm_props["code"]["maximum"] == 15
+        assert atm_props["code"]["maximum"] == 17
 
     def test_schema_law_level_minimum_zero(self):
         assert self._load_schema()["properties"]["law_level"]["minimum"] == 0
@@ -4771,7 +4824,8 @@ class TestOptionalTaintCodes13And14:
 
     def test_taint_fires_for_code_14(self):
         from unittest.mock import patch
-        with patch("traveller_world_gen.random.randint", return_value=6):
+        # return_value=4: 1D check = 4 ≥ 4 fires; roll(2)=8 → Sulphur (S), not H/L.
+        with patch("traveller_world_gen.random.randint", return_value=4):
             detail = generate_atmosphere_detail(14, 9)
         assert len(detail.taints) >= 1
 
@@ -5043,3 +5097,289 @@ class TestUnusualSubtypeDisplay:
     def test_summary_no_unusual_line_for_code_14(self):
         text = self._world_no_unusual().summary()
         assert "Unusual subtype" not in text
+
+
+# ===========================================================================
+# TestNhzAtmosphereTableLookup
+# ===========================================================================
+
+class TestNhzAtmosphereTableLookup:
+    """Tests for generate_nhz_atmosphere() table selection and roll results."""
+
+    def test_size_0_returns_atmosphere_0(self):
+        atm, key = generate_nhz_atmosphere(0, hz_deviation=-3.0)
+        assert atm == 0
+        assert key is None
+
+    def test_size_1_returns_atmosphere_0(self):
+        atm, key = generate_nhz_atmosphere(1, hz_deviation=4.0)
+        assert atm == 0
+        assert key is None
+
+    def test_hot_a_none_for_low_roll(self):
+        # Hot A (hz ≤ -2.01), roll result 0 → entry 0 → atm 0 (None)
+        with patch("traveller_world_gen.roll", return_value=0):
+            atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
+        assert atm == 0
+        assert key is None
+
+    def test_hot_a_exotic_base_when_irritant_not_rolled(self):
+        # Hot A, result 5 → (10, 5, 4, True, False), 1D=3 < 4 → base_key 5 (Thin)
+        with patch("traveller_world_gen.roll", return_value=5):
+            with patch("traveller_world_gen.random.randint", return_value=3):
+                atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
+        assert atm == 10
+        assert key == 5
+
+    def test_hot_a_exotic_irritant_when_roll_ge_4(self):
+        # Hot A, result 5 → (10, 5, 4, True, False), 1D=4 → irr_key 4 (Thin Irritant)
+        with patch("traveller_world_gen.roll", return_value=5):
+            with patch("traveller_world_gen.random.randint", return_value=4):
+                atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
+        assert atm == 10
+        assert key == 4
+
+    def test_hot_a_corrosive_for_result_10(self):
+        # Hot A, result 10 → (11, None, None, False, False)
+        with patch("traveller_world_gen.roll", return_value=10):
+            atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
+        assert atm == 11
+        assert key is None
+
+    def test_hot_b_fixed_exotic_no_irritant_roll(self):
+        # Hot B (hz -1.01 to -2.0), result 6 → (10, 6, None, False, False) — Standard, no roll
+        with patch("traveller_world_gen.roll", return_value=6):
+            atm, key = generate_nhz_atmosphere(5, hz_deviation=-1.5)
+        assert atm == 10
+        assert key == 6
+
+    def test_hot_b_very_dense_with_irritant_roll(self):
+        # Hot B, result 10 → (10, 10, 11, True, False), 1D=4 → irr_key 11 (VD Irritant)
+        with patch("traveller_world_gen.roll", return_value=10):
+            with patch("traveller_world_gen.random.randint", return_value=4):
+                atm, key = generate_nhz_atmosphere(5, hz_deviation=-1.5)
+        assert atm == 10
+        assert key == 11
+
+    def test_cold_a_trace_for_result_2(self):
+        # Cold A (hz +1.01 to +3.0), result 2 → (1, None, None, False, False) → Trace
+        with patch("traveller_world_gen.roll", return_value=2):
+            atm, key = generate_nhz_atmosphere(5, hz_deviation=2.0)
+        assert atm == 1
+        assert key is None
+
+    def test_cold_a_very_dense_d_for_result_13(self):
+        # Cold A, result 13 → (13, None, None, False, False) → Very Dense
+        with patch("traveller_world_gen.roll", return_value=13):
+            atm, key = generate_nhz_atmosphere(10, hz_deviation=2.0)
+        assert atm == 13
+        assert key is None
+
+    def test_cold_b_gas_helium_for_result_13(self):
+        # Cold B (hz ≥ +3.01), result 13 → (16, None, None, False, False) → Gas Helium
+        with patch("traveller_world_gen.roll", return_value=13):
+            atm, key = generate_nhz_atmosphere(10, hz_deviation=4.0)
+        assert atm == 16
+        assert key is None
+
+    def test_cold_b_gas_hydrogen_for_result_14(self):
+        # Cold B, result 14 → (17, None, None, False, False) → Gas Hydrogen
+        with patch("traveller_world_gen.roll", return_value=14):
+            atm, key = generate_nhz_atmosphere(10, hz_deviation=4.0)
+        assert atm == 17
+        assert key is None
+
+    def test_dagger_dm_triggers_irritant_on_roll_3(self):
+        # Hot A, result 7 → (10, 8, 9, True, True), hz=-3.5 (dagger applies)
+        # 1D=3, DM+1 → 4 ≥ 4 → irr_key 9 (Dense Irritant)
+        with patch("traveller_world_gen.roll", return_value=7):
+            with patch("traveller_world_gen.random.randint", return_value=3):
+                atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.5)
+        assert atm == 10
+        assert key == 9
+
+    def test_dagger_dm_absent_when_hz_gt_minus3(self):
+        # Hot A, result 7 → (10, 8, 9, True, True), hz=-2.5 (dagger does NOT apply)
+        # 1D=3, no DM → 3 < 4 → base_key 8 (Dense)
+        with patch("traveller_world_gen.roll", return_value=7):
+            with patch("traveller_world_gen.random.randint", return_value=3):
+                atm, key = generate_nhz_atmosphere(5, hz_deviation=-2.5)
+        assert atm == 10
+        assert key == 8
+
+
+# ===========================================================================
+# TestNhzAtmosphereDetail
+# ===========================================================================
+
+class TestNhzAtmosphereDetail:
+    """Tests for generate_atmosphere_detail() NHZ extensions."""
+
+    def test_code_16_returns_empty_detail(self):
+        detail = generate_atmosphere_detail(16, 5)
+        assert detail.pressure_bar is None
+        assert detail.oxygen_partial_pressure is None
+        assert detail.taints == []
+        assert detail.subtype_code is None
+
+    def test_code_17_returns_empty_detail(self):
+        detail = generate_atmosphere_detail(17, 8)
+        assert detail.pressure_bar is None
+        assert detail.taints == []
+
+    def test_exotic_key_override_5_gives_thin_subtype(self):
+        # Override key 5 = Thin (not irritant); pressure in 0.43–0.70 bar range
+        with fixed_roll(3):
+            detail = generate_atmosphere_detail(10, 5, exotic_key_override=5)
+        assert detail.subtype_name is not None
+        assert "Thin" in detail.subtype_name
+        assert detail.pressure_bar is not None
+        assert 0.43 <= detail.pressure_bar <= 0.70
+
+    def test_exotic_key_override_8_gives_dense_subtype(self):
+        # Override key 8 = Dense; pressure in 1.50–2.49 bar range
+        with fixed_roll(1):
+            detail = generate_atmosphere_detail(10, 6, exotic_key_override=8)
+        assert detail.subtype_name is not None
+        assert "Dense" in detail.subtype_name
+
+    def test_no_override_does_not_lock_subtype(self):
+        # Without override the subtype is rolled; result is still valid
+        detail = generate_atmosphere_detail(10, 6)
+        assert detail.subtype_code is not None
+
+
+# ===========================================================================
+# TestNhzHydrographics
+# ===========================================================================
+
+class TestNhzHydrographics:
+    """Tests that NHZ gas atmosphere codes force hydrographics to 0."""
+
+    def test_hydro_zero_for_atmosphere_16(self):
+        result = generate_hydrographics(8, 16, "Temperate")
+        assert result == 0
+
+    def test_hydro_zero_for_atmosphere_17(self):
+        result = generate_hydrographics(8, 17, "Frozen")
+        assert result == 0
+
+
+# ===========================================================================
+# TestNhzAtmosphereNames
+# ===========================================================================
+
+class TestNhzAtmosphereNames:
+    """Tests for NHZ atmosphere code names and profile formatting."""
+
+    def test_code_16_name(self):
+        assert ATMOSPHERE_NAMES[16] == "Gas, Helium"
+
+    def test_code_17_name(self):
+        assert ATMOSPHERE_NAMES[17] == "Gas, Hydrogen"
+
+    def test_code_16_profile_with_detail(self):
+        assert format_atmosphere_profile(16, AtmosphereDetail()) == "G"
+
+    def test_code_17_profile_with_detail(self):
+        assert format_atmosphere_profile(17, AtmosphereDetail()) == "H"
+
+    def test_code_16_profile_without_detail(self):
+        assert format_atmosphere_profile(16, None) == "G"
+
+    def test_code_17_profile_without_detail(self):
+        assert format_atmosphere_profile(17, None) == "H"
+
+
+# ===========================================================================
+# NHZ atmosphere propagation to secondary worlds and moons
+# ===========================================================================
+
+# CRB standard-tainted atmosphere codes — physically impossible in deep cold or
+# hot NHZ zones because the NHZ tables never map to these codes.
+_CRB_TAINTED_CODES = {2, 4, 7, 9}
+
+# Seed with a dense outer system so there are plenty of secondaries far from
+# the HZ to test.  2117505786 → M2 V, 7 terrestrials, all at hz_dev >= +1.35.
+_NHZ_TEST_SEED = 2117505786
+
+
+class TestNhzSecondaryWorlds:
+    """NHZ atmospheres are applied to secondary terrestrial worlds and moons."""
+
+    def test_nhz_flag_stored_on_system(self):
+        sys_on  = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=True)
+        sys_off = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=False)
+        assert sys_on.nhz_atmospheres is True
+        assert sys_off.nhz_atmospheres is False
+
+    def test_nhz_secondaries_no_standard_tainted_at_deep_cold(self):
+        # Worlds at hz_dev > 3.0 are well beyond Cold-A/B boundaries.
+        # Standard CRB tainted codes (2,4,7,9) must not appear.
+        sys = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=True)
+        attach_detail(sys)
+        for orbit in sys.system_orbits.orbits:
+            if orbit.hz_deviation <= 3.0:
+                continue
+            d = orbit.detail
+            if d and len(d.sah) >= 2 and not orbit.is_mainworld_candidate:
+                atm = _ehex_to_int(d.sah[1])
+                assert atm not in _CRB_TAINTED_CODES, (
+                    f"Orbit {orbit.orbit_number:.2f} (hz_dev={orbit.hz_deviation:.2f}) "
+                    f"got CRB tainted code {atm}"
+                )
+
+    def test_nhz_off_secondary_deterministic(self):
+        # With NHZ off the secondary SAH values must be stable across runs.
+        # attach_detail must run immediately after generate_full_system so both
+        # calls share the same RNG state at the point attach_detail starts.
+        sys1 = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=False)
+        attach_detail(sys1)
+
+        sys2 = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=False)
+        attach_detail(sys2)
+
+        for o1, o2 in zip(sys1.system_orbits.orbits, sys2.system_orbits.orbits):
+            sah1 = o1.detail.sah if o1.detail else None
+            sah2 = o2.detail.sah if o2.detail else None
+            assert sah1 == sah2, f"Orbit {o1.orbit_number:.2f}: {sah1!r} != {sah2!r}"
+
+    def test_nhz_not_called_for_inner_hz_worlds(self):
+        # generate_nhz_atmosphere must never be called for worlds where
+        # abs(hz_deviation) <= 1.0 — the standard CRB roll is used there.
+        from unittest.mock import patch as _patch
+        with _patch(
+            "traveller_world_detail.generate_nhz_atmosphere",
+            wraps=generate_nhz_atmosphere,
+        ) as mock_nhz:
+            sys = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=True)
+            attach_detail(sys)
+
+        for call in mock_nhz.call_args_list:
+            hz_dev = call.args[1]
+            assert abs(hz_dev) > 1.0, (
+                f"generate_nhz_atmosphere called with hz_deviation={hz_dev:.3f} "
+                f"which is inside the HZ (abs <= 1.0)"
+            )
+
+    def test_nhz_size1_secondary_returns_vacuum(self):
+        # generate_nhz_atmosphere returns (0, None) for size <= 1, no extra dice.
+        # Drive a scenario with many seeds and confirm any size-1 secondary
+        # with nhz_atmospheres=True still has atmosphere code 0.
+        found = False
+        for seed in range(200):
+            sys = generate_full_system("T", seed=seed, nhz_atmospheres=True)
+            attach_detail(sys)
+            for orbit in sys.system_orbits.orbits:
+                if orbit.is_mainworld_candidate or not orbit.detail:
+                    continue
+                if orbit.world_type != "terrestrial":
+                    continue
+                sah = orbit.detail.sah
+                if len(sah) >= 1 and sah[0] in ("0", "1"):
+                    found = True
+                    atm = _ehex_to_int(sah[1]) if len(sah) >= 2 else 0
+                    assert atm == 0, (
+                        f"seed={seed} size-{sah[0]} secondary has atmosphere {atm}"
+                    )
+        assert found, "No size-0/1 secondaries found in 200 seeds — increase range"
