@@ -109,6 +109,16 @@ def esc(s: str) -> str:
              .replace('"', "&quot;"))
 
 
+def _fmt_period(period_yr: float) -> str:
+    """Format an orbital period for display: hours, days, or years."""
+    days = period_yr * 365.25
+    if days < 1.0:
+        return f"{days * 24:.1f}h"
+    if days < 365.25:
+        return f"{days:.1f}d"
+    return f"{period_yr:.2f}y"
+
+
 # ---------------------------------------------------------------------------
 # Arc / marker geometry
 # ---------------------------------------------------------------------------
@@ -178,13 +188,14 @@ _TBL_FONT_SM  = 9    # secondary text size
 _TBL_COL_PAD  = 12   # left padding inside each column
 
 # Column offsets within a table column (px from column left + _TBL_COL_PAD)
-_C_IDX   = 0
-_C_ORBIT = 16
-_C_AU    = 58
-_C_TYPE  = 120
-_C_PROF  = 168
-_C_CODES = 268
-_C_ZONE  = 398
+_C_IDX    = 0
+_C_ORBIT  = 16
+_C_AU     = 58
+_C_TYPE   = 120
+_C_PROF   = 168
+_C_CODES  = 268
+_C_ZONE   = 398
+_C_PERIOD = 490   # orbital period; world orbit periods deferred to future work
 
 
 def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
@@ -487,8 +498,12 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                    f'{star.subtype if star.subtype is not None else ""}'
                    f' {star.lum_class}')
         if star.orbit_number > 0:
+            period_hdr = ""
+            if star.orbit_period_yr is not None:
+                period_hdr = f"  {_fmt_period(star.orbit_period_yr)}"
             hdr = (f'Star {d}  {cls}  {star.mass:.2f} M☉  '
-                   f'Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)')
+                   f'Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)'
+                   f'{period_hdr}')
         else:
             hdr = f'Star {d}  {cls}  {star.mass:.2f} M☉  primary'
         s.append(
@@ -503,13 +518,14 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
 
         # Column labels
         col_labels = [
-            (_C_IDX,   "#"),
-            (_C_ORBIT, "Orbit#"),
-            (_C_AU,    "AU"),
-            (_C_TYPE,  "Type"),
-            (_C_PROF,  "Profile"),
-            (_C_CODES, "Codes"),
-            (_C_ZONE,  "Zone  ♦"),
+            (_C_IDX,    "#"),
+            (_C_ORBIT,  "Orbit#"),
+            (_C_AU,     "AU"),
+            (_C_TYPE,   "Type"),
+            (_C_PROF,   "Profile"),
+            (_C_CODES,  "Codes"),
+            (_C_ZONE,   "Zone  ♦"),
+            (_C_PERIOD, "Period"),
         ]
         for cx, lbl in col_labels:
             s.append(
@@ -563,6 +579,12 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                     f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
                     f'{esc(cls)}</text>'
                 )
+                if st.orbit_period_yr is not None:
+                    s.append(
+                        f'<text x="{bx + _C_PERIOD}" y="{ry}" '
+                        f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
+                        f'{esc(_fmt_period(st.orbit_period_yr))}</text>'
+                    )
                 continue
 
             o      = row_item
