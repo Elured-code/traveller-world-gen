@@ -455,6 +455,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_physical.setEnabled(False)
         self._check_nhz = QCheckBox("NHZ Atmospheres")
         self._check_nhz.setEnabled(False)
+        self._check_ecc = QCheckBox("Orbital Eccentricity")
+        self._check_ecc.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
@@ -463,6 +465,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout.addWidget(self._check_system_detail)
         check_layout.addWidget(self._check_physical)
         check_layout.addWidget(self._check_nhz)
+        check_layout.addWidget(self._check_ecc)
         left_layout.addWidget(check_row)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
@@ -530,9 +533,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _on_system_detail_toggled(self, checked: bool) -> None:
         self._check_physical.setEnabled(checked)
         self._check_nhz.setEnabled(checked)
+        self._check_ecc.setEnabled(checked)
         if not checked:
             self._check_physical.setChecked(False)
             self._check_nhz.setChecked(False)
+            self._check_ecc.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -582,6 +587,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 system = generate_full_system(
                     name, seed=seed,
                     nhz_atmospheres=self._check_nhz.isChecked(),
+                    orbital_eccentricity=self._check_ecc.isChecked(),
                 )
                 self._finish_system_generation(system, attach_detail_flag)
             else:
