@@ -1430,7 +1430,7 @@ class TestAtmosphereDetailTaints:
         schema_path = os.path.join(
             os.path.dirname(__file__), "..", "traveller_world_schema.json"
         )
-        with open(schema_path) as f:
+        with open(schema_path, encoding="utf-8") as f:
             schema = json.load(f)
         for code in _TAINTED_CODES:
             random.seed(code)
