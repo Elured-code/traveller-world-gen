@@ -165,10 +165,11 @@ class Star:
     temperature: int        # Kelvin
     diameter: float         # Solar diameters
     luminosity: float       # Solar luminosities (Stefan-Boltzmann derived)
-    orbit_number: float     # Orbit# of this star around the primary (0.0 for primary)
-    orbit_au: float         # AU equivalent
-    age_gyr: float          # System age in Gyr (same for all stars)
-    ms_lifespan_gyr: float  # Main sequence lifespan in Gyr
+    orbit_number: float         # Orbit# of this star around the primary (0.0 for primary)
+    orbit_au: float             # AU equivalent
+    age_gyr: float              # System age in Gyr (same for all stars)
+    ms_lifespan_gyr: float      # Main sequence lifespan in Gyr
+    orbit_period_yr: Optional[float]  # Orbital period in years; None for primary
 
 @dataclass
 class StarSystem:
@@ -177,6 +178,8 @@ class StarSystem:
 ```
 
 **Companion vs secondary stars:** Companion stars share the same `orbit_number` as their parent and have `role="companion"`. Their designation is the parent's designation plus a lowercase letter (e.g., parent `"A"` → companion `"Aa"`, `"Ab"`). Close/Near/Far secondary stars have `role` set to their separation type and a separate `orbit_number`.
+
+**Orbital periods:** `Star.orbit_period_yr` is computed in `generate_stellar_data()` using `Period (yr) = √(AU³ / (M_central + m))`. For companions, `M_central` is the parent star's mass alone. For secondaries, `M_central` is the combined mass of all stars whose effective system position is inside the secondary's orbit — including companions to inner stars (a companion Ba to B has effective position = B's orbit#, so it is included in Ca's central mass). No dice rolls are made; the computation runs after all generation is complete and does not affect any other seed. The period is included in `Star.to_dict()` and shown in `StarSystem.summary()` and the `system_map.py` table zone.
 
 **Mass ordering invariant:** The primary star is always the most massive. Non-primary star types are determined by comparing `candidate.mass > parent.mass`, not by spectral letter alone (M0 V = 0.50 M☉ vs M7 V = 0.12 M☉ — same letter, very different mass). This was a compliance bug fixed during development.
 
@@ -691,7 +694,7 @@ python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detai
 Generates an SVG diagram of a complete star system. The canvas has two zones stacked vertically:
 
 - **Arc zones** — one per star that has orbit slots. Each zone uses its own log-AU radial scale so the star's orbits fill the available width. Arcs are right-facing semicircles; the sweep angle per orbit is set so every arc reaches the same top and bottom y-coordinate within its zone. Companion-star dashed arcs are rendered inside the primary zone for context.
-- **Table zone** — one column per star, listing orbit slots in orbit-number order. Column count grows with the stellar system; use `--width` to avoid cramping on multi-star systems.
+- **Table zone** — one column per star, listing orbit slots in orbit-number order. Column count grows with the stellar system; use `--width` to avoid cramping on multi-star systems. Each column has a star header line, a column label sub-header row (`#  Orbit#  AU  Type  Profile  Codes  Zone ♦  Period`), and then one data row per orbit slot. The `Zone ♦` column shows the temperature zone followed by the moon count (e.g., `Temperate  3♦`) when `attach_detail()` has been called. The `Period` column shows the orbital period for companion/secondary star rows (auto-scaled to hours, days, or years); world orbit periods will populate this column in a future update. In the primary star's column, close/near/far secondary stars are also listed as rows interleaved by orbit number, and non-primary column headers include the star's orbital period. The period value comes from `Star.orbit_period_yr`.
 
 **Key public API:**
 
