@@ -45,7 +45,7 @@ from traveller_world_detail import attach_detail  # pylint: disable=wrong-import
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
-class ColourPalette:
+class ColourPalette:  # pylint: disable=too-many-instance-attributes,missing-class-docstring
     bg: str              # background
     gg: str              # gas giant
     inh: str             # inhabited terrestrial
@@ -185,7 +185,11 @@ _C_CODES = 268
 _C_ZONE  = 398
 
 
-def build_svg(system: Any, canvas_w: int = 1600, palette: ColourPalette = PALETTE_DARK) -> tuple[str, int]:  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
+def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
+    system: Any,
+    canvas_w: int = 1600,
+    palette: ColourPalette = PALETTE_DARK,
+) -> tuple[str, int]:
     """Build and return (svg_string, canvas_height) for the given system."""
     mw        = system.mainworld
     # Sort orbit slots: all Star-A orbits first, then B, then C, etc.
@@ -209,9 +213,11 @@ def build_svg(system: Any, canvas_w: int = 1600, palette: ColourPalette = PALETT
     available  = arc_zone_h // 2 - arc_margin   # fixed arc half-height in pixels
     star_r_px  = max(6, int(arc_zone_h * 0.022))
 
-    # Table zone metrics
-    max_rows   = max((len(g) for g in star_groups.values()), default=0)
-    sep_y      = len(active_stars) * arc_zone_h + 1
+    # Table zone metrics — primary column includes companion rows
+    pri_desig = next(s.designation for s in all_stars if s.orbit_number == 0)
+    pri_rows  = len(star_groups[pri_desig]) + len(sec_stars)
+    max_rows  = max(pri_rows, max((len(g) for g in star_groups.values()), default=0))
+    sep_y     = len(active_stars) * arc_zone_h + 1
     tbl_h      = _TBL_ROW0_OFF + max_rows * _TBL_ROW_H + _TBL_BOT_PAD
     canvas_h   = sep_y + tbl_h
     n_tbl_cols = len(star_desigs)
@@ -491,9 +497,50 @@ def build_svg(system: Any, canvas_w: int = 1600, palette: ColourPalette = PALETT
             f'stroke="{palette.axis}" stroke-width="0.5" opacity="0.40"/>'
         )
 
-        # Data rows
-        for ri, o in enumerate(group):
-            ry     = row0_y + ri * _TBL_ROW_H
+        # Data rows — primary column merges companion star rows in orbit# order
+        if star.orbit_number == 0:
+            merged_rows: list[tuple[str, Any]] = (
+                [("orbit", o) for o in group]
+                + [("comp", st) for st in sec_stars]
+            )
+            merged_rows.sort(key=lambda x: x[1].orbit_number)
+        else:
+            merged_rows = [("orbit", o) for o in group]
+
+        for ri, (row_kind, row_item) in enumerate(merged_rows):
+            ry = row0_y + ri * _TBL_ROW_H
+
+            if row_kind == "comp":
+                st  = row_item
+                cls = (f'{st.spectral_type}'
+                       f'{st.subtype if st.subtype is not None else ""} {st.lum_class}')
+                s.append(
+                    f'<text x="{bx + _C_IDX}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}">★</text>'
+                )
+                s.append(
+                    f'<text x="{bx + _C_ORBIT}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_LG}" fill="{palette.star_sec}">'
+                    f'{st.orbit_number:.2f}</text>'
+                )
+                s.append(
+                    f'<text x="{bx + _C_AU}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
+                    f'{st.orbit_au:.3f} AU</text>'
+                )
+                s.append(
+                    f'<text x="{bx + _C_TYPE}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}">'
+                    f'Star {esc(st.designation)}</text>'
+                )
+                s.append(
+                    f'<text x="{bx + _C_PROF}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
+                    f'{esc(cls)}</text>'
+                )
+                continue
+
+            o      = row_item
             idx    = orbit_idx[id(o)]
             is_mw  = o.is_mainworld_candidate
             detail = getattr(o, "detail", None)

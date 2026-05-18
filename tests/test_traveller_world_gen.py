@@ -5383,3 +5383,69 @@ class TestNhzSecondaryWorlds:
                         f"seed={seed} size-{sah[0]} secondary has atmosphere {atm}"
                     )
         assert found, "No size-0/1 secondaries found in 200 seeds — increase range"
+
+
+class TestCompanionExclusionZone:
+    """Companion star at orbit# < 1.0 must push primary MAO to companion+3.0."""
+
+    def test_no_primary_worlds_inside_companion_exclusion_zone(self):
+        # Seed 39 has a close secondary (Star B) at orbit# ~0.90.
+        # WBH exclusion zone: [0.90-1.0, 0.90+3.0] = [-0.10, 3.90].
+        # All primary-star worlds must be at orbit# >= 3.90 after the fix.
+        from traveller_system_gen import generate_full_system
+
+        sys = generate_full_system("X", seed=39)
+        stars = sys.stellar_system.stars
+        # Find close/near/far secondaries of the primary
+        companions = [
+            s for s in stars
+            if s.role in ("close", "near", "far") and s.orbit_number
+        ]
+        if not companions:
+            pytest.skip("Seed 39 has no close/near/far secondary — re-seed check")
+
+        for comp in companions:
+            outer_excl = comp.orbit_number + 3.0
+            primary_desig = next(
+                s.designation for s in stars if s.role == "primary"
+            )
+            for orbit in sys.system_orbits.orbits:
+                if orbit.star_designation != primary_desig:
+                    continue
+                if orbit.world_type == "empty":
+                    continue
+                assert orbit.orbit_number >= outer_excl, (
+                    f"seed=39: primary world at orbit# {orbit.orbit_number:.2f} is "
+                    f"inside companion exclusion zone (companion at {comp.orbit_number:.2f}, "
+                    f"outer excl = {outer_excl:.2f})"
+                )
+
+    def test_companion_exclusion_scan_multi_seed(self):
+        # Scan 500 seeds; for every system with a close companion whose
+        # companion_orbit - 1.0 < primary MAO, assert no primary world lands
+        # inside the [companion-1, companion+3] band.
+        from traveller_system_gen import generate_full_system
+
+        for seed in range(500):
+            sys = generate_full_system("X", seed=seed)
+            stars = sys.stellar_system.stars
+            primary_desig = next(
+                s.designation for s in stars if s.role == "primary"
+            )
+            companions = [
+                s for s in stars
+                if s.role in ("close", "near", "far") and s.orbit_number
+            ]
+            for comp in companions:
+                lo = comp.orbit_number - 1.0
+                hi = comp.orbit_number + 3.0
+                for orbit in sys.system_orbits.orbits:
+                    if orbit.star_designation != primary_desig:
+                        continue
+                    if orbit.world_type == "empty":
+                        continue
+                    on = orbit.orbit_number
+                    assert not (lo <= on <= hi), (
+                        f"seed={seed}: primary world at orbit# {on:.2f} is inside "
+                        f"companion exclusion zone [{lo:.2f}, {hi:.2f}]"
+                    )

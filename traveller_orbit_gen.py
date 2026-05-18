@@ -397,6 +397,11 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
                     excl = other.orbit_number - 1.0
                     if excl > mao:
                         max_o = min(max_o, excl)
+                    else:
+                        # Companion orbit is inside MAO+1: no inner zone exists.
+                        # Push MAO past the outer exclusion boundary (WBH: companion+3).
+                        mao = max(mao, other.orbit_number + 3.0)
+                        star_mao[star.designation] = mao
         elif star.role in ("close","near","far") and star.orbit_number:
             max_o = max(mao+0.1, star.orbit_number - 3.0)
         elif star.role == "companion":
