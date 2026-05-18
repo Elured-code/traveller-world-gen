@@ -109,7 +109,7 @@ if not exist "!VENV_PYTHON!" (
     exit /b 1
 )
 
-rem -- 3. Install PySide6 -------------------------------------------------------
+rem -- 3. Install dependencies --------------------------------------------------
 
 echo [install] Upgrading pip...
 "!VENV_PYTHON!" -m pip install --quiet --upgrade pip
@@ -118,13 +118,27 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo [install] Installing backend dependencies (azure-functions, jsonschema)...
+"!VENV_PYTHON!" -m pip install --quiet -r "%~dp0requirements.txt"
+if errorlevel 1 (
+    echo [error]   Failed to install backend dependencies.
+    exit /b 1
+)
+
 echo [install] Installing PySide6 (desktop GUI library) - this may take a few minutes...
-"!VENV_PYTHON!" -m pip install --quiet "PySide6>=6.4.0"
+"!VENV_PYTHON!" -m pip install --quiet -r "%~dp0gen-ui\requirements.txt"
 if errorlevel 1 (
     echo [error]   Failed to install PySide6. Check your internet connection and try again.
     exit /b 1
 )
-echo [install] PySide6 installed.
+
+echo [install] Installing dev tools (pytest, pylint)...
+"!VENV_PYTHON!" -m pip install --quiet -r "%~dp0requirements-dev.txt"
+if errorlevel 1 (
+    echo [error]   Failed to install dev tools.
+    exit /b 1
+)
+echo [install] All dependencies installed.
 
 rem -- 4. Create launcher batch files -------------------------------------------
 
@@ -186,3 +200,11 @@ echo     run-mapfetch --sector "Spinward Marches" --name Regina
 echo.
 
 endlocal
+
+rem -- 6. Activate virtual environment ------------------------------------------
+if not defined VIRTUAL_ENV (
+    echo [install] Activating virtual environment...
+    call "%~dp0.venv\Scripts\activate.bat"
+) else (
+    echo [install] Virtual environment already active.
+)

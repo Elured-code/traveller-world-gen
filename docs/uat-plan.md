@@ -16,8 +16,8 @@ this plan focuses on observable UI behaviour only.
 
 | Requirement | Detail |
 |-------------|--------|
-| Python | 3.11 via `.venv-1` |
-| Launch | `.venv-1/bin/python gen-ui/app.py` from the repo root |
+| Python | 3.11 via `.venv` |
+| Launch | `.venv/bin/python gen-ui/app.py` from the repo root |
 | macOS SSL | Run `Install Certificates.command` in the Python framework dir before testing TravellerMap lookups |
 | Network | Tests in §5 (TravellerMap) require an active internet connection |
 
@@ -33,7 +33,7 @@ re-run outcome alongside the original.
 
 | ID | Description | Pre-conditions | Steps | Expected result | Result |
 |----|-------------|----------------|-------|-----------------|--------|
-| UAT-001 | Application launches without error | `.venv-1` active | Run `.venv-1/bin/python gen-ui/app.py` | Main window opens; no console traceback | |
+| UAT-001 | Application launches without error | `.venv` active | Run `.venv/bin/python gen-ui/app.py` | Main window opens; no console traceback | |
 | UAT-002 | Initial widget state | App just launched | Observe controls panel | "Procedural" radio selected; "TravellerMap" radio present; "System detail" checkbox unchecked and enabled; "Mainworld detail" checkbox unchecked and **disabled**; "Generate" button present | |
 | UAT-003 | Initial result panel shows placeholder | App just launched | Observe result area | Result panel is empty / shows a placeholder; no world card or error visible | |
 

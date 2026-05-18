@@ -10,7 +10,6 @@ build/
 
 # ── Virtual environments ────────────────────────────────────────────────────
 .venv/
-.venv-1/
 venv/
 env/
 ENV/
