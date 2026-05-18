@@ -328,12 +328,14 @@ class TravellerSystem:
                 f'<span class="badge trade">{esc(tc)}</span>'
                 for tc in orbit_codes
             )
+            ecc_str = f"{o.eccentricity:.3f}" if o.eccentricity > 0 else "—"
             orbit_rows += (
                 f'<tr class="{row_cls}">'
                 f'<td class="mono">{esc(o.star_designation)}</td>'
                 f'<td class="mono">{o.slot_index}</td>'
                 f'<td class="mono">{o.orbit_number:.2f}</td>'
                 f'<td class="mono">{o.orbit_au:.3f}</td>'
+                f'<td class="mono">{ecc_str}</td>'
                 f'<td class="{type_cls}">{esc(o.world_type)}</td>'
                 f'<td class="mono profile">{profile}</td>'
                 f'<td class="codes-cell">{codes_html}</td>'
@@ -360,7 +362,7 @@ class TravellerSystem:
                     orbit_rows += (
                         f'<tr class="moon-row">'
                         f'<td></td><td class="mono moon-idx">↳ m{mi}</td>'
-                        f'<td colspan="3" class="moon-type">moon {mi} — '
+                        f'<td colspan="4" class="moon-type">moon {mi} — '
                         f'{"ring" if moon.is_ring else "size " + esc(moon.size_str)}</td>'
                         f'<td class="mono profile">{mp}</td>'
                         f'<td class="codes-cell">{moon_codes_html}</td>'
@@ -598,7 +600,7 @@ pre{{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
 
   <div class="section-title">Orbital survey{"  ·  detail included" if detail_attached else ""}</div>
   <table>
-    <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th>
+    <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th><th>Ecc</th>
     <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th></th></tr></thead>
     <tbody>{orbit_rows}</tbody>
   </table>
