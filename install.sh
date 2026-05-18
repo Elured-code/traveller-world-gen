@@ -121,14 +121,22 @@ fi
 
 VENV_PYTHON="$VENV_DIR/bin/python3"
 
-# ── 3. Install PySide6 ────────────────────────────────────────────────────────
+# ── 3. Install dependencies ───────────────────────────────────────────────────
 info "Upgrading pip..."
 "$VENV_PYTHON" -m pip install --quiet --upgrade pip
 
+info "Installing backend dependencies (azure-functions, jsonschema)..."
+"$VENV_PYTHON" -m pip install --quiet -r "$SCRIPT_DIR/requirements.txt" \
+    || fail "Failed to install backend dependencies."
+
 info "Installing PySide6 (desktop GUI library) — this may take a few minutes..."
-"$VENV_PYTHON" -m pip install --quiet "PySide6>=6.4.0" \
+"$VENV_PYTHON" -m pip install --quiet -r "$SCRIPT_DIR/gen-ui/requirements.txt" \
     || fail "Failed to install PySide6. Check your internet connection and try again."
-info "PySide6 installed."
+
+info "Installing dev tools (pytest, pylint)..."
+"$VENV_PYTHON" -m pip install --quiet -r "$SCRIPT_DIR/requirements-dev.txt" \
+    || fail "Failed to install dev tools."
+info "All dependencies installed."
 
 # ── 4. Create launcher scripts ────────────────────────────────────────────────
 info "Creating launcher scripts..."
@@ -188,7 +196,16 @@ exec "$SCRIPT_DIR/.venv/bin/python3" "$SCRIPT_DIR/traveller_map_fetch.py" "$@"
 LAUNCHER
 chmod +x "$SCRIPT_DIR/run-mapfetch.sh"
 
-# ── 5. Done ───────────────────────────────────────────────────────────────────
+# ── 5. Activate virtual environment ──────────────────────────────────────────
+if [ "${VIRTUAL_ENV:-}" != "$VENV_DIR" ]; then
+    info "Activating virtual environment..."
+    # shellcheck disable=SC1091
+    source "$VENV_DIR/bin/activate"
+else
+    info "Virtual environment already active."
+fi
+
+# ── 6. Done ───────────────────────────────────────────────────────────────────
 echo ""
 info "Installation complete!"
 echo ""
@@ -211,4 +228,8 @@ echo "    bash run-mapfetch.sh --sector \"Spinward Marches\" --name Regina"
 echo ""
 echo -e "  ${YELLOW}macOS note:${NC} If Finder shows a security warning when opening"
 echo "  run-gui.command, right-click it and choose Open, then click Open."
+echo ""
+echo -e "  ${YELLOW}To activate the venv in a new terminal:${NC}"
+echo "    source .venv/bin/activate"
+echo "    # or dot-source this script:  . ./install.sh"
 echo ""

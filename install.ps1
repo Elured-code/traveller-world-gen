@@ -116,17 +116,25 @@ if (-not (Test-Path $VenvPython)) {
     Fail "Python was not found in the virtual environment. Try deleting .venv\ and re-running."
 }
 
-# 3. Install PySide6
+# 3. Install dependencies
 Info "Upgrading pip..."
 & $VenvPython -m pip install --quiet --upgrade pip
 if ($LASTEXITCODE -ne 0) { Fail "Failed to upgrade pip." }
 
+Info "Installing backend dependencies (azure-functions, jsonschema)..."
+& $VenvPython -m pip install --quiet -r (Join-Path $ScriptDir 'requirements.txt')
+if ($LASTEXITCODE -ne 0) { Fail "Failed to install backend dependencies." }
+
 Info "Installing PySide6 (desktop GUI library) - this may take a few minutes..."
-& $VenvPython -m pip install --quiet "PySide6>=6.4.0"
+& $VenvPython -m pip install --quiet -r (Join-Path $ScriptDir 'gen-ui\requirements.txt')
 if ($LASTEXITCODE -ne 0) {
     Fail "Failed to install PySide6. Check your internet connection and try again."
 }
-Info "PySide6 installed."
+
+Info "Installing dev tools (pytest, pylint)..."
+& $VenvPython -m pip install --quiet -r (Join-Path $ScriptDir 'requirements-dev.txt')
+if ($LASTEXITCODE -ne 0) { Fail "Failed to install dev tools." }
+Info "All dependencies installed."
 
 # 4. Create launcher batch files
 Info "Creating launcher scripts..."
@@ -180,7 +188,15 @@ rem   run-mapfetch --sector "Spinward Marches" --hex 1910 --detail
 '@
 $mapBat | Set-Content (Join-Path $ScriptDir 'run-mapfetch.bat') -Encoding ASCII
 
-# 5. Done
+# 5. Activate virtual environment
+if ($env:VIRTUAL_ENV -ne $VenvDir) {
+    Info "Activating virtual environment..."
+    & "$VenvDir\Scripts\Activate.ps1"
+} else {
+    Info "Virtual environment already active."
+}
+
+# 6. Done
 Write-Host ""
 Info "Installation complete!"
 Write-Host ""
@@ -200,4 +216,9 @@ Write-Host "  Examples:" -ForegroundColor White
 Write-Host "    .\run-world.bat" -ForegroundColor White
 Write-Host '    .\run-world.bat --name "New Terra" --count 5' -ForegroundColor White
 Write-Host '    .\run-mapfetch.bat --sector "Spinward Marches" --name Regina' -ForegroundColor White
+Write-Host ""
+Write-Host "  To activate the venv in a new terminal:" -ForegroundColor Yellow
+Write-Host '    . .\install.ps1          # dot-source to activate in this session' -ForegroundColor Yellow
+Write-Host '    # or manually:' -ForegroundColor Yellow
+Write-Host '    .\.venv\Scripts\Activate.ps1' -ForegroundColor Yellow
 Write-Host ""
