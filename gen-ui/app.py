@@ -1081,12 +1081,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         if detail_attached:
             headers = [
-                "Star", "Orbit#", "AU", "Type", "Profile", "Codes", "HZ", "Zone", "Period", "Notes",
+                "Star", "Orbit#", "AU", "Ecc",
+                "Type", "Profile", "Codes", "HZ", "Zone", "Period", "Notes",
             ]
-            right_cols = {1, 2, 8}
+            right_cols = {1, 2, 3, 9}
         else:
-            headers = ["Star", "Orbit#", "AU", "Type", "HZ", "Zone", "Period", "Notes"]
-            right_cols = {1, 2, 6}
+            headers = ["Star", "Orbit#", "AU", "Ecc", "Type", "HZ", "Zone", "Period", "Notes"]
+            right_cols = {1, 2, 3, 7}
 
         for col, hdr in enumerate(headers):
             lbl = QLabel(hdr)
@@ -1116,6 +1117,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             period_str = _fmt_period(p_yr) if (p_yr is not None and not is_empty) else "—"
             notes_str = str(orbit.notes) if orbit.notes else ""
 
+            ecc_str = f"{orbit.eccentricity:.3f}" if orbit.eccentricity > 0 else "—"
             if detail_attached:
                 detail = getattr(orbit, "detail", None)
                 profile_str = _orbit_profile(orbit)
@@ -1126,15 +1128,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     )
                 elif detail is not None and not detail.is_gas_giant:  # type: ignore[attr-defined]
                     codes_str = " ".join(detail.trade_codes)  # type: ignore[attr-defined]
-                au_str = (
-                    f"{orbit.orbit_au:.3f} (e={orbit.eccentricity:.3f})"
-                    if orbit.eccentricity > 0
-                    else f"{orbit.orbit_au:.3f}"
-                )
                 cells: list[tuple[str, Qt.AlignmentFlag]] = [
                     (orbit.star_designation,       Qt.AlignmentFlag.AlignLeft),
                     (f"{orbit.orbit_number:.2f}",  Qt.AlignmentFlag.AlignRight),
-                    (au_str,                       Qt.AlignmentFlag.AlignRight),
+                    (f"{orbit.orbit_au:.3f}",      Qt.AlignmentFlag.AlignRight),
+                    (ecc_str,                      Qt.AlignmentFlag.AlignRight),
                     (type_str,                     Qt.AlignmentFlag.AlignLeft),
                     (profile_str,                  Qt.AlignmentFlag.AlignLeft),
                     (codes_str,                    Qt.AlignmentFlag.AlignLeft),
@@ -1145,15 +1143,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 ]
             else:
                 detail = None
-                au_str = (
-                    f"{orbit.orbit_au:.3f} (e={orbit.eccentricity:.3f})"
-                    if orbit.eccentricity > 0
-                    else f"{orbit.orbit_au:.3f}"
-                )
                 cells = [
                     (orbit.star_designation,       Qt.AlignmentFlag.AlignLeft),
                     (f"{orbit.orbit_number:.2f}",  Qt.AlignmentFlag.AlignRight),
-                    (au_str,                       Qt.AlignmentFlag.AlignRight),
+                    (f"{orbit.orbit_au:.3f}",      Qt.AlignmentFlag.AlignRight),
+                    (ecc_str,                      Qt.AlignmentFlag.AlignRight),
                     (type_str,                     Qt.AlignmentFlag.AlignLeft),
                     (hz_str,                       Qt.AlignmentFlag.AlignLeft),
                     (zone_str,                     Qt.AlignmentFlag.AlignLeft),
