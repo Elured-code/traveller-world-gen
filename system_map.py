@@ -641,10 +641,15 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 f'font-size="{_TBL_FONT_LG}" fill="{palette.text}">'
                 f'{o.orbit_number:.2f}</text>'
             )
+            _au_txt = (
+                f'{o.orbit_au:.3f} (e={o.eccentricity:.2f})'
+                if o.eccentricity > 0
+                else f'{o.orbit_au:.3f} AU'
+            )
             s.append(
                 f'<text x="{bx + _C_AU}" y="{ry}" '
                 f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
-                f'{o.orbit_au:.3f} AU</text>'
+                f'{_au_txt}</text>'
             )
             s.append(
                 f'<text x="{bx + _C_TYPE}" y="{ry}" '

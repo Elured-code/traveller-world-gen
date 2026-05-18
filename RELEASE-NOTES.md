@@ -1,8 +1,8 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–42
-**Tests:** 973 (up from 890 in v1.1)
+**Sessions:** 36–43
+**Tests:** 979 (up from 890 in v1.1)
 
 ---
 
@@ -113,6 +113,35 @@ Kepler orbital periods are now computed and displayed for every star and world i
 
 ---
 
+### Orbital Eccentricity (Session 43, issue #57)
+
+WBH p.27 orbital eccentricity is now implemented as an optional feature gated on `orbital_eccentricity=False`.
+
+**Roll mechanic:** Two dice rolls per orbit. A first `2D+DM` selects a row in the six-row Eccentricity Values table; a second `1D` or `2D` roll divided by a row-specific divisor gives the fractional part. Final value is clamped to [0.000, 0.999].
+
+**DMs (first roll only):**
+
+| Condition | DM |
+|---|---|
+| Star eccentricities | +2 |
+| Each close/near/far star with orbit# < slot (primary slots) | +1 per star |
+| Orbit# < 1.0 and system age > 1 Gyr | −1 |
+| Belt slot | +1 |
+
+**Min/Max separation:** `AU × (1 − eccentricity)` and `AU × (1 + eccentricity)`
+
+**New fields:**
+- `OrbitSlot.eccentricity: float` — `field(default=0.0, init=False)`; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"`, `"orbit_au_max"` when non-zero
+- `Star.orbit_eccentricity: float = 0.0` — set for secondary stars by `generate_orbits()`; `to_dict()` emits when non-zero
+
+**Flag plumbing:** `orbital_eccentricity` parameter added to `generate_orbits()`, `generate_full_system()`, `generate_system_from_world()`, and all relevant API endpoints. New `parse_orbital_eccentricity()` helper in `shared/helpers.py` reads the query parameter.
+
+**Display:** gen-ui AU cell shows `1.234 (e=0.350)` when eccentricity > 0; system map AU text shows `1.234 (e=0.35)`. No new columns.
+
+**Seed impact:** Flag False (default) → no new dice, no seed disruption. Flag True → seed-breaking (2 rolls per non-empty slot + 2 per secondary star).
+
+---
+
 ## Bug Fixes
 
 ### Incorrect Belt Counts for Fetched Mainworlds (Session 42, issue #52)
@@ -157,10 +186,11 @@ When a companion orbit# was less than 1.0, `excl = companion_orbit − 1.0` was 
 | Primary star outer zone placement | +4 |
 | Anomalous orbits (Step 7) | +6 |
 | Incorrect belt counts for fetched mainworlds (issue #52) | +4 |
-| **Total new tests** | **+83** |
-| **Suite total** | **973** |
+| Orbital eccentricity (issue #57) | +6 |
+| **Total new tests** | **+89** |
+| **Suite total** | **979** |
 
-All 969 tests pass. Pylint 10.00/10 on all core generation modules.
+All 979 tests pass. Pylint 10.00/10 on all core generation modules.
 
 ---
 

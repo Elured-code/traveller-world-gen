@@ -18,7 +18,9 @@ Implements the world placement procedure from WBH pp.36-51:
 Implements anomalous orbits (Step 7, pp.49-50): random, eccentric, inclined,
 retrograde, and trojan orbit types.
 
-Out of scope: eccentricity (Step 9), Special Circumstances chapter.
+Implements orbital eccentricity (Step 9, p.27): eccentricity values for worlds,
+belts, and companion stars when orbital_eccentricity=True is passed to
+generate_orbits().
 
 Licence
 -------
@@ -188,6 +190,37 @@ def _gg_sah_roll(spectral: str, lum_class: str) -> str:
     return f"GL{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
 
 
+# Eccentricity Values table (WBH p.27): (max_first_roll, base, n_dice, divisor)
+# The sentinel value 99 in the last row catches all results of 12+.
+_ECC_TABLE = [
+    (5,  -0.001, 1, 1000),
+    (7,   0.000, 1,  200),
+    (9,   0.030, 1,  100),
+    (10,  0.050, 1,   20),
+    (11,  0.050, 2,   20),
+    (99,  0.300, 2,   20),
+]
+
+
+def _roll_eccentricity(orbit_number: float, system_age_gyr: float,
+                       extra_stars: int = 0,
+                       is_belt: bool = False,
+                       is_star: bool = False) -> float:
+    """Roll orbital eccentricity per WBH p.27 Eccentricity Values table."""
+    dm = 2 if is_star else 0
+    dm += extra_stars
+    if orbit_number < 1.0 < system_age_gyr:
+        dm -= 1
+    if is_belt:
+        dm += 1
+    first = roll(2, dm)
+    for max_roll, base, n_dice, divisor in _ECC_TABLE:
+        if first <= max_roll:
+            second = roll(n_dice) / divisor
+            return min(0.999, max(0.0, base + second))
+    return 0.0  # unreachable; satisfies type checker
+
+
 @dataclass
 class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     """One orbit slot in a star system, with world type and zone data."""
@@ -207,6 +240,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     anomaly_type: str = ""       # ""|"random"|"eccentric"|"inclined"|"retrograde"
                                  # |"trojan_leading"|"trojan_trailing"
     orbit_period_yr: Optional[float] = field(default=None, init=False)
+    eccentricity: float = field(default=0.0, init=False)
     detail: Optional["WorldDetail"] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
@@ -231,6 +265,10 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["anomaly_type"] = self.anomaly_type
         if self.orbit_period_yr is not None:
             d["orbit_period_yr"] = self.orbit_period_yr
+        if self.eccentricity > 0:
+            d["eccentricity"] = round(self.eccentricity, 4)
+            d["orbit_au_min"] = round(self.orbit_au * (1 - self.eccentricity), 3)
+            d["orbit_au_max"] = round(self.orbit_au * (1 + self.eccentricity), 3)
         # Include secondary world / satellite detail if attach_detail() has run
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
@@ -360,7 +398,8 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
         return "\n".join(lines)
 
 
-def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+                    orbital_eccentricity: bool = False) -> SystemOrbits:
     """Generate all orbit slots for a star system (WBH pp.36-51)."""
     result = SystemOrbits(stellar_system=system)
     primary_stars = [s for s in system.stars if s.role != "companion"]
@@ -783,16 +822,43 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
         if _mc > 0:
             o.orbit_period_yr = round(math.sqrt(o.orbit_au ** 3 / _mc), 4)
 
+    # ── Orbital eccentricity (WBH p.27) — only when flag is set ──────────────
+    if orbital_eccentricity:
+        age = system.stars[0].age_gyr or 0.0
+        primary_desig = system.stars[0].designation
+
+        for o in result.orbits:
+            if o.world_type == "empty":
+                continue
+            extra = sum(
+                1 for s in system.stars
+                if s.role in ("close", "near", "far")
+                and s.orbit_number is not None
+                and o.star_designation == primary_desig
+                and s.orbit_number < o.orbit_number
+            )
+            o.eccentricity = _roll_eccentricity(
+                o.orbit_number, age,
+                extra_stars=extra,
+                is_belt=(o.world_type == "belt"),
+            )
+
+        for s in system.stars:
+            if s.role in ("close", "near", "far") and s.orbit_number is not None:
+                s.orbit_eccentricity = _roll_eccentricity(
+                    s.orbit_number, age, is_star=True
+                )
+
     return result
 
 
-def generate_full_system(seed=None):
+def generate_full_system(seed=None, orbital_eccentricity: bool = False):
     """Generate a stellar system with orbits, optionally seeding the RNG."""
     from traveller_stellar_gen import generate_stellar_data  # pylint: disable=import-outside-toplevel
     if seed is not None:
         random.seed(seed)
     system = generate_stellar_data()
-    orbits = generate_orbits(system)
+    orbits = generate_orbits(system, orbital_eccentricity=orbital_eccentricity)
     return system, orbits
 
 
