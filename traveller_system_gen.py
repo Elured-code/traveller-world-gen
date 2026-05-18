@@ -310,7 +310,12 @@ class TravellerSystem:
                     profile = ""
                     type_cls = "type-terr"
 
-            mw_mark = " ← mainworld" if o.is_mainworld_candidate else ""
+            note_parts = []
+            if o.is_mainworld_candidate:
+                note_parts.append("← mainworld")
+            if o.notes:
+                note_parts.append(o.notes)
+            mw_mark = "  ".join(note_parts)
             row_cls  = "mw-row" if o.is_mainworld_candidate else ""
             if o.is_mainworld_candidate and mw:
                 orbit_codes = mw.trade_codes

@@ -5540,3 +5540,89 @@ class TestPrimaryOuterZone:
                         f"seed={seed}: primary world at orbit# {o.orbit_number:.2f} "
                         f"inside companion exclusion zone [{lo:.2f}, {hi:.2f}]"
                     )
+
+
+class TestAnomalousOrbits:
+    """WBH Step 7: anomalous orbit generation (pp.49-50)."""
+
+    def test_anomaly_type_field_on_every_slot(self):
+        # Every OrbitSlot has anomaly_type: str; normal slots have empty string.
+        sys = generate_full_system("X", seed=0)
+        for o in sys.system_orbits.orbits:
+            assert isinstance(o.anomaly_type, str)
+
+    def test_anomalous_slots_never_gas_giant_or_empty(self):
+        # Anomalous orbits are always terrestrial or belt.
+        found_anom = 0
+        for seed in range(1000):
+            sys = generate_full_system("X", seed=seed)
+            for o in sys.system_orbits.orbits:
+                if o.anomaly_type:
+                    assert o.world_type in ("terrestrial", "belt"), (
+                        f"seed={seed}: anomalous slot has world_type={o.world_type!r}"
+                    )
+                    found_anom += 1
+        assert found_anom > 0, "No anomalous orbits found in 1000 seeds"
+
+    def test_anomaly_type_in_to_dict_iff_set(self):
+        # anomaly_type appears in to_dict() only when non-empty.
+        for seed in range(500):
+            sys = generate_full_system("X", seed=seed)
+            for o in sys.system_orbits.orbits:
+                d = o.to_dict()
+                if o.anomaly_type:
+                    assert d.get("anomaly_type") == o.anomaly_type
+                else:
+                    assert "anomaly_type" not in d
+
+    def test_trojan_shares_orbit_with_non_empty_slot(self):
+        # A trojan slot must co-occupy the orbit# of another non-empty slot.
+        for seed in range(1000):
+            sys = generate_full_system("X", seed=seed)
+            for o in sys.system_orbits.orbits:
+                if o.anomaly_type not in ("trojan_leading", "trojan_trailing"):
+                    continue
+                co_orbital = [
+                    other for other in sys.system_orbits.orbits
+                    if other is not o
+                    and other.star_designation == o.star_designation
+                    and abs(other.orbit_number - o.orbit_number) < 0.01
+                    and other.world_type != "empty"
+                ]
+                assert co_orbital, (
+                    f"seed={seed}: trojan at orbit# {o.orbit_number:.2f} "
+                    f"has no co-orbital non-empty slot"
+                )
+
+    def test_non_trojan_anomalous_orbit_within_valid_range(self):
+        # Non-trojan anomalous orbit# must be in [MAO, 20.0].
+        for seed in range(500):
+            sys = generate_full_system("X", seed=seed)
+            mao_map = sys.system_orbits.star_mao
+            for o in sys.system_orbits.orbits:
+                if not o.anomaly_type or "trojan" in o.anomaly_type:
+                    continue
+                a_mao = mao_map.get(o.star_designation, 0.0)
+                assert o.orbit_number >= a_mao - 0.01, (
+                    f"seed={seed}: anomalous orbit# {o.orbit_number:.2f} "
+                    f"below MAO {a_mao:.2f} for star {o.star_designation}"
+                )
+                assert o.orbit_number <= 20.01, (
+                    f"seed={seed}: anomalous orbit# {o.orbit_number:.2f} > 20.0"
+                )
+
+    def test_anomalous_orbit_counted_in_total_worlds(self):
+        # total_worlds must equal gas_giant + belt + terrestrial counts,
+        # including any anomalous slots.
+        for seed in range(500):
+            sys = generate_full_system("X", seed=seed)
+            so = sys.system_orbits
+            actual_gg   = sum(1 for o in so.orbits if o.world_type == "gas_giant")
+            actual_belt = sum(1 for o in so.orbits if o.world_type == "belt")
+            actual_terr = sum(1 for o in so.orbits if o.world_type == "terrestrial")
+            assert so.gas_giant_count   == actual_gg,   f"seed={seed}: GG count mismatch"
+            assert so.belt_count        == actual_belt, f"seed={seed}: belt count mismatch"
+            assert so.terrestrial_count == actual_terr, f"seed={seed}: terr count mismatch"
+            assert so.total_worlds == actual_gg + actual_belt + actual_terr, (
+                f"seed={seed}: total_worlds mismatch"
+            )

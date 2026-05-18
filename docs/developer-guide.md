@@ -222,6 +222,8 @@ class OrbitSlot:
                             # mainworld placed here; takes display priority over detail.profile
     gg_sah: str             # gas giant SAH rolled at orbit-gen time (e.g. "GM9");
                             # empty string for non-gas-giant slots
+    orbit_period_yr: Optional[float]  # field(default=None, init=False); orbital period in
+                            # years; computed by generate_orbits(); None for empty slots
     detail: Optional[WorldDetail] = field(default=None, init=False)
                             # populated by attach_detail(); None until then
 
@@ -246,6 +248,8 @@ class SystemOrbits:
 **Orbit# vs AU:** Orbit# is the WBH's logarithmic orbital scale. The relationship to AU is non-linear — see `_orbit_to_au()` in `traveller_stellar_gen.py` for the lookup table. When drawing maps or computing habitable zone boundaries for display, always convert Orbit# to AU first and build the radius scale from AU values, not Orbit# values. Using Orbit# values directly as if they were AU will produce incorrect habitable zone placement on any log-radial map.
 
 **Mainworld selection scoring:** The best candidate is the world with the lowest score on `(type_penalty + hz_penalty + temperature_penalty + star_penalty, abs(hz_deviation))`. Terrestrial worlds score better than gas giants; habitable zone worlds score better than non-HZ; temperate > cold/hot > frozen > boiling; primary star worlds score better than secondary star worlds.
+
+**World orbital periods:** `OrbitSlot.orbit_period_yr` is computed in `generate_orbits()` after all slots are placed, using `P = √(AU³ / M_central)`. `M_central` = designated star mass + mass of any companion stars whose `orbit_au < orbit_slot.orbit_au` (WBH: a world outside a companion's orbit includes the companion in the central mass). Empty slots have `orbit_period_yr = None`. The period is included in `OrbitSlot.to_dict()` and displayed in the `system_map.py` Period column and gen-ui System Orbits card.
 
 ---
 
@@ -694,7 +698,7 @@ python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detai
 Generates an SVG diagram of a complete star system. The canvas has two zones stacked vertically:
 
 - **Arc zones** — one per star that has orbit slots. Each zone uses its own log-AU radial scale so the star's orbits fill the available width. Arcs are right-facing semicircles; the sweep angle per orbit is set so every arc reaches the same top and bottom y-coordinate within its zone. Companion-star dashed arcs are rendered inside the primary zone for context.
-- **Table zone** — one column per star, listing orbit slots in orbit-number order. Column count grows with the stellar system; use `--width` to avoid cramping on multi-star systems. Each column has a star header line, a column label sub-header row (`#  Orbit#  AU  Type  Profile  Codes  Zone ♦  Period`), and then one data row per orbit slot. The `Zone ♦` column shows the temperature zone followed by the moon count (e.g., `Temperate  3♦`) when `attach_detail()` has been called. The `Period` column shows the orbital period for companion/secondary star rows (auto-scaled to hours, days, or years); world orbit periods will populate this column in a future update. In the primary star's column, close/near/far secondary stars are also listed as rows interleaved by orbit number, and non-primary column headers include the star's orbital period. The period value comes from `Star.orbit_period_yr`.
+- **Table zone** — one column per star, listing orbit slots in orbit-number order. Column count grows with the stellar system; use `--width` to avoid cramping on multi-star systems. Each column has a star header line, a column label sub-header row (`#  Orbit#  AU  Type  Profile  Codes  Zone ♦  Period`), and then one data row per orbit slot. The `Zone ♦` column shows the temperature zone followed by the moon count (e.g., `Temperate  3♦`) when `attach_detail()` has been called. The `Period` column shows the orbital period auto-scaled to hours, days, or years for both companion/secondary star rows (from `Star.orbit_period_yr`) and world orbit rows (from `OrbitSlot.orbit_period_yr`); empty orbit slots suppress the period cell. In the primary star's column, close/near/far secondary stars are also listed as rows interleaved by orbit number, and non-primary column headers include the star's orbital period.
 
 **Key public API:**
 
@@ -782,6 +786,12 @@ The "System Map" button lives in `_build_system_summary_header()` (system result
 
 **`_build_stellar_card(system)`** — displays system age (`stars[0].age_gyr`) as a plain label above the star table, inside the `QGroupBox`. Age is read from the first star in the stellar system (all stars share the same age).
 
+**`_build_orbits_card(system, detail_attached)`** — builds the System Orbits grid. Both header variants include a trailing `"Notes"` column (left-aligned, last):
+- detail_attached: 10 columns — `Star | Orbit# | AU | Type | Profile | Codes | HZ | Zone | Period | Notes`; `right_cols={1,2,8}`
+- not detail_attached: 8 columns — `Star | Orbit# | AU | Type | HZ | Zone | Period | Notes`; `right_cols={1,2,6}`
+
+`notes_str` is populated from `OrbitSlot.notes` for every slot that carries a note (HZ placement notes for the mainworld candidate, anomaly notes for anomalous orbits). The `"Period"` column was also added in Session 40 (see above); `period_str` uses `_fmt_period()`.
+
 **`SystemMapWindow`** — a non-modal `QMainWindow` opened by the "System Map" button. One window is created per click; multiple windows can coexist.
 
 ```python
@@ -862,7 +872,7 @@ The following WBH features are explicitly noted as not yet implemented. Page ref
 
 **Eccentricity (Step 9, WBH p.51).** Orbital eccentricity for planets. This would affect the moon quantity DM for planets near exclusion zones (currently only the `orbit_number < 1.0` DM is applied), and would affect Hill sphere calculations for moons. Not implemented.
 
-**Orbital periods.** `P = √(AU³ / M)` for single-star systems. Not computed or stored.
+**Orbital periods — planet mass correction.** World orbital periods use `P = √(AU³ / M_central)` without the WBH planet-mass correction `(mE × 0.000003)`. For superjovian planets the correction is ≤ 0.17% of the period (≈ 1000 M⊕ around a G-type star) and is omitted.
 
 **Moon orbit adjacency DMs.** Three of the four DM conditions for moon quantity (WBH p.56) require knowledge of whether an orbit slot is adjacent to a companion-induced MAO, a Close/Near star unavailability zone, or the outermost slot of a Far star. These require eccentricity data and spread values that are not currently passed through to `traveller_moon_gen.py`. Only the `orbit_number < 1.0` condition is implemented.
 

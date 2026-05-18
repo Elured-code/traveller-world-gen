@@ -174,6 +174,14 @@ _TYPE_ABBR = {
     "belt":        "belt",
     "empty":       "—",
 }
+_ANOM_SFXS = {
+    "random":          "*",
+    "eccentric":       "~",
+    "inclined":        "/",
+    "retrograde":      "R",
+    "trojan_leading":  "L4",
+    "trojan_trailing": "L5",
+}
 
 # Table zone — fixed pixel geometry (independent of canvas width)
 _TBL_HDR_OFF  = 17   # header text baseline, offset from sep_y
@@ -619,6 +627,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
 
             hz_tag    = "⌾ " if o.is_habitable_zone else ""
             type_abbr = _TYPE_ABBR.get(wt, wt)
+            if o.anomaly_type:
+                type_abbr = type_abbr + " " + _ANOM_SFXS.get(o.anomaly_type, "?")
             mw_tag    = "★MW " if is_mw else ""
             tz_col    = _TEMP_COLS.get(o.temperature_zone, palette.dim)
 

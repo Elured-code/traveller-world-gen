@@ -1080,10 +1080,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         grid.setHorizontalSpacing(14)
 
         if detail_attached:
-            headers = ["Star", "Orbit#", "AU", "Type", "Profile", "Codes", "HZ", "Zone", "Period"]
+            headers = [
+                "Star", "Orbit#", "AU", "Type", "Profile", "Codes", "HZ", "Zone", "Period", "Notes",
+            ]
             right_cols = {1, 2, 8}
         else:
-            headers = ["Star", "Orbit#", "AU", "Type", "HZ", "Zone", "Period"]
+            headers = ["Star", "Orbit#", "AU", "Type", "HZ", "Zone", "Period", "Notes"]
             right_cols = {1, 2, 6}
 
         for col, hdr in enumerate(headers):
@@ -1112,6 +1114,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
             p_yr = getattr(orbit, "orbit_period_yr", None)
             period_str = _fmt_period(p_yr) if (p_yr is not None and not is_empty) else "—"
+            notes_str = str(orbit.notes) if orbit.notes else ""
 
             if detail_attached:
                 detail = getattr(orbit, "detail", None)
@@ -1133,6 +1136,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     (hz_str,                       Qt.AlignmentFlag.AlignLeft),
                     (zone_str,                     Qt.AlignmentFlag.AlignLeft),
                     (period_str,                   Qt.AlignmentFlag.AlignRight),
+                    (notes_str,                    Qt.AlignmentFlag.AlignLeft),
                 ]
             else:
                 detail = None
@@ -1144,6 +1148,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     (hz_str,                       Qt.AlignmentFlag.AlignLeft),
                     (zone_str,                     Qt.AlignmentFlag.AlignLeft),
                     (period_str,                   Qt.AlignmentFlag.AlignRight),
+                    (notes_str,                    Qt.AlignmentFlag.AlignLeft),
                 ]
 
             for col, (text, align) in enumerate(cells):

@@ -15,8 +15,10 @@ Implements the world placement procedure from WBH pp.36-51:
   - World type placement in order: empty, gas giants, belts, terrestrials (p.51)
   - Mainworld candidate selection (p.51)
 
-Out of scope: anomalous orbits (Step 7), eccentricity (Step 9),
-Special Circumstances chapter.
+Implements anomalous orbits (Step 7, pp.49-50): random, eccentric, inclined,
+retrograde, and trojan orbit types.
+
+Out of scope: eccentricity (Step 9), Special Circumstances chapter.
 
 Licence
 -------
@@ -202,6 +204,8 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     notes: str = ""
     canonical_profile: str = ""  # UWP set when mainworld comes from canonical data
     gg_sah: str = ""             # gas giant SAH rolled at orbit gen time (e.g. "GM9")
+    anomaly_type: str = ""       # ""|"random"|"eccentric"|"inclined"|"retrograde"
+                                 # |"trojan_leading"|"trojan_trailing"
     orbit_period_yr: Optional[float] = field(default=None, init=False)
     detail: Optional["WorldDetail"] = field(default=None, init=False)
 
@@ -223,6 +227,8 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["canonical_profile"] = self.canonical_profile
         if self.gg_sah:
             d["gg_sah"] = self.gg_sah
+        if self.anomaly_type:
+            d["anomaly_type"] = self.anomaly_type
         if self.orbit_period_yr is not None:
             d["orbit_period_yr"] = self.orbit_period_yr
         # Include secondary world / satellite detail if attach_detail() has run
@@ -272,7 +278,7 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
         """Serialise this system's orbits to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent)
 
-    def summary(self) -> str:  # pylint: disable=too-many-locals
+    def summary(self) -> str:  # pylint: disable=too-many-locals,too-many-branches
         """
         Human-readable orbital summary.
 
@@ -304,7 +310,12 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
         lines.append("  " + "-" * 82)
         for o in self.orbits:
             hz   = "★" if o.is_habitable_zone else " "
-            mw   = "  ← mainworld" if o.is_mainworld_candidate else ""
+            if o.is_mainworld_candidate:
+                mw = "  ← mainworld"
+            elif o.anomaly_type and o.notes:
+                mw = f"  [{o.notes}]"
+            else:
+                mw = ""
             detail = o.detail
             if o.canonical_profile:
                 profile = o.canonical_profile
@@ -616,6 +627,116 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
     result.total_worlds      = (result.gas_giant_count
                                 + result.belt_count
                                 + result.terrestrial_count)
+
+    # ── Step 7: Anomalous orbits (WBH pp.49-50) ─────────────────────────────
+    # Roll 2D: ≤9 → 0, 10 → 1, 11 → 2, 12 → 3 anomalous orbits.
+    # Each anomalous orbit adds 1 terrestrial (or belt when tp already at 13).
+    anom_count = max(0, roll(2) - 9)
+    if anom_count > 0:
+        eligible = [
+            s for s in primary_stars
+            if star_avail.get(s.designation, (0.0, 0.0))[1]
+               > star_avail.get(s.designation, (0.0, 0.0))[0]
+        ]
+        for _ in range(anom_count):
+            if not eligible:
+                break
+            anom_star = random.choice(eligible) if len(eligible) > 1 else eligible[0]
+            anom_d = anom_star.designation
+            a_hzco = star_hzco.get(anom_d, 0.0)
+
+            anom_wtype = "belt" if result.terrestrial_count >= 13 else "terrestrial"
+
+            atype_r = roll(2)
+            if atype_r <= 7:
+                anom_type = "random"
+            elif atype_r == 8:
+                anom_type = "eccentric"
+            elif atype_r == 9:
+                anom_type = "inclined"
+            elif atype_r <= 11:
+                anom_type = "retrograde"
+            else:
+                anom_type = "trojan"
+
+            anom_on    = None
+            anom_notes = ""
+
+            if anom_type == "trojan":
+                host_slots = [
+                    o for o in result.orbits
+                    if o.star_designation == anom_d and o.world_type != "empty"
+                ]
+                if not host_slots:
+                    anom_type = "random"
+                else:
+                    host = random.choice(host_slots)
+                    anom_on = host.orbit_number
+                    pos = "leading" if roll(1) <= 3 else "trailing"
+                    anom_type = f"trojan_{pos}"
+                    anom_notes = f"Trojan {pos} (L{'4' if pos == 'leading' else '5'})"
+
+            if anom_on is None:
+                # 2D-2 + d10 fractional, clamped within the star's valid zone.
+                # Use star_avail / star_outer to respect companion exclusion bands.
+                # Add ±0.01 clearance so the orbit never lands exactly on a zone
+                # boundary (which coincides with the exclusion band edge).
+                z_lo, z_hi = star_avail[anom_d]
+                oz = star_outer.get(anom_d)
+                if oz and roll(1) >= 4:   # 50/50 inner vs outer zone
+                    z_lo, z_hi = oz
+                z_lo = z_lo + 0.01
+                z_hi = min(z_hi, 20.0) - 0.01
+                if z_lo > z_hi:
+                    z_lo = z_hi = round((z_lo + z_hi) / 2.0, 2)
+                existing = {
+                    round(o.orbit_number, 2)
+                    for o in result.orbits if o.star_designation == anom_d
+                }
+                candidate = z_lo
+                for _attempt in range(4):
+                    candidate = max(
+                        z_lo,
+                        min(roll(2, -2) + random.randint(0, 9) / 10.0, z_hi),
+                    )
+                    if round(candidate, 2) not in existing:
+                        break
+                    adj = roll(1) * random.choice((-1, 1))
+                    candidate = max(z_lo, min(candidate + adj, z_hi))
+                anom_on = round(candidate, 2)
+
+            if anom_type == "inclined":
+                inc_deg = (roll(1, 2)) * 10 + random.randint(0, 9)
+                anom_notes = f"Inclined {inc_deg}°"
+            elif anom_type == "retrograde":
+                anom_notes = "Retrograde"
+            elif anom_type == "eccentric":
+                anom_notes = "Eccentric"
+            elif anom_type == "random":
+                anom_notes = "Random orbit"
+
+            anom_au  = _orbit_to_au(anom_on)
+            anom_dev = round(anom_on - a_hzco, 3)
+
+            result.orbits.append(OrbitSlot(
+                star_designation=anom_d,
+                orbit_number=anom_on,
+                orbit_au=anom_au,
+                slot_index=0,
+                world_type=anom_wtype,
+                is_habitable_zone=abs(anom_dev) <= 1.0,
+                hz_deviation=anom_dev,
+                temperature_zone=_temp_zone(anom_dev, a_hzco, anom_on),
+                anomaly_type=anom_type,
+                notes=anom_notes,
+            ))
+            if anom_wtype == "belt":
+                result.belt_count += 1
+            else:
+                result.terrestrial_count += 1
+            result.total_worlds += 1
+
+        result.orbits.sort(key=lambda o: (o.star_designation, o.orbit_au))
 
     # Mainworld selection (WBH p.51)
     candidates = [o for o in result.orbits if o.world_type != "empty"]
