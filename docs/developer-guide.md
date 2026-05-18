@@ -251,6 +251,8 @@ class SystemOrbits:
 
 **World orbital periods:** `OrbitSlot.orbit_period_yr` is computed in `generate_orbits()` after all slots are placed, using `P = √(AU³ / M_central)`. `M_central` = designated star mass + mass of any companion stars whose `orbit_au < orbit_slot.orbit_au` (WBH: a world outside a companion's orbit includes the companion in the central mass). Empty slots have `orbit_period_yr = None`. The period is included in `OrbitSlot.to_dict()` and displayed in the `system_map.py` Period column and gen-ui System Orbits card.
 
+**Orbital eccentricity (WBH p.27):** `generate_orbits()` accepts `orbital_eccentricity: bool = False`. When True, a post-placement pass calls `_roll_eccentricity()` for each non-empty orbit slot and each close/near/far secondary star. Two rolls: `2D+DM` selects a table row; a second `1D` or `2D` divided by a row-specific divisor gives the fractional part; result clamped to [0.000, 0.999]. `OrbitSlot.eccentricity` (`field(default=0.0, init=False)`) is populated; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"` (`AU × (1−e)`), and `"orbit_au_max"` (`AU × (1+e)`) when non-zero. `Star.orbit_eccentricity: float = 0.0` is set for secondary stars; `Star.to_dict()` similarly emits min/max. When the flag is False (default), no new dice roll and no seed disruption occurs. The flag is stored in `TravellerSystem.orbital_eccentricity` and plumbed through `generate_full_system()`, `generate_system_from_world()`, and all API endpoints via `parse_orbital_eccentricity()` in `shared/helpers.py`.
+
 ---
 
 ### 4.3 `traveller_system_gen.py`

@@ -154,7 +154,7 @@ from shared.helpers import (
     ok, error,
     ERR_INVALID_BODY, ERR_INTERNAL, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
     apply_seed, parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
-    parse_seed, parse_sector, parse_world_json,
+    parse_orbital_eccentricity, parse_seed, parse_sector, parse_world_json,
 )
 
 logger = logging.getLogger(__name__)
@@ -419,9 +419,11 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     want_detail = parse_detail(req)
+    want_ecc = parse_orbital_eccentricity(req)
     try:
         seed = apply_seed(seed)
-        system = generate_full_system(name=name or "World-1")
+        system = generate_full_system(name=name or "World-1",
+                                      orbital_eccentricity=want_ecc)
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
@@ -459,9 +461,11 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     want_detail = parse_detail(req)
+    want_ecc = parse_orbital_eccentricity(req)
     try:
         seed = apply_seed(seed)
-        system = generate_full_system(name=name or "World-1")
+        system = generate_full_system(name=name or "World-1",
+                                      orbital_eccentricity=want_ecc)
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
@@ -516,9 +520,11 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     fmt = parse_format(req)
+    want_ecc = parse_orbital_eccentricity(req)
     try:
         seed = apply_seed(seed)
-        system = generate_full_system(name=name or "World-1")
+        system = generate_full_system(name=name or "World-1",
+                                      orbital_eccentricity=want_ecc)
         attach_detail(system)
         _attach_mainworld_physical(system)
     except Exception as exc:
@@ -570,9 +576,11 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     want_detail = parse_detail(req)
+    want_ecc = parse_orbital_eccentricity(req)
     try:
         seed = apply_seed(seed)
-        system = generate_full_system(name=name or "World-1")
+        system = generate_full_system(name=name or "World-1",
+                                      orbital_eccentricity=want_ecc)
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
@@ -687,10 +695,12 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
         return err
     want_detail = parse_detail(req)
     fmt = parse_format(req)
+    want_ecc = parse_orbital_eccentricity(req)
     try:
         seed = apply_seed(seed)
         world = World.from_dict(world_dict)
-        system = generate_system_from_world(world, seed=seed)
+        system = generate_system_from_world(world, seed=seed,
+                                            orbital_eccentricity=want_ecc)
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)

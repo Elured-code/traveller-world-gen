@@ -1126,10 +1126,15 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     )
                 elif detail is not None and not detail.is_gas_giant:  # type: ignore[attr-defined]
                     codes_str = " ".join(detail.trade_codes)  # type: ignore[attr-defined]
+                au_str = (
+                    f"{orbit.orbit_au:.3f} (e={orbit.eccentricity:.3f})"
+                    if orbit.eccentricity > 0
+                    else f"{orbit.orbit_au:.3f}"
+                )
                 cells: list[tuple[str, Qt.AlignmentFlag]] = [
                     (orbit.star_designation,       Qt.AlignmentFlag.AlignLeft),
                     (f"{orbit.orbit_number:.2f}",  Qt.AlignmentFlag.AlignRight),
-                    (f"{orbit.orbit_au:.3f}",      Qt.AlignmentFlag.AlignRight),
+                    (au_str,                       Qt.AlignmentFlag.AlignRight),
                     (type_str,                     Qt.AlignmentFlag.AlignLeft),
                     (profile_str,                  Qt.AlignmentFlag.AlignLeft),
                     (codes_str,                    Qt.AlignmentFlag.AlignLeft),
@@ -1140,10 +1145,15 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 ]
             else:
                 detail = None
+                au_str = (
+                    f"{orbit.orbit_au:.3f} (e={orbit.eccentricity:.3f})"
+                    if orbit.eccentricity > 0
+                    else f"{orbit.orbit_au:.3f}"
+                )
                 cells = [
                     (orbit.star_designation,       Qt.AlignmentFlag.AlignLeft),
                     (f"{orbit.orbit_number:.2f}",  Qt.AlignmentFlag.AlignRight),
-                    (f"{orbit.orbit_au:.3f}",      Qt.AlignmentFlag.AlignRight),
+                    (au_str,                       Qt.AlignmentFlag.AlignRight),
                     (type_str,                     Qt.AlignmentFlag.AlignLeft),
                     (hz_str,                       Qt.AlignmentFlag.AlignLeft),
                     (zone_str,                     Qt.AlignmentFlag.AlignLeft),

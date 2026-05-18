@@ -341,6 +341,7 @@ class Star:  # pylint: disable=too-many-instance-attributes
     age_gyr: Optional[float] = None        # System age in Gyr (primary only)
     ms_lifespan_gyr: Optional[float] = None  # Main sequence lifespan
     orbit_period_yr: Optional[float] = None  # Orbital period in years
+    orbit_eccentricity: float = 0.0          # 0.0 until generate_orbits() populates it
     special_notes: str = ""     # e.g. "protostar", "post-stellar"
 
     def classification(self) -> str:
@@ -358,7 +359,7 @@ class Star:  # pylint: disable=too-many-instance-attributes
 
     def to_dict(self) -> dict:
         """Serialise this star to a JSON-compatible dict."""
-        return {
+        d = {
             "designation": self.designation,
             "role": self.role,
             "classification": self.classification(),
@@ -379,6 +380,12 @@ class Star:  # pylint: disable=too-many-instance-attributes
             "colour": self.colour(),
             "special_notes": self.special_notes,
         }
+        if self.orbit_eccentricity > 0:
+            d["orbit_eccentricity"] = round(self.orbit_eccentricity, 4)
+            if self.orbit_au is not None:
+                d["orbit_au_min"] = round(self.orbit_au * (1 - self.orbit_eccentricity), 3)
+                d["orbit_au_max"] = round(self.orbit_au * (1 + self.orbit_eccentricity), 3)
+        return d
 
 
 # ---------------------------------------------------------------------------

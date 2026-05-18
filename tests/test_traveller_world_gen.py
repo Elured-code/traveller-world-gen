@@ -5735,3 +5735,108 @@ class TestReconcileOrbitTypes:
         assert so.belt_count == 1
         # 1 non-mw terrestrial + 1 mainworld terrestrial = 2
         assert so.terrestrial_count == 2
+
+
+# ===========================================================================
+# TestOrbitalEccentricity
+# ===========================================================================
+
+class TestOrbitalEccentricity:
+    """Tests for WBH p.27 orbital eccentricity generation."""
+
+    def test_eccentricity_zero_by_default(self):
+        # With orbital_eccentricity=False (default) no eccentricity is rolled.
+        from traveller_system_gen import generate_full_system
+        sys = generate_full_system("X", seed=42)
+        for o in sys.system_orbits.orbits:
+            assert o.eccentricity == 0.0, (
+                f"Expected 0.0 eccentricity for orbit {o.orbit_number:.2f} "
+                f"by default, got {o.eccentricity}"
+            )
+        for s in sys.stellar_system.stars:
+            assert s.orbit_eccentricity == 0.0, (
+                f"Expected 0.0 for star {s.designation} by default"
+            )
+
+    def test_eccentricity_range_when_enabled(self):
+        # With orbital_eccentricity=True all non-empty eccentricities are in [0, 0.999].
+        from traveller_system_gen import generate_full_system
+        sys = generate_full_system("X", seed=42, orbital_eccentricity=True)
+        for o in sys.system_orbits.orbits:
+            if o.world_type != "empty":
+                assert 0.0 <= o.eccentricity <= 0.999, (
+                    f"Eccentricity {o.eccentricity} out of range for "
+                    f"orbit {o.orbit_number:.2f}"
+                )
+
+    def test_no_empty_slot_eccentricity(self):
+        # Empty orbit slots always have eccentricity == 0.0 even when flag is True.
+        from traveller_system_gen import generate_full_system
+        sys = generate_full_system("X", seed=42, orbital_eccentricity=True)
+        for o in sys.system_orbits.orbits:
+            if o.world_type == "empty":
+                assert o.eccentricity == 0.0, (
+                    f"Empty slot at orbit {o.orbit_number:.2f} "
+                    f"should not have eccentricity"
+                )
+
+    def test_star_eccentricity_computed_in_binary(self):
+        # Secondary (close/near/far) stars get eccentricity when flag is True.
+        from traveller_system_gen import generate_full_system
+        for seed in range(200):
+            sys = generate_full_system("X", seed=seed, orbital_eccentricity=True)
+            sec = [s for s in sys.stellar_system.stars
+                   if s.role in ("close", "near", "far")]
+            if sec:
+                for s in sec:
+                    assert 0.0 <= s.orbit_eccentricity <= 0.999, (
+                        f"Star {s.designation} eccentricity "
+                        f"{s.orbit_eccentricity} out of range"
+                    )
+                return
+        pytest.skip("No binary system found in seeds 0-199")
+
+    def test_orbit_au_min_max_in_to_dict(self):
+        # to_dict() emits eccentricity + min/max AU when eccentricity > 0.
+        from traveller_orbit_gen import OrbitSlot
+        slot = OrbitSlot(
+            star_designation="A",
+            orbit_number=3.0,
+            orbit_au=1.0,
+            slot_index=1,
+            world_type="terrestrial",
+            is_habitable_zone=True,
+            hz_deviation=0.0,
+            temperature_zone="temperate",
+        )
+        slot.eccentricity = 0.35
+        d = slot.to_dict()
+        assert "eccentricity" in d
+        assert d["eccentricity"] == 0.35
+        assert "orbit_au_min" in d
+        assert "orbit_au_max" in d
+        assert d["orbit_au_min"] < d["orbit_au"] < d["orbit_au_max"]
+
+    def test_roll_eccentricity_table_rows(self):
+        # _roll_eccentricity() returns values within each row's documented range.
+        # Patch traveller_orbit_gen.roll directly so we control the return value
+        # of each dice call rather than fighting the 2d6 sum mechanics.
+        import unittest.mock as mock
+        from traveller_orbit_gen import _roll_eccentricity
+        # (forced_first_roll, second_roll, expected_lo, expected_hi)
+        # second_roll=3 gives a mid-range result for all rows.
+        cases = [
+            (4,  3, 0.000, 0.005),   # row 5-:  base -0.001 + 3/1000 = 0.002
+            (6,  3, 0.005, 0.030),   # row 6-7: base 0.000 + 3/200  = 0.015
+            (9,  3, 0.040, 0.090),   # row 8-9: base 0.030 + 3/100  = 0.060
+            (10, 3, 0.100, 0.350),   # row 10:  base 0.050 + 3/20   = 0.200
+            (11, 3, 0.150, 0.650),   # row 11:  base 0.050 + 3/20   = 0.200
+            (12, 3, 0.400, 0.900),   # row 12+: base 0.300 + 3/20   = 0.450
+        ]
+        for first, second, lo, hi in cases:
+            with mock.patch("traveller_orbit_gen.roll",
+                            side_effect=[first, second]):
+                val = _roll_eccentricity(3.0, 5.0)
+            assert lo <= val <= hi, (
+                f"forced first={first}: expected [{lo}, {hi}], got {val}"
+            )

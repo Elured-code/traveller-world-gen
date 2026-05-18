@@ -184,6 +184,7 @@ class TravellerSystem:
     mainworld: Optional[World]
     mainworld_orbit: Optional[OrbitSlot]
     nhz_atmospheres: bool = False
+    orbital_eccentricity: bool = False
 
     def to_dict(self) -> dict:
         """Serialise this system to a JSON-compatible dict."""
@@ -823,17 +824,19 @@ def generate_full_system(
     name: str = "Unknown",
     seed: Optional[int] = None,
     nhz_atmospheres: bool = False,
+    orbital_eccentricity: bool = False,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system with stellar data, orbital
     structure, and a fully characterised mainworld.
 
     Args:
-        name:             Mainworld name.
-        seed:             Optional RNG seed for reproducible results.
-        nhz_atmospheres:  When True, worlds outside the habitable zone use the
-                          WBH Non-Habitable Zone atmosphere tables instead of
-                          the standard CRB roll.
+        name:                 Mainworld name.
+        seed:                 Optional RNG seed for reproducible results.
+        nhz_atmospheres:      When True, worlds outside the habitable zone use
+                              WBH Non-Habitable Zone atmosphere tables.
+        orbital_eccentricity: When True, roll orbital eccentricity for all
+                              worlds and companion stars (WBH p.27).
 
     Returns:
         A TravellerSystem containing stellar data, orbits, and mainworld.
@@ -846,7 +849,7 @@ def generate_full_system(
     stellar = generate_stellar_data()
 
     # Step 2: Orbits and mainworld orbit selection
-    orbits = generate_orbits(stellar)
+    orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity)
 
     mw_orbit = orbits.mainworld_orbit
     mainworld = None
@@ -871,12 +874,14 @@ def generate_full_system(
         mainworld=mainworld,
         mainworld_orbit=mw_orbit,
         nhz_atmospheres=nhz_atmospheres,
+        orbital_eccentricity=orbital_eccentricity,
     )
 
 
 def generate_system_from_world(
     world: World,
     seed: Optional[int] = None,
+    orbital_eccentricity: bool = False,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system around an existing mainworld.
@@ -903,7 +908,7 @@ def generate_system_from_world(
     random.seed(seed)
 
     stellar = generate_stellar_data()
-    orbits = generate_orbits(stellar)
+    orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity)
 
     # Reconcile PBG: honour the world's canonical gas giant and belt counts
     # rather than the freshly generated orbit counts.
@@ -957,6 +962,7 @@ def generate_system_from_world(
         system_orbits=orbits,
         mainworld=world,
         mainworld_orbit=mw_orbit,
+        orbital_eccentricity=orbital_eccentricity,
     )
 
 
