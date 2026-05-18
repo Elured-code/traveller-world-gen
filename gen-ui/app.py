@@ -1027,8 +1027,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         grid.setContentsMargins(0, 0, 0, 0)
         outer.addWidget(grid_widget)
 
-        headers = ["Desig", "Type", "Mass (M☉)", "Temp (K)", "Lum (L☉)", "Orbit (AU)"]
-        right_cols = {2, 3, 4, 5}
+        headers = ["Desig", "Type", "Mass (M☉)", "Temp (K)", "Lum (L☉)", "Orbit (AU)", "Period"]
+        right_cols = {2, 3, 4, 5, 6}
         for col, hdr in enumerate(headers):
             lbl = QLabel(hdr)
             lbl.setObjectName("table-header")
@@ -1040,8 +1040,18 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(lbl, 0, col)
 
+        def _fmt_period(p_yr: float) -> str:
+            days = p_yr * 365.25
+            if days < 1.0:
+                return f"{days * 24:.1f}h"
+            if days < 365.25:
+                return f"{days:.1f}d"
+            return f"{p_yr:.2f}y"
+
         for row, star in enumerate(stars, start=1):
             orbit_str = f"{star.orbit_au:.3f}" if star.orbit_au else "—"
+            period_yr = getattr(star, "orbit_period_yr", None)
+            period_str = _fmt_period(period_yr) if period_yr is not None else "—"
             cells = [
                 (star.designation,           Qt.AlignmentFlag.AlignLeft),
                 (star.classification(),      Qt.AlignmentFlag.AlignLeft),
@@ -1049,6 +1059,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 (f"{star.temperature:,}",    Qt.AlignmentFlag.AlignRight),
                 (f"{star.luminosity:.4f}",   Qt.AlignmentFlag.AlignRight),
                 (orbit_str,                  Qt.AlignmentFlag.AlignRight),
+                (period_str,                 Qt.AlignmentFlag.AlignRight),
             ]
             for col, (text, align) in enumerate(cells):
                 lbl = QLabel(text)
