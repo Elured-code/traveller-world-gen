@@ -403,9 +403,14 @@ Implements WBH pp. 74–77, 103. Generates detailed physical characteristics for
 ```python
 physical: Optional[WorldPhysical] = generate_world_physical(
     world: World,
-    age_gyr: float = 0.0,   # system age for rotation rate DM
+    age_gyr: float = 0.0,               # system age for rotation rate DM
+    orbit_number: Optional[float] = None,
+    orbit_au: Optional[float] = None,
+    star_mass: Optional[float] = None,
+    orbit_eccentricity: float = 0.0,    # if > 0.1 and 1:1 lock, triggers Rule 4
 ) -> Optional[WorldPhysical]
 # Returns None for size 0 (belts); size S/R worlds not yet handled here.
+# Tidal lock runs when all three orbit params are non-None.
 ```
 
 **Key dataclass:**
@@ -419,13 +424,21 @@ class WorldPhysical:       # pylint: disable=too-many-instance-attributes
     mass: float            # relative to Earth (D*³ × ρ*)
     gravity: float         # surface gravity in G (D* × ρ*)
     escape_velocity: float # km/s  (11.186 × √(gravity × D*))
-    axial_tilt: float      # degrees, 0–90
-    day_length: float      # basic rotation period in hours
+    axial_tilt: float      # degrees, 0.0–180.0; post-tidal final value
+    day_length: float      # rotation period in hours; post-tidal final value
+    tidal_status: str      # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
+    eccentricity_adjusted: Optional[float]  # field(default=None, init=False)
+    # Set when tidal_status=="1:1_lock" and orbit_eccentricity > 0.1 (WBH p.77 Rule 4).
 
     def to_dict(self) -> dict: ...
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
-    #       gravity_g, escape_velocity_km_s, axial_tilt_deg, day_length_hours
+    #       gravity_g, escape_velocity_km_s, axial_tilt_deg, day_length_hours,
+    #       tidal_status[, eccentricity_adjusted]
 ```
+
+**1:1 tidal lock interactions (WBH p.77, Session 44):**
+- **Rule 3** — Axial tilt: `_roll_axial_tilt_1d()` rolls 1D to select one of the 6 Axial Tilt table bands, then 1D within that band. Replaces the pre-lock tilt unconditionally (no `> 3.0` guard). The 3:2 lock axial tilt is unchanged ((2D-2)/10, only when tilt > 3°).
+- **Rule 4** — Eccentricity: if `orbit_eccentricity > 0.1`, `_reroll_eccentricity_tidal()` re-rolls with DM-2; `min(original, new)` is stored in `WorldPhysical.eccentricity_adjusted`. `_attach_mainworld_physical()` in `function_app.py` propagates the reduction back to the orbit slot.
 
 **Generation tables:**
 
@@ -435,11 +448,11 @@ class WorldPhysical:       # pylint: disable=too-many-instance-attributes
 | Density | p.75–76 | Roll 1D on Terrestrial Density Table for the composition category → base + 1D × multiplier g/cm³ |
 | Diameter | p.74 | Base = size × 1,600 km; variation = (2D−7) × 200 km |
 | Derived | p.76–77 | D* = diameter/12742; ρ* = density/5.515; mass = D*³×ρ*; gravity = D*×ρ*; v_e = 11.186×√(gravity×D*) |
-| Axial tilt | p.77 | 2D selects band; per-band formula gives degrees (0.00–90°) |
+| Axial tilt | p.77 | 2D selects band (6 bands); 1D within band gives degrees; ≥10 triggers extreme sub-table (up to 180°) |
 | Day length | p.103 | (2D−2)×4 + 2 + 1D + DMs; DM+1 per 2 full Gyrs of system age |
 | Tidal lock | pp.105–107 | 2D+DM on Tidal Lock Status table; 11 outcomes from no-effect through 1:1 lock |
 
-**Deferred within this module:** eccentricity DM, moon-size DM in star-lock check, planet-locked-to-moon check, multi-star orbit DM (all blocked by upstream features not yet implemented).
+**Deferred within this module:** moon-size DM in star-lock check, planet-locked-to-moon check, multi-star orbit DM (all blocked by upstream features not yet implemented).
 
 **Integration with `World`:** `World.size_detail` is an `Optional[Union[WorldPhysical, BeltPhysical]]` field (`field(default=None, init=False)`). The gen-ui sets it when the "Physical detail" checkbox is checked (for standalone worlds) or via `attach_detail()` for belt mainworlds. If set, `World.to_dict()` includes a `"size_detail"` key; `World.to_html()` adds a "World Body" or "Belt Body" inner card below the atmosphere detail card; `World.summary()` adds a "World body" section. When `size_detail` is `None`, all output is unchanged.
 

@@ -22,6 +22,9 @@ from traveller_world_physical import (
     _apply_tidal_lock_result,
     _orbital_period_hours,
     _reroll_axial_tilt_for_lock,
+    _reroll_eccentricity_tidal,
+    _roll_axial_tilt_1d,
+    _roll_extreme_axial_tilt,
     _roll_tidal_lock_status,
     _tidal_lock_dm,
     generate_world_physical,
@@ -338,3 +341,134 @@ class TestGenerateWorldPhysical:
             result = generate_world_physical(w)
             assert result is not None
             assert 0.0 <= result.axial_tilt <= 180.0
+
+
+# ---------------------------------------------------------------------------
+# _roll_axial_tilt_1d — WBH p.77 Rule 3 helper
+# ---------------------------------------------------------------------------
+
+class TestRollAxialTilt1d:
+    def test_all_bands_in_range(self):
+        for band in range(1, 7):
+            with patch("traveller_world_physical.random.randint", side_effect=[band, 3, 3, 3]):
+                result = _roll_axial_tilt_1d()
+            assert 0.0 <= result <= 180.0
+
+    def test_band_1_formula(self):
+        # band=1, inner=1 → round((1-1)/50, 2) == 0.0
+        with patch("traveller_world_physical.random.randint", side_effect=[1, 1]):
+            assert _roll_axial_tilt_1d() == pytest.approx(0.0)
+        # band=1, inner=6 → round((6-1)/50, 2) == 0.1
+        with patch("traveller_world_physical.random.randint", side_effect=[1, 6]):
+            assert _roll_axial_tilt_1d() == pytest.approx(0.1)
+
+    def test_band_6_calls_extreme_table(self):
+        with patch("traveller_world_physical._roll_extreme_axial_tilt", return_value=137.0) as mock_ext, \
+             patch("traveller_world_physical.random.randint", return_value=6):
+            result = _roll_axial_tilt_1d()
+        mock_ext.assert_called_once()
+        assert result == pytest.approx(137.0)
+
+
+# ---------------------------------------------------------------------------
+# _apply_tidal_lock_result — 1:1 axial tilt is always rerolled (WBH p.77 Rule 3)
+# ---------------------------------------------------------------------------
+
+class TestApplyTidalLockResult1dTilt:
+    PERIOD = 720.0
+    DAY = 24.0
+
+    def test_result_12_axial_tilt_always_rerolled(self):
+        # Even a low axial_tilt (0.5°) gets recomputed unconditionally for 1:1 lock
+        with patch("traveller_world_physical._roll_axial_tilt_1d", return_value=99.9):
+            _, tilt, status = _apply_tidal_lock_result(
+                12, self.DAY, 0.5, self.PERIOD, allow_broken_check=False
+            )
+        assert tilt == pytest.approx(99.9)
+        assert status == "1:1_lock"
+
+
+# ---------------------------------------------------------------------------
+# _reroll_eccentricity_tidal — WBH p.77 Rule 4
+# ---------------------------------------------------------------------------
+
+class TestRerollEccentricityTidal:
+    def test_result_in_range(self):
+        for _ in range(100):
+            result = _reroll_eccentricity_tidal(0.5, 5.0)
+            assert 0.0 <= result <= 0.999
+
+    def test_dm_minus2_applied(self):
+        # DM=-2: force first two dice to 1 each → 1+1-2=0 → row (5,-0.001,1,1000)
+        # frac = 1/1000 = 0.001; result = max(0.0, -0.001 + 0.001) = 0.0
+        with patch("traveller_world_physical.random.randint", side_effect=[1, 1, 1]):
+            result = _reroll_eccentricity_tidal(2.0, 1.0)
+        assert result == pytest.approx(0.0)
+
+    def test_orbit_below_1_old_system_applies_extra_dm(self):
+        # orbit_number=0.5, age_gyr=5.0 → dm=-3; 1+1-3=-1 → clamped to row (5,-0.001,1,1000)
+        with patch("traveller_world_physical.random.randint", side_effect=[1, 1, 1]):
+            result = _reroll_eccentricity_tidal(0.5, 5.0)
+        assert result == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# WorldPhysical.eccentricity_adjusted — integration
+# ---------------------------------------------------------------------------
+
+class TestEccentricityAdjusted:
+    def test_eccentricity_adjusted_none_below_threshold(self):
+        # orbit_eccentricity=0.05 (≤ 0.1) → no reroll → eccentricity_adjusted is None
+        w = _World(size=3, atmosphere=0)
+        with patch("traveller_world_physical._roll_tidal_lock_status",
+                   return_value=(720.0, 5.0, "1:1_lock")):
+            wp = generate_world_physical(
+                w, age_gyr=10.0, orbit_number=0.5, orbit_au=0.3, star_mass=0.2,
+                orbit_eccentricity=0.05,
+            )
+        assert wp is not None
+        assert wp.eccentricity_adjusted is None
+
+    def test_lower_value_is_selected(self):
+        # eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
+        # Force new_ecc=0.5 (> orbit_eccentricity=0.2) → adjusted=0.2
+        w = _World(size=3, atmosphere=0)
+        with patch("traveller_world_physical._roll_tidal_lock_status",
+                   return_value=(720.0, 5.0, "1:1_lock")), \
+             patch("traveller_world_physical._reroll_eccentricity_tidal", return_value=0.5):
+            wp = generate_world_physical(
+                w, age_gyr=10.0, orbit_number=0.5, orbit_au=0.3, star_mass=0.2,
+                orbit_eccentricity=0.2,
+            )
+        assert wp is not None
+        assert wp.eccentricity_adjusted == pytest.approx(0.2)
+
+
+# ---------------------------------------------------------------------------
+# WorldPhysical.to_dict — eccentricity_adjusted emission
+# ---------------------------------------------------------------------------
+
+class TestWorldPhysicalToDictEccentricity:
+    def _make_wp(self) -> WorldPhysical:
+        return WorldPhysical(
+            composition="rocky",
+            diameter_km=12000,
+            density=5.0,
+            mass=0.9,
+            gravity=0.95,
+            escape_velocity=11.0,
+            axial_tilt=15.0,
+            day_length=24.0,
+            tidal_status="none",
+        )
+
+    def test_eccentricity_adjusted_not_in_dict_when_none(self):
+        wp = self._make_wp()
+        assert "eccentricity_adjusted" not in wp.to_dict()
+
+    def test_to_dict_includes_eccentricity_adjusted(self):
+        wp = self._make_wp()
+        wp.eccentricity_adjusted = 0.123456
+        d = wp.to_dict()
+        assert "eccentricity_adjusted" in d
+        assert d["eccentricity_adjusted"] == pytest.approx(0.1235, abs=1e-4)
