@@ -168,13 +168,19 @@ def _attach_mainworld_physical(system) -> None:
     if mw is None:
         return
     mw_orbit = system.mainworld_orbit
+    orbit_ecc = mw_orbit.eccentricity if mw_orbit is not None else 0.0
     mw.size_detail = generate_world_physical(
         mw,
         age_gyr=system.stellar_system.primary.age_gyr,
         orbit_number=mw_orbit.orbit_number if mw_orbit is not None else None,
         orbit_au=mw_orbit.orbit_au if mw_orbit is not None else None,
         star_mass=system.stellar_system.primary.mass,
+        orbit_eccentricity=orbit_ecc,
     )
+    if mw_orbit is not None and mw.size_detail is not None:
+        adj = mw.size_detail.eccentricity_adjusted
+        if adj is not None:
+            mw_orbit.eccentricity = adj
 
 
 # ===========================================================================

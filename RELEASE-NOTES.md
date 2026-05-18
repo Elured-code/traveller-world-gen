@@ -1,8 +1,8 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–43
-**Tests:** 979 (up from 890 in v1.1)
+**Sessions:** 36–44
+**Tests:** 990 (up from 890 in v1.1)
 
 ---
 
@@ -139,6 +139,18 @@ WBH p.27 orbital eccentricity is now implemented as an optional feature gated on
 **Display:** gen-ui AU cell shows `1.234 (e=0.350)` when eccentricity > 0; system map AU text shows `1.234 (e=0.35)`. No new columns.
 
 **Seed impact:** Flag False (default) → no new dice, no seed disruption. Flag True → seed-breaking (2 rolls per non-empty slot + 2 per secondary star).
+
+---
+
+### 1:1 Tidal Lock Axial Tilt & Eccentricity (Session 44, issue #10)
+
+WBH p.77 Rules 3 and 4 for 1:1 tidal lock interactions are now implemented.
+
+**Rule 3 — Axial tilt recomputed with 1D on Axial Tilt table.** Previously the 1:1 lock path used `(2D-2)/10` with a `> 3.0` guard (incorrect). New helper `_roll_axial_tilt_1d()` rolls 1D to select the outer band of the Axial Tilt table (the same 6 rows as `_roll_axial_tilt()`), then 1D within the band. The recompute is unconditional — any initial axial tilt is replaced.
+
+**Rule 4 — Eccentricity reduction.** `generate_world_physical()` gains an `orbit_eccentricity: float = 0.0` parameter. When a world reaches 1:1 lock and `orbit_eccentricity > 0.1`, `_reroll_eccentricity_tidal()` re-rolls with DM-2 (using `_ECC_TABLE_PHYS`, an inline copy of the eccentricity table to avoid circular imports). The lower value is stored in new `WorldPhysical.eccentricity_adjusted` (`Optional[float]`, `init=False`). `_attach_mainworld_physical()` in `function_app.py` reads this field and writes it back to the orbit slot, updating the eccentricity that appears in JSON output and system maps.
+
+**Seed impact:** The axial tilt change is seed-breaking for 1:1 locked worlds (same dice count, different interpretation). Eccentricity path only fires for locked worlds with `eccentricity > 0.1` when the orbital eccentricity feature flag is enabled.
 
 ---
 

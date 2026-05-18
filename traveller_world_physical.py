@@ -46,7 +46,7 @@ Tidal Lock Status (WBH pp. 105-107):
   and moon-lock DMs (p.107; deferred — requires moon orbital positions).
   Outcomes range from a simple multiplier on day length through prograde/
   retrograde slow rotation to 3:2 or 1:1 tidal lock.
-  Deferred: eccentricity DM, moon-size DM, planet-locked-to-moon check.
+  Deferred: moon-size DM, planet-locked-to-moon check.
 
 Licence
 -------
@@ -68,7 +68,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -216,6 +216,22 @@ def _roll_axial_tilt() -> float:
     return _roll_extreme_axial_tilt()
 
 
+def _roll_axial_tilt_1d() -> float:
+    """Recompute axial tilt for 1:1 lock: 1D selects band on Axial Tilt table (WBH p.77 Rule 3)."""
+    band = random.randint(1, 6)
+    if band == 1:
+        return round((random.randint(1, 6) - 1) / 50, 2)
+    if band == 2:
+        return round(random.randint(1, 6) / 5, 1)
+    if band == 3:
+        return float(random.randint(1, 6))
+    if band == 4:
+        return float(6 + random.randint(1, 6))
+    if band == 5:
+        return float(5 + random.randint(1, 6) * 5)
+    return _roll_extreme_axial_tilt()  # band == 6
+
+
 # ---------------------------------------------------------------------------
 # Basic Rotation Rate (WBH p.103)
 # ---------------------------------------------------------------------------
@@ -258,8 +274,32 @@ def _orbital_period_hours(orbit_au: float, star_mass: float) -> float:
 
 
 def _reroll_axial_tilt_for_lock() -> float:
-    """Reroll axial tilt for 3:2 or 1:1 lock: (2D-2) ÷ 10 degrees (WBH p.105)."""
+    """Reroll axial tilt for 3:2 lock: (2D-2) ÷ 10 degrees (WBH p.105)."""
     return round((_roll(2) - 2) / 10.0, 1)
+
+
+# Inline copy of _ECC_TABLE from traveller_orbit_gen.py — avoids circular import
+_ECC_TABLE_PHYS = [
+    (5,  -0.001, 1, 1000),
+    (7,   0.000, 1,  200),
+    (9,   0.030, 1,  100),
+    (10,  0.050, 1,   20),
+    (11,  0.050, 2,   20),
+    (99,  0.300, 2,   20),
+]
+
+
+def _reroll_eccentricity_tidal(orbit_number: float, age_gyr: float) -> float:
+    """Re-roll eccentricity with DM-2 for 1:1 tidal lock (WBH p.77 Rule 4)."""
+    dm = -2
+    if orbit_number < 1.0 < age_gyr:
+        dm -= 1
+    first = random.randint(1, 6) + random.randint(1, 6) + dm
+    for max_roll, base, n_dice, divisor in _ECC_TABLE_PHYS:
+        if first <= max_roll:
+            frac = sum(random.randint(1, 6) for _ in range(n_dice)) / divisor
+            return min(0.999, max(0.0, base + frac))
+    return 0.0
 
 
 def _tidal_lock_dm(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
@@ -371,7 +411,7 @@ def _apply_tidal_lock_result(  # pylint: disable=too-many-return-statements
             reroll, basic_day_h, axial_tilt, period_h, allow_broken_check=False
         )
     day = round(period_h, 1)
-    new_tilt = _reroll_axial_tilt_for_lock() if axial_tilt > 3.0 else axial_tilt
+    new_tilt = _roll_axial_tilt_1d()  # WBH p.77 Rule 3: 1D on Axial Tilt table, unconditional
     return day, new_tilt, "1:1_lock"
 
 
@@ -423,10 +463,11 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     axial_tilt: float       # Degrees (0–180; >90° = retrograde; post-tidal final value)
     day_length: float       # Rotation period in standard hours (post-tidal final value)
     tidal_status: str       # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
+    eccentricity_adjusted: Optional[float] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
         """Return physical characteristics as a JSON-compatible dict."""
-        return {
+        d = {
             "composition":          self.composition,
             "diameter_km":          self.diameter_km,
             "density_g_cm3":        self.density,
@@ -437,6 +478,9 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             "day_length_hours":     self.day_length,
             "tidal_status":         self.tidal_status,
         }
+        if self.eccentricity_adjusted is not None:
+            d["eccentricity_adjusted"] = round(self.eccentricity_adjusted, 4)
+        return d
 
 
 # ---------------------------------------------------------------------------
@@ -449,12 +493,13 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         orbit_number: Optional[float] = None,
         orbit_au: Optional[float] = None,
         star_mass: Optional[float] = None,
+        orbit_eccentricity: float = 0.0,
 ) -> Optional[WorldPhysical]:
     """Generate physical characteristics for a mainworld.
 
     Implements WBH pp. 74-77, 103-107: diameter, composition, density, mass,
     surface gravity, escape velocity, axial tilt, basic rotation rate, and
-    tidal lock status.
+    tidal lock status. Also applies 1:1 lock eccentricity reduction (WBH p.77).
 
     Returns None for Size 0 (belt), Size S, and ring worlds; these
     body types are out of scope and will be handled separately.
@@ -472,6 +517,9 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         Orbital distance in AU, used for the orbital period calculation.
     star_mass : float, optional
         Host star mass in solar masses, used for tidal lock DMs and period.
+    orbit_eccentricity : float
+        Current orbital eccentricity; if > 0.1 and world reaches 1:1 lock,
+        a tidal reduction roll is made (WBH p.77 Rule 4).
 
     All three of orbit_number, orbit_au, and star_mass must be provided for
     the tidal lock check to run. If any is None, tidal_status is "none".
@@ -509,7 +557,7 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
             basic_day_h=day_length,
         )
 
-    return WorldPhysical(
+    wp = WorldPhysical(
         composition=composition,
         diameter_km=diameter_km,
         density=density,
@@ -520,3 +568,7 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         day_length=day_length,
         tidal_status=tidal_status,
     )
+    if tidal_status == "1:1_lock" and orbit_eccentricity > 0.1:
+        new_ecc = _reroll_eccentricity_tidal(orbit_number or 0.0, age_gyr)
+        wp.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
+    return wp
