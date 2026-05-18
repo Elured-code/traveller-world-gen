@@ -1,8 +1,8 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–41
-**Tests:** 969 (up from 890 in v1.1)
+**Sessions:** 36–42
+**Tests:** 973 (up from 890 in v1.1)
 
 ---
 
@@ -115,6 +115,16 @@ Kepler orbital periods are now computed and displayed for every star and world i
 
 ## Bug Fixes
 
+### Incorrect Belt Counts for Fetched Mainworlds (Session 42, issue #52)
+
+Two bugs in `traveller_map_fetch.py` caused the belt count shown in the orbit table to differ from the canonical PBG value on TravellerMap.
+
+**Bug 1 — Pool truncation always dropped belts.** `_reconcile_orbit_types()` built the redistribution pool as `["gas_giant"] * canonical_gg + ["belt"] * canonical_belt` and truncated with `pool[:n]` before shuffling. Because gas giants are at the front of the pool, all GGs were preserved and only belts were dropped when there were too few available orbit slots. Fix: when `canonical_gg + canonical_belt > n`, empty orbit slots are now promoted to world slots before distribution, ensuring the canonical counts are always honoured.
+
+**Bug 2 — Mainworld belt double-counted.** The WBH PBG convention (confirmed at `generate_belt_count()` line 2611) includes the mainworld in the belt count when the mainworld is Size 0. `_reconcile_orbit_types()` was distributing the full `canonical_belt` count among non-mainworld slots, and Step 6 then separately set the mainworld slot to `"belt"`, producing `canonical_belt + 1` total belts. Fix: `generate_system_from_map()` now subtracts 1 from `canonical_belt` before calling `_reconcile_orbit_types()` when `world.size == 0`.
+
+---
+
 ### System HTML Missing Mainworld Detail (Session 36, issue #51)
 
 `TravellerSystem.to_html()` was omitting the `WorldPhysical` and atmosphere detail inner-cards from the mainworld panel — only `BeltPhysical` was handled. Added `.inner-card`, `.inner-lbl`, `.drow`, `.dlbl` CSS; `drow()` helper; and imports for `WorldPhysical`, `TIDAL_STATUS_LABELS`, and `format_atmosphere_profile()`.
@@ -146,8 +156,9 @@ When a companion orbit# was less than 1.0, `excl = companion_orbit − 1.0` was 
 | Companion star exclusion zone fix | +2 |
 | Primary star outer zone placement | +4 |
 | Anomalous orbits (Step 7) | +6 |
-| **Total new tests** | **+79** |
-| **Suite total** | **969** |
+| Incorrect belt counts for fetched mainworlds (issue #52) | +4 |
+| **Total new tests** | **+83** |
+| **Suite total** | **973** |
 
 All 969 tests pass. Pylint 10.00/10 on all core generation modules.
 
