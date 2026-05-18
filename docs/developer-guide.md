@@ -251,7 +251,7 @@ class SystemOrbits:
 
 **World orbital periods:** `OrbitSlot.orbit_period_yr` is computed in `generate_orbits()` after all slots are placed, using `P = √(AU³ / M_central)`. `M_central` = designated star mass + mass of any companion stars whose `orbit_au < orbit_slot.orbit_au` (WBH: a world outside a companion's orbit includes the companion in the central mass). Empty slots have `orbit_period_yr = None`. The period is included in `OrbitSlot.to_dict()` and displayed in the `system_map.py` Period column and gen-ui System Orbits card.
 
-**Orbital eccentricity (WBH p.27):** `generate_orbits()` accepts `orbital_eccentricity: bool = False`. When True, a post-placement pass calls `_roll_eccentricity()` for each non-empty orbit slot and each close/near/far secondary star. Two rolls: `2D+DM` selects a table row; a second `1D` or `2D` divided by a row-specific divisor gives the fractional part; result clamped to [0.000, 0.999]. `OrbitSlot.eccentricity` (`field(default=0.0, init=False)`) is populated; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"` (`AU × (1−e)`), and `"orbit_au_max"` (`AU × (1+e)`) when non-zero. `Star.orbit_eccentricity: float = 0.0` is set for secondary stars; `Star.to_dict()` similarly emits min/max. When the flag is False (default), no new dice roll and no seed disruption occurs. The flag is stored in `TravellerSystem.orbital_eccentricity` and plumbed through `generate_full_system()`, `generate_system_from_world()`, and all API endpoints via `parse_orbital_eccentricity()` in `shared/helpers.py`.
+**Orbital eccentricity (WBH p.27):** `generate_orbits()` accepts `orbital_eccentricity: bool = False`. When True, a post-placement pass calls `_roll_eccentricity()` for each non-empty orbit slot and each close/near/far secondary star. Two rolls: `2D+DM` selects a table row; a second `1D` or `2D` divided by a row-specific divisor gives the fractional part; result clamped to [0.000, 0.999]. `OrbitSlot.eccentricity` (`field(default=0.0, init=False)`) is populated; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"` (`AU × (1−e)`), and `"orbit_au_max"` (`AU × (1+e)`) when non-zero. `Star.orbit_eccentricity: float = 0.0` is set for secondary stars; `Star.to_dict()` similarly emits min/max. When the flag is False (default), no new dice roll and no seed disruption occurs. The flag is stored in `TravellerSystem.orbital_eccentricity` and plumbed through `generate_full_system()`, `generate_system_from_world()`, and all API endpoints via `parse_orbital_eccentricity()` in `shared/helpers.py`. In the gen-ui, an "Orbital Eccentricity" checkbox (enabled with "System detail") controls the flag. Display: gen-ui System Orbits card and `to_html()` orbit table each have a dedicated `Ecc` column; system map SVG shows `(e=0.35)` inline in the AU text.
 
 ---
 
@@ -783,15 +783,17 @@ python gen-ui/app.py
 | `_map_btn` | `QPushButton \| None` | Reference to the active "System Map" button; `None` when no system result is displayed |
 | `_map_windows` | `list[object]` | Open `SystemMapWindow` instances; list keeps them alive (Python GC otherwise collects shown windows) |
 
-**Source row checkboxes:** Three checkboxes live below the Procedural/TravellerMap radio buttons:
+**Source row checkboxes:** Five checkboxes live below the Procedural/TravellerMap radio buttons:
 
 | Checkbox | Enabled when | Effect |
 |----------|-------------|--------|
 | "Full system" | Always | Calls `generate_full_system()` instead of `generate_world()` |
 | "Attach detail" | "Full system" checked | Calls `attach_detail()` after system generation |
 | "Physical detail" | "Full system" checked | Calls `generate_world_physical(world, age_gyr)` on the mainworld after generation; populates `world.size_detail` |
+| "NHZ Atmospheres" | "Full system" checked | Passes `nhz_atmospheres=True` to `generate_full_system()` |
+| "Orbital Eccentricity" | "Full system" checked | Passes `orbital_eccentricity=True` to `generate_full_system()`; populates `OrbitSlot.eccentricity` values shown in the Ecc column |
 
-`_on_full_system_toggled()` enables/disables "Attach detail" and "Physical detail" together, and unchecks both when "Full system" is turned off.
+`_on_system_detail_toggled()` enables/disables all four dependent checkboxes together and unchecks them when "Full system" is turned off.
 
 The "System Map" button lives in `_build_system_summary_header()` (system results only; not shown in world-only mode). It is enabled/disabled in sync with the "Full system" checkbox: `_on_full_system_toggled()` calls `_map_btn.setEnabled(checked)` when the reference is set, and `_clear_status()` nulls `_map_btn` whenever the result panel is replaced.
 
@@ -801,11 +803,11 @@ The "System Map" button lives in `_build_system_summary_header()` (system result
 
 **`_build_stellar_card(system)`** — displays system age (`stars[0].age_gyr`) as a plain label above the star table, inside the `QGroupBox`. Age is read from the first star in the stellar system (all stars share the same age).
 
-**`_build_orbits_card(system, detail_attached)`** — builds the System Orbits grid. Both header variants include a trailing `"Notes"` column (left-aligned, last):
-- detail_attached: 10 columns — `Star | Orbit# | AU | Type | Profile | Codes | HZ | Zone | Period | Notes`; `right_cols={1,2,8}`
-- not detail_attached: 8 columns — `Star | Orbit# | AU | Type | HZ | Zone | Period | Notes`; `right_cols={1,2,6}`
+**`_build_orbits_card(system, detail_attached)`** — builds the System Orbits grid. Both header variants include a right-aligned `"Ecc"` column (after `"AU"`), a right-aligned `"Period"` column, and a left-aligned `"Notes"` column (last). AU cells show bare `orbit_au:.3f`; `ecc_str` is `f"{orbit.eccentricity:.3f}"` or `"—"`:
+- detail_attached: 11 columns — `Star | Orbit# | AU | Ecc | Type | Profile | Codes | HZ | Zone | Period | Notes`; `right_cols={1,2,3,9}`
+- not detail_attached: 9 columns — `Star | Orbit# | AU | Ecc | Type | HZ | Zone | Period | Notes`; `right_cols={1,2,3,7}`
 
-`notes_str` is populated from `OrbitSlot.notes` for every slot that carries a note (HZ placement notes for the mainworld candidate, anomaly notes for anomalous orbits). The `"Period"` column was also added in Session 40 (see above); `period_str` uses `_fmt_period()`.
+`notes_str` is populated from `OrbitSlot.notes` for every slot that carries a note. `period_str` uses `_fmt_period()`.
 
 **`SystemMapWindow`** — a non-modal `QMainWindow` opened by the "System Map" button. One window is created per click; multiple windows can coexist.
 

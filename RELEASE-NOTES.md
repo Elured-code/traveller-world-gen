@@ -136,7 +136,7 @@ WBH p.27 orbital eccentricity is now implemented as an optional feature gated on
 
 **Flag plumbing:** `orbital_eccentricity` parameter added to `generate_orbits()`, `generate_full_system()`, `generate_system_from_world()`, and all relevant API endpoints. New `parse_orbital_eccentricity()` helper in `shared/helpers.py` reads the query parameter.
 
-**Display:** gen-ui AU cell shows `1.234 (e=0.350)` when eccentricity > 0; system map AU text shows `1.234 (e=0.35)`. No new columns.
+**Display:** System map AU text shows `1.234 (e=0.35)` inline when eccentricity > 0. gen-ui System Orbits card and `to_html()` orbit table each have a dedicated `Ecc` column (see below).
 
 **Seed impact:** Flag False (default) → no new dice, no seed disruption. Flag True → seed-breaking (2 rolls per non-empty slot + 2 per secondary star).
 
@@ -151,6 +151,20 @@ WBH p.77 Rules 3 and 4 for 1:1 tidal lock interactions are now implemented.
 **Rule 4 — Eccentricity reduction.** `generate_world_physical()` gains an `orbit_eccentricity: float = 0.0` parameter. When a world reaches 1:1 lock and `orbit_eccentricity > 0.1`, `_reroll_eccentricity_tidal()` re-rolls with DM-2 (using `_ECC_TABLE_PHYS`, an inline copy of the eccentricity table to avoid circular imports). The lower value is stored in new `WorldPhysical.eccentricity_adjusted` (`Optional[float]`, `init=False`). `_attach_mainworld_physical()` in `function_app.py` reads this field and writes it back to the orbit slot, updating the eccentricity that appears in JSON output and system maps.
 
 **Seed impact:** The axial tilt change is seed-breaking for 1:1 locked worlds (same dice count, different interpretation). Eccentricity path only fires for locked worlds with `eccentricity > 0.1` when the orbital eccentricity feature flag is enabled.
+
+---
+
+### Orbital Eccentricity Display Column (Session 44 cont.)
+
+The inline `(e=X.XXX)` text formerly embedded in the AU cell of both the gen-ui System Orbits card and the `to_html()` orbit table has been replaced with a dedicated right-aligned **Ecc** column inserted after **AU**.
+
+- Shows `0.350` (3 d.p.) when `OrbitSlot.eccentricity > 0`; `—` otherwise
+- gen-ui detail_attached variant: 11 columns — `Star | Orbit# | AU | Ecc | Type | Profile | Codes | HZ | Zone | Period | Notes`; `right_cols={1,2,3,9}`
+- gen-ui non-attached variant: 9 columns — `Star | Orbit# | AU | Ecc | Type | HZ | Zone | Period | Notes`; `right_cols={1,2,3,7}`
+- HTML table: `<th>Ecc</th>` added after `<th>AU</th>`; moon sub-row `colspan` widened from 3 → 4
+- System map SVG retains the inline `(e=0.35)` in the AU text column (no SVG layout change)
+
+A missing **"Orbital Eccentricity"** checkbox was also added to the gen-ui toolbar row (alongside "NHZ Atmospheres", enabled only when "System detail" is checked). Without this checkbox, `generate_full_system()` was always called with `orbital_eccentricity=False`, leaving every `OrbitSlot.eccentricity` at 0.0 and the Ecc column always showing `—`.
 
 ---
 
