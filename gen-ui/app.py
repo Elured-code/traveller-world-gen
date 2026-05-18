@@ -204,6 +204,16 @@ def _tl_era(tl: int) -> str:
     return "High Stellar"
 
 
+def _fmt_period(period_yr: float) -> str:
+    """Format an orbital period: hours, days, or years."""
+    days = period_yr * 365.25
+    if days < 1.0:
+        return f"{days * 24:.1f}h"
+    if days < 365.25:
+        return f"{days:.1f}d"
+    return f"{period_yr:.2f}y"
+
+
 def _detail_row(label_text: str, value_text: str, danger: bool = False) -> QWidget:
     """One label/value row for the Physical and Society detail cards."""
     row = QWidget()
@@ -1040,14 +1050,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
             grid.addWidget(lbl, 0, col)
 
-        def _fmt_period(p_yr: float) -> str:
-            days = p_yr * 365.25
-            if days < 1.0:
-                return f"{days * 24:.1f}h"
-            if days < 365.25:
-                return f"{days:.1f}d"
-            return f"{p_yr:.2f}y"
-
         for row, star in enumerate(stars, start=1):
             orbit_str = f"{star.orbit_au:.3f}" if star.orbit_au else "—"
             period_yr = getattr(star, "orbit_period_yr", None)
@@ -1078,11 +1080,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         grid.setHorizontalSpacing(14)
 
         if detail_attached:
-            headers = ["Star", "Orbit#", "AU", "Type", "Profile", "Codes", "HZ", "Zone"]
-            right_cols = {1, 2}
+            headers = ["Star", "Orbit#", "AU", "Type", "Profile", "Codes", "HZ", "Zone", "Period"]
+            right_cols = {1, 2, 8}
         else:
-            headers = ["Star", "Orbit#", "AU", "Type", "HZ", "Zone"]
-            right_cols = {1, 2}
+            headers = ["Star", "Orbit#", "AU", "Type", "HZ", "Zone", "Period"]
+            right_cols = {1, 2, 6}
 
         for col, hdr in enumerate(headers):
             lbl = QLabel(hdr)
@@ -1108,6 +1110,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             type_str = _WORLD_TYPE_LABEL.get(_wt, _wt)
             zone_str = orbit.temperature_zone.capitalize()
 
+            p_yr = getattr(orbit, "orbit_period_yr", None)
+            period_str = _fmt_period(p_yr) if (p_yr is not None and not is_empty) else "—"
+
             if detail_attached:
                 detail = getattr(orbit, "detail", None)
                 profile_str = _orbit_profile(orbit)
@@ -1127,6 +1132,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     (codes_str,                    Qt.AlignmentFlag.AlignLeft),
                     (hz_str,                       Qt.AlignmentFlag.AlignLeft),
                     (zone_str,                     Qt.AlignmentFlag.AlignLeft),
+                    (period_str,                   Qt.AlignmentFlag.AlignRight),
                 ]
             else:
                 detail = None
@@ -1137,6 +1143,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     (type_str,                     Qt.AlignmentFlag.AlignLeft),
                     (hz_str,                       Qt.AlignmentFlag.AlignLeft),
                     (zone_str,                     Qt.AlignmentFlag.AlignLeft),
+                    (period_str,                   Qt.AlignmentFlag.AlignRight),
                 ]
 
             for col, (text, align) in enumerate(cells):
