@@ -16,7 +16,7 @@ Implements the world placement procedure from WBH pp.36-51:
   - Mainworld candidate selection (p.51)
 
 Out of scope: anomalous orbits (Step 7), eccentricity (Step 9),
-orbital periods, Special Circumstances chapter.
+Special Circumstances chapter.
 
 Licence
 -------
@@ -202,6 +202,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     notes: str = ""
     canonical_profile: str = ""  # UWP set when mainworld comes from canonical data
     gg_sah: str = ""             # gas giant SAH rolled at orbit gen time (e.g. "GM9")
+    orbit_period_yr: Optional[float] = field(default=None, init=False)
     detail: Optional["WorldDetail"] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
@@ -222,6 +223,8 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["canonical_profile"] = self.canonical_profile
         if self.gg_sah:
             d["gg_sah"] = self.gg_sah
+        if self.orbit_period_yr is not None:
+            d["orbit_period_yr"] = self.orbit_period_yr
         # Include secondary world / satellite detail if attach_detail() has run
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
@@ -637,6 +640,27 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
         elif best.hz_deviation > 0.5:
             notes.append("cool side")
         best.notes = ", ".join(notes)
+
+    # Compute world orbital periods: P (yr) = sqrt(AU³ / M_central)
+    # M_central = designated star mass + companions whose orbit_au < world orbit_au.
+    # Planet mass correction (WBH: mE × 0.000003) is negligible for standard worlds
+    # and is omitted here.
+    _stars_by_d = {s.designation: s for s in system.stars}
+    _comp_by_parent: Dict[str, List[Star]] = {}
+    for _s in system.stars:
+        if _s.role == "companion":
+            _comp_by_parent.setdefault(_s.designation[:-1], []).append(_s)
+
+    for o in result.orbits:
+        _star = _stars_by_d.get(o.star_designation)
+        if _star is None or o.orbit_au <= 0:
+            continue
+        _mc = _star.mass
+        for _comp in _comp_by_parent.get(o.star_designation, []):
+            if _comp.orbit_au is not None and _comp.orbit_au < o.orbit_au:
+                _mc += _comp.mass
+        if _mc > 0:
+            o.orbit_period_yr = round(math.sqrt(o.orbit_au ** 3 / _mc), 4)
 
     return result
 

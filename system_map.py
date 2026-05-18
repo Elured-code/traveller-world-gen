@@ -657,6 +657,12 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 f'font-size="{_TBL_FONT_SM}" fill="{tz_col}" opacity="0.85">'
                 f'{esc(hz_tag)}{esc(o.temperature_zone)}{esc(moons_str)}</text>'
             )
+            if wt != "empty" and o.orbit_period_yr is not None:
+                s.append(
+                    f'<text x="{bx + _C_PERIOD}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
+                    f'{esc(_fmt_period(o.orbit_period_yr))}</text>'
+                )
 
     s.append('</g>')
     s.append('</svg>')
