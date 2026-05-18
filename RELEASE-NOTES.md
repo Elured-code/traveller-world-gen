@@ -1,7 +1,7 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–44
+**Sessions:** 36–45
 **Tests:** 990 (up from 890 in v1.1)
 
 ---
@@ -169,6 +169,22 @@ A missing **"Orbital Eccentricity"** checkbox was also added to the gen-ui toolb
 ---
 
 ## Bug Fixes
+
+### JSON Unicode Error on Windows (Session 45, issue #60)
+
+`open(schema_path)` in `tests/test_traveller_world_gen.py` was called without `encoding="utf-8"`. On Windows, Python defaults to the system codepage (cp1252), which cannot decode the non-ASCII characters in `traveller_world_schema.json` (e.g. `–` U+2013, `…` U+2026). Fixed to `open(schema_path, encoding="utf-8")`, matching the pattern used elsewhere in the test file.
+
+---
+
+### Virtual Environment Consolidated (Session 45, issues #61 and #62)
+
+The dual-environment setup (`.venv` for Azure Functions, `.venv-1` for PySide6/gen-ui) has been replaced by a single `.venv` that contains all dependencies.
+
+- `requirements-dev.txt` added for pytest and pylint
+- Install scripts (`install.sh`, `install.ps1`, `install.bat`) now install all three requirements files in one pass and activate the venv at the end
+- All `.vscode/settings.json`, `docs/VSCODE.md`, `docs/developer-guide.md`, `docs/uat-plan.md`, and `gen-ui/README.md` updated from `.venv-1` to `.venv`
+
+---
 
 ### Incorrect Belt Counts for Fetched Mainworlds (Session 42, issue #52)
 
