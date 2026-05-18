@@ -5626,3 +5626,112 @@ class TestAnomalousOrbits:
             assert so.total_worlds == actual_gg + actual_belt + actual_terr, (
                 f"seed={seed}: total_worlds mismatch"
             )
+
+
+class TestReconcileOrbitTypes:
+    """Tests for _reconcile_orbit_types and the mainworld-belt fix (issue #52)."""
+
+    def _make_orbit(self, star_desig, orbit_number, world_type,
+                    is_mainworld=False, is_empty=False):
+        """Build a minimal OrbitSlot for reconciliation tests."""
+        from traveller_orbit_gen import OrbitSlot
+        o = OrbitSlot(
+            star_designation=star_desig,
+            orbit_number=orbit_number,
+            orbit_au=orbit_number * 0.5,
+            slot_index=1 if not is_empty else 0,
+            world_type="empty" if is_empty else world_type,
+            is_habitable_zone=False,
+            hz_deviation=0.0,
+            temperature_zone="Temperate",
+        )
+        o.is_mainworld_candidate = is_mainworld
+        return o
+
+    def _make_orbits(self, slots):
+        """Build a minimal SystemOrbits from a list of OrbitSlot objects."""
+        from traveller_orbit_gen import SystemOrbits
+        from traveller_stellar_gen import StarSystem
+        so = SystemOrbits(stellar_system=StarSystem())
+        so.orbits = slots
+        return so
+
+    def test_belt_shortage_filled_from_empty_slots(self):
+        # canonical_belt=3 but only 2 non-empty non-mw slots exist;
+        # after reconciliation orbits.belt_count must equal 3.
+        from traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "terrestrial"),
+            self._make_orbit("A", 2.0, "terrestrial"),
+            self._make_orbit("A", 3.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 4.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 5.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_orbit_types(so, canonical_gg=0, canonical_belt=3)
+        _recount_orbit_metadata(so)
+        assert so.belt_count == 3, (
+            f"Expected 3 belts after shortage fill, got {so.belt_count}"
+        )
+
+    def test_gg_shortage_filled_from_empty_slots(self):
+        # canonical_gg=3 but only 2 non-empty non-mw slots exist;
+        # after reconciliation orbits.gas_giant_count must equal 3.
+        from traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "terrestrial"),
+            self._make_orbit("A", 2.0, "terrestrial"),
+            self._make_orbit("A", 3.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 4.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_orbit_types(so, canonical_gg=3, canonical_belt=0)
+        _recount_orbit_metadata(so)
+        assert so.gas_giant_count == 3, (
+            f"Expected 3 GGs after shortage fill, got {so.gas_giant_count}"
+        )
+
+    def test_mainworld_belt_not_double_counted(self):
+        # Mainworld is a belt (size 0); PBG says belt_count=2.
+        # WBH convention: that count includes the mainworld belt.
+        # After reconciliation + mainworld type assignment, total belts = 2.
+        from traveller_map_fetch import (
+            _reconcile_orbit_types, _recount_orbit_metadata,
+        )
+        slots = [
+            self._make_orbit("A", 1.0, "terrestrial"),
+            self._make_orbit("A", 2.0, "terrestrial"),
+            self._make_orbit("A", 3.0, "terrestrial"),
+            self._make_orbit("A", 4.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        # Simulate the fix: canonical_belt=2, mainworld is a belt → pass 1
+        _reconcile_orbit_types(so, canonical_gg=0, canonical_belt=1)
+        # Step 6 equivalent: set mainworld slot to belt
+        mw = next(o for o in so.orbits if o.is_mainworld_candidate)
+        mw.world_type = "belt"
+        _recount_orbit_metadata(so)
+        assert so.belt_count == 2, (
+            f"Expected 2 total belts (1 non-mw + mainworld), got {so.belt_count}"
+        )
+
+    def test_no_change_when_slots_sufficient(self):
+        # When canonical counts fit without shortage, counts match exactly.
+        # 4 non-mw non-empty slots: canonical_gg=2, canonical_belt=1 leaves 1
+        # non-mw terrestrial.  The mainworld slot (terrestrial) is also counted
+        # by _recount_orbit_metadata, so terrestrial_count == 2.
+        from traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "terrestrial"),
+            self._make_orbit("A", 2.0, "terrestrial"),
+            self._make_orbit("A", 3.0, "terrestrial"),
+            self._make_orbit("A", 4.0, "terrestrial"),
+            self._make_orbit("A", 5.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_orbit_types(so, canonical_gg=2, canonical_belt=1)
+        _recount_orbit_metadata(so)
+        assert so.gas_giant_count == 2
+        assert so.belt_count == 1
+        # 1 non-mw terrestrial + 1 mainworld terrestrial = 2
+        assert so.terrestrial_count == 2

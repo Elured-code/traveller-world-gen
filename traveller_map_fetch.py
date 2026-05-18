@@ -543,16 +543,28 @@ def _reconcile_orbit_types(orbits: SystemOrbits,
     Redistribute world types in non-mainworld, non-empty slots to match
     the canonical gas-giant and belt counts from the PBG field.
 
-    Slots are re-typed in-place; excess slots become terrestrial.
-    Mainworld and empty slots are left unchanged.
+    When the canonical total exceeds the number of available non-empty
+    non-mainworld slots, empty slots are promoted to world slots so the
+    canonical counts can always be honoured.  Excess slots beyond the
+    canonical total become terrestrial.  Mainworld slots are left unchanged.
     Call _recount_orbit_metadata() after the mainworld type is resolved.
     """
     slots = [o for o in orbits.orbits
              if o.world_type != "empty" and not o.is_mainworld_candidate]
+
+    # Promote empty slots when canonical counts exceed available world slots
+    needed = canonical_gg + canonical_belt - len(slots)
+    if needed > 0:
+        empties = [o for o in orbits.orbits if o.world_type == "empty"]
+        for slot in empties[:needed]:
+            slot.world_type = "terrestrial"  # placeholder; overwritten below
+        slots = [o for o in orbits.orbits
+                 if o.world_type != "empty" and not o.is_mainworld_candidate]
+
     n = len(slots)
     pool = ["gas_giant"] * canonical_gg + ["belt"] * canonical_belt
     if len(pool) > n:
-        pool = pool[:n]
+        pool = pool[:n]  # only reachable if no empty slots remain
     else:
         pool += ["terrestrial"] * (n - len(pool))
     random.shuffle(pool)
@@ -622,7 +634,12 @@ def generate_system_from_map(
     # Step 5: reconcile orbit slot types with canonical PBG gas-giant and belt
     # counts.  generate_orbits() used random rolls; we reassign world types
     # across non-mainworld, non-empty slots so the placed types match PBG.
-    _reconcile_orbit_types(orbits, world.gas_giant_count, world.belt_count)
+    # WBH convention: belt_count includes the mainworld when it is a belt
+    # (size 0).  Subtract 1 so the mainworld slot isn't double-counted —
+    # its type is set explicitly to "belt" in Step 6.
+    mw_is_belt = world.size == 0
+    belt_for_reconcile = max(0, world.belt_count - (1 if mw_is_belt else 0))
+    _reconcile_orbit_types(orbits, world.gas_giant_count, belt_for_reconcile)
 
     # Step 6: resolve mainworld orbit slot; stamp it with the canonical UWP so
     # the orbit table shows the real profile instead of blank/procedural data.
