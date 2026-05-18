@@ -168,7 +168,9 @@ _TYPE_ABBR = {
 # Table zone — fixed pixel geometry (independent of canvas width)
 _TBL_HDR_OFF  = 17   # header text baseline, offset from sep_y
 _TBL_ULN_OFF  = 22   # header underline y, offset from sep_y
-_TBL_ROW0_OFF = 38   # first data row baseline, offset from sep_y
+_TBL_COL_HDR_OFF = 32  # column label baseline, offset from sep_y
+_TBL_COL_ULN_OFF = 37  # column label underline y, offset from sep_y
+_TBL_ROW0_OFF = 50   # first data row baseline, offset from sep_y
 _TBL_ROW_H    = 17   # row pitch
 _TBL_BOT_PAD  = 10   # space below last row
 _TBL_FONT_LG  = 11   # primary text size
@@ -460,9 +462,11 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     # TABLE ZONE — one column per star, rows grow downward
     # ══════════════════════════════════════════════════════════════════════════
     s.append('<g font-family="\'Courier New\', Courier, monospace">')
-    hdr_y  = sep_y + _TBL_HDR_OFF
-    uln_y  = sep_y + _TBL_ULN_OFF
-    row0_y = sep_y + _TBL_ROW0_OFF
+    hdr_y      = sep_y + _TBL_HDR_OFF
+    uln_y      = sep_y + _TBL_ULN_OFF
+    col_hdr_y  = sep_y + _TBL_COL_HDR_OFF
+    col_uln_y  = sep_y + _TBL_COL_ULN_OFF
+    row0_y     = sep_y + _TBL_ROW0_OFF
 
     for ci, d in enumerate(star_desigs):
         star  = star_by_desig[d]
@@ -495,6 +499,27 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         s.append(
             f'<line x1="{bx}" y1="{uln_y}" x2="{uln_x2}" y2="{uln_y}" '
             f'stroke="{palette.axis}" stroke-width="0.5" opacity="0.40"/>'
+        )
+
+        # Column labels
+        col_labels = [
+            (_C_IDX,   "#"),
+            (_C_ORBIT, "Orbit#"),
+            (_C_AU,    "AU"),
+            (_C_TYPE,  "Type"),
+            (_C_PROF,  "Profile"),
+            (_C_CODES, "Codes"),
+            (_C_ZONE,  "Zone  ♦"),
+        ]
+        for cx, lbl in col_labels:
+            s.append(
+                f'<text x="{bx + cx}" y="{col_hdr_y}" '
+                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}" opacity="0.70">'
+                f'{esc(lbl)}</text>'
+            )
+        s.append(
+            f'<line x1="{bx}" y1="{col_uln_y}" x2="{uln_x2}" y2="{col_uln_y}" '
+            f'stroke="{palette.axis}" stroke-width="0.4" opacity="0.25"/>'
         )
 
         # Data rows — primary column merges companion star rows in orbit# order
