@@ -5449,3 +5449,94 @@ class TestCompanionExclusionZone:
                         f"seed={seed}: primary world at orbit# {on:.2f} is inside "
                         f"companion exclusion zone [{lo:.2f}, {hi:.2f}]"
                     )
+
+
+class TestPrimaryOuterZone:
+    """Primary star populates outer zone beyond companion exclusion band."""
+
+    def test_outer_zone_worlds_placed_seed1(self):
+        # Seed 1: companion B at orbit# 5.30 → outer zone starts at 8.30.
+        # After the fix, Star A must have at least one world at orbit# >= 8.30.
+        sys = generate_full_system("X", seed=1)
+        comp = next(
+            s for s in sys.stellar_system.stars
+            if s.role in ("close", "near", "far") and s.orbit_number
+        )
+        outer_lo = comp.orbit_number + 3.0
+        primary_desig = next(
+            s.designation for s in sys.stellar_system.stars if s.role == "primary"
+        )
+        outer_worlds = [
+            o for o in sys.system_orbits.orbits
+            if o.star_designation == primary_desig
+            and o.world_type != "empty"
+            and o.orbit_number >= outer_lo
+        ]
+        assert outer_worlds, (
+            f"No Star A worlds at orbit# >= {outer_lo:.2f} — outer zone not populated"
+        )
+
+    def test_no_primary_world_in_exclusion_band_seed1(self):
+        # Seed 1: no Star A world may land in [4.30, 8.30].
+        sys = generate_full_system("X", seed=1)
+        comp = next(
+            s for s in sys.stellar_system.stars
+            if s.role in ("close", "near", "far") and s.orbit_number
+        )
+        lo, hi = comp.orbit_number - 1.0, comp.orbit_number + 3.0
+        primary_desig = next(
+            s.designation for s in sys.stellar_system.stars if s.role == "primary"
+        )
+        for o in sys.system_orbits.orbits:
+            if o.star_designation != primary_desig or o.world_type == "empty":
+                continue
+            assert not (lo <= o.orbit_number <= hi), (
+                f"Star A world at orbit# {o.orbit_number:.2f} inside exclusion "
+                f"band [{lo:.2f}, {hi:.2f}]"
+            )
+
+    def test_outer_zone_not_triggered_for_single_star(self):
+        # Single-star systems must be unaffected — no outer zone path active.
+        # Verify by checking that 100 seeds without any close/near/far companion
+        # still produce valid (non-zero) world counts.
+        found_single = 0
+        for seed in range(200):
+            sys = generate_full_system("X", seed=seed)
+            companions = [
+                s for s in sys.stellar_system.stars
+                if s.role in ("close", "near", "far") and s.orbit_number
+            ]
+            if companions:
+                continue
+            worlds = [
+                o for o in sys.system_orbits.orbits if o.world_type != "empty"
+            ]
+            assert worlds, f"seed={seed}: single-star system has no worlds"
+            found_single += 1
+            if found_single >= 100:
+                break
+        assert found_single >= 100, "Could not find 100 single-star seeds in 200 — increase range"
+
+    def test_companion_exclusion_scan_outer_zone_seeds(self):
+        # 500-seed scan (seeds 500-999) with outer-zone path active.
+        # No primary world may land in any companion exclusion band.
+        for seed in range(500, 1000):
+            sys = generate_full_system("X", seed=seed)
+            stars = sys.stellar_system.stars
+            primary_desig = next(
+                s.designation for s in stars if s.role == "primary"
+            )
+            companions = [
+                s for s in stars
+                if s.role in ("close", "near", "far") and s.orbit_number
+            ]
+            for comp in companions:
+                lo = comp.orbit_number - 1.0
+                hi = comp.orbit_number + 3.0
+                for o in sys.system_orbits.orbits:
+                    if o.star_designation != primary_desig or o.world_type == "empty":
+                        continue
+                    assert not (lo <= o.orbit_number <= hi), (
+                        f"seed={seed}: primary world at orbit# {o.orbit_number:.2f} "
+                        f"inside companion exclusion zone [{lo:.2f}, {hi:.2f}]"
+                    )

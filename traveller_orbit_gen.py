@@ -374,9 +374,10 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
     result.empty_orbits = empty
 
     # MAO and HZCO per star
-    star_hzco: Dict[str, float] = {}
-    star_mao:  Dict[str, float] = {}
+    star_hzco:  Dict[str, float] = {}
+    star_mao:   Dict[str, float] = {}
     star_avail: Dict[str, Tuple[float,float]] = {}
+    star_outer: Dict[str, Tuple[float,float]] = {}   # outer zone beyond companion excl.
 
     for star in primary_stars:
         mao = get_mao(star)
@@ -391,12 +392,16 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
 
         # Available orbit range — table ends at orbit# 17 (8512 AU)
         max_o = 17.0
+        outer_lo = mao   # accumulates max(companion+3) for companions with valid inner zone
+        has_outer = False
         if star.role == "primary":
             for other in primary_stars:
                 if other.role in ("close","near","far") and other.orbit_number:
                     excl = other.orbit_number - 1.0
                     if excl > mao:
                         max_o = min(max_o, excl)
+                        outer_lo = max(outer_lo, other.orbit_number + 3.0)
+                        has_outer = True
                     else:
                         # Companion orbit is inside MAO+1: no inner zone exists.
                         # Push MAO past the outer exclusion boundary (WBH: companion+3).
@@ -406,6 +411,9 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
             max_o = max(mao+0.1, star.orbit_number - 3.0)
         elif star.role == "companion":
             max_o = 0.65
+
+        if has_outer and outer_lo < 17.0:
+            star_outer[star.designation] = (outer_lo, 17.0)
 
         star_avail[star.designation] = (mao, max_o)
         result.star_mao[star.designation] = mao
@@ -417,17 +425,20 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
     if len(primary_stars) == 1:
         alloc = {primary_stars[0].designation: result.total_worlds}
     else:
-        total_range = sum(
-            max(0.0, star_avail[s.designation][1] - star_avail[s.designation][0])
-            for s in primary_stars
-        )
+        def _avail_range(s: Star) -> float:
+            des = s.designation
+            inner = max(0.0, star_avail[des][1] - star_avail[des][0])
+            oz = star_outer.get(des)
+            return inner + (max(0.0, oz[1] - oz[0]) if oz else 0.0)
+
+        total_range = sum(_avail_range(s) for s in primary_stars)
         alloc: Dict[str, int] = {}
         remaining = result.total_worlds
         for i, star in enumerate(primary_stars):
             if i == len(primary_stars)-1:
                 alloc[star.designation] = remaining
             else:
-                rng = max(0.0, star_avail[star.designation][1] - star_avail[star.designation][0])
+                rng = _avail_range(star)
                 n = round(result.total_worlds * rng / max(total_range, 0.01))
                 n = max(0, min(n, remaining))
                 alloc[star.designation] = n
@@ -440,139 +451,157 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
 
     for star in primary_stars:
         d = star.designation
-        n_worlds = alloc.get(d, 0)
-        n_empty_here = empty if star == primary_stars[0] else 0
-        total_slots = n_worlds + n_empty_here
-        if total_slots <= 0:
-            continue
+        n_worlds_total = alloc.get(d, 0)
+        n_empty_here   = empty if star == primary_stars[0] else 0
 
-        mao = star_mao[d]
-        hzco = star_hzco[d]
-        _, max_o = star_avail[d]
-
-        # Baseline number (WBH p.44)
-        bn_dm = 0
-        if has_companion:
-            bn_dm -= 2
-        if star.lum_class in ("Ia","Ib","II"):
-            bn_dm += 3
-        elif star.lum_class == "III":
-            bn_dm += 2
-        elif star.lum_class == "IV":
-            bn_dm += 1
-        elif star.lum_class == "VI":
-            bn_dm -= 1
-        bn_dm -= secondary_count
-        tw = result.total_worlds
-        if tw < 6:
-            bn_dm -= 4
-        elif tw <= 9:
-            bn_dm -= 3
-        elif tw <= 12:
-            bn_dm -= 2
-        elif tw <= 15:
-            bn_dm -= 1
-        elif tw >= 18:
-            bn_dm += 1
-        baseline_num = max(0, roll(2, bn_dm))
-
-        # Baseline Orbit# (WBH p.44-46)
-        vs = 0.1 if hzco >= 1.0 else 0.01
-        n_total_stars = len(primary_stars)
-        if 1 <= baseline_num <= total_slots:
-            # Step 3a: baseline world is in the habitable zone
-            var = (roll(2)-7) * vs
-            baseline_orbit = max(mao, hzco + var)
-        elif baseline_num < 1:
-            # Step 3b: cold system — all worlds are beyond the HZCO.
-            # WBH p.45: Baseline Orbit# = HZCO − baseline_number + Total Worlds + (2D-7)/10
-            # baseline_number is ≤0 so subtracting it adds its absolute value.
-            # Total Worlds is added as whole Orbit#s (no 0.1 multiplier) to push
-            # the baseline — and therefore the innermost world — well outside the HZ.
-            anchor = max(mao, hzco)
-            if anchor >= 1.0:
-                var = (roll(2)-7) / 10.0
-                # FIX: add total_worlds as whole Orbit#s, not total_slots*0.1
-                baseline_orbit = anchor + abs(baseline_num) + n_worlds + var
-            else:
-                # Sub-Orbit#1 HZCO: use 1/10 scaling throughout (WBH p.45)
-                var = (roll(2)-2) / 100.0
-                baseline_orbit = anchor + abs(baseline_num)/10.0 + n_worlds/10.0 + var
-            baseline_orbit = max(mao, baseline_orbit)
-            baseline_num = 1
+        # Split worlds between inner zone and outer zone (if one exists)
+        if d in star_outer:
+            mao_i, max_o_i = star_avail[d]
+            mao_o, max_o_o = star_outer[d]
+            inner_rng = max(0.0, max_o_i - mao_i)
+            outer_rng = max(0.0, max_o_o - mao_o)
+            total_rng  = max(inner_rng + outer_rng, 0.01)
+            inner_n    = round(n_worlds_total * inner_rng / total_rng)
+            inner_n    = max(0, min(inner_n, n_worlds_total))
+            outer_n    = n_worlds_total - inner_n
+            zones = [
+                (mao_i, max_o_i, inner_n, n_empty_here),
+                (mao_o, max_o_o, outer_n, 0),
+            ]
         else:
-            # Step 3c: hot system — all worlds are inside the HZCO
-            inner = hzco - baseline_num + total_slots
-            if inner < 1.0 or hzco < 1.0:
-                var = (roll(2)-7) / 100.0
-                baseline_orbit = hzco - baseline_num/10.0 + total_slots/10.0 + var
-            else:
+            mao_i, max_o_i = star_avail[d]
+            zones = [(mao_i, max_o_i, n_worlds_total, n_empty_here)]
+
+        hzco         = star_hzco[d]
+        n_total_stars = len(primary_stars)
+
+        for zone_mao, zone_max_o, zone_n, zone_empty in zones:
+            total_slots = zone_n + zone_empty
+            if total_slots <= 0:
+                continue
+
+            # Baseline number (WBH p.44)
+            bn_dm = 0
+            if has_companion:
+                bn_dm -= 2
+            if star.lum_class in ("Ia","Ib","II"):
+                bn_dm += 3
+            elif star.lum_class == "III":
+                bn_dm += 2
+            elif star.lum_class == "IV":
+                bn_dm += 1
+            elif star.lum_class == "VI":
+                bn_dm -= 1
+            bn_dm -= secondary_count
+            tw = result.total_worlds
+            if tw < 6:
+                bn_dm -= 4
+            elif tw <= 9:
+                bn_dm -= 3
+            elif tw <= 12:
+                bn_dm -= 2
+            elif tw <= 15:
+                bn_dm -= 1
+            elif tw >= 18:
+                bn_dm += 1
+            baseline_num = max(0, roll(2, bn_dm))
+
+            # Baseline Orbit# (WBH p.44-46)
+            vs = 0.1 if hzco >= 1.0 else 0.01
+            if 1 <= baseline_num <= total_slots:
+                # Step 3a: baseline world is in the habitable zone
                 var = (roll(2)-7) * vs
-                baseline_orbit = inner + var
-            baseline_orbit = max(mao, min(baseline_orbit, hzco - 0.01))
-            baseline_num = total_slots
-
-        baseline_orbit = max(mao, min(baseline_orbit, max_o - 0.01))
-
-        # Spread (WBH p.48)
-        # Formula: Spread = (Baseline Orbit# - MAO) / Baseline Number
-        spread = (baseline_orbit - mao) / max(1, baseline_num)
-        # Maximum Spread = Primary's Available Orbits / (All Slots + Total Stars)
-        # Denominator uses total_slots (worlds + empty) so every slot gets a
-        # spread unit, preventing outer slots from piling up at the ceiling.
-        avail = max_o - mao
-        max_spread = avail / max(total_slots + n_total_stars, 1)
-        # Minimum spread: when baseline_num is large the formula above collapses
-        # to HZCO/total_slots (~0.4 for a G star with 8 worlds), pinning all
-        # slots near the inner system.  Enforce a floor so worlds span at least
-        # half the available range.
-        min_spread = avail / max(total_slots * 2, 1)
-        spread = max(min_spread, min(spread, max_spread))
-        spread = min(spread, max_spread)
-        spread = max(0.01, spread)
-
-        # Place slots (WBH p.48-49)
-        # Inner Slot Orbit# = (MAO + Spread) + (2D-7) × Spread/10
-        # Each subsequent slot: Previous + Spread + (2D-7) × Spread/10
-        slots: List[float] = []
-        current = mao + spread + (roll(2)-7)*0.1*spread
-        current = max(mao, current)
-        for _ in range(total_slots):
-            current = max(mao, min(current, max_o))
-            # Additive gap check (was multiplicative `* 1.1`, which triggered
-            # constantly once orbit# exceeded spread/0.1 and halved every step).
-            if slots and current - slots[-1] < spread * 0.4:
-                current = min(slots[-1] + spread * 0.5, max_o)
-            # Stop if we cannot advance past the last slot (at ceiling)
-            if slots and round(current, 2) == round(slots[-1], 2):
-                break
-            slots.append(round(current, 2))
-            current += spread + (roll(2)-7)*0.1*spread
-
-        # Assign world types
-        empty_set = set(random.sample(range(len(slots)), min(n_empty_here, len(slots))))
-        for si, on in enumerate(slots):
-            au = _orbit_to_au(on)
-            dev = on - hzco
-            in_hz = abs(dev) <= 1.0
-            tz = _temp_zone(dev, hzco, on)
-            if si in empty_set:
-                wtype = "empty"
-            elif pool_idx < len(pool):
-                wtype = pool[pool_idx]
-                pool_idx += 1
+                baseline_orbit = max(zone_mao, hzco + var)
+            elif baseline_num < 1:
+                # Step 3b: cold system — all worlds are beyond the HZCO.
+                # WBH p.45: Baseline Orbit# = HZCO − baseline_number + Total Worlds + (2D-7)/10
+                # baseline_number is ≤0 so subtracting it adds its absolute value.
+                # Total Worlds is added as whole Orbit#s (no 0.1 multiplier) to push
+                # the baseline — and therefore the innermost world — well outside the HZ.
+                anchor = max(zone_mao, hzco)
+                if anchor >= 1.0:
+                    var = (roll(2)-7) / 10.0
+                    # FIX: add total_worlds as whole Orbit#s, not total_slots*0.1
+                    baseline_orbit = anchor + abs(baseline_num) + zone_n + var
+                else:
+                    # Sub-Orbit#1 HZCO: use 1/10 scaling throughout (WBH p.45)
+                    var = (roll(2)-2) / 100.0
+                    baseline_orbit = anchor + abs(baseline_num)/10.0 + zone_n/10.0 + var
+                baseline_orbit = max(zone_mao, baseline_orbit)
+                baseline_num = 1
             else:
-                wtype = "terrestrial"
-            slot_gg_sah = (
-                _gg_sah_roll(star.spectral_type, star.lum_class)
-                if wtype == "gas_giant" else ""
-            )
-            result.orbits.append(OrbitSlot(
-                star_designation=d, orbit_number=on, orbit_au=au,
-                slot_index=si+1, world_type=wtype,
-                is_habitable_zone=in_hz, hz_deviation=round(dev,3),
-                temperature_zone=tz, gg_sah=slot_gg_sah,
-            ))
+                # Step 3c: hot system — all worlds are inside the HZCO
+                inner = hzco - baseline_num + total_slots
+                if inner < 1.0 or hzco < 1.0:
+                    var = (roll(2)-7) / 100.0
+                    baseline_orbit = hzco - baseline_num/10.0 + total_slots/10.0 + var
+                else:
+                    var = (roll(2)-7) * vs
+                    baseline_orbit = inner + var
+                baseline_orbit = max(zone_mao, min(baseline_orbit, hzco - 0.01))
+                baseline_num = total_slots
+
+            baseline_orbit = max(zone_mao, min(baseline_orbit, zone_max_o - 0.01))
+
+            # Spread (WBH p.48)
+            # Formula: Spread = (Baseline Orbit# - MAO) / Baseline Number
+            spread = (baseline_orbit - zone_mao) / max(1, baseline_num)
+            # Maximum Spread = Primary's Available Orbits / (All Slots + Total Stars)
+            # Denominator uses total_slots (worlds + empty) so every slot gets a
+            # spread unit, preventing outer slots from piling up at the ceiling.
+            avail = zone_max_o - zone_mao
+            max_spread = avail / max(total_slots + n_total_stars, 1)
+            # Minimum spread: when baseline_num is large the formula above collapses
+            # to HZCO/total_slots (~0.4 for a G star with 8 worlds), pinning all
+            # slots near the inner system.  Enforce a floor so worlds span at least
+            # half the available range.
+            min_spread = avail / max(total_slots * 2, 1)
+            spread = max(min_spread, min(spread, max_spread))
+            spread = min(spread, max_spread)
+            spread = max(0.01, spread)
+
+            # Place slots (WBH p.48-49)
+            # Inner Slot Orbit# = (MAO + Spread) + (2D-7) × Spread/10
+            # Each subsequent slot: Previous + Spread + (2D-7) × Spread/10
+            slots: List[float] = []
+            current = zone_mao + spread + (roll(2)-7)*0.1*spread
+            current = max(zone_mao, current)
+            for _ in range(total_slots):
+                current = max(zone_mao, min(current, zone_max_o))
+                # Additive gap check (was multiplicative `* 1.1`, which triggered
+                # constantly once orbit# exceeded spread/0.1 and halved every step).
+                if slots and current - slots[-1] < spread * 0.4:
+                    current = min(slots[-1] + spread * 0.5, zone_max_o)
+                # Stop if we cannot advance past the last slot (at ceiling)
+                if slots and round(current, 2) == round(slots[-1], 2):
+                    break
+                slots.append(round(current, 2))
+                current += spread + (roll(2)-7)*0.1*spread
+
+            # Assign world types — pool_idx shared across all zones
+            empty_set = set(random.sample(range(len(slots)), min(zone_empty, len(slots))))
+            for si, on in enumerate(slots):
+                au = _orbit_to_au(on)
+                dev = on - hzco
+                in_hz = abs(dev) <= 1.0
+                tz = _temp_zone(dev, hzco, on)
+                if si in empty_set:
+                    wtype = "empty"
+                elif pool_idx < len(pool):
+                    wtype = pool[pool_idx]
+                    pool_idx += 1
+                else:
+                    wtype = "terrestrial"
+                slot_gg_sah = (
+                    _gg_sah_roll(star.spectral_type, star.lum_class)
+                    if wtype == "gas_giant" else ""
+                )
+                result.orbits.append(OrbitSlot(
+                    star_designation=d, orbit_number=on, orbit_au=au,
+                    slot_index=si+1, world_type=wtype,
+                    is_habitable_zone=in_hz, hz_deviation=round(dev,3),
+                    temperature_zone=tz, gg_sah=slot_gg_sah,
+                ))
 
     result.orbits.sort(key=lambda o: (o.star_designation, o.orbit_au))
 
