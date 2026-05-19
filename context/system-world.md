@@ -263,6 +263,24 @@ physical: Optional[WorldPhysical] = generate_world_physical(
 # Tidal lock check runs only when all three orbital parameters are non-None.
 # If tidal_status == "1:1_lock" and orbit_eccentricity > 0.1:
 #   WorldPhysical.eccentricity_adjusted = min(orbit_eccentricity, re-rolled with DM-2)
+# NOTE: call apply_moon_tidal_effects() after moon generation to apply moon DMs.
+
+apply_moon_tidal_effects(
+    physical: WorldPhysical,
+    moons: list,                       # list of Moon objects from generate_moons()
+    world_size: int,
+    world_atmosphere: int,
+    age_gyr: float,
+    orbit_number: float,
+    orbit_au: float,
+    star_mass: float,
+    orbit_eccentricity: float = 0.0,
+    num_stars_orbited: int = 1,
+) -> None
+# Re-runs the full tidal lock check with moon data. Mutates physical in-place.
+# Must be called AFTER generate_moons() completes (three-phase pipeline).
+# Propagates eccentricity_adjusted back to caller when 1:1 lock fires.
+# Call sites: function_app._apply_mainworld_moon_tidal(), gen-ui _finish_system_generation().
 ```
 
 ### Generation tables summary
@@ -314,6 +332,12 @@ star-lock DMs (base −4, orbit# band, star mass band). See WBH pp. 105–106.
 as `orbit_eccentricity: float = 0.0`. Default 0.0 means no effect when the
 `orbital_eccentricity` flag is False.
 
+**Moon-size DM (Session 52, WBH p.106):** `DM − total size of all significant moons (Size 1+, non-ring)`. Applied inside `_tidal_lock_dm()` via `moons` parameter. Only available after `apply_moon_tidal_effects()` is called.
+
+**Multi-star DM (partially implemented, Session 52, WBH p.106):** `DM − number of stars orbited` when > 1. `_tidal_lock_dm()` has `num_stars_orbited: int = 1` parameter; currently always passed as 1 (full multi-star support deferred).
+
+**Planet-to-moon lock (Session 52, WBH p.107):** `_planet_moon_lock_dm(moon, all_moons)` computes the DM for each qualifying moon (Size 1+, non-ring, orbit_pd not None). Base −10; +Moon Size; PD-range DMs; −2 per moon beyond the first. `_roll_tidal_lock_status()` assembles all lock candidates (star + each qualifying moon), sorts by highest DM (moon before star on tie), and cascades until a lock fires.
+
 **Outcomes and `tidal_status` values:**
 
 | 2D+DM | tidal_status | Effect on day_length |
@@ -338,20 +362,19 @@ within that band. Always replaces the existing tilt (no `> 3.0` guard).
 value is stored in `WorldPhysical.eccentricity_adjusted`. `_attach_mainworld_physical()` in
 `function_app.py` propagates this back to the orbit slot's `eccentricity` field.
 
-**Deferred within tidal implementation:**
-- Moon-size DM in star-lock check (blocked by moon orbital positions feature)
-- Planet-orbits-multiple-stars DM (simplified to 1 star)
-- Planet-locked-to-moon check (blocked by moon orbital positions feature)
+**Remaining deferred:** Full multi-star DM support (num_stars_orbited > 1; requires counting stars orbited per world slot).
 
-Note: the eccentricity DM was deferred until Session 50 when it was implemented.
+**Three-phase pipeline for moon DMs (Session 52):**
+1. `generate_world_physical()` — runs without moon data (moon DMs default to zero)
+2. `generate_moons()` — uses `WorldPhysical.diameter_km` and `WorldPhysical.mass` for Hill sphere
+3. `apply_moon_tidal_effects()` — re-runs tidal lock with full moon list; mutates `WorldPhysical` in-place
 
-**Call site in gen-ui (`_finish_system_generation`):**
+**Call site pattern in `function_app.py`:**
 ```python
-mw_orbit = system.mainworld_orbit
-orbit_number = mw_orbit.orbit_number if mw_orbit is not None else None
-orbit_au    = mw_orbit.orbit_au     if mw_orbit is not None else None
-star_mass   = stars[0].mass         if stars else None
-world.size_detail = generate_world_physical(world, age, orbit_number, orbit_au, star_mass)
+_attach_mainworld_physical(system)   # phase 1
+if want_detail:
+    attach_detail(system)            # phase 2 (includes moon generation)
+    _apply_mainworld_moon_tidal(system)  # phase 3
 ```
 
 ---

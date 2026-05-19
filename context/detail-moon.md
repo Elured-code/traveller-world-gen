@@ -112,12 +112,21 @@ display: str = moons_str(moons: List[Moon]) -> str
 When `orbit_au == 0.0` or `star_mass_solar == 0.0`, orbit placement is skipped
 and all `Moon.orbit_pd` fields remain `None` (backwards-compatible).
 
-### Quantity DM
+### Quantity DM (Session 52, WBH p.56)
 
-The only DM currently applied is `DM-1 per dice` when `orbit_number < 1.0`.
-Three other DM conditions (proximity to companion-induced MAO, Close/Near star
-exclusion zone, outermost Far star slot) require eccentricity data not yet
-generated. They are deferred.
+Four DM conditions are implemented; at most one applies per world (`DM-1 per dice`):
+
+| Condition | Parameter | Source |
+|-----------|-----------|--------|
+| `orbit_number < 1.0` | (always checked) | built-in |
+| Within companion star exclusion zone (orbit# ±1 to +3) | `companion_exclusion_zones: list[tuple[float,float]]` | `_moon_adjacency_context()` |
+| Adjacent to host star MAO boundary (±1.0 of MAO orbit#) | `star_mao: float` | `_moon_adjacency_context()` |
+| Adjacent to outermost Far-star slot (±1.0) | `is_adjacent_outermost_far: bool` | `_moon_adjacency_context()` |
+
+`_moon_adjacency_context(orbit_number, star_designation, system_orbits, stellar_system)` in
+`traveller_world_detail.py` computes all three context values by inspecting
+`stellar_system.stars` (for companion exclusion zones and Far star orbits) and
+`system_orbits.star_mao`. Returns a dict unpacked as `**ctx` into `generate_moons()`.
 
 ### Orbit placement (WBH pp.74–77, Session 51)
 

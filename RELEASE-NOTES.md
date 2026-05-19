@@ -1,12 +1,52 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–51
-**Tests:** 1036 (up from 890 in v1.1)
+**Sessions:** 36–52
+**Tests:** 1068 (up from 890 in v1.1)
 
 ---
 
 ## New Features
+
+### Moon Tidal Lock DMs and Planet-to-Moon Lock (Session 52, WBH pp.106–107, issue #11)
+
+Moon orbital positions (added in Session 51) unlock two previously deferred tidal effects.
+
+**Moon-size DM in star-lock (WBH p.106):** `_tidal_lock_dm()` now subtracts the total size of all significant moons (Size 1+, non-ring) from the tidal lock DM when evaluating planet-to-star lock.
+
+**Multi-star DM (WBH p.106):** `_tidal_lock_dm()` subtracts the number of stars orbited when > 1. Currently simplified to `num_stars_orbited=1` (full multi-star support deferred); the parameter is wired through the full call chain.
+
+**Planet-to-moon lock (WBH p.107):** New `_planet_moon_lock_dm(moon, all_moons)` implements the WBH p.107 DM table: base −10, +Moon Size (Size 1+), PD-range DMs (orbit PD < 5: `+5 + ceil((5−PD)×5)`, 5–10: +4, 10–20: +2, 20–40: +1, 40–60: no DM, > 60: −6), −2 per moon beyond the first.
+
+**Lock candidate ordering:** `_roll_tidal_lock_status()` now assembles all candidates (star + each qualifying moon), sorts by highest DM (moon before star on tie), and cascades until a lock result is found or all candidates are exhausted.
+
+**Circular dependency resolution:** `WorldPhysical` needs moon data for DMs, but moons need `WorldPhysical` (diameter/mass) for Hill sphere. A new public `apply_moon_tidal_effects(physical, moons, ...)` function resolves this via a three-phase pipeline: `generate_world_physical()` runs first (no moon DMs), moons are generated using actual planet mass/diameter, then `apply_moon_tidal_effects()` re-runs tidal lock with full moon data and mutates `WorldPhysical` in-place.
+
+New helpers in `_get_mainworld_moons()` and `_apply_mainworld_moon_tidal()` in `function_app.py` handle both GG satellite (moons at `orbit.detail.moons[0].detail.moons`) and non-GG (moons at `orbit.detail.moons`) cases. `gen-ui/app.py` `_finish_system_generation()` calls `apply_moon_tidal_effects()` after detail attachment.
+
+24 new tests across `TestTidalLockDmMoon` (8), `TestPlanetMoonLockDm` (10), `TestRollTidalLockStatusMoons` (3), `TestApplyMoonTidalEffects` (3); **1068 tests** pass.
+
+---
+
+### Moon Quantity Adjacency DMs (Session 52, WBH p.56, issue #14)
+
+Three of the four WBH p.56 moon quantity DM conditions that were previously deferred (blocked on moon orbital positions) are now implemented.
+
+`_moon_quantity()` in `traveller_moon_gen.py` gains three new optional parameters, applied as `DM−1 per dice` when any condition is met (only one DM applies per world):
+
+| Condition | Parameter |
+|-----------|-----------|
+| Planet orbit within companion star exclusion zone (±1 to +3 of companion orbit#) | `companion_exclusion_zones: list[tuple]` |
+| Planet orbit adjacent to host star MAO boundary (±1.0) | `star_mao: float` |
+| Planet orbit adjacent to outermost Far-star slot (±1.0) | `is_adjacent_outermost_far: bool` |
+
+The fourth condition (`orbit_number < 1.0`) was already implemented. `generate_moons()` passes through the three new parameters.
+
+`_moon_adjacency_context()` in `traveller_world_detail.py` computes these values from the system context (iterating `stellar_system.stars` for companions and Far stars, reading `system_orbits.star_mao`). The context dict is passed to `_moons_for()` and forwarded to both `generate_moons()` call sites in `generate_system_detail()` and `attach_detail()`.
+
+8 new tests in `TestMoonQuantityAdjacencyDMs`; **1044 tests** after this feature (1068 after both features in Session 52).
+
+---
 
 ### Moon Orbit Placement (Session 51, WBH pp.74–77, issue #16)
 
@@ -363,10 +403,13 @@ When a companion orbit# was less than 1.0, `excl = companion_orbit − 1.0` was 
 | Orbital inclination (issue #59) | +8 |
 | TravellerMap orbital flag wiring (issue #63) | +4 |
 | Anomalous orbit eccentricity DMs (issue #64) | +6 |
-| **Total new tests** | **+113** |
-| **Suite total** | **1008** |
+| Moon orbit placement (issue #16) | +22 |
+| Moon quantity adjacency DMs (issue #14) | +8 |
+| Moon tidal lock DMs and planet-to-moon lock (issue #11) | +24 |
+| **Total new tests** | **+167** |
+| **Suite total** | **1068** |
 
-All 1008 tests pass. Pylint 10.00/10 on all core generation modules.
+All 1068 tests pass. Pylint 10.00/10 on all core generation modules.
 
 ---
 
