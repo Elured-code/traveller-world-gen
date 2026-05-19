@@ -257,14 +257,30 @@ class Moon:  # pylint: disable=too-many-instance-attributes
 # Moon quantity (WBH p.56)
 # ---------------------------------------------------------------------------
 
-def _moon_quantity(size_code: int | str, orbit_number: float,
-                   is_gas_giant: bool, gg_category: str) -> int:
+def _moon_quantity(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+        size_code: int | str, orbit_number: float,
+        is_gas_giant: bool, gg_category: str,
+        star_mao: float = 0.0,
+        companion_exclusion_zones: list | None = None,
+        is_adjacent_outermost_far: bool = False) -> int:
     """
     Roll for number of significant moons.
     Returns the raw result (negative = 0 moons, 0 = 1 ring).
+    WBH p.56: only one DM-1 applies regardless of how many conditions match.
     """
-    # Orbit# < 1.0 → DM-1 per dice
-    dm = -1 if orbit_number < 1.0 else 0
+    # Conditions in priority order — first match wins (WBH p.56)
+    dm = 0
+    if orbit_number < 1.0:
+        dm = -1
+    elif companion_exclusion_zones:
+        for lo, hi in companion_exclusion_zones:
+            if lo <= orbit_number <= hi:
+                dm = -1
+                break
+    elif star_mao > 0.0 and abs(orbit_number - star_mao) <= 1.0:
+        dm = -1
+    elif is_adjacent_outermost_far:
+        dm = -1
 
     if is_gas_giant:
         if gg_category == "S":
@@ -406,6 +422,9 @@ def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-ar
     orbit_au: float = 0.0,
     star_mass_solar: float = 0.0,
     planet_ecc: float = 0.0,
+    star_mao: float = 0.0,
+    companion_exclusion_zones: list | None = None,
+    is_adjacent_outermost_far: bool = False,
 ) -> List[Moon]:
     """
     Generate all significant moons for a world.
@@ -435,7 +454,10 @@ def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-ar
     if not is_gas_giant and size_code != "S" and int(size_code) == 0:
         return []
 
-    raw = _moon_quantity(size_code, orbit_number, is_gas_giant, gg_category)
+    raw = _moon_quantity(size_code, orbit_number, is_gas_giant, gg_category,
+                         star_mao=star_mao,
+                         companion_exclusion_zones=companion_exclusion_zones,
+                         is_adjacent_outermost_far=is_adjacent_outermost_far)
 
     moons: List[Moon] = []
     if raw < 0:

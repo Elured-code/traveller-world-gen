@@ -24,6 +24,7 @@ from traveller_moon_gen import (  # pylint: disable=import-error
     _moon_orbit_range,
     _roll_moon_pd,
     _moon_period_hours,
+    _moon_quantity,
     _place_ring,
 )
 
@@ -245,3 +246,75 @@ class TestGenerateMoonsOrbit:
             sig = [m for m in moons if not m.is_ring and m.orbit_pd is not None]
             pds = [m.orbit_pd for m in sig]
             assert pds == sorted(pds), f"orbits not ascending: {pds}"
+
+
+# ---------------------------------------------------------------------------
+# TestMoonQuantityAdjacencyDMs — WBH p.56
+# ---------------------------------------------------------------------------
+
+class TestMoonQuantityAdjacencyDMs:
+    """DM-1 per die for adjacency conditions (WBH p.56)."""
+
+    # Size-8 terrestrial, orbit 3.0: baseline roll is 2D-8; with fixed dice=12, raw=4.
+    # With DM-1 per die (2 dice), roll becomes 2D(-2)-8 = 12-2-8 = 2 moons.
+    # Without DM: 12-8 = 4 moons.
+    # We patch random.randint to always return 6 so _roll sums to dice*6.
+
+    def test_no_dm_baseline(self):
+        """Without any adjacency condition, DM is 0 (no penalty)."""
+        with patch("traveller_moon_gen.random.randint", return_value=6):
+            result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M")
+        assert result == 4  # 2D-8 with both dice=6 → 12-8=4
+
+    def test_dm_orbit_below_one(self):
+        """Orbit# < 1.0 applies DM-1 per die (already implemented; regression guard)."""
+        with patch("traveller_moon_gen.random.randint", return_value=6):
+            result = _moon_quantity(8, orbit_number=0.5, is_gas_giant=False, gg_category="M")
+        assert result == 2  # 12 - 2(dm) - 8 = 2
+
+    def test_dm_companion_exclusion_zone(self):
+        """Orbit inside a companion exclusion zone applies DM-1 per die."""
+        zones = [(2.0, 6.0)]   # orbit 3.0 is inside
+        with patch("traveller_moon_gen.random.randint", return_value=6):
+            result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
+                                    companion_exclusion_zones=zones)
+        assert result == 2
+
+    def test_no_dm_outside_exclusion_zone(self):
+        """Orbit outside all exclusion zones gets no DM."""
+        zones = [(5.0, 9.0)]   # orbit 3.0 is outside
+        with patch("traveller_moon_gen.random.randint", return_value=6):
+            result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
+                                    companion_exclusion_zones=zones)
+        assert result == 4
+
+    def test_dm_adjacent_to_mao(self):
+        """Orbit within 1.0 of host star MAO applies DM-1 per die."""
+        with patch("traveller_moon_gen.random.randint", return_value=6):
+            result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
+                                    star_mao=3.5)   # |3.0 - 3.5| = 0.5 ≤ 1.0
+        assert result == 2
+
+    def test_no_dm_far_from_mao(self):
+        """Orbit more than 1.0 from MAO gets no DM from MAO condition."""
+        with patch("traveller_moon_gen.random.randint", return_value=6):
+            result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
+                                    star_mao=5.0)   # |3.0 - 5.0| = 2.0 > 1.0
+        assert result == 4
+
+    def test_dm_adjacent_outermost_far(self):
+        """is_adjacent_outermost_far=True applies DM-1 per die."""
+        with patch("traveller_moon_gen.random.randint", return_value=6):
+            result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
+                                    is_adjacent_outermost_far=True)
+        assert result == 2
+
+    def test_only_one_dm_applies(self):
+        """When multiple conditions are true, DM is still only -1 per die (not stacked)."""
+        zones = [(2.0, 6.0)]
+        with patch("traveller_moon_gen.random.randint", return_value=6):
+            result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
+                                    companion_exclusion_zones=zones,
+                                    star_mao=3.5,
+                                    is_adjacent_outermost_far=True)
+        assert result == 2  # only one DM applied: 12-2-8=2, not 12-6-8=-2
