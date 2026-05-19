@@ -144,7 +144,7 @@ from traveller_world_gen import (
     World, generate_world, generate_atmosphere_detail, generate_gas_mix,
     generate_unusual_subtype,
 )
-from traveller_world_physical import generate_world_physical
+from traveller_world_physical import generate_world_physical, apply_moon_tidal_effects
 from traveller_hydro_detail import generate_hydrographic_detail
 from traveller_system_gen import generate_full_system, generate_system_from_world
 from traveller_world_detail import attach_detail
@@ -182,6 +182,49 @@ def _attach_mainworld_physical(system) -> None:
         adj = mw.size_detail.eccentricity_adjusted
         if adj is not None:
             mw_orbit.eccentricity = adj
+
+
+def _get_mainworld_moons(system) -> list:
+    """Return the generated Moon objects for the mainworld (after attach_detail)."""
+    mw_orbit = system.mainworld_orbit
+    if mw_orbit is None or mw_orbit.detail is None:
+        return []
+    if mw_orbit.world_type == "gas_giant":
+        # Mainworld is a gas giant satellite; its moons are on the satellite WorldDetail
+        if mw_orbit.detail.moons:
+            sat = mw_orbit.detail.moons[0]
+            if sat.detail:
+                return sat.detail.moons or []
+        return []
+    return mw_orbit.detail.moons or []
+
+
+def _apply_mainworld_moon_tidal(system) -> None:
+    """Apply moon tidal DMs to mainworld WorldPhysical (WBH pp.106-107).
+
+    Must be called after both attach_detail() and _attach_mainworld_physical().
+    No-op when the mainworld has no physical detail or no generated moons.
+    """
+    mw = system.mainworld
+    mw_orbit = system.mainworld_orbit
+    if mw is None or mw.size_detail is None or mw_orbit is None:
+        return
+    moons = _get_mainworld_moons(system)
+    if not moons:
+        return
+    apply_moon_tidal_effects(
+        mw.size_detail,
+        moons=moons,
+        world_size=mw.size,
+        world_atmosphere=mw.atmosphere,
+        age_gyr=system.stellar_system.primary.age_gyr,
+        orbit_number=mw_orbit.orbit_number,
+        orbit_au=mw_orbit.orbit_au,
+        star_mass=system.stellar_system.primary.mass,
+        orbit_eccentricity=mw_orbit.eccentricity,
+    )
+    if mw.size_detail.eccentricity_adjusted is not None:
+        mw_orbit.eccentricity = mw.size_detail.eccentricity_adjusted
 
 
 # ===========================================================================
@@ -436,6 +479,8 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -480,6 +525,8 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -540,6 +587,7 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
                                       orbital_inclination=want_incl)
         attach_detail(system)
         _attach_mainworld_physical(system)
+        _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating full system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -599,6 +647,8 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
         html = system.to_html(detail_attached=want_detail)
     except Exception as exc:
         logger.exception("Error generating system card: %s", exc)
@@ -650,6 +700,8 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
             ERR_INTERNAL, status_code=500,
         )
     _attach_mainworld_physical(system)
+    if want_detail:
+        _apply_mainworld_moon_tidal(system)
     mw = system.mainworld
     logger.info(
         "Generated map system name=%s stars=%d worlds=%d detail=%s format=%s uwp=%s",
@@ -725,6 +777,8 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating system from world: %s", exc)
         return error(

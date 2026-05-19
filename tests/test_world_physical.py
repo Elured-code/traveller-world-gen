@@ -15,18 +15,22 @@ from unittest.mock import patch
 
 import pytest
 
+from traveller_moon_gen import Moon  # pylint: disable=import-error
+
 from traveller_world_physical import (
     TIDAL_STATUS_LABELS,
     WorldPhysical,
     _age_dm,
     _apply_tidal_lock_result,
     _orbital_period_hours,
+    _planet_moon_lock_dm,
     _reroll_axial_tilt_for_lock,
     _reroll_eccentricity_tidal,
     _roll_axial_tilt_1d,
     _roll_extreme_axial_tilt,
     _roll_tidal_lock_status,
     _tidal_lock_dm,
+    apply_moon_tidal_effects,
     generate_world_physical,
 )
 
@@ -509,3 +513,217 @@ class TestWorldPhysicalToDictEccentricity:
         d = wp.to_dict()
         assert "eccentricity_adjusted" in d
         assert d["eccentricity_adjusted"] == pytest.approx(0.1235, abs=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by new tidal DM tests
+# ---------------------------------------------------------------------------
+
+def _make_moon(size_code, orbit_pd=None, orbit_period_hours=None, is_ring=False):
+    m = Moon(size_code=size_code, is_ring=is_ring)
+    m.orbit_pd = orbit_pd
+    m.orbit_period_hours = orbit_period_hours
+    return m
+
+
+def _make_wp(day_length=24.0, axial_tilt=15.0, tidal_status="none"):
+    return WorldPhysical(
+        composition="Standard",
+        diameter_km=12742,
+        density=5.515,
+        mass=1.0,
+        gravity=1.0,
+        escape_velocity=11.2,
+        axial_tilt=axial_tilt,
+        day_length=day_length,
+        tidal_status=tidal_status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# TestTidalLockDmMoon — moon-size DM and multi-star DM (WBH p.106)
+# ---------------------------------------------------------------------------
+
+class TestTidalLockDmMoon:
+    """Moon-size DM and multi-star DM for planet-to-star lock (WBH p.106)."""
+
+    _BASE = dict(size=6, axial_tilt=10.0, atmosphere=6, age_gyr=5.0,
+                 orbit_number=2.5, star_mass=1.0)
+
+    def _dm(self, **kwargs):
+        return _tidal_lock_dm(**{**self._BASE, **kwargs})
+
+    def test_no_moon_dm_when_no_moons(self):
+        dm_no  = self._dm()
+        dm_nil = self._dm(moons=[])
+        assert dm_no == dm_nil
+
+    def test_size_s_moon_contributes_no_moon_dm(self):
+        """Size S moons are below the Size 1+ threshold."""
+        moon = _make_moon("S")
+        dm_with = self._dm(moons=[moon])
+        dm_without = self._dm()
+        assert dm_with == dm_without
+
+    def test_size_1_moon_dm_minus_1(self):
+        moon = _make_moon(1)
+        dm_with = self._dm(moons=[moon])
+        dm_without = self._dm()
+        assert dm_with == dm_without - 1
+
+    def test_multiple_moons_dm_is_total_size(self):
+        """DM-Total Size of all moons Size 1+ (WBH p.106)."""
+        moons = [_make_moon(3), _make_moon(2), _make_moon("S")]
+        dm_with = self._dm(moons=moons)
+        dm_without = self._dm()
+        assert dm_with == dm_without - 5   # size 3 + size 2; S excluded
+
+    def test_ring_excluded_from_moon_dm(self):
+        ring = _make_moon(0, is_ring=True)
+        dm_with = self._dm(moons=[ring])
+        dm_without = self._dm()
+        assert dm_with == dm_without
+
+    def test_multi_star_dm_single_star_no_change(self):
+        assert self._dm(num_stars_orbited=1) == self._dm()
+
+    def test_multi_star_dm_two_stars(self):
+        dm_single = self._dm(num_stars_orbited=1)
+        dm_double = self._dm(num_stars_orbited=2)
+        assert dm_double == dm_single - 2
+
+    def test_multi_star_dm_three_stars(self):
+        dm_single = self._dm(num_stars_orbited=1)
+        dm_triple = self._dm(num_stars_orbited=3)
+        assert dm_triple == dm_single - 3
+
+
+# ---------------------------------------------------------------------------
+# TestPlanetMoonLockDm — planet-to-moon lock DM table (WBH p.107)
+# ---------------------------------------------------------------------------
+
+class TestPlanetMoonLockDm:
+    """DM table for a planet's lock to its moon (WBH p.107 left column)."""
+
+    def test_base_dm_minus_10(self):
+        """Moon with size 0 and no orbit data: only base DM."""
+        moon = _make_moon("S")   # size S — below Size 1 threshold
+        assert _planet_moon_lock_dm(moon, [moon]) == -10
+
+    def test_size_1_moon_adds_1(self):
+        moon = _make_moon(1)
+        assert _planet_moon_lock_dm(moon, [moon]) == -10 + 1
+
+    def test_size_4_moon_adds_4(self):
+        moon = _make_moon(4)
+        assert _planet_moon_lock_dm(moon, [moon]) == -10 + 4
+
+    def test_orbit_pd_lt_5(self):
+        """Moon orbit < 5 PD: DM+5+(5-PD)×5 round up."""
+        moon = _make_moon(1, orbit_pd=3.0)
+        # orbit DM = 5 + ceil((5-3)*5) = 5+10 = 15; size DM = +1; base = -10 → total 6
+        assert _planet_moon_lock_dm(moon, [moon]) == -10 + 1 + 5 + math.ceil((5 - 3.0) * 5)
+
+    def test_orbit_pd_between_5_and_10(self):
+        moon = _make_moon(2, orbit_pd=7.0)
+        assert _planet_moon_lock_dm(moon, [moon]) == -10 + 2 + 4
+
+    def test_orbit_pd_between_10_and_20(self):
+        moon = _make_moon(2, orbit_pd=15.0)
+        assert _planet_moon_lock_dm(moon, [moon]) == -10 + 2 + 2
+
+    def test_orbit_pd_between_20_and_40(self):
+        moon = _make_moon(2, orbit_pd=30.0)
+        assert _planet_moon_lock_dm(moon, [moon]) == -10 + 2 + 1
+
+    def test_orbit_pd_between_40_and_60_no_orbit_dm(self):
+        moon = _make_moon(2, orbit_pd=50.0)
+        assert _planet_moon_lock_dm(moon, [moon]) == -10 + 2
+
+    def test_orbit_pd_gt_60(self):
+        moon = _make_moon(2, orbit_pd=70.0)
+        assert _planet_moon_lock_dm(moon, [moon]) == -10 + 2 - 6
+
+    def test_multiple_moons_dm_minus_2_per_extra(self):
+        """DM-2 per moon beyond the first."""
+        m1 = _make_moon(3, orbit_pd=10.0)  # pd=10 → pd<=10 branch → DM+4
+        m2 = _make_moon(2, orbit_pd=20.0)
+        m3 = _make_moon(1, orbit_pd=30.0)
+        # Rolling for m1: size +3, orbit DM +4 (pd<=10), extra moons: -2×2=-4; base -10 → -7
+        assert _planet_moon_lock_dm(m1, [m1, m2, m3]) == -10 + 3 + 4 - 4
+
+
+# ---------------------------------------------------------------------------
+# TestRollTidalLockStatusMoons — ordering and cascade (WBH p.107)
+# ---------------------------------------------------------------------------
+
+class TestRollTidalLockStatusMoons:
+    """Moon-aware multi-case tidal lock ordering."""
+
+    _KWARGS = dict(
+        size=6, axial_tilt=10.0, atmosphere=6, age_gyr=5.0,
+        orbit_number=2.5, orbit_au=1.5, star_mass=1.0, basic_day_h=24.0,
+    )
+
+    def test_no_moons_behaves_as_before(self):
+        """Result with moons=None matches result with moons=[] — no regression."""
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            r1 = _roll_tidal_lock_status(**self._KWARGS)
+            r2 = _roll_tidal_lock_status(**self._KWARGS, moons=[])
+        assert r1 == r2
+
+    def test_moon_lock_occurs_when_dm_high_enough(self):
+        """A very close large moon forces DM >= 10 → automatic 1:1 lock."""
+        moon = _make_moon(6, orbit_pd=2.0, orbit_period_hours=100.0)
+        # DM for planet-to-moon: -10 + 6 (size) + 5+ceil(3*5)=20 (pd<5) = 16 → auto lock
+        result = _roll_tidal_lock_status(**self._KWARGS, moons=[moon])
+        _, _, status = result
+        assert status == "1:1_lock"
+
+    def test_moon_candidate_sorted_before_star_on_tie(self):
+        """When moon DM == star DM, moon case is rolled first (WBH p.107)."""
+        # Patch randint so first 2D roll returns 2 (no lock) — moon case tried first
+        # and produces "none"; star case is then rolled and also returns "none"
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            moon = _make_moon(1, orbit_pd=30.0, orbit_period_hours=500.0)
+            result = _roll_tidal_lock_status(**self._KWARGS, moons=[moon])
+        _, _, status = result
+        assert status == "none"
+
+
+# ---------------------------------------------------------------------------
+# TestApplyMoonTidalEffects — public API
+# ---------------------------------------------------------------------------
+
+class TestApplyMoonTidalEffects:
+    """apply_moon_tidal_effects() mutates WorldPhysical in-place."""
+
+    _KWARGS = dict(
+        world_size=6, world_atmosphere=6, age_gyr=5.0,
+        orbit_number=2.5, orbit_au=1.5, star_mass=1.0,
+    )
+
+    def test_no_op_when_moons_empty(self):
+        wp = _make_wp()
+        apply_moon_tidal_effects(wp, moons=[], **self._KWARGS)
+        assert wp.tidal_status == "none"
+        assert wp.day_length == 24.0
+
+    def test_high_moon_dm_produces_lock(self):
+        """Very close large moon → moon-lock DM >= 10 → automatic 1:1 lock."""
+        moon = _make_moon(6, orbit_pd=2.0, orbit_period_hours=72.0)
+        wp = _make_wp()
+        apply_moon_tidal_effects(wp, moons=[moon], **self._KWARGS)
+        assert wp.tidal_status == "1:1_lock"
+        assert wp.day_length == pytest.approx(72.0)
+
+    def test_ring_does_not_create_moon_lock_candidate(self):
+        """Ring moons are not eligible for planet-to-moon lock (WBH p.107).
+
+        The planet's day_length must not be locked to the ring's period.
+        """
+        ring = _make_moon(0, is_ring=True, orbit_period_hours=50.0)
+        wp = _make_wp(day_length=24.0)
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            apply_moon_tidal_effects(wp, moons=[ring], **self._KWARGS)
+        assert wp.day_length != pytest.approx(50.0)
