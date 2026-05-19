@@ -403,12 +403,60 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
 
 
 
+def _moon_adjacency_context(
+        orbit_number: float,
+        star_designation: str,
+        system_orbits: SystemOrbits,
+        stellar_system,
+) -> dict:
+    """
+    Build the three adjacency DM keyword args for generate_moons() (WBH p.56).
+
+    Returns a dict with keys star_mao, companion_exclusion_zones,
+    is_adjacent_outermost_far — unpack directly into generate_moons(**ctx).
+    """
+    # Condition: adjacent to a companion's exclusion zone
+    zones = []
+    for star in stellar_system.stars:
+        if star.designation == star_designation:
+            continue
+        role = getattr(star, "role", "")
+        if role in ("Close", "Near", "Far"):
+            lo = star.orbit_number - 1.0
+            hi = star.orbit_number + 3.0
+            zones.append((lo, hi))
+
+    # Condition: adjacent to the host star's MAO boundary
+    mao = system_orbits.star_mao.get(star_designation, 0.0)
+
+    # Condition: adjacent to outermost slot of any Far star
+    far_stars = [s for s in stellar_system.stars if getattr(s, "role", "") == "Far"]
+    is_adj_far = False
+    if far_stars:
+        far_desig = far_stars[-1].designation
+        far_orbit_numbers = [
+            o.orbit_number for o in system_orbits.orbits
+            if o.star_designation == far_desig
+        ]
+        if far_orbit_numbers:
+            outermost = max(far_orbit_numbers)
+            is_adj_far = abs(orbit_number - outermost) <= 1.0
+
+    return {
+        "star_mao": mao,
+        "companion_exclusion_zones": zones or None,
+        "is_adjacent_outermost_far": is_adj_far,
+    }
+
+
 def _moons_for(detail: WorldDetail, orbit_number: float,
                orbit_au: float = 0.0,
                planet_ecc: float = 0.0,
-               star_mass_solar: float = 0.0) -> list:
+               star_mass_solar: float = 0.0,
+               adjacency_ctx: dict | None = None) -> list:
     """Generate moons for a WorldDetail based on its SAH and orbital context."""
     sah = detail.sah
+    ctx = adjacency_ctx or {}
     if sah == "000":                      # belt — no moons
         return []
     if detail.is_gas_giant:
@@ -419,6 +467,7 @@ def _moons_for(detail: WorldDetail, orbit_number: float,
             size_code=diam, orbit_number=orbit_number,
             is_gas_giant=True, gg_category=cat, gg_diameter=diam,
             orbit_au=orbit_au, star_mass_solar=star_mass_solar, planet_ecc=planet_ecc,
+            **ctx,
         )
     # Terrestrial
     try:
@@ -428,6 +477,7 @@ def _moons_for(detail: WorldDetail, orbit_number: float,
     return generate_moons(
         size_code=sz, orbit_number=orbit_number,
         orbit_au=orbit_au, star_mass_solar=star_mass_solar, planet_ecc=planet_ecc,
+        **ctx,
     )
 
 
@@ -676,6 +726,8 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
             orbit_au=parent_orbit.orbit_au,
             planet_ecc=parent_orbit.eccentricity,
             star_mass_solar=host_for_moon.mass,
+            adjacency_ctx=_moon_adjacency_context(
+                on, desig, orbits, system.stellar_system),
         )
 
         # Generate full SAH + social detail for every significant moon
@@ -723,6 +775,10 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
             phys    = mainworld.size_detail if mainworld else None
             mw_diam = phys.diameter_km if phys and hasattr(phys, "diameter_km") else 0.0
             mw_mass = phys.mass        if phys and hasattr(phys, "mass")        else 0.0
+            mw_ctx = _moon_adjacency_context(
+                orbit.orbit_number, orbit.star_designation,
+                system.system_orbits, system.stellar_system,
+            )
             mw_moons = generate_moons(
                 mw_size, orbit.orbit_number,
                 orbit_au=orbit.orbit_au,
@@ -730,6 +786,7 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                 star_mass_solar=system.stellar_system.primary.mass,
                 planet_diameter_km=mw_diam,
                 planet_mass_earth=mw_mass,
+                **mw_ctx,
             )
             mw_hzco   = system.system_orbits.star_hzco.get(orbit.star_designation, 1.0)
             mw_hz_dev = orbit.hz_deviation
