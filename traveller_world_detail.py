@@ -403,8 +403,11 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
 
 
 
-def _moons_for(detail: WorldDetail, orbit_number: float) -> list:
-    """Generate moons for a WorldDetail based on its SAH."""
+def _moons_for(detail: WorldDetail, orbit_number: float,
+               orbit_au: float = 0.0,
+               planet_ecc: float = 0.0,
+               star_mass_solar: float = 0.0) -> list:
+    """Generate moons for a WorldDetail based on its SAH and orbital context."""
     sah = detail.sah
     if sah == "000":                      # belt — no moons
         return []
@@ -415,13 +418,17 @@ def _moons_for(detail: WorldDetail, orbit_number: float) -> list:
         return generate_moons(
             size_code=diam, orbit_number=orbit_number,
             is_gas_giant=True, gg_category=cat, gg_diameter=diam,
+            orbit_au=orbit_au, star_mass_solar=star_mass_solar, planet_ecc=planet_ecc,
         )
     # Terrestrial
     try:
         sz = int(sah[0], 16)
     except ValueError:
         sz = 1
-    return generate_moons(size_code=sz, orbit_number=orbit_number)
+    return generate_moons(
+        size_code=sz, orbit_number=orbit_number,
+        orbit_au=orbit_au, star_mass_solar=star_mass_solar, planet_ecc=planet_ecc,
+    )
 
 
 def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-return-statements
@@ -660,7 +667,16 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
         hzco_here = orbits.star_hzco.get(desig, 1.0)
         hz_dev    = parent_orbit.hz_deviation
 
-        world_detail.moons = _moons_for(world_detail, on)
+        host_for_moon = next(
+            (s for s in system.stellar_system.stars if s.designation == desig),
+            system.stellar_system.primary,
+        )
+        world_detail.moons = _moons_for(
+            world_detail, on,
+            orbit_au=parent_orbit.orbit_au,
+            planet_ecc=parent_orbit.eccentricity,
+            star_mass_solar=host_for_moon.mass,
+        )
 
         # Generate full SAH + social detail for every significant moon
         for moon in world_detail.moons:
@@ -704,7 +720,17 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                 mw_size = 0
             else:
                 mw_size = int(mainworld.uwp()[1], 16) if mainworld.uwp()[1] not in ('S',) else 1
-            mw_moons = generate_moons(mw_size, orbit.orbit_number)
+            phys    = mainworld.size_detail if mainworld else None
+            mw_diam = phys.diameter_km if phys and hasattr(phys, "diameter_km") else 0.0
+            mw_mass = phys.mass        if phys and hasattr(phys, "mass")        else 0.0
+            mw_moons = generate_moons(
+                mw_size, orbit.orbit_number,
+                orbit_au=orbit.orbit_au,
+                planet_ecc=orbit.eccentricity,
+                star_mass_solar=system.stellar_system.primary.mass,
+                planet_diameter_km=mw_diam,
+                planet_mass_earth=mw_mass,
+            )
             mw_hzco   = system.system_orbits.star_hzco.get(orbit.star_designation, 1.0)
             mw_hz_dev = orbit.hz_deviation
             for moon in mw_moons:

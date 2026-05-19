@@ -525,17 +525,23 @@ class WorldDetail:
 
 ### 4.7 `traveller_moon_gen.py`
 
-Implements WBH pp. 55–57.
+Implements WBH pp. 55–57 (moon quantity/sizing) and WBH pp. 74–77 (orbit placement).
 
 **Key public API:**
 
 ```python
 moons: List[Moon] = generate_moons(
-    size_code: int | str,   # planet size (int 1–15, or "S")
-    orbit_number: float,    # orbital Orbit# for DM check
+    size_code: int | str,             # planet size (int 1–15, or "S")
+    orbit_number: float,              # orbital Orbit# for DM check
     is_gas_giant: bool = False,
-    gg_category: str = "M", # "S", "M", or "L"
-    gg_diameter: int = 8,   # Terran diameters, for moon size capping
+    gg_category: str = "M",           # "S", "M", or "L"
+    gg_diameter: int = 8,             # Terran diameters, for moon size capping
+    # Orbit placement (all 0.0 = skip):
+    planet_diameter_km: float = 0.0,  # 0.0 → estimated from size_code
+    planet_mass_earth: float = 0.0,   # 0.0 → estimated from size_code
+    orbit_au: float = 0.0,
+    star_mass_solar: float = 0.0,
+    planet_ecc: float = 0.0,
 ) -> List[Moon]
 
 display: str = moons_str(moons: List[Moon]) -> str
@@ -546,15 +552,41 @@ display: str = moons_str(moons: List[Moon]) -> str
 
 ```python
 @dataclass
-class Moon:
+class Moon:  # pylint: disable=too-many-instance-attributes
     size_code: int | str    # int 0–F, or "S"; 0 means ring when is_ring=True
     is_ring: bool = False
-    is_gas_giant_moon: bool = False  # moon is itself a small gas giant
+    is_gas_giant_moon: bool = False   # moon is itself a small gas giant
     detail: Optional[WorldDetail] = None  # populated by attach_detail()
     _ring_count: int    # field(default=1, init=False) — set by _consolidate()
 
+    # Orbit placement fields (all field(default=..., init=False)):
+    orbit_pd: Optional[float]           # orbital distance in Planetary Diameters
+    orbit_km: Optional[float]           # orbit_pd × planet_diameter_km
+    orbit_range: Optional[str]          # "inner"|"middle"|"outer"|"excess"
+    orbit_period_hours: Optional[float] # orbital period in hours
+    ring_centre_pd: Optional[float]     # rings only
+    ring_span_pd: Optional[float]       # rings only
+    orbit_eccentricity: float           # default 0.0 (deferred)
+    orbit_retrograde: bool              # default False (deferred)
+
     # properties: .size_str, __repr__
 ```
+
+All orbit fields default to `None` (or 0.0/False) until `generate_moons()` is
+called with `orbit_au` and `star_mass_solar` provided. `to_dict()` omits `None`
+orbit fields.
+
+**Orbit placement** runs when `orbit_au > 0` and `star_mass_solar > 0`:
+
+1. **Hill sphere** sets the outer moon limit: `floor(Hill_PD / 2)` PD, where `Hill_AU = orbit_au × (1 − ecc) × ∛(mass_earth × 3e-6 / (3 × star_mass_solar))` and `Hill_PD = Hill_AU × 149,597,870.9 / diameter_km`.
+2. **Moon removal:** limit < 1 PD → no moons or rings; limit = 1 PD → first moon becomes ring.
+3. **Moon Orbit Range** = `Moon Limit − 2` (capped at `200 + n_moons`).
+4. **Orbit PD rolling** uses the Inner/Middle/Outer table (DM+1 when MOR < 60); PDs sorted ascending, collisions resolved by bumping outer moon out 1 PD.
+5. **Ring placement:** centre = `0.4 + roll(2)/8` PD; span = `roll(3)/100 + 0.07` PD; inner edge clamped ≥ 0.55 PD.
+
+For secondary worlds (no `WorldPhysical`), diameter and mass are estimated from size code.
+For the mainworld, `WorldPhysical.diameter_km` and `WorldPhysical.mass` are used
+(accessed via `mainworld.size_detail` — not `mainworld.physical`).
 
 **Quantity DM:** The only DM currently applied is `DM-1 per dice` when `orbit_number < 1.0`. Other adjacency conditions (companion-induced MAO, Close/Near star exclusion zone proximity) require eccentricity data that is not yet generated, so they are omitted.
 
