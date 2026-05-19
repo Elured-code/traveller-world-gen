@@ -1,12 +1,24 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–49
-**Tests:** 1008 (up from 890 in v1.1)
+**Sessions:** 36–50
+**Tests:** 1014 (up from 890 in v1.1)
 
 ---
 
 ## New Features
+
+### Tidal Lock Eccentricity DM (Session 50, WBH p.105)
+
+The eccentricity DM for the Tidal Lock Status table is now applied. WBH p.105 specifies this as a general DM for all cases: when `eccentricity > 0.1`, apply `DM − floor(eccentricity × 10)`. Examples: e=0.25 → DM−2; e=0.50 → DM−5; e=0.999 → DM−9.
+
+`_tidal_lock_dm()` gains `orbit_eccentricity: float = 0.0` as a new parameter; threaded through `_roll_tidal_lock_status()` and into `generate_world_physical()` (which already accepted `orbit_eccentricity` since Session 44). No seed disruption when `orbital_eccentricity=False` (default) — the parameter defaults to 0.0 and applies no DM. When the flag is True, tidal lock outcomes for worlds with `eccentricity > 0.1` will shift (fewer locks for eccentric orbits).
+
+The stale "Orbital eccentricity" entry has been removed from `context/deferred-features.md` — that feature was fully implemented across Sessions 43 (orbital eccentricity rolls) and 48 (anomalous orbit DMs).
+
+6 new tests in `TestTidalLockEccentricityDm`; **1014 tests** pass.
+
+---
 
 ### System JSON HTML Renderer (Session 49)
 

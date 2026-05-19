@@ -164,6 +164,43 @@ class TestTidalLockDmStarLock:
 
 
 # ---------------------------------------------------------------------------
+# _tidal_lock_dm — eccentricity DM (WBH p.105 "DMs for all cases")
+# ---------------------------------------------------------------------------
+
+class TestTidalLockEccentricityDm:
+    """Eccentricity DM: e > 0.1 → DM − floor(e × 10) (WBH p.105)."""
+
+    def _dm(self, orbit_eccentricity=0.0, size=6, axial_tilt=10.0,
+            atmosphere=6, age_gyr=3.0, orbit_number=2.5, star_mass=1.0):
+        return _tidal_lock_dm(size, axial_tilt, atmosphere, age_gyr,
+                              orbit_number, star_mass, orbit_eccentricity)
+
+    def test_no_dm_at_zero(self):
+        """e=0.0 → no eccentricity DM."""
+        assert self._dm(0.0) == self._dm(0.0)  # baseline is stable
+
+    def test_no_dm_at_exact_threshold(self):
+        """e=0.1 is not > 0.1, so no DM applied."""
+        assert self._dm(0.1) == self._dm(0.0)
+
+    def test_dm_just_above_threshold(self):
+        """e=0.15 → int(0.15×10)=1 → DM−1."""
+        assert self._dm(0.15) == self._dm(0.0) - 1
+
+    def test_dm_floors_not_rounds(self):
+        """e=0.25 → int(0.25×10)=2, not 3 → DM−2 (floor, not round)."""
+        assert self._dm(0.25) == self._dm(0.0) - 2
+
+    def test_dm_medium_eccentricity(self):
+        """e=0.50 → int(0.50×10)=5 → DM−5."""
+        assert self._dm(0.50) == self._dm(0.0) - 5
+
+    def test_dm_high_eccentricity(self):
+        """e=0.999 → int(0.999×10)=9 → DM−9."""
+        assert self._dm(0.999) == self._dm(0.0) - 9
+
+
+# ---------------------------------------------------------------------------
 # _apply_tidal_lock_result — all table rows
 # ---------------------------------------------------------------------------
 
