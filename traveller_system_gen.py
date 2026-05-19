@@ -366,14 +366,33 @@ class TravellerSystem:
                     else:
                         mp = f"size {esc(moon.size_str)}"
                         moon_codes_html = ""
+                    moon_pd_str = (
+                        f"{moon.orbit_pd:.1f} PD"
+                        if moon.orbit_pd is not None else ""
+                    )
+                    moon_km_str = (
+                        f"{moon.orbit_km:,.0f} km"
+                        if moon.orbit_km is not None else ""
+                    )
+                    moon_range_str = (
+                        moon.orbit_range.capitalize()
+                        if moon.orbit_range else ""
+                    )
+                    moon_type_str = (
+                        "ring" if moon.is_ring
+                        else f"size {esc(moon.size_str)}"
+                    )
                     orbit_rows += (
                         f'<tr class="moon-row">'
                         f'<td></td><td class="mono moon-idx">↳ m{mi}</td>'
-                        f'<td colspan="4" class="moon-type">moon {mi} — '
-                        f'{"ring" if moon.is_ring else "size " + esc(moon.size_str)}</td>'
+                        f'<td class="mono">{moon_pd_str}</td>'
+                        f'<td class="mono">{moon_km_str}</td>'
+                        f'<td></td>'
+                        f'<td class="moon-type">{moon_type_str}</td>'
                         f'<td class="mono profile">{mp}</td>'
                         f'<td class="codes-cell">{moon_codes_html}</td>'
-                        f'<td></td><td></td></tr>'
+                        f'<td>{moon_range_str}</td>'
+                        f'<td></td></tr>'
                     )
 
         # ── Mainworld panel ───────────────────────────────────────────────

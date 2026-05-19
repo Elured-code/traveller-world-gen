@@ -140,7 +140,24 @@ if errorlevel 1 (
 )
 echo [install] All dependencies installed.
 
-rem -- 4. Create launcher batch files -------------------------------------------
+rem -- 4. Create VS Code settings -----------------------------------------------
+
+if not exist "%~dp0.vscode\" mkdir "%~dp0.vscode"
+if not exist "%~dp0.vscode\settings.json" (
+    echo [install] Creating VS Code settings...
+    powershell -NoProfile -Command ^
+        "$f = '%~dp0.vscode\settings.json';" ^
+        "$c = '{`n  ""python.defaultInterpreterPath"": ""${workspaceFolder}/.venv/Scripts/python.exe"",`n  ""python.terminal.activateEnvironment"": true,`n  ""python.terminal.activateEnvInCurrentTerminal"": true,`n  ""python.testing.pytestEnabled"": true,`n  ""python.testing.pytestArgs"": [""tests""],`n  ""python.testing.unittestEnabled"": false,`n  ""python.analysis.venvPath"": ""${workspaceFolder}"",`n  ""python.analysis.venv"": "".venv"",`n  ""python.analysis.extraPaths"": [""${workspaceFolder}""],`n  ""python.analysis.typeCheckingMode"": ""basic"",`n  ""editor.formatOnSave"": true,`n  ""editor.rulers"": [88],`n  ""files.exclude"": {""**/__pycache__"": true, ""**/*.pyc"": true, "".pytest_cache"": true},`n  ""[python]"": {""editor.defaultFormatter"": ""ms-python.python""},`n  ""azureFunctions.deploySubpath"": ""."",`n  ""azureFunctions.scmDoBuildDuringDeployment"": true,`n  ""azureFunctions.pythonVenv"": "".venv"",`n  ""azureFunctions.projectLanguage"": ""Python"",`n  ""azureFunctions.projectRuntime"": ""~4"",`n  ""debug.internalConsoleOptions"": ""neverOpen"",`n  ""azureFunctions.projectLanguageModel"": 2,`n  ""pylint.path"": [""${workspaceFolder}/.venv/Scripts/pylint.exe""],`n  ""pylint.interpreter"": [""${workspaceFolder}/.venv/Scripts/python.exe""],`n  ""pylint.args"": [""--disable=duplicate-code,too-many-lines""]`n}';" ^
+        "[IO.File]::WriteAllText($f, $c, [Text.Encoding]::UTF8)"
+    if errorlevel 1 (
+        echo [error]   Failed to create VS Code settings.
+        exit /b 1
+    )
+) else (
+    echo [install] VS Code settings already exist - skipping.
+)
+
+rem -- 5. Create launcher batch files -------------------------------------------
 
 echo [install] Creating launcher scripts...
 
@@ -176,7 +193,7 @@ echo [install] Creating launcher scripts...
     echo "%%~dp0.venv\Scripts\python.exe" "%%~dp0traveller_map_fetch.py" %%*
 ) > "%~dp0run-mapfetch.bat"
 
-rem -- 5. Done ------------------------------------------------------------------
+rem -- 6. Done ------------------------------------------------------------------
 
 echo.
 echo [install] Installation complete!
@@ -201,7 +218,7 @@ echo.
 
 endlocal
 
-rem -- 6. Activate virtual environment ------------------------------------------
+rem -- 7. Activate virtual environment ------------------------------------------
 if not defined VIRTUAL_ENV (
     echo [install] Activating virtual environment...
     call "%~dp0.venv\Scripts\activate.bat"

@@ -136,7 +136,63 @@ Info "Installing dev tools (pytest, pylint)..."
 if ($LASTEXITCODE -ne 0) { Fail "Failed to install dev tools." }
 Info "All dependencies installed."
 
-# 4. Create launcher batch files
+# 4. Create VS Code settings
+$VscodeDir     = Join-Path $ScriptDir '.vscode'
+$VscodeSettings = Join-Path $VscodeDir 'settings.json'
+if (-not (Test-Path $VscodeSettings)) {
+    Info "Creating VS Code settings (.vscode\settings.json)..."
+    if (-not (Test-Path $VscodeDir)) { New-Item -ItemType Directory $VscodeDir | Out-Null }
+    @'
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.terminal.activateEnvironment": true,
+  "python.terminal.activateEnvInCurrentTerminal": true,
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.analysis.venvPath": "${workspaceFolder}",
+  "python.analysis.venv": ".venv",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}"
+  ],
+  "python.analysis.typeCheckingMode": "basic",
+  "editor.formatOnSave": true,
+  "editor.rulers": [
+    88
+  ],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    ".pytest_cache": true
+  },
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.python"
+  },
+  "azureFunctions.deploySubpath": ".",
+  "azureFunctions.scmDoBuildDuringDeployment": true,
+  "azureFunctions.pythonVenv": ".venv",
+  "azureFunctions.projectLanguage": "Python",
+  "azureFunctions.projectRuntime": "~4",
+  "debug.internalConsoleOptions": "neverOpen",
+  "azureFunctions.projectLanguageModel": 2,
+  "pylint.path": [
+    "${workspaceFolder}/.venv/Scripts/pylint.exe"
+  ],
+  "pylint.interpreter": [
+    "${workspaceFolder}/.venv/Scripts/python.exe"
+  ],
+  "pylint.args": [
+    "--disable=duplicate-code,too-many-lines"
+  ]
+}
+'@ | Set-Content $VscodeSettings -Encoding utf8
+} else {
+    Info "VS Code settings already exist - skipping."
+}
+
+# 5. Create launcher batch files
 Info "Creating launcher scripts..."
 
 # Desktop GUI
@@ -188,7 +244,7 @@ rem   run-mapfetch --sector "Spinward Marches" --hex 1910 --detail
 '@
 $mapBat | Set-Content (Join-Path $ScriptDir 'run-mapfetch.bat') -Encoding ASCII
 
-# 5. Activate virtual environment
+# 6. Activate virtual environment
 if ($env:VIRTUAL_ENV -ne $VenvDir) {
     Info "Activating virtual environment..."
     & "$VenvDir\Scripts\Activate.ps1"
@@ -196,7 +252,7 @@ if ($env:VIRTUAL_ENV -ne $VenvDir) {
     Info "Virtual environment already active."
 }
 
-# 6. Done
+# 7. Done
 Write-Host ""
 Info "Installation complete!"
 Write-Host ""

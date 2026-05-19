@@ -216,14 +216,30 @@ def _render_moon_rows(moons: list[dict]) -> str:
             codes_html = ""
 
         size_label = "ring" if is_ring else f"size {esc(str(size))}"
+
+        orbit_pd  = moon.get("orbit_pd")
+        orbit_km  = moon.get("orbit_km")
+        period_h  = moon.get("orbit_period_hours")
+        orb_range = moon.get("orbit_range")
+
+        pd_str     = f"{orbit_pd:.1f} PD" if orbit_pd is not None else ""
+        km_str     = f"{orbit_km:,.0f} km" if orbit_km is not None else ""
+        period_str = fmt_period(period_h / 24 / 365.25) if period_h is not None else ""
+        range_str  = orb_range.capitalize() if orb_range else ""
+
         rows += (
             f'<tr class="moon-row">'
             f'<td></td>'
             f'<td class="mono moon-idx">↳ m{mi}</td>'
-            f'<td colspan="4" class="moon-type">moon {mi} — {size_label}</td>'
+            f'<td class="mono">{pd_str}</td>'
+            f'<td class="mono">{km_str}</td>'
+            f'<td class="mono dim">{period_str}</td>'
+            f'<td></td>'
+            f'<td class="moon-type">{size_label}</td>'
             f'<td class="mono profile">{mp}</td>'
             f'<td class="codes-cell">{codes_html}</td>'
-            f'<td></td><td></td><td></td>'
+            f'<td>{range_str}</td>'
+            f'<td></td>'
             f'</tr>'
         )
     return rows

@@ -1203,15 +1203,30 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         moon_profile = f"size {moon.size_str}"
                         moon_type = f"size {moon.size_str}"
                         moon_codes = ""
+                    moon_pd_str = (
+                        f"{moon.orbit_pd:.1f} PD"
+                        if moon.orbit_pd is not None else ""
+                    )
+                    moon_period_str = (
+                        _fmt_period(moon.orbit_period_hours / 24 / 365.25)
+                        if moon.orbit_period_hours is not None else ""
+                    )
+                    moon_range_str = (
+                        moon.orbit_range.capitalize()
+                        if moon.orbit_range else ""
+                    )
                     moon_cells = [
-                        ("",            Qt.AlignmentFlag.AlignLeft),
-                        (f"↳ m{mi}", Qt.AlignmentFlag.AlignRight),
-                        ("",            Qt.AlignmentFlag.AlignLeft),
-                        (moon_type,     Qt.AlignmentFlag.AlignLeft),
-                        (moon_profile,  Qt.AlignmentFlag.AlignLeft),
-                        (moon_codes,    Qt.AlignmentFlag.AlignLeft),
-                        ("",            Qt.AlignmentFlag.AlignLeft),
-                        ("",            Qt.AlignmentFlag.AlignLeft),
+                        ("",               Qt.AlignmentFlag.AlignLeft),   # Star
+                        (f"↳ m{mi}",      Qt.AlignmentFlag.AlignRight),  # Orbit#
+                        (moon_pd_str,      Qt.AlignmentFlag.AlignRight),  # AU col → PD
+                        ("",               Qt.AlignmentFlag.AlignRight),  # Ecc/Incl
+                        (moon_type,        Qt.AlignmentFlag.AlignLeft),   # Type
+                        (moon_profile,     Qt.AlignmentFlag.AlignLeft),   # Profile
+                        (moon_codes,       Qt.AlignmentFlag.AlignLeft),   # Codes
+                        ("",               Qt.AlignmentFlag.AlignLeft),   # HZ
+                        (moon_range_str,   Qt.AlignmentFlag.AlignLeft),   # Zone → range
+                        (moon_period_str,  Qt.AlignmentFlag.AlignRight),  # Period
+                        ("",               Qt.AlignmentFlag.AlignLeft),   # Notes
                     ]
                     for col, (text, align) in enumerate(moon_cells):
                         lbl = QLabel(text)
