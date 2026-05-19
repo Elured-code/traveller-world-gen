@@ -84,7 +84,7 @@ from traveller_world_gen import (  # noqa: E402
     generate_world,
     to_hex as _to_hex,
 )
-from traveller_world_physical import generate_world_physical, TIDAL_STATUS_LABELS  # noqa: E402
+from traveller_world_physical import generate_world_physical, apply_moon_tidal_effects, TIDAL_STATUS_LABELS  # noqa: E402
 from traveller_belt_physical import BeltPhysical  # noqa: E402
 from traveller_hydro_detail import (  # noqa: E402
     HydrographicDetail,
@@ -704,6 +704,29 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     )
         if attach_detail_flag:
             _attach_detail(system)  # type: ignore[arg-type]
+            # Apply moon tidal DMs now that moons have orbital positions
+            if self._check_physical.isChecked():
+                world = system.mainworld  # type: ignore[attr-defined]
+                mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
+                if world is not None and world.size_detail is not None and mw_orbit is not None:
+                    det = mw_orbit.detail
+                    if det is not None:
+                        if mw_orbit.world_type == "gas_giant":
+                            moons = det.moons[0].detail.moons if det.moons and det.moons[0].detail else []
+                        else:
+                            moons = det.moons or []
+                        stars = system.stellar_system.stars  # type: ignore[attr-defined]
+                        apply_moon_tidal_effects(
+                            world.size_detail,
+                            moons=moons,
+                            world_size=world.size,
+                            world_atmosphere=world.atmosphere,
+                            age_gyr=stars[0].age_gyr if stars else 0.0,
+                            orbit_number=mw_orbit.orbit_number,
+                            orbit_au=mw_orbit.orbit_au,
+                            star_mass=stars[0].mass if stars else 1.0,
+                            orbit_eccentricity=mw_orbit.eccentricity,
+                        )
         self._detail_attached = attach_detail_flag
         path = self._write_html(
             system.to_html(detail_attached=attach_detail_flag)  # type: ignore[attr-defined]

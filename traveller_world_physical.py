@@ -310,12 +310,13 @@ def _tidal_lock_dm(  # pylint: disable=too-many-arguments,too-many-positional-ar
         orbit_number: float,
         star_mass: float,
         orbit_eccentricity: float = 0.0,
+        moons: list | None = None,
+        num_stars_orbited: int = 1,
 ) -> int:
     """Compute total DM for the planet-to-star Tidal Lock Status roll.
 
     Combines general DMs (WBH p.105) and star-lock DMs (WBH p.106).
     At boundary values, uses the DM closer to 0 per WBH edge-condition rule.
-    Deferred: moon-size DM, multi-star DM.
     """
     dm = -4  # base DM for star lock (WBH p.106)
 
@@ -363,6 +364,56 @@ def _tidal_lock_dm(  # pylint: disable=too-many-arguments,too-many-positional-ar
         dm += 2
     elif star_mass > 2:
         dm += 1
+
+    # Moon DM: DM-Total Size of all significant moons Size 1+ (WBH p.106)
+    if moons:
+        total_moon_sz = sum(
+            int(m.size_code) for m in moons
+            if not m.is_ring and m.size_code not in (0, "S")
+            and int(m.size_code) >= 1
+        )
+        dm -= total_moon_sz
+
+    # Multi-star DM: DM-Total number of stars orbited (WBH p.106)
+    if num_stars_orbited > 1:
+        dm -= num_stars_orbited
+
+    return dm
+
+
+def _planet_moon_lock_dm(moon: "Moon", all_moons: list) -> int:
+    """DM for a planet's lock to a specific moon (WBH p.107 left column).
+
+    Base DM is -10; only moons with orbit_pd data can contribute orbit DMs.
+    """
+    dm = -10  # base
+
+    # Moon size DM: DM+Moon Size if Size 1+
+    if moon.size_code not in (0, "S") and int(moon.size_code) >= 1:
+        dm += int(moon.size_code)
+
+    # Moon orbit PD DMs
+    if moon.orbit_pd is not None:
+        pd = moon.orbit_pd
+        if pd < 5:
+            dm += 5 + math.ceil((5 - pd) * 5)   # DM+5+(5-PD)×5 round up
+        elif pd <= 10:
+            dm += 4
+        elif pd <= 20:
+            dm += 2
+        elif pd <= 40:
+            dm += 1
+        elif pd > 60:
+            dm -= 6
+        # 40–60 PD: no DM
+
+    # Multiple significant moons: DM-2 per moon beyond the first
+    sig = [m for m in all_moons
+           if not m.is_ring and m.size_code not in (0, "S")
+           and int(m.size_code) >= 1]
+    extra = len(sig) - 1
+    if extra > 0:
+        dm -= 2 * extra
 
     return dm
 
@@ -419,7 +470,16 @@ def _apply_tidal_lock_result(  # pylint: disable=too-many-return-statements
     return day, new_tilt, "1:1_lock"
 
 
-def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _roll_one_lock_case(dm: int, basic_day_h: float, axial_tilt: float,
+                        period_h: float) -> tuple[float, float, str]:
+    """Roll 2D+DM for one tidal lock case and apply the result."""
+    if dm <= -10:
+        return basic_day_h, axial_tilt, "none"
+    roll = 12 if dm >= 10 else _roll(2) + dm
+    return _apply_tidal_lock_result(roll, basic_day_h, axial_tilt, period_h)
+
+
+def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         size: int,
         axial_tilt: float,
         atmosphere: int,
@@ -429,23 +489,47 @@ def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-posi
         star_mass: float,
         basic_day_h: float,
         orbit_eccentricity: float = 0.0,
+        moons: list | None = None,
+        num_stars_orbited: int = 1,
 ) -> tuple[float, float, str]:
-    """Roll and apply the Tidal Lock Status table for a planet orbiting a star.
+    """Roll and apply the Tidal Lock Status table (WBH pp.105-107).
 
+    Handles planet-to-star and planet-to-moon cases in WBH priority order:
+    roll for the highest DM case first; cascade to next if no lock occurs.
     Returns (day_hours, axial_tilt, tidal_status).
     """
-    dm = _tidal_lock_dm(size, axial_tilt, atmosphere, age_gyr, orbit_number, star_mass,
-                        orbit_eccentricity)
     period_h = _orbital_period_hours(orbit_au, star_mass)
 
-    if dm <= -10:
-        return basic_day_h, axial_tilt, "none"
-    if dm >= 10:
-        # Automatic 1:1 lock — still subject to broken-lock check
-        return _apply_tidal_lock_result(12, basic_day_h, axial_tilt, period_h)
+    star_dm = _tidal_lock_dm(size, axial_tilt, atmosphere, age_gyr,
+                              orbit_number, star_mass, orbit_eccentricity,
+                              moons=moons, num_stars_orbited=num_stars_orbited)
 
-    result = _roll(2) + dm
-    return _apply_tidal_lock_result(result, basic_day_h, axial_tilt, period_h)
+    # Build candidate list: (dm, lock_type, moon_or_None)
+    # Moon candidates require orbit_pd and Size 1+ (WBH p.107)
+    candidates: list[tuple[str, int, object]] = [("star", star_dm, None)]
+    if moons:
+        for moon in moons:
+            if (not moon.is_ring and moon.orbit_pd is not None
+                    and moon.size_code not in (0, "S")
+                    and int(moon.size_code) >= 1):
+                m_dm = _planet_moon_lock_dm(moon, moons)
+                candidates.append(("moon", m_dm, moon))
+
+    # Highest DM first; ties: moon before star (WBH p.107)
+    candidates.sort(key=lambda c: (-c[1], 0 if c[0] == "moon" else 1))
+
+    for lock_type, dm, moon in candidates:
+        if lock_type == "moon":
+            moon_period_h = moon.orbit_period_hours or period_h
+            day_h, tilt, status = _roll_one_lock_case(
+                dm, basic_day_h, axial_tilt, moon_period_h)
+        else:
+            day_h, tilt, status = _roll_one_lock_case(
+                dm, basic_day_h, axial_tilt, period_h)
+        if status != "none":
+            return day_h, tilt, status
+
+    return basic_day_h, axial_tilt, "none"
 
 
 # ---------------------------------------------------------------------------
@@ -580,3 +664,43 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         new_ecc = _reroll_eccentricity_tidal(orbit_number or 0.0, age_gyr)
         wp.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
     return wp
+
+
+def apply_moon_tidal_effects(
+        physical: "WorldPhysical",
+        moons: list,
+        world_size: int,
+        world_atmosphere: int,
+        age_gyr: float,
+        orbit_number: float,
+        orbit_au: float,
+        star_mass: float,
+        orbit_eccentricity: float = 0.0,
+        num_stars_orbited: int = 1,
+) -> None:
+    """Re-run the tidal lock check with moon data and apply moon-lock check.
+
+    Called after moon generation completes (WBH pp.106-107). Mutates
+    physical in-place. No-op when moons list is empty.
+    """
+    if not moons:
+        return
+    day_h, tilt, status = _roll_tidal_lock_status(
+        size=world_size,
+        axial_tilt=physical.axial_tilt,
+        atmosphere=world_atmosphere,
+        age_gyr=age_gyr,
+        orbit_number=orbit_number,
+        orbit_au=orbit_au,
+        star_mass=star_mass,
+        basic_day_h=physical.day_length,
+        orbit_eccentricity=orbit_eccentricity,
+        moons=moons,
+        num_stars_orbited=num_stars_orbited,
+    )
+    physical.day_length = day_h
+    physical.axial_tilt = tilt
+    physical.tidal_status = status
+    if status == "1:1_lock" and orbit_eccentricity > 0.1:
+        new_ecc = _reroll_eccentricity_tidal(orbit_number, age_gyr)
+        physical.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
