@@ -201,14 +201,26 @@ _ECC_TABLE = [
     (99,  0.300, 2,   20),
 ]
 
+# DMs applied to the first roll of _roll_eccentricity() for anomalous orbit
+# types (WBH pp.49-50). Trojan types are absent — no DM specified.
+_ANOM_ECC_DM: dict = {
+    "random":     2,
+    "eccentric":  5,
+    "inclined":   2,
+    "retrograde": 2,
+}
 
-def _roll_eccentricity(orbit_number: float, system_age_gyr: float,
-                       extra_stars: int = 0,
-                       is_belt: bool = False,
-                       is_star: bool = False) -> float:
+
+def _roll_eccentricity(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        orbit_number: float, system_age_gyr: float,
+        extra_stars: int = 0,
+        is_belt: bool = False,
+        is_star: bool = False,
+        anomaly_dm: int = 0) -> float:
     """Roll orbital eccentricity per WBH p.27 Eccentricity Values table."""
     dm = 2 if is_star else 0
     dm += extra_stars
+    dm += anomaly_dm
     if orbit_number < 1.0 < system_age_gyr:
         dm -= 1
     if is_belt:
@@ -219,6 +231,24 @@ def _roll_eccentricity(orbit_number: float, system_age_gyr: float,
             second = roll(n_dice) / divisor
             return min(0.999, max(0.0, base + second))
     return 0.0  # unreachable; satisfies type checker
+
+
+def _roll_inclination() -> float:  # pylint: disable=too-many-return-statements
+    """Roll orbital inclination per WBH p.28 Inclination table."""
+    first = roll(2)
+    if first <= 6:
+        return random.randint(1, 6) / 2                                    # Very Low: 0.5–3°
+    if first == 7:
+        return float(random.randint(1, 6))                                 # Low: 1–6°
+    if first == 8:
+        return float(roll(2))                                              # Moderate: 2–12°
+    if first == 9:
+        return float(roll(2) * 3 + random.randint(1, 6))                  # High: 7–42°
+    if first == 10:
+        return float((random.randint(1, 6) + 1) * 5 + random.randint(1, 6))  # Very High: 11–41°
+    if first == 11:
+        return float(roll(3) * 5 - random.randint(1, 6))                  # Extreme: 9–89°
+    return max(0.0, 180.0 - _roll_inclination())                          # Retrograde: 12
 
 
 @dataclass
@@ -241,6 +271,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
                                  # |"trojan_leading"|"trojan_trailing"
     orbit_period_yr: Optional[float] = field(default=None, init=False)
     eccentricity: float = field(default=0.0, init=False)
+    inclination: float = field(default=0.0, init=False)
     detail: Optional["WorldDetail"] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
@@ -269,6 +300,8 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["eccentricity"] = round(self.eccentricity, 4)
             d["orbit_au_min"] = round(self.orbit_au * (1 - self.eccentricity), 3)
             d["orbit_au_max"] = round(self.orbit_au * (1 + self.eccentricity), 3)
+        if self.inclination > 0:
+            d["inclination"] = round(self.inclination, 2)
         # Include secondary world / satellite detail if attach_detail() has run
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
@@ -399,7 +432,8 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
 
 
 def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-                    orbital_eccentricity: bool = False) -> SystemOrbits:
+                    orbital_eccentricity: bool = False,
+                    orbital_inclination: bool = False) -> SystemOrbits:
     """Generate all orbit slots for a star system (WBH pp.36-51)."""
     result = SystemOrbits(stellar_system=system)
     primary_stars = [s for s in system.stars if s.role != "companion"]
@@ -841,6 +875,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                 o.orbit_number, age,
                 extra_stars=extra,
                 is_belt=(o.world_type == "belt"),
+                anomaly_dm=_ANOM_ECC_DM.get(o.anomaly_type, 0),
             )
 
         for s in system.stars:
@@ -849,16 +884,31 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                     s.orbit_number, age, is_star=True
                 )
 
+    # ── Orbital inclination (WBH p.28) — only when flag is set ──────────────
+    if orbital_inclination:
+        for o in result.orbits:
+            if o.world_type == "empty":
+                continue
+            if o.anomaly_type == "inclined":
+                continue  # angle already stored in notes
+            o.inclination = _roll_inclination()
+
+        for s in system.stars:
+            if s.role in ("close", "near", "far") and s.orbit_number is not None:
+                s.orbit_inclination = _roll_inclination()
+
     return result
 
 
-def generate_full_system(seed=None, orbital_eccentricity: bool = False):
+def generate_full_system(seed=None, orbital_eccentricity: bool = False,
+                         orbital_inclination: bool = False):
     """Generate a stellar system with orbits, optionally seeding the RNG."""
     from traveller_stellar_gen import generate_stellar_data  # pylint: disable=import-outside-toplevel
     if seed is not None:
         random.seed(seed)
     system = generate_stellar_data()
-    orbits = generate_orbits(system, orbital_eccentricity=orbital_eccentricity)
+    orbits = generate_orbits(system, orbital_eccentricity=orbital_eccentricity,
+                             orbital_inclination=orbital_inclination)
     return system, orbits
 
 

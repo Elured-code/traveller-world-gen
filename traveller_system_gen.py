@@ -185,6 +185,7 @@ class TravellerSystem:
     mainworld_orbit: Optional[OrbitSlot]
     nhz_atmospheres: bool = False
     orbital_eccentricity: bool = False
+    orbital_inclination: bool = False
 
     def to_dict(self) -> dict:
         """Serialise this system to a JSON-compatible dict."""
@@ -328,14 +329,20 @@ class TravellerSystem:
                 f'<span class="badge trade">{esc(tc)}</span>'
                 for tc in orbit_codes
             )
-            ecc_str = f"{o.eccentricity:.3f}" if o.eccentricity > 0 else "—"
+            ecc_part = f"{o.eccentricity:.3f}" if o.eccentricity > 0 else "—"
+            incl_part = f"{o.inclination:.1f}°" if o.inclination > 0 else "—"
+            ecc_incl_str = (
+                f"{ecc_part}/{incl_part}"
+                if (o.eccentricity > 0 or o.inclination > 0)
+                else "—"
+            )
             orbit_rows += (
                 f'<tr class="{row_cls}">'
                 f'<td class="mono">{esc(o.star_designation)}</td>'
                 f'<td class="mono">{o.slot_index}</td>'
                 f'<td class="mono">{o.orbit_number:.2f}</td>'
                 f'<td class="mono">{o.orbit_au:.3f}</td>'
-                f'<td class="mono">{ecc_str}</td>'
+                f'<td class="mono">{ecc_incl_str}</td>'
                 f'<td class="{type_cls}">{esc(o.world_type)}</td>'
                 f'<td class="mono profile">{profile}</td>'
                 f'<td class="codes-cell">{codes_html}</td>'
@@ -600,7 +607,7 @@ pre{{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
 
   <div class="section-title">Orbital survey{"  ·  detail included" if detail_attached else ""}</div>
   <table>
-    <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th><th>Ecc</th>
+    <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th><th>Ecc/Incl</th>
     <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th></th></tr></thead>
     <tbody>{orbit_rows}</tbody>
   </table>
@@ -827,6 +834,7 @@ def generate_full_system(
     seed: Optional[int] = None,
     nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
+    orbital_inclination: bool = False,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system with stellar data, orbital
@@ -839,6 +847,8 @@ def generate_full_system(
                               WBH Non-Habitable Zone atmosphere tables.
         orbital_eccentricity: When True, roll orbital eccentricity for all
                               worlds and companion stars (WBH p.27).
+        orbital_inclination:  When True, roll orbital inclination for all
+                              worlds and companion stars (WBH p.28).
 
     Returns:
         A TravellerSystem containing stellar data, orbits, and mainworld.
@@ -851,7 +861,8 @@ def generate_full_system(
     stellar = generate_stellar_data()
 
     # Step 2: Orbits and mainworld orbit selection
-    orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity)
+    orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
+                             orbital_inclination=orbital_inclination)
 
     mw_orbit = orbits.mainworld_orbit
     mainworld = None
@@ -877,6 +888,7 @@ def generate_full_system(
         mainworld_orbit=mw_orbit,
         nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
+        orbital_inclination=orbital_inclination,
     )
 
 
@@ -884,6 +896,7 @@ def generate_system_from_world(
     world: World,
     seed: Optional[int] = None,
     orbital_eccentricity: bool = False,
+    orbital_inclination: bool = False,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system around an existing mainworld.
@@ -910,7 +923,8 @@ def generate_system_from_world(
     random.seed(seed)
 
     stellar = generate_stellar_data()
-    orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity)
+    orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
+                             orbital_inclination=orbital_inclination)
 
     # Reconcile PBG: honour the world's canonical gas giant and belt counts
     # rather than the freshly generated orbit counts.
@@ -965,6 +979,7 @@ def generate_system_from_world(
         mainworld=world,
         mainworld_orbit=mw_orbit,
         orbital_eccentricity=orbital_eccentricity,
+        orbital_inclination=orbital_inclination,
     )
 
 

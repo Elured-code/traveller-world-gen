@@ -1,8 +1,8 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–45
-**Tests:** 990 (up from 890 in v1.1)
+**Sessions:** 36–48
+**Tests:** 1008 (up from 890 in v1.1)
 
 ---
 
@@ -168,6 +168,25 @@ A missing **"Orbital Eccentricity"** checkbox was also added to the gen-ui toolb
 
 ---
 
+### Orbital Inclination (Session 46, issue #59)
+
+WBH p.28 orbital inclination is now implemented as an optional gated feature using the same pattern as orbital eccentricity.
+
+**`_roll_inclination()`** uses a 6-row severity table (2D ≤ 6 = Very Low through 2D = 11 = Extreme), each with a different degree formula, plus a recursive retrograde case (2D = 12 → `180 − re-roll`). Anomalous orbits already typed as `"inclined"` are skipped (their angle is stored in `notes`).
+
+**New fields:**
+- `OrbitSlot.inclination: float = 0.0` — `to_dict()` emits `"inclination"` (2 d.p.) when > 0
+- `Star.orbit_inclination: float = 0.0` — `to_dict()` emits `"orbit_inclination"` when > 0
+- `TravellerSystem.orbital_inclination: bool = False`
+
+**API:** `parse_orbital_inclination()` added to `shared/helpers.py`; wired through all 5 system endpoints.
+
+**Display:** The "Ecc" column is renamed **"Ecc/Incl"** in both gen-ui and HTML. When both are set, the cell shows `0.123/45.0°`; when only one is set, the other shows `—`; when neither is set, the cell shows just `—`.
+
+**gen-ui:** "Orbital Inclination" checkbox added (enabled only when "System detail" is checked). When False (default), no dice fire — no seed disruption.
+
+---
+
 ## Bug Fixes
 
 ### JSON Unicode Error on Windows (Session 45, issue #60)
@@ -203,6 +222,38 @@ Two bugs in `traveller_map_fetch.py` caused the belt count shown in the orbit ta
 ### TravellerMap Fetch Incomplete Atmosphere Pipeline (Session 36, issue #51)
 
 `generate_system_from_map()` was not calling `generate_gas_mix()` or `generate_unusual_subtype()` after `generate_atmosphere_detail()`, leaving gas composition and unusual subtypes absent for TravellerMap-fetched worlds. Also threaded `hz_deviation` into `generate_atmosphere_detail()` for orbit-position DMs. Both calls now follow the same pipeline as procedurally generated worlds.
+
+### Anomalous Orbit Eccentricity DMs Not Applied (Session 48, issue #64)
+
+WBH pp.49-50 specifies DMs on the Eccentricity Values table for anomalous orbit types.
+These DMs were silently ignored — all anomalous orbits used the base table.
+
+| Anomaly type | WBH DM | Was applied |
+|---|---|---|
+| Random | +2 | No |
+| Eccentric | +5 | No |
+| Inclined | +2 | No |
+| Retrograde | +2 | No |
+
+Fix: added `_ANOM_ECC_DM` lookup dict and `anomaly_dm: int = 0` parameter to
+`_roll_eccentricity()`. The eccentricity pass in `generate_orbits()` now passes
+`anomaly_dm=_ANOM_ECC_DM.get(o.anomaly_type, 0)` for each orbit slot. No seed
+disruption for systems without anomalous orbits. 6 regression tests added
+(`TestAnomalyEccentricityDMs`); 1008 tests pass.
+
+---
+
+### Orbital Flags Not Wired Through TravellerMap Endpoints (Session 47, issue #63)
+
+`orbital_eccentricity` and `orbital_inclination` parameters were silently ignored on both `/api/map/system` and `/api/map/system/{name}`. Three layers all missed the flags:
+
+1. `generate_system_from_map()` called `generate_orbits(stellar)` with no keyword arguments and did not accept the flags at all.
+2. The shared `_map_system_response()` helper had no `want_ecc` / `want_incl` parameters.
+3. Neither endpoint handler called `parse_orbital_eccentricity()` or `parse_orbital_inclination()`.
+
+Fix: flags added to `generate_system_from_map()` signature and threaded into `generate_orbits()` and the `TravellerSystem` constructor. Both `_map_system_response()` and the two endpoint handlers updated to parse and forward the flags. 4 regression tests added (`TestGenerateSystemFromMapOrbitalFlags`); 1002 tests pass.
+
+---
 
 ### H/L Oxygen Taint Validation (Session 37, issue #55)
 

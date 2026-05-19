@@ -154,7 +154,8 @@ from shared.helpers import (
     ok, error,
     ERR_INVALID_BODY, ERR_INTERNAL, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
     apply_seed, parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
-    parse_orbital_eccentricity, parse_seed, parse_sector, parse_world_json,
+    parse_orbital_eccentricity, parse_orbital_inclination,
+    parse_seed, parse_sector, parse_world_json,
 )
 
 logger = logging.getLogger(__name__)
@@ -426,10 +427,12 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1",
-                                      orbital_eccentricity=want_ecc)
+                                      orbital_eccentricity=want_ecc,
+                                      orbital_inclination=want_incl)
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
@@ -468,10 +471,12 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1",
-                                      orbital_eccentricity=want_ecc)
+                                      orbital_eccentricity=want_ecc,
+                                      orbital_inclination=want_incl)
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
@@ -527,10 +532,12 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
         return err
     fmt = parse_format(req)
     want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1",
-                                      orbital_eccentricity=want_ecc)
+                                      orbital_eccentricity=want_ecc,
+                                      orbital_inclination=want_incl)
         attach_detail(system)
         _attach_mainworld_physical(system)
     except Exception as exc:
@@ -583,10 +590,12 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
         system = generate_full_system(name=name or "World-1",
-                                      orbital_eccentricity=want_ecc)
+                                      orbital_eccentricity=want_ecc,
+                                      orbital_inclination=want_incl)
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
@@ -613,6 +622,8 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
     seed: Optional[int],
     want_detail: bool,
     fmt: str,
+    want_ecc: bool = False,
+    want_incl: bool = False,
 ) -> func.HttpResponse:
     """Shared implementation for both map/system endpoint variants."""
     seed = apply_seed(seed)
@@ -620,6 +631,8 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
         system = generate_system_from_map(
             name=name, sector=sector, hex_pos=hex_pos,
             seed=seed, attach=want_detail,
+            orbital_eccentricity=want_ecc,
+            orbital_inclination=want_incl,
         )
     except LookupError as exc:
         logger.warning("TravellerMap lookup failed: %s", exc)
@@ -702,11 +715,13 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
     want_detail = parse_detail(req)
     fmt = parse_format(req)
     want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
         world = World.from_dict(world_dict)
         system = generate_system_from_world(world, seed=seed,
-                                            orbital_eccentricity=want_ecc)
+                                            orbital_eccentricity=want_ecc,
+                                            orbital_inclination=want_incl)
         if want_detail:
             attach_detail(system)
         _attach_mainworld_physical(system)
@@ -795,7 +810,10 @@ def generate_map_system(  # pylint: disable=too-many-return-statements
         )
     want_detail = parse_detail(req)
     fmt = parse_format(req)
-    return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
+    return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt,
+                                want_ecc, want_incl)
 
 
 @app.route(route="map/system/{name}", methods=["GET"])
@@ -840,4 +858,7 @@ def generate_named_map_system(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     fmt = parse_format(req)
-    return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
+    return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt,
+                                want_ecc, want_incl)
