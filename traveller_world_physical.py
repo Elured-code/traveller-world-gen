@@ -309,18 +309,22 @@ def _tidal_lock_dm(  # pylint: disable=too-many-arguments,too-many-positional-ar
         age_gyr: float,
         orbit_number: float,
         star_mass: float,
+        orbit_eccentricity: float = 0.0,
 ) -> int:
     """Compute total DM for the planet-to-star Tidal Lock Status roll.
 
     Combines general DMs (WBH p.105) and star-lock DMs (WBH p.106).
     At boundary values, uses the DM closer to 0 per WBH edge-condition rule.
-    Deferred: eccentricity DM, moon-size DM, multi-star DM.
+    Deferred: moon-size DM, multi-star DM.
     """
     dm = -4  # base DM for star lock (WBH p.106)
 
     # --- General DMs (WBH p.105) ---
     if size >= 1:
         dm += math.ceil(size / 3)
+
+    if orbit_eccentricity > 0.1:
+        dm -= int(orbit_eccentricity * 10)
 
     # Axial tilt DMs are additive (WBH p.105 note)
     if axial_tilt > 30:
@@ -424,12 +428,14 @@ def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-posi
         orbit_au: float,
         star_mass: float,
         basic_day_h: float,
+        orbit_eccentricity: float = 0.0,
 ) -> tuple[float, float, str]:
     """Roll and apply the Tidal Lock Status table for a planet orbiting a star.
 
     Returns (day_hours, axial_tilt, tidal_status).
     """
-    dm = _tidal_lock_dm(size, axial_tilt, atmosphere, age_gyr, orbit_number, star_mass)
+    dm = _tidal_lock_dm(size, axial_tilt, atmosphere, age_gyr, orbit_number, star_mass,
+                        orbit_eccentricity)
     period_h = _orbital_period_hours(orbit_au, star_mass)
 
     if dm <= -10:
@@ -518,8 +524,9 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
     star_mass : float, optional
         Host star mass in solar masses, used for tidal lock DMs and period.
     orbit_eccentricity : float
-        Current orbital eccentricity; if > 0.1 and world reaches 1:1 lock,
-        a tidal reduction roll is made (WBH p.77 Rule 4).
+        Current orbital eccentricity; applies DM−floor(e×10) to the tidal
+        lock roll when > 0.1 (WBH p.105); also triggers eccentricity
+        reduction on 1:1 lock when > 0.1 (WBH p.77 Rule 4).
 
     All three of orbit_number, orbit_au, and star_mass must be provided for
     the tidal lock check to run. If any is None, tidal_status is "none".
@@ -555,6 +562,7 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
             orbit_au=orbit_au,
             star_mass=star_mass,
             basic_day_h=day_length,
+            orbit_eccentricity=orbit_eccentricity,
         )
 
     wp = WorldPhysical(

@@ -440,6 +440,8 @@ class WorldPhysical:       # pylint: disable=too-many-instance-attributes
     #       tidal_status[, eccentricity_adjusted]
 ```
 
+**Tidal lock DMs (WBH pp.105–106):** `_tidal_lock_dm()` combines general DMs (size, eccentricity, axial tilt, atmosphere pressure, system age) with star-lock DMs (base −4, orbit# band, star mass band). Eccentricity DM (Session 50): `e > 0.1 → DM − floor(e × 10)`. Passed as `orbit_eccentricity: float = 0.0`; no effect when `orbital_eccentricity=False` (default).
+
 **1:1 tidal lock interactions (WBH p.77, Session 44):**
 - **Rule 3** — Axial tilt: `_roll_axial_tilt_1d()` rolls 1D to select one of the 6 Axial Tilt table bands, then 1D within that band. Replaces the pre-lock tilt unconditionally (no `> 3.0` guard). The 3:2 lock axial tilt is unchanged ((2D-2)/10, only when tilt > 3°).
 - **Rule 4** — Eccentricity: if `orbit_eccentricity > 0.1`, `_reroll_eccentricity_tidal()` re-rolls with DM-2; `min(original, new)` is stored in `WorldPhysical.eccentricity_adjusted`. `_attach_mainworld_physical()` in `function_app.py` propagates the reduction back to the orbit slot.
