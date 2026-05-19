@@ -8,45 +8,86 @@
 
 ## New Features
 
-### Hydrographic Detail (Session 37)
+### Orbital Inclination (Session 46, issue #59)
 
-New module `traveller_hydro_detail.py` implements WBH p.93 surface liquid percentages.
+WBH p.28 orbital inclination is now implemented as an optional gated feature using the same pattern as orbital eccentricity.
 
-`HydrographicDetail` dataclass carries `surface_liquid_pct` (a flat random value within the WBH code range). `generate_hydrographic_detail()` is called from the shared section of `traveller_system_gen.py` and all API handlers. Exposed in:
-- **JSON** — `hydrographics.detail.surface_liquid_pct`
-- **HTML** — Hydrographic Detail inner-card in `World.to_html()`, `TravellerSystem.to_html()`, and `World.summary()`
-- **gen-ui** — `_build_hydrographic_card()`
+**`_roll_inclination()`** uses a 6-row severity table (2D ≤ 6 = Very Low through 2D = 11 = Extreme), each with a different degree formula, plus a recursive retrograde case (2D = 12 → `180 − re-roll`). Anomalous orbits already typed as `"inclined"` are skipped (their angle is stored in `notes`).
 
----
+**New fields:**
+- `OrbitSlot.inclination: float = 0.0` — `to_dict()` emits `"inclination"` (2 d.p.) when > 0
+- `Star.orbit_inclination: float = 0.0` — `to_dict()` emits `"orbit_inclination"` when > 0
+- `TravellerSystem.orbital_inclination: bool = False`
 
-### NHZ Atmosphere Generation (Session 38)
+**API:** `parse_orbital_inclination()` added to `shared/helpers.py`; wired through all 5 system endpoints.
 
-Out-of-habitable-zone worlds now roll NHZ atmosphere codes when the `nhz_atmospheres` flag is set. Two new atmosphere codes are added: code 16 (Gas, Helium / G) and code 17 (Gas, Hydrogen / H).
+**Display:** The "Ecc" column is renamed **"Ecc/Incl"** in both gen-ui and HTML. When both are set, the cell shows `0.123/45.0°`; when only one is set, the other shows `—`; when neither is set, the cell shows just `—`.
 
-Four NHZ tables cover the four deviation bands (HZCO ≤ −2.01, −2.0 to −1.01, +1.01 to +3.0, ≥ +3.01). Each table result carries an atmosphere code, an optional exotic subtype key, and display markers. NHZ worlds with an exotic subtype bypass the standard `_roll_exotic_subtype()` roll.
-
-NHZ generation is applied to mainworlds, secondary worlds, and moons:
-- `generate_full_system()` and `generate_mainworld_at_orbit()` accept `nhz_atmospheres: bool = False`
-- `TravellerSystem` stores `nhz_atmospheres` and threads it through `attach_detail()` to all secondary-world and moon paths
-- gen-ui: "NHZ Atmospheres" checkbox added (enabled only when System detail is checked)
-- CLI: `--nhz-atmospheres` flag added
-- JSON Schema: `atmosphere.code.maximum` updated from 15 to 17
+**gen-ui:** "Orbital Inclination" checkbox added (enabled only when "System detail" is checked). When False (default), no dice fire — no seed disruption.
 
 ---
 
-### Primary Star Outer Zone Placement (Session 39)
+### Orbital Eccentricity Display Column (Session 44 cont.)
 
-Primary stars in binary systems now populate the outer zone `[companion + 3.0, 17.0]` as well as the inner zone `[MAO, companion − 1.0]`. Previously all primary worlds were placed in the inner zone; the outer zone was unused.
+The inline `(e=X.XXX)` text formerly embedded in the AU cell of both the gen-ui System Orbits card and the `to_html()` orbit table has been replaced with a dedicated right-aligned **Ecc** column inserted after **AU**.
 
-A `star_outer` dict tracks the outer zone bounds. `_avail_range()` includes the outer range in proportional world allocation across stars. The placement loop wraps in a `for zone in zones` iterator that runs once per zone (inner, then outer), keeping the existing baseline → spread → slot logic unchanged within each pass.
+- Shows `0.350` (3 d.p.) when `OrbitSlot.eccentricity > 0`; `—` otherwise
+- gen-ui detail_attached variant: 11 columns — `Star | Orbit# | AU | Ecc | Type | Profile | Codes | HZ | Zone | Period | Notes`; `right_cols={1,2,3,9}`
+- gen-ui non-attached variant: 9 columns — `Star | Orbit# | AU | Ecc | Type | HZ | Zone | Period | Notes`; `right_cols={1,2,3,7}`
+- HTML table: `<th>Ecc</th>` added after `<th>AU</th>`; moon sub-row `colspan` widened from 3 → 4
+- System map SVG retains the inline `(e=0.35)` in the AU text column (no SVG layout change)
 
-Seed-breaking for any primary star that has a close/near/far companion with a valid inner zone.
+A missing **"Orbital Eccentricity"** checkbox was also added to the gen-ui toolbar row (alongside "NHZ Atmospheres", enabled only when "System detail" is checked). Without this checkbox, `generate_full_system()` was always called with `orbital_eccentricity=False`, leaving every `OrbitSlot.eccentricity` at 0.0 and the Ecc column always showing `—`.
 
 ---
 
-### System Map — Column Label Sub-header Row (Session 39)
+### 1:1 Tidal Lock Axial Tilt & Eccentricity (Session 44, issue #10)
 
-The orbit table in every system map now displays a column label row (`#  Orbit#  AU  Type  Profile  Codes  Zone ♦`) between the star header and the first world row. `Zone ♦` makes explicit that the last column shows both the temperature zone and moon count. `_TBL_ROW0_OFF` bumped from 38 to 50 px to accommodate the new row.
+WBH p.77 Rules 3 and 4 for 1:1 tidal lock interactions are now implemented.
+
+**Rule 3 — Axial tilt recomputed with 1D on Axial Tilt table.** Previously the 1:1 lock path used `(2D-2)/10` with a `> 3.0` guard (incorrect). New helper `_roll_axial_tilt_1d()` rolls 1D to select the outer band of the Axial Tilt table (the same 6 rows as `_roll_axial_tilt()`), then 1D within the band. The recompute is unconditional — any initial axial tilt is replaced.
+
+**Rule 4 — Eccentricity reduction.** `generate_world_physical()` gains an `orbit_eccentricity: float = 0.0` parameter. When a world reaches 1:1 lock and `orbit_eccentricity > 0.1`, `_reroll_eccentricity_tidal()` re-rolls with DM-2 (using `_ECC_TABLE_PHYS`, an inline copy of the eccentricity table to avoid circular imports). The lower value is stored in new `WorldPhysical.eccentricity_adjusted` (`Optional[float]`, `init=False`). `_attach_mainworld_physical()` in `function_app.py` reads this field and writes it back to the orbit slot, updating the eccentricity that appears in JSON output and system maps.
+
+**Seed impact:** The axial tilt change is seed-breaking for 1:1 locked worlds (same dice count, different interpretation). Eccentricity path only fires for locked worlds with `eccentricity > 0.1` when the orbital eccentricity feature flag is enabled.
+
+---
+
+### Orbital Eccentricity (Session 43, issue #57)
+
+WBH p.27 orbital eccentricity is now implemented as an optional feature gated on `orbital_eccentricity=False`.
+
+**Roll mechanic:** Two dice rolls per orbit. A first `2D+DM` selects a row in the six-row Eccentricity Values table; a second `1D` or `2D` roll divided by a row-specific divisor gives the fractional part. Final value is clamped to [0.000, 0.999].
+
+**DMs (first roll only):**
+
+| Condition | DM |
+|---|---|
+| Star eccentricities | +2 |
+| Each close/near/far star with orbit# < slot (primary slots) | +1 per star |
+| Orbit# < 1.0 and system age > 1 Gyr | −1 |
+| Belt slot | +1 |
+
+**Min/Max separation:** `AU × (1 − eccentricity)` and `AU × (1 + eccentricity)`
+
+**New fields:**
+- `OrbitSlot.eccentricity: float` — `field(default=0.0, init=False)`; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"`, `"orbit_au_max"` when non-zero
+- `Star.orbit_eccentricity: float = 0.0` — set for secondary stars by `generate_orbits()`; `to_dict()` emits when non-zero
+
+**Flag plumbing:** `orbital_eccentricity` parameter added to `generate_orbits()`, `generate_full_system()`, `generate_system_from_world()`, and all relevant API endpoints. New `parse_orbital_eccentricity()` helper in `shared/helpers.py` reads the query parameter.
+
+**Display:** System map AU text shows `1.234 (e=0.35)` inline when eccentricity > 0. gen-ui System Orbits card and `to_html()` orbit table each have a dedicated `Ecc` column (see above).
+
+**Seed impact:** Flag False (default) → no new dice, no seed disruption. Flag True → seed-breaking (2 rolls per non-empty slot + 2 per secondary star).
+
+---
+
+### Orbit Notes Column (Session 41 cont.)
+
+`OrbitSlot.notes` is now surfaced in every output that displays the orbit table:
+
+- **gen-ui** — System Orbits card gains a trailing `Notes` column in both header variants: 10 columns (detail attached: `Star | Orbit# | AU | Type | Profile | Codes | HZ | Zone | Period | Notes`) and 8 columns (no detail: `Star | Orbit# | AU | Type | HZ | Zone | Period | Notes`).
+- **`TravellerSystem.to_html()`** — orbit table notes cell now uses a `note_parts` list that combines the `"← mainworld"` marker with `OrbitSlot.notes`, showing all notes unconditionally for every orbit row (HZ placement notes, anomaly type notes, etc.).
 
 ---
 
@@ -79,15 +120,6 @@ Anomalous orbit positions respect companion exclusion bands (the same valid zone
 
 ---
 
-### Orbit Notes Column (Session 41 cont.)
-
-`OrbitSlot.notes` is now surfaced in every output that displays the orbit table:
-
-- **gen-ui** — System Orbits card gains a trailing `Notes` column in both header variants: 10 columns (detail attached: `Star | Orbit# | AU | Type | Profile | Codes | HZ | Zone | Period | Notes`) and 8 columns (no detail: `Star | Orbit# | AU | Type | HZ | Zone | Period | Notes`).
-- **`TravellerSystem.to_html()`** — orbit table notes cell now uses a `note_parts` list that combines the `"← mainworld"` marker with `OrbitSlot.notes`, showing all notes unconditionally for every orbit row (HZ placement notes, anomaly type notes, etc.).
-
----
-
 ### Orbital Periods (Session 40)
 
 Kepler orbital periods are now computed and displayed for every star and world in a generated system.
@@ -113,115 +145,49 @@ Kepler orbital periods are now computed and displayed for every star and world i
 
 ---
 
-### Orbital Eccentricity (Session 43, issue #57)
+### System Map — Column Label Sub-header Row (Session 39)
 
-WBH p.27 orbital eccentricity is now implemented as an optional feature gated on `orbital_eccentricity=False`.
-
-**Roll mechanic:** Two dice rolls per orbit. A first `2D+DM` selects a row in the six-row Eccentricity Values table; a second `1D` or `2D` roll divided by a row-specific divisor gives the fractional part. Final value is clamped to [0.000, 0.999].
-
-**DMs (first roll only):**
-
-| Condition | DM |
-|---|---|
-| Star eccentricities | +2 |
-| Each close/near/far star with orbit# < slot (primary slots) | +1 per star |
-| Orbit# < 1.0 and system age > 1 Gyr | −1 |
-| Belt slot | +1 |
-
-**Min/Max separation:** `AU × (1 − eccentricity)` and `AU × (1 + eccentricity)`
-
-**New fields:**
-- `OrbitSlot.eccentricity: float` — `field(default=0.0, init=False)`; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"`, `"orbit_au_max"` when non-zero
-- `Star.orbit_eccentricity: float = 0.0` — set for secondary stars by `generate_orbits()`; `to_dict()` emits when non-zero
-
-**Flag plumbing:** `orbital_eccentricity` parameter added to `generate_orbits()`, `generate_full_system()`, `generate_system_from_world()`, and all relevant API endpoints. New `parse_orbital_eccentricity()` helper in `shared/helpers.py` reads the query parameter.
-
-**Display:** System map AU text shows `1.234 (e=0.35)` inline when eccentricity > 0. gen-ui System Orbits card and `to_html()` orbit table each have a dedicated `Ecc` column (see below).
-
-**Seed impact:** Flag False (default) → no new dice, no seed disruption. Flag True → seed-breaking (2 rolls per non-empty slot + 2 per secondary star).
+The orbit table in every system map now displays a column label row (`#  Orbit#  AU  Type  Profile  Codes  Zone ♦`) between the star header and the first world row. `Zone ♦` makes explicit that the last column shows both the temperature zone and moon count. `_TBL_ROW0_OFF` bumped from 38 to 50 px to accommodate the new row.
 
 ---
 
-### 1:1 Tidal Lock Axial Tilt & Eccentricity (Session 44, issue #10)
+### Primary Star Outer Zone Placement (Session 39)
 
-WBH p.77 Rules 3 and 4 for 1:1 tidal lock interactions are now implemented.
+Primary stars in binary systems now populate the outer zone `[companion + 3.0, 17.0]` as well as the inner zone `[MAO, companion − 1.0]`. Previously all primary worlds were placed in the inner zone; the outer zone was unused.
 
-**Rule 3 — Axial tilt recomputed with 1D on Axial Tilt table.** Previously the 1:1 lock path used `(2D-2)/10` with a `> 3.0` guard (incorrect). New helper `_roll_axial_tilt_1d()` rolls 1D to select the outer band of the Axial Tilt table (the same 6 rows as `_roll_axial_tilt()`), then 1D within the band. The recompute is unconditional — any initial axial tilt is replaced.
+A `star_outer` dict tracks the outer zone bounds. `_avail_range()` includes the outer range in proportional world allocation across stars. The placement loop wraps in a `for zone in zones` iterator that runs once per zone (inner, then outer), keeping the existing baseline → spread → slot logic unchanged within each pass.
 
-**Rule 4 — Eccentricity reduction.** `generate_world_physical()` gains an `orbit_eccentricity: float = 0.0` parameter. When a world reaches 1:1 lock and `orbit_eccentricity > 0.1`, `_reroll_eccentricity_tidal()` re-rolls with DM-2 (using `_ECC_TABLE_PHYS`, an inline copy of the eccentricity table to avoid circular imports). The lower value is stored in new `WorldPhysical.eccentricity_adjusted` (`Optional[float]`, `init=False`). `_attach_mainworld_physical()` in `function_app.py` reads this field and writes it back to the orbit slot, updating the eccentricity that appears in JSON output and system maps.
-
-**Seed impact:** The axial tilt change is seed-breaking for 1:1 locked worlds (same dice count, different interpretation). Eccentricity path only fires for locked worlds with `eccentricity > 0.1` when the orbital eccentricity feature flag is enabled.
+Seed-breaking for any primary star that has a close/near/far companion with a valid inner zone.
 
 ---
 
-### Orbital Eccentricity Display Column (Session 44 cont.)
+### NHZ Atmosphere Generation (Session 38)
 
-The inline `(e=X.XXX)` text formerly embedded in the AU cell of both the gen-ui System Orbits card and the `to_html()` orbit table has been replaced with a dedicated right-aligned **Ecc** column inserted after **AU**.
+Out-of-habitable-zone worlds now roll NHZ atmosphere codes when the `nhz_atmospheres` flag is set. Two new atmosphere codes are added: code 16 (Gas, Helium / G) and code 17 (Gas, Hydrogen / H).
 
-- Shows `0.350` (3 d.p.) when `OrbitSlot.eccentricity > 0`; `—` otherwise
-- gen-ui detail_attached variant: 11 columns — `Star | Orbit# | AU | Ecc | Type | Profile | Codes | HZ | Zone | Period | Notes`; `right_cols={1,2,3,9}`
-- gen-ui non-attached variant: 9 columns — `Star | Orbit# | AU | Ecc | Type | HZ | Zone | Period | Notes`; `right_cols={1,2,3,7}`
-- HTML table: `<th>Ecc</th>` added after `<th>AU</th>`; moon sub-row `colspan` widened from 3 → 4
-- System map SVG retains the inline `(e=0.35)` in the AU text column (no SVG layout change)
+Four NHZ tables cover the four deviation bands (HZCO ≤ −2.01, −2.0 to −1.01, +1.01 to +3.0, ≥ +3.01). Each table result carries an atmosphere code, an optional exotic subtype key, and display markers. NHZ worlds with an exotic subtype bypass the standard `_roll_exotic_subtype()` roll.
 
-A missing **"Orbital Eccentricity"** checkbox was also added to the gen-ui toolbar row (alongside "NHZ Atmospheres", enabled only when "System detail" is checked). Without this checkbox, `generate_full_system()` was always called with `orbital_eccentricity=False`, leaving every `OrbitSlot.eccentricity` at 0.0 and the Ecc column always showing `—`.
+NHZ generation is applied to mainworlds, secondary worlds, and moons:
+- `generate_full_system()` and `generate_mainworld_at_orbit()` accept `nhz_atmospheres: bool = False`
+- `TravellerSystem` stores `nhz_atmospheres` and threads it through `attach_detail()` to all secondary-world and moon paths
+- gen-ui: "NHZ Atmospheres" checkbox added (enabled only when System detail is checked)
+- CLI: `--nhz-atmospheres` flag added
+- JSON Schema: `atmosphere.code.maximum` updated from 15 to 17
 
 ---
 
-### Orbital Inclination (Session 46, issue #59)
+### Hydrographic Detail (Session 37)
 
-WBH p.28 orbital inclination is now implemented as an optional gated feature using the same pattern as orbital eccentricity.
+New module `traveller_hydro_detail.py` implements WBH p.93 surface liquid percentages.
 
-**`_roll_inclination()`** uses a 6-row severity table (2D ≤ 6 = Very Low through 2D = 11 = Extreme), each with a different degree formula, plus a recursive retrograde case (2D = 12 → `180 − re-roll`). Anomalous orbits already typed as `"inclined"` are skipped (their angle is stored in `notes`).
-
-**New fields:**
-- `OrbitSlot.inclination: float = 0.0` — `to_dict()` emits `"inclination"` (2 d.p.) when > 0
-- `Star.orbit_inclination: float = 0.0` — `to_dict()` emits `"orbit_inclination"` when > 0
-- `TravellerSystem.orbital_inclination: bool = False`
-
-**API:** `parse_orbital_inclination()` added to `shared/helpers.py`; wired through all 5 system endpoints.
-
-**Display:** The "Ecc" column is renamed **"Ecc/Incl"** in both gen-ui and HTML. When both are set, the cell shows `0.123/45.0°`; when only one is set, the other shows `—`; when neither is set, the cell shows just `—`.
-
-**gen-ui:** "Orbital Inclination" checkbox added (enabled only when "System detail" is checked). When False (default), no dice fire — no seed disruption.
+`HydrographicDetail` dataclass carries `surface_liquid_pct` (a flat random value within the WBH code range). `generate_hydrographic_detail()` is called from the shared section of `traveller_system_gen.py` and all API handlers. Exposed in:
+- **JSON** — `hydrographics.detail.surface_liquid_pct`
+- **HTML** — Hydrographic Detail inner-card in `World.to_html()`, `TravellerSystem.to_html()`, and `World.summary()`
+- **gen-ui** — `_build_hydrographic_card()`
 
 ---
 
 ## Bug Fixes
-
-### JSON Unicode Error on Windows (Session 45, issue #60)
-
-`open(schema_path)` in `tests/test_traveller_world_gen.py` was called without `encoding="utf-8"`. On Windows, Python defaults to the system codepage (cp1252), which cannot decode the non-ASCII characters in `traveller_world_schema.json` (e.g. `–` U+2013, `…` U+2026). Fixed to `open(schema_path, encoding="utf-8")`, matching the pattern used elsewhere in the test file.
-
----
-
-### Virtual Environment Consolidated (Session 45, issues #61 and #62)
-
-The dual-environment setup (`.venv` for Azure Functions, `.venv-1` for PySide6/gen-ui) has been replaced by a single `.venv` that contains all dependencies.
-
-- `requirements-dev.txt` added for pytest and pylint
-- Install scripts (`install.sh`, `install.ps1`, `install.bat`) now install all three requirements files in one pass and activate the venv at the end
-- All `.vscode/settings.json`, `docs/VSCODE.md`, `docs/developer-guide.md`, `docs/uat-plan.md`, and `gen-ui/README.md` updated from `.venv-1` to `.venv`
-
----
-
-### Incorrect Belt Counts for Fetched Mainworlds (Session 42, issue #52)
-
-Two bugs in `traveller_map_fetch.py` caused the belt count shown in the orbit table to differ from the canonical PBG value on TravellerMap.
-
-**Bug 1 — Pool truncation always dropped belts.** `_reconcile_orbit_types()` built the redistribution pool as `["gas_giant"] * canonical_gg + ["belt"] * canonical_belt` and truncated with `pool[:n]` before shuffling. Because gas giants are at the front of the pool, all GGs were preserved and only belts were dropped when there were too few available orbit slots. Fix: when `canonical_gg + canonical_belt > n`, empty orbit slots are now promoted to world slots before distribution, ensuring the canonical counts are always honoured.
-
-**Bug 2 — Mainworld belt double-counted.** The WBH PBG convention (confirmed at `generate_belt_count()` line 2611) includes the mainworld in the belt count when the mainworld is Size 0. `_reconcile_orbit_types()` was distributing the full `canonical_belt` count among non-mainworld slots, and Step 6 then separately set the mainworld slot to `"belt"`, producing `canonical_belt + 1` total belts. Fix: `generate_system_from_map()` now subtracts 1 from `canonical_belt` before calling `_reconcile_orbit_types()` when `world.size == 0`.
-
----
-
-### System HTML Missing Mainworld Detail (Session 36, issue #51)
-
-`TravellerSystem.to_html()` was omitting the `WorldPhysical` and atmosphere detail inner-cards from the mainworld panel — only `BeltPhysical` was handled. Added `.inner-card`, `.inner-lbl`, `.drow`, `.dlbl` CSS; `drow()` helper; and imports for `WorldPhysical`, `TIDAL_STATUS_LABELS`, and `format_atmosphere_profile()`.
-
-### TravellerMap Fetch Incomplete Atmosphere Pipeline (Session 36, issue #51)
-
-`generate_system_from_map()` was not calling `generate_gas_mix()` or `generate_unusual_subtype()` after `generate_atmosphere_detail()`, leaving gas composition and unusual subtypes absent for TravellerMap-fetched worlds. Also threaded `hz_deviation` into `generate_atmosphere_detail()` for orbit-position DMs. Both calls now follow the same pipeline as procedurally generated worlds.
 
 ### Anomalous Orbit Eccentricity DMs Not Applied (Session 48, issue #64)
 
@@ -251,7 +217,43 @@ disruption for systems without anomalous orbits. 6 regression tests added
 2. The shared `_map_system_response()` helper had no `want_ecc` / `want_incl` parameters.
 3. Neither endpoint handler called `parse_orbital_eccentricity()` or `parse_orbital_inclination()`.
 
-Fix: flags added to `generate_system_from_map()` signature and threaded into `generate_orbits()` and the `TravellerSystem` constructor. Both `_map_system_response()` and the two endpoint handlers updated to parse and forward the flags. 4 regression tests added (`TestGenerateSystemFromMapOrbitalFlags`); 1002 tests pass.
+A fourth gap in gen-ui was also found: `_do_travellermap_generation()` and both its call sites were not forwarding checkbox state.
+
+Fix: flags added to `generate_system_from_map()` signature and threaded into `generate_orbits()` and the `TravellerSystem` constructor. Both `_map_system_response()` and the two endpoint handlers updated to parse and forward the flags. gen-ui call sites updated. 4 regression tests added (`TestGenerateSystemFromMapOrbitalFlags`); 1002 tests pass.
+
+---
+
+### JSON Unicode Error on Windows (Session 45, issue #60)
+
+`open(schema_path)` in `tests/test_traveller_world_gen.py` was called without `encoding="utf-8"`. On Windows, Python defaults to the system codepage (cp1252), which cannot decode the non-ASCII characters in `traveller_world_schema.json` (e.g. `–` U+2013, `…` U+2026). Fixed to `open(schema_path, encoding="utf-8")`, matching the pattern used elsewhere in the test file.
+
+---
+
+### Virtual Environment Consolidated (Session 45, issues #61 and #62)
+
+The dual-environment setup (`.venv` for Azure Functions, `.venv-1` for PySide6/gen-ui) has been replaced by a single `.venv` that contains all dependencies.
+
+- `requirements-dev.txt` added for pytest and pylint
+- Install scripts (`install.sh`, `install.ps1`, `install.bat`) now install all three requirements files in one pass and activate the venv at the end
+- All `.vscode/settings.json`, `docs/VSCODE.md`, `docs/developer-guide.md`, `docs/uat-plan.md`, and `gen-ui/README.md` updated from `.venv-1` to `.venv`
+
+---
+
+### Incorrect Belt Counts for Fetched Mainworlds (Session 42, issue #52)
+
+Two bugs in `traveller_map_fetch.py` caused the belt count shown in the orbit table to differ from the canonical PBG value on TravellerMap.
+
+**Bug 1 — Pool truncation always dropped belts.** `_reconcile_orbit_types()` built the redistribution pool as `["gas_giant"] * canonical_gg + ["belt"] * canonical_belt` and truncated with `pool[:n]` before shuffling. Because gas giants are at the front of the pool, all GGs were preserved and only belts were dropped when there were too few available orbit slots. Fix: when `canonical_gg + canonical_belt > n`, empty orbit slots are now promoted to world slots before distribution, ensuring the canonical counts are always honoured.
+
+**Bug 2 — Mainworld belt double-counted.** The WBH PBG convention (confirmed at `generate_belt_count()` line 2611) includes the mainworld in the belt count when the mainworld is Size 0. `_reconcile_orbit_types()` was distributing the full `canonical_belt` count among non-mainworld slots, and Step 6 then separately set the mainworld slot to `"belt"`, producing `canonical_belt + 1` total belts. Fix: `generate_system_from_map()` now subtracts 1 from `canonical_belt` before calling `_reconcile_orbit_types()` when `world.size == 0`.
+
+---
+
+### Companion Star Exclusion Zone (Session 39)
+
+When a companion orbit# was less than 1.0, `excl = companion_orbit − 1.0` was ≤ 0 and never triggered the `max_o` cap, allowing primary worlds inside the WBH exclusion band `[companion − 1, companion + 3]`. Fixed: an `else` branch now pushes `mao = max(mao, companion_orbit + 3.0)` and syncs `star_mao[designation]` in-place.
+
+`system_map.py` extended to render companion star rows inside the primary star's orbit-table section, sorted by orbit number.
 
 ---
 
@@ -259,11 +261,15 @@ Fix: flags added to `generate_system_from_map()` signature and threaded into `ge
 
 `_roll_single_taint()` now accepts `ppo: Optional[float]` and rerolls High Oxygen (H) results unless `ppo > 0.5 bar`, and Low Oxygen (L) results unless `ppo < 0.1 bar`. The `ppo` computation was moved before the taint block in `generate_atmosphere_detail()` so it is available at taint time. Seed-breaking for tainted atmosphere codes.
 
-### Companion Star Exclusion Zone (Session 39)
+---
 
-When a companion orbit# was less than 1.0, `excl = companion_orbit − 1.0` was ≤ 0 and never triggered the `max_o` cap, allowing primary worlds inside the WBH exclusion band `[companion − 1, companion + 3]`. Fixed: an `else` branch now pushes `mao = max(mao, companion_orbit + 3.0)` and syncs `star_mao[designation]` in-place.
+### System HTML Missing Mainworld Detail (Session 36, issue #51)
 
-`system_map.py` extended to render companion star rows inside the primary star's orbit-table section, sorted by orbit number.
+`TravellerSystem.to_html()` was omitting the `WorldPhysical` and atmosphere detail inner-cards from the mainworld panel — only `BeltPhysical` was handled. Added `.inner-card`, `.inner-lbl`, `.drow`, `.dlbl` CSS; `drow()` helper; and imports for `WorldPhysical`, `TIDAL_STATUS_LABELS`, and `format_atmosphere_profile()`.
+
+### TravellerMap Fetch Incomplete Atmosphere Pipeline (Session 36, issue #51)
+
+`generate_system_from_map()` was not calling `generate_gas_mix()` or `generate_unusual_subtype()` after `generate_atmosphere_detail()`, leaving gas composition and unusual subtypes absent for TravellerMap-fetched worlds. Also threaded `hz_deviation` into `generate_atmosphere_detail()` for orbit-position DMs. Both calls now follow the same pipeline as procedurally generated worlds.
 
 ---
 
@@ -280,10 +286,13 @@ When a companion orbit# was less than 1.0, `excl = companion_orbit − 1.0` was 
 | Anomalous orbits (Step 7) | +6 |
 | Incorrect belt counts for fetched mainworlds (issue #52) | +4 |
 | Orbital eccentricity (issue #57) | +6 |
-| **Total new tests** | **+89** |
-| **Suite total** | **979** |
+| Orbital inclination (issue #59) | +8 |
+| TravellerMap orbital flag wiring (issue #63) | +4 |
+| Anomalous orbit eccentricity DMs (issue #64) | +6 |
+| **Total new tests** | **+113** |
+| **Suite total** | **1008** |
 
-All 979 tests pass. Pylint 10.00/10 on all core generation modules.
+All 1008 tests pass. Pylint 10.00/10 on all core generation modules.
 
 ---
 
