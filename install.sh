@@ -138,7 +138,63 @@ info "Installing dev tools (pytest, pylint)..."
     || fail "Failed to install dev tools."
 info "All dependencies installed."
 
-# ── 4. Create launcher scripts ────────────────────────────────────────────────
+# ── 4. Create VS Code settings ───────────────────────────────────────────────
+VSCODE_DIR="$SCRIPT_DIR/.vscode"
+VSCODE_SETTINGS="$VSCODE_DIR/settings.json"
+if [ ! -f "$VSCODE_SETTINGS" ]; then
+    info "Creating VS Code settings (.vscode/settings.json)..."
+    mkdir -p "$VSCODE_DIR"
+    cat > "$VSCODE_SETTINGS" << 'VSCODE'
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python3",
+  "python.terminal.activateEnvironment": true,
+  "python.terminal.activateEnvInCurrentTerminal": true,
+  "python.testing.pytestEnabled": true,
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  "python.testing.unittestEnabled": false,
+  "python.analysis.venvPath": "${workspaceFolder}",
+  "python.analysis.venv": ".venv",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}"
+  ],
+  "python.analysis.typeCheckingMode": "basic",
+  "editor.formatOnSave": true,
+  "editor.rulers": [
+    88
+  ],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    ".pytest_cache": true
+  },
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.python"
+  },
+  "azureFunctions.deploySubpath": ".",
+  "azureFunctions.scmDoBuildDuringDeployment": true,
+  "azureFunctions.pythonVenv": ".venv",
+  "azureFunctions.projectLanguage": "Python",
+  "azureFunctions.projectRuntime": "~4",
+  "debug.internalConsoleOptions": "neverOpen",
+  "azureFunctions.projectLanguageModel": 2,
+  "pylint.path": [
+    "${workspaceFolder}/.venv/bin/pylint"
+  ],
+  "pylint.interpreter": [
+    "${workspaceFolder}/.venv/bin/python3"
+  ],
+  "pylint.args": [
+    "--disable=duplicate-code,too-many-lines"
+  ]
+}
+VSCODE
+else
+    info "VS Code settings already exist - skipping."
+fi
+
+# ── 5. Create launcher scripts ────────────────────────────────────────────────
 info "Creating launcher scripts..."
 
 # -- Desktop GUI (.command = double-clickable in Finder on macOS) -------------
@@ -196,7 +252,7 @@ exec "$SCRIPT_DIR/.venv/bin/python3" "$SCRIPT_DIR/traveller_map_fetch.py" "$@"
 LAUNCHER
 chmod +x "$SCRIPT_DIR/run-mapfetch.sh"
 
-# ── 5. Activate virtual environment ──────────────────────────────────────────
+# ── 6. Activate virtual environment ──────────────────────────────────────────
 if [ "${VIRTUAL_ENV:-}" != "$VENV_DIR" ]; then
     info "Activating virtual environment..."
     # shellcheck disable=SC1091
@@ -205,7 +261,7 @@ else
     info "Virtual environment already active."
 fi
 
-# ── 6. Done ───────────────────────────────────────────────────────────────────
+# ── 7. Done ───────────────────────────────────────────────────────────────────
 echo ""
 info "Installation complete!"
 echo ""
