@@ -58,6 +58,7 @@ The human author reviewed, directed, and is responsible for the code.
 """
 
 from __future__ import annotations
+import math
 import random
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
@@ -82,17 +83,137 @@ def _ehex(n: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Orbit placement helpers (WBH pp.74-77)
+# ---------------------------------------------------------------------------
+
+_AU_KM = 149_597_870.9  # km per AU (WBH p.74)
+
+
+def _hill_sphere_au(orbit_au: float, ecc: float,
+                    mass_earth: float, star_mass_solar: float) -> float:
+    """Hill sphere radius in AU (WBH p.74)."""
+    return orbit_au * (1.0 - ecc) * (mass_earth * 3e-6 / (3.0 * star_mass_solar)) ** (1.0 / 3.0)
+
+
+def _hill_sphere_pd(hill_au: float, diameter_km: float) -> float:
+    """Hill sphere radius in planetary diameters (WBH p.74)."""
+    return hill_au * _AU_KM / diameter_km
+
+
+def _hill_moon_limit(hill_pd: float) -> int:
+    """Practical outer moon limit = floor(Hill Sphere PD / 2) (WBH p.74)."""
+    return math.floor(hill_pd / 2.0)
+
+
+def _moon_orbit_range(moon_limit: int, n_moons: int) -> int:
+    """MOR = Moon Limit − 2; capped at 200 + n_moons when > 200 (WBH p.75)."""
+    mor = moon_limit - 2
+    if mor <= 0:
+        return 0
+    if mor > 200:
+        mor = min(mor, 200 + n_moons)
+    return mor
+
+
+def _roll_moon_pd(mor: int) -> tuple[float, str]:
+    """Roll one moon's orbital PD and range label (WBH pp.75-76).
+
+    Returns (pd, range_name) where range_name is "inner", "middle", or "outer".
+    """
+    dm = 1 if mor < 60 else 0
+    r1 = random.randint(1, 6) + dm
+    r2d = _roll(2) - 2   # 2D-2
+    if r1 <= 3:
+        return round(r2d * mor / 60.0 + 2.0, 1), "inner"
+    if r1 <= 5:
+        return round(r2d * mor / 30.0 + mor / 6.0 + 3.0, 1), "middle"
+    return round(r2d * mor / 20.0 + mor / 2.0 + 4.0, 1), "outer"
+
+
+def _moon_period_hours(orbit_km: float, mass_earth: float) -> float:
+    """Moon orbital period in hours using km orbital distance (WBH p.76)."""
+    if mass_earth <= 0:
+        return 0.0
+    return round(math.sqrt(orbit_km ** 3 / mass_earth) / 361730.0, 2)
+
+
+def _estimate_diameter_km(size_code: int | str, is_gas_giant: bool,
+                           gg_diameter: int) -> float:
+    """Estimate planet diameter in km from size code (used for secondary worlds)."""
+    if is_gas_giant:
+        return float(gg_diameter * 12800)
+    if size_code == "S":
+        return 800.0
+    sz = int(size_code)
+    return float(max(1, sz) * 1600)
+
+
+def _estimate_mass_earth(size_code: int | str, is_gas_giant: bool,
+                          gg_diameter: int) -> float:
+    """Estimate planet mass in Earth masses (used for secondary worlds).
+
+    Terrestrial worlds assume Terran density (mass ∝ diameter³).
+    Gas giants use gg_diameter² as a rough estimate; the cube-root in the Hill
+    sphere formula absorbs the resulting 2–3× error acceptably.
+    """
+    if is_gas_giant:
+        return float(max(1, gg_diameter) ** 2)
+    diam = _estimate_diameter_km(size_code, False, 0)
+    return (diam / 12742.0) ** 3
+
+
+def _assign_sig_moon_orbits(sig_moons: List["Moon"], mor: int,
+                             diam_km: float, mass_e: float) -> None:
+    """Roll and assign orbit PD/km/range/period to significant moons (WBH pp.75-76)."""
+    pd_rolls = [_roll_moon_pd(mor) for _ in range(len(sig_moons))]
+    pd_rolls.sort(key=lambda x: x[0])
+    for moon, (pd, rng) in zip(sig_moons, pd_rolls):
+        moon.orbit_pd           = pd
+        moon.orbit_km           = round(pd * diam_km, 1)
+        moon.orbit_range        = "excess" if pd > mor + 2 else rng
+        moon.orbit_period_hours = _moon_period_hours(moon.orbit_km, mass_e)
+    # Collision resolution: push overlapping moons outward by 1 PD
+    for i in range(1, len(sig_moons)):
+        prev, curr = sig_moons[i - 1], sig_moons[i]
+        if curr.orbit_pd is not None and prev.orbit_pd is not None:
+            if curr.orbit_pd <= prev.orbit_pd:
+                curr.orbit_pd           = prev.orbit_pd + 1.0
+                curr.orbit_km           = round(curr.orbit_pd * diam_km, 1)
+                curr.orbit_period_hours = _moon_period_hours(curr.orbit_km, mass_e)
+
+
+def _place_ring(planet_diameter_km: float) -> tuple[float, float]:  # pylint: disable=unused-argument
+    """Roll ring centre location and span in PD (WBH p.77)."""
+    centre = round(0.4 + _roll(2) / 8.0, 3)
+    span   = round(_roll(3) / 100.0 + 0.07, 3)
+    # Ensure innermost ring edge is at least 0.55 PD above planet surface (1.05 PD from centre)
+    if centre - span / 2.0 < 0.55:
+        centre = round(0.55 + span / 2.0, 3)
+    return centre, span
+
+
+# ---------------------------------------------------------------------------
 # Moon dataclass
 # ---------------------------------------------------------------------------
 
 @dataclass
-class Moon:
+class Moon:  # pylint: disable=too-many-instance-attributes
     """A single significant moon or ring."""
     size_code: int | str   # int for numeric sizes, "S" for size S, 0 for ring
     is_ring: bool = False
     is_gas_giant_moon: bool = False  # True if moon is itself a small GG
     detail: Optional["WorldDetail"] = None  # full SAH+social, populated later
     ring_count: int = field(default=1, init=False, repr=False)  # collapsed ring count
+    # Orbit placement (WBH pp.74-77); populated by generate_moons() when orbit data provided
+    orbit_pd: Optional[float] = field(default=None, init=False)
+    orbit_km: Optional[float] = field(default=None, init=False)
+    orbit_range: Optional[str] = field(default=None, init=False)  # inner/middle/outer/excess
+    orbit_period_hours: Optional[float] = field(default=None, init=False)
+    ring_centre_pd: Optional[float] = field(default=None, init=False)
+    ring_span_pd: Optional[float] = field(default=None, init=False)
+    # Eccentricity/direction deferred (WBH p.76); fields present but not yet rolled
+    orbit_eccentricity: float = field(default=0.0, init=False)
+    orbit_retrograde: bool = field(default=False, init=False)
 
     @property
     def size_str(self) -> str:
@@ -119,6 +240,14 @@ class Moon:
         }
         if self.is_ring:
             d["ring_count"] = self.ring_count
+        if self.orbit_pd is not None:
+            d["orbit_pd"]           = self.orbit_pd
+            d["orbit_km"]           = self.orbit_km
+            d["orbit_range"]        = self.orbit_range
+            d["orbit_period_hours"] = self.orbit_period_hours
+        if self.is_ring and self.ring_centre_pd is not None:
+            d["ring_centre_pd"] = self.ring_centre_pd
+            d["ring_span_pd"]   = self.ring_span_pd
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
         return d
@@ -266,27 +395,39 @@ def _consolidate(moons: List[Moon]) -> List[Moon]:
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_moons(
+def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches,too-many-statements
     size_code: int | str,
     orbit_number: float,
     is_gas_giant: bool = False,
     gg_category: str = "M",   # "S", "M", or "L"
     gg_diameter: int = 8,
+    planet_diameter_km: float = 0.0,
+    planet_mass_earth: float = 0.0,
+    orbit_au: float = 0.0,
+    star_mass_solar: float = 0.0,
+    planet_ecc: float = 0.0,
 ) -> List[Moon]:
     """
     Generate all significant moons for a world.
 
     Parameters
     ----------
-    size_code     : planet size (int 1-F, or "S" for size S terrestrial)
-    orbit_number  : orbital Orbit# (used for DM check)
-    is_gas_giant  : True if this is a gas giant
-    gg_category   : "S", "M", or "L" — gas giant size category
-    gg_diameter   : gas giant diameter in Terran diameters (for clamping)
+    size_code          : planet size (int 1-F, or "S" for size S terrestrial)
+    orbit_number       : orbital Orbit# (used for DM check)
+    is_gas_giant       : True if this is a gas giant
+    gg_category        : "S", "M", or "L" — gas giant size category
+    gg_diameter        : gas giant diameter in Terran diameters (for clamping)
+    planet_diameter_km : planet diameter in km; 0 = estimate from size_code
+    planet_mass_earth  : planet mass in Earth masses; 0 = estimate from size_code
+    orbit_au           : planet orbit in AU; 0 = skip orbit placement
+    star_mass_solar    : combined host-star mass in solar masses; 0 = skip orbit placement
+    planet_ecc         : planet orbital eccentricity (for Hill sphere)
 
     Returns
     -------
     List of Moon objects, rings first then by size.
+    Orbit fields (orbit_pd, orbit_km, …) are set when orbit_au and
+    star_mass_solar are non-zero; otherwise they remain None.
     """
     # Belts (size 0) are diffuse debris fields, not solid bodies.
     # The WBH moon rules apply to planets (solid bodies ≥ size S).
@@ -296,34 +437,76 @@ def generate_moons(
 
     raw = _moon_quantity(size_code, orbit_number, is_gas_giant, gg_category)
 
+    moons: List[Moon] = []
     if raw < 0:
-        return []
-    if raw == 0:
+        pass  # no moons; moons stays []
+    elif raw == 0:
         ring = Moon(size_code=0, is_ring=True)
         ring.ring_count = 1
-        return [ring]
-
-    moons: List[Moon] = []
-    for _ in range(raw):
-        if is_gas_giant:
-            m = _size_gg_moon(gg_diameter)
-        else:
-            sz = int(size_code) if size_code != "S" else 1
-            m = _size_terrestrial_moon(sz)
-            m = _twin_check(m, sz)
-        moons.append(m)
+        moons = [ring]
+    else:
+        for _ in range(raw):
+            if is_gas_giant:
+                m = _size_gg_moon(gg_diameter)
+            else:
+                sz = int(size_code) if size_code != "S" else 1
+                m = _size_terrestrial_moon(sz)
+                m = _twin_check(m, sz)
+            moons.append(m)
 
     moons = _consolidate(moons)
 
     # Sort: rings first, then S, then numeric ascending
-    def sort_key(m: Moon):
+    def sort_key(m: Moon) -> tuple[int, int]:
         if m.is_ring:
             return (0, 0)
         if m.size_code == "S":
             return (1, 0)
         return (2, int(m.size_code))
 
-    return sorted(moons, key=sort_key)
+    moons = sorted(moons, key=sort_key)
+
+    # ── Orbit placement (WBH pp.74–77) ──────────────────────────────────────
+    if orbit_au > 0.0 and star_mass_solar > 0.0:
+        diam_km = planet_diameter_km or _estimate_diameter_km(size_code, is_gas_giant, gg_diameter)
+        mass_e  = planet_mass_earth  or _estimate_mass_earth(size_code, is_gas_giant, gg_diameter)
+
+        hill_au = _hill_sphere_au(orbit_au, planet_ecc, mass_e, star_mass_solar)
+        hill_pd = _hill_sphere_pd(hill_au, diam_km)
+        ml      = _hill_moon_limit(hill_pd)   # integer PD outer limit
+
+        sig_moons = [m for m in moons if not m.is_ring]
+        rings     = [m for m in moons if m.is_ring]
+
+        # Moon removal (WBH p.75)
+        if ml < 1:
+            # Hill sphere too small for anything
+            moons = []
+        elif ml < 2:
+            # Below the Roche limit — no significant moons; keep/create one ring
+            if rings:
+                moons = rings[:1]
+            elif sig_moons:
+                ring = Moon(size_code=0, is_ring=True)
+                ring.ring_count = 1
+                moons = [ring]
+            else:
+                moons = []
+        else:
+            # Normal orbit placement
+            n_sig = len(sig_moons)
+            mor   = _moon_orbit_range(ml, n_sig)
+
+            if mor > 0 and n_sig > 0:
+                _assign_sig_moon_orbits(sig_moons, mor, diam_km, mass_e)
+
+            # Ring placement (WBH p.77)
+            for ring in rings:
+                ring.ring_centre_pd, ring.ring_span_pd = _place_ring(diam_km)
+
+            moons = sorted(moons, key=sort_key)
+
+    return moons
 
 
 def moons_str(moons: List[Moon]) -> str:

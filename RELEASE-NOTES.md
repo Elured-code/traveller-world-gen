@@ -1,12 +1,34 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–50
-**Tests:** 1014 (up from 890 in v1.1)
+**Sessions:** 36–51
+**Tests:** 1036 (up from 890 in v1.1)
 
 ---
 
 ## New Features
+
+### Moon Orbit Placement (Session 51, WBH pp.74–77, issue #16)
+
+Moons now have orbital positions. `generate_moons()` accepts five new optional parameters (`orbit_au`, `star_mass_solar`, `planet_ecc`, `planet_diameter_km`, `planet_mass_earth`); when `orbit_au > 0` and `star_mass_solar > 0` the full orbit placement pipeline runs.
+
+**Hill sphere** caps the outer moon limit: `Hill_AU = orbit_au × (1 − ecc) × ∛(mass_earth × 3e-6 / (3 × star_mass_solar))`, converted to PD by dividing by planet diameter. The practical moon limit is `floor(Hill_PD / 2)`.
+
+**Moon removal:** if the moon limit is < 1 PD, no moons or rings survive; if 1 PD, significant moons are converted to a ring.
+
+**Moon Orbit Range** = `Moon Limit − 2` (capped at `200 + n_moons`). Each moon rolls independently on the Inner/Middle/Outer table (DM+1 when MOR < 60), PDs are sorted ascending (closest-first), and adjacent collisions are resolved by bumping the outer moon out 1 PD.
+
+**Orbital period** in hours: `√(orbit_km³ / mass_earth) / 361730`.
+
+**Ring placement:** centre = `0.4 + roll(2)/8` PD, span = `roll(3)/100 + 0.07` PD; inner edge clamped ≥ 0.55 PD.
+
+For secondary worlds (no `WorldPhysical`), mass and diameter are estimated from size code. For the mainworld, `WorldPhysical.diameter_km` and `WorldPhysical.mass` are used directly. `attach_detail()` and `_moons_for()` automatically pass orbit data to `generate_moons()`.
+
+Moon orbit eccentricity and retrograde direction (WBH p.76) are deferred; the fields exist on `Moon` but default to 0.0/False.
+
+22 new tests in `tests/test_moon_gen.py`; **1036 tests** pass.
+
+---
 
 ### Tidal Lock Eccentricity DM (Session 50, WBH p.105)
 
