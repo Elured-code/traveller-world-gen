@@ -1,12 +1,37 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–48
+**Sessions:** 36–49
 **Tests:** 1008 (up from 890 in v1.1)
 
 ---
 
 ## New Features
+
+### System JSON HTML Renderer (Session 49)
+
+New standalone script `render_system_json.py` reads any system JSON file produced by `TravellerSystem.to_dict()` and renders it as a rich, self-contained HTML document. No project module imports are required — the script uses Python stdlib only (`json`, `sys`, `html`, `pathlib`).
+
+**Usage:**
+```bash
+python render_system_json.py system.json [output.html]
+```
+Output defaults to `<input-stem>.html` in the same directory.
+
+**Rendered sections:**
+- System header (name, age, star count, seed, mainworld UWP)
+- Stars table (designation, type, mass, temperature, diameter, luminosity, orbit, period)
+- Habitable zones summary (per star: HZ range, MAO, temperature zone)
+- World count chips (gas giants, belts, terrestrials, total, empty)
+- Orbital survey table — 11 columns: Star, #, Orbit#, AU, Period, Ecc/Incl, Type, Profile, Codes, Zone, Notes; moon sub-rows when `attach_detail()` has been called
+- Mainworld panel: 11-cell stats grid, trade code badges, World Body card (WorldPhysical or BeltPhysical), atmosphere detail card (profile, pressure, O₂, scale height, taints, gas mix, altitude bands), hydrographic detail card, notes
+- Raw JSON collapsible `<details>` block
+
+Distinguishes `WorldPhysical` vs `BeltPhysical` by checking for `"composition"` key. CSS matches the existing `to_html()` design: CSS variables, dark mode, colour-coded temperature zones, trade code badges. Pylint 10.00/10.
+
+Sample output: `examples/system_seed42.html` (seed=42, 3-star system named Aramis, mainworld UWP D200000-0, full eccentricity + inclination).
+
+---
 
 ### Orbital Inclination (Session 46, issue #59)
 
@@ -188,6 +213,21 @@ New module `traveller_hydro_detail.py` implements WBH p.93 surface liquid percen
 ---
 
 ## Bug Fixes
+
+### JSON Schema Missing `eccentricity_adjusted` Property (Session 49)
+
+`WorldPhysical.to_dict()` emits `eccentricity_adjusted` when `tidal_status == "1:1_lock"` and
+`orbit_eccentricity > 0.1` (WBH p.77 Rule 4), but the property was absent from the
+`WorldPhysical` branch of `traveller_world_schema.json`. Validation with `jsonschema.validate()`
+failed for any such world with the error "is not valid under any of the given schemas ['size_detail']"
+(due to `"additionalProperties": false`).
+
+Fix: `eccentricity_adjusted` added as an optional `number` property (`minimum: 0`, `maximum: 0.999`)
+to `size_detail.oneOf[0].properties` (the `WorldPhysical` branch). No code change — the schema was
+the only gap. The case is rare (requires 1:1 lock **and** `eccentricity > 0.1`), which is why it
+was not caught by the existing 200-seed validation sweep in the test suite.
+
+---
 
 ### Anomalous Orbit Eccentricity DMs Not Applied (Session 48, issue #64)
 

@@ -21,6 +21,7 @@ A technical reference for developers working on the `traveller-world-gen` codeba
    - [traveller_map_fetch.py](#49-traveller_map_fetchpy)
    - [system_map.py](#410-system_mappy)
    - [gen-ui/app.py](#411-gen-uiapppy)
+   - [render_system_json.py](#412-render_system_jsonpy)
 5. [Key design decisions](#5-key-design-decisions)
 6. [Compliance audit history](#6-compliance-audit-history)
 7. [Deferred and out-of-scope features](#7-deferred-and-out-of-scope-features)
@@ -55,6 +56,7 @@ traveller-world-gen/
 ├── traveller_moon_gen.py       # Moon quantity, sizing, and SAH/social detail
 ├── traveller_map_fetch.py      # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
 ├── traveller_world_schema.json # JSON Schema (draft 2020-12) for World.to_dict()
+├── render_system_json.py       # Standalone: renders a TravellerSystem JSON file to self-contained HTML
 ├── system_map.py               # SVG star system map: per-star arc zones, log-AU radial scale, orbit table
 │
 ├── function_app.py             # Azure Functions HTTP endpoints (13 routes)
@@ -836,6 +838,50 @@ class SystemMapWindow(QMainWindow):
 
 ---
 
+### 4.12 `render_system_json.py`
+
+Standalone script that reads any system JSON file produced by `TravellerSystem.to_dict()` and renders it as a rich, self-contained HTML document. Requires no project module imports — stdlib only (`json`, `sys`, `html`, `pathlib`).
+
+**Usage:**
+
+```bash
+# Render to a named output file
+python render_system_json.py system.json output.html
+
+# Render to <input-stem>.html in the same directory (default)
+python render_system_json.py system.json
+```
+
+**Rendered sections:**
+
+| Section | Content |
+|---------|---------|
+| System header | Name, age, star count, mainworld UWP |
+| Stars table | Designation, type/class, mass, temperature, diameter, luminosity, orbit, period |
+| Habitable zones | Per star: inner/outer HZ orbit#, MAO, temperature zone |
+| World counts | Gas giant / belt / terrestrial / total / empty chips |
+| Orbital survey | 11-column table: Star, #, Orbit#, AU, Period, Ecc/Incl, Type, Profile, Codes, Zone, Notes; moon sub-rows when `attach_detail()` data is present |
+| Mainworld panel | 11-cell stats grid, trade code badges, World Body or Belt Body card, atmosphere detail card, hydrographic detail card, notes |
+| Raw JSON | Collapsible `<details>` block |
+
+**Key helpers:**
+
+```python
+def ehex(code: int) -> str:     # 0–16 → "0"–"G" (Traveller eHex encoding)
+def fmt_period(yr: float) -> str # auto-scales to h / d / y
+def _orbit_profile(slot: dict) -> tuple[str, str]  # (profile_text, css_class)
+def _render_physical(sd: dict) -> str   # WorldPhysical or BeltPhysical card
+def _render_atmosphere(atm: dict) -> str
+def _render_mainworld(mw: dict) -> str
+def render(data: dict) -> str           # top-level entry point
+```
+
+`WorldPhysical` vs `BeltPhysical` is distinguished by checking `"composition" in size_detail` — `BeltPhysical` uses `"span_au"` instead. The CSS mirrors the `to_html()` design: same CSS variables, dark mode support, temperature zone colouring, and trade code badge classes.
+
+**Adding to `render_system_json.py`:** The script is intentionally self-contained. When the JSON schema adds new top-level keys to `TravellerSystem.to_dict()` or `World.to_dict()`, add the corresponding render logic to the appropriate `_render_*` helper. Do not import from project modules — use `_get(d, *keys)` for safe nested dict access.
+
+---
+
 ## 5. Key design decisions
 
 **Orbital temperature over random temperature.** All worlds — mainworld, secondary worlds, and moons — derive their temperature from orbital HZ deviation rather than an independent dice roll. This ensures physical consistency: a world's temperature matches where it actually sits relative to its star. The `generate_temperature_from_orbit()` function in `traveller_system_gen.py` is the single source of truth for this conversion.
@@ -987,6 +1033,10 @@ python traveller_world_gen.py --name Cogri --seed 42 --json
 
 # Moon generation detail (legacy entry point)
 python traveller_world_detail.py --name Varanthos --seed 6056
+
+# Render system JSON to a standalone HTML document
+python render_system_json.py examples/system_seed42.json
+python render_system_json.py my_system.json my_system.html
 
 # SVG star system map (dark background by default)
 python system_map.py --name Ardenne --seed 1000 --out ardenne.svg

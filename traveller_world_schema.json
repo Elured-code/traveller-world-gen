@@ -519,6 +519,12 @@
               "type": "string",
               "enum": ["none", "braking", "prograde", "retrograde", "3:2_lock", "1:1_lock"],
               "description": "Tidal lock status with the primary star (WBH pp. 105–107)."
+            },
+            "eccentricity_adjusted": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.999,
+              "description": "Re-rolled eccentricity for 1:1 tidally-locked worlds with orbit_eccentricity > 0.1 (WBH p.77 Rule 4). Value is min(original_eccentricity, new_roll_with_DM-2). Absent when not applicable."
             }
           }
         },
