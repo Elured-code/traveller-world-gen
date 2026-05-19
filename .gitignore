@@ -28,7 +28,7 @@ local.settings.json
 .funcignore
 
 # ── Editors ─────────────────────────────────────────────────────────────────
-# .vscode/ is committed — contains recommended extensions and workspace settings
+.vscode/
 .idea/
 *.swp
 *.swo
