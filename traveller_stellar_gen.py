@@ -342,6 +342,7 @@ class Star:  # pylint: disable=too-many-instance-attributes
     ms_lifespan_gyr: Optional[float] = None  # Main sequence lifespan
     orbit_period_yr: Optional[float] = None  # Orbital period in years
     orbit_eccentricity: float = 0.0          # 0.0 until generate_orbits() populates it
+    orbit_inclination: float = 0.0           # 0.0 until generate_orbits() populates it
     special_notes: str = ""     # e.g. "protostar", "post-stellar"
 
     def classification(self) -> str:
@@ -385,6 +386,8 @@ class Star:  # pylint: disable=too-many-instance-attributes
             if self.orbit_au is not None:
                 d["orbit_au_min"] = round(self.orbit_au * (1 - self.orbit_eccentricity), 3)
                 d["orbit_au_max"] = round(self.orbit_au * (1 + self.orbit_eccentricity), 3)
+        if self.orbit_inclination > 0:
+            d["orbit_inclination"] = round(self.orbit_inclination, 2)
         return d
 
 

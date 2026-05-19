@@ -303,6 +303,32 @@ def parse_orbital_eccentricity(req: func.HttpRequest) -> bool:
     return raw in ("true", "1", "yes")
 
 
+def parse_orbital_inclination(req: func.HttpRequest) -> bool:
+    """Extract the optional 'orbital_inclination' flag.
+
+    When True, the caller should pass orbital_inclination=True to
+    generate_full_system() / generate_system_from_world() so that
+    inclination values are rolled for all orbiting bodies (WBH p.28).
+    Accepts ?orbital_inclination=true/1/yes or {"orbital_inclination": true}
+    in the body. Defaults to False.
+
+    Returns:
+        True if orbital inclination was requested, False otherwise.
+    """
+    raw = req.params.get("orbital_inclination", "").strip().lower()
+    if not raw:
+        try:
+            body = req.get_json()
+            if isinstance(body, dict):
+                val = body.get("orbital_inclination")
+                if isinstance(val, bool):
+                    return val
+                raw = str(val).strip().lower() if val is not None else ""
+        except (ValueError, TypeError):
+            pass
+    return raw in ("true", "1", "yes")
+
+
 def parse_format(req: func.HttpRequest) -> str:
     """Extract the optional 'format' parameter.
 

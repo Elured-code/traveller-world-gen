@@ -251,7 +251,9 @@ class SystemOrbits:
 
 **World orbital periods:** `OrbitSlot.orbit_period_yr` is computed in `generate_orbits()` after all slots are placed, using `P = √(AU³ / M_central)`. `M_central` = designated star mass + mass of any companion stars whose `orbit_au < orbit_slot.orbit_au` (WBH: a world outside a companion's orbit includes the companion in the central mass). Empty slots have `orbit_period_yr = None`. The period is included in `OrbitSlot.to_dict()` and displayed in the `system_map.py` Period column and gen-ui System Orbits card.
 
-**Orbital eccentricity (WBH p.27):** `generate_orbits()` accepts `orbital_eccentricity: bool = False`. When True, a post-placement pass calls `_roll_eccentricity()` for each non-empty orbit slot and each close/near/far secondary star. Two rolls: `2D+DM` selects a table row; a second `1D` or `2D` divided by a row-specific divisor gives the fractional part; result clamped to [0.000, 0.999]. `OrbitSlot.eccentricity` (`field(default=0.0, init=False)`) is populated; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"` (`AU × (1−e)`), and `"orbit_au_max"` (`AU × (1+e)`) when non-zero. `Star.orbit_eccentricity: float = 0.0` is set for secondary stars; `Star.to_dict()` similarly emits min/max. When the flag is False (default), no new dice roll and no seed disruption occurs. The flag is stored in `TravellerSystem.orbital_eccentricity` and plumbed through `generate_full_system()`, `generate_system_from_world()`, and all API endpoints via `parse_orbital_eccentricity()` in `shared/helpers.py`. In the gen-ui, an "Orbital Eccentricity" checkbox (enabled with "System detail") controls the flag. Display: gen-ui System Orbits card and `to_html()` orbit table each have a dedicated `Ecc` column; system map SVG shows `(e=0.35)` inline in the AU text.
+**Orbital eccentricity (WBH p.27):** `generate_orbits()` accepts `orbital_eccentricity: bool = False`. When True, a post-placement pass calls `_roll_eccentricity()` for each non-empty orbit slot and each close/near/far secondary star. Two rolls: `2D+DM` selects a table row; a second `1D` or `2D` divided by a row-specific divisor gives the fractional part; result clamped to [0.000, 0.999]. `OrbitSlot.eccentricity` (`field(default=0.0, init=False)`) is populated; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"` (`AU × (1−e)`), and `"orbit_au_max"` (`AU × (1+e)`) when non-zero. `Star.orbit_eccentricity: float = 0.0` is set for secondary stars; `Star.to_dict()` similarly emits min/max. When the flag is False (default), no new dice roll and no seed disruption occurs. The flag is stored in `TravellerSystem.orbital_eccentricity` and plumbed through `generate_full_system()`, `generate_system_from_world()`, and all API endpoints via `parse_orbital_eccentricity()` in `shared/helpers.py`. In the gen-ui, an "Orbital Eccentricity" checkbox (enabled with "System detail") controls the flag. Display: see Orbital Inclination below for column format.
+
+**Orbital inclination (WBH p.28):** `generate_orbits()` accepts `orbital_inclination: bool = False`. When True, a post-placement pass calls `_roll_inclination()` for each non-empty orbit slot and each close/near/far secondary star. Slots with `anomaly_type == "inclined"` are skipped (their angle is already stored in `notes`). `_roll_inclination()` uses a 6-row 2D severity table (Very Low / Low / Moderate / High / Very High / Extreme), each with a different degree formula, plus a recursive retrograde case (2D = 12 → `max(0, 180 − re-roll)`). `OrbitSlot.inclination` (`field(default=0.0, init=False)`) is populated; `to_dict()` emits `"inclination"` (2 d.p.) when > 0. `Star.orbit_inclination: float = 0.0` is set for secondary stars. When the flag is False (default), no new dice roll and no seed disruption occurs. The flag is stored in `TravellerSystem.orbital_inclination` and plumbed through `generate_full_system()`, `generate_system_from_world()`, and all API endpoints via `parse_orbital_inclination()` in `shared/helpers.py`. In the gen-ui, an "Orbital Inclination" checkbox (enabled with "System detail") controls the flag. Display: gen-ui and `to_html()` orbit table share a combined **Ecc/Incl** column. When eccentricity > 0 or inclination > 0 the cell shows `{ecc}/{incl}°`; when neither is set the cell shows `—`.
 
 ---
 
@@ -590,7 +592,7 @@ Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` e
 
 **`/api/system/full` behaviour:** Calls `generate_full_system()` then unconditionally calls `attach_detail()`. No `detail` parameter is accepted or needed. The `format` parameter then controls serialisation: `to_dict()` for JSON, `to_html(detail_attached=True)` for HTML, `summary()` for text.
 
-**`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). The `URLError` handler logs the upstream detail server-side but returns only a generic message to the caller. Supports `detail` and `format` identically to the system endpoints.
+**`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). The `URLError` handler logs the upstream detail server-side but returns only a generic message to the caller. Supports `detail`, `format`, `orbital_eccentricity`, and `orbital_inclination` identically to the system endpoints.
 
 **`/api/system/from-world` behaviour:** Calls `parse_world_json()` to validate the body, reconstructs a `World` via `World.from_dict()`, then calls `generate_system_from_world()`. PBG counts from the world are reconciled into the generated `SystemOrbits`. The mainworld orbit slot receives `canonical_profile = world.uwp()`. Temperature is recalculated from orbital HZ deviation — the temperature in the input JSON is discarded. Supports `detail` and `format` identically to the system endpoints. Returns `400 INVALID_BODY` if the body is missing or malformed.
 
@@ -611,6 +613,8 @@ system: TravellerSystem = generate_system_from_map(
     hex_pos: Optional[str] = None,
     seed: Optional[int] = None,
     attach: bool = False,
+    orbital_eccentricity: bool = False,
+    orbital_inclination: bool = False,
 ) -> TravellerSystem
 ```
 
@@ -791,9 +795,10 @@ python gen-ui/app.py
 | "Attach detail" | "Full system" checked | Calls `attach_detail()` after system generation |
 | "Physical detail" | "Full system" checked | Calls `generate_world_physical(world, age_gyr)` on the mainworld after generation; populates `world.size_detail` |
 | "NHZ Atmospheres" | "Full system" checked | Passes `nhz_atmospheres=True` to `generate_full_system()` |
-| "Orbital Eccentricity" | "Full system" checked | Passes `orbital_eccentricity=True` to `generate_full_system()`; populates `OrbitSlot.eccentricity` values shown in the Ecc column |
+| "Orbital Eccentricity" | "Full system" checked | Passes `orbital_eccentricity=True` to `generate_full_system()`; populates `OrbitSlot.eccentricity` values shown in the Ecc/Incl column |
+| "Orbital Inclination" | "Full system" checked | Passes `orbital_inclination=True` to `generate_full_system()`; populates `OrbitSlot.inclination` values shown in the Ecc/Incl column |
 
-`_on_system_detail_toggled()` enables/disables all four dependent checkboxes together and unchecks them when "Full system" is turned off.
+`_on_system_detail_toggled()` enables/disables all five dependent checkboxes together and unchecks them when "Full system" is turned off.
 
 The "System Map" button lives in `_build_system_summary_header()` (system results only; not shown in world-only mode). It is enabled/disabled in sync with the "Full system" checkbox: `_on_full_system_toggled()` calls `_map_btn.setEnabled(checked)` when the reference is set, and `_clear_status()` nulls `_map_btn` whenever the result panel is replaced.
 

@@ -457,6 +457,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_nhz.setEnabled(False)
         self._check_ecc = QCheckBox("Orbital Eccentricity")
         self._check_ecc.setEnabled(False)
+        self._check_incl = QCheckBox("Orbital Inclination")
+        self._check_incl.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
@@ -466,6 +468,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout.addWidget(self._check_physical)
         check_layout.addWidget(self._check_nhz)
         check_layout.addWidget(self._check_ecc)
+        check_layout.addWidget(self._check_incl)
         left_layout.addWidget(check_row)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
@@ -534,10 +537,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_physical.setEnabled(checked)
         self._check_nhz.setEnabled(checked)
         self._check_ecc.setEnabled(checked)
+        self._check_incl.setEnabled(checked)
         if not checked:
             self._check_physical.setChecked(False)
             self._check_nhz.setChecked(False)
             self._check_ecc.setChecked(False)
+            self._check_incl.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -580,7 +585,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 self._show_error("Enter a world name or hex for TravellerMap lookup.")
                 return
             self._do_travellermap_generation(
-                sector, search_name, hex_pos, seed, full_system, attach_detail_flag
+                sector, search_name, hex_pos, seed, full_system, attach_detail_flag,
+                orbital_eccentricity=self._check_ecc.isChecked(),
+                orbital_inclination=self._check_incl.isChecked(),
             )
         else:
             if full_system:
@@ -588,6 +595,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     name, seed=seed,
                     nhz_atmospheres=self._check_nhz.isChecked(),
                     orbital_eccentricity=self._check_ecc.isChecked(),
+                    orbital_inclination=self._check_incl.isChecked(),
                 )
                 self._finish_system_generation(system, attach_detail_flag)
             else:
@@ -602,6 +610,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         seed: int,
         full_system: bool = False,
         attach_detail_flag: bool = False,
+        orbital_eccentricity: bool = False,
+        orbital_inclination: bool = False,
     ) -> None:
         try:
             system = generate_system_from_map(
@@ -609,6 +619,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 sector=sector,
                 hex_pos=hex_pos,
                 seed=seed,
+                orbital_eccentricity=orbital_eccentricity,
+                orbital_inclination=orbital_inclination,
             )
         except AmbiguousWorldError as exc:
             self._show_disambiguation_dialog(exc, seed, full_system, attach_detail_flag)
@@ -743,7 +755,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             selected = next((h for radio, h in radios if radio.isChecked()), None)
             if selected:
                 self._do_travellermap_generation(
-                    error.sector, None, selected, seed, full_system, attach_detail_flag
+                    error.sector, None, selected, seed, full_system, attach_detail_flag,
+                    orbital_eccentricity=self._check_ecc.isChecked(),
+                    orbital_inclination=self._check_incl.isChecked(),
                 )
 
     def _on_map_clicked(self) -> None:
@@ -1087,12 +1101,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         if detail_attached:
             headers = [
-                "Star", "Orbit#", "AU", "Ecc",
+                "Star", "Orbit#", "AU", "Ecc/Incl",
                 "Type", "Profile", "Codes", "HZ", "Zone", "Period", "Notes",
             ]
             right_cols = {1, 2, 3, 9}
         else:
-            headers = ["Star", "Orbit#", "AU", "Ecc", "Type", "HZ", "Zone", "Period", "Notes"]
+            headers = ["Star", "Orbit#", "AU", "Ecc/Incl", "Type", "HZ", "Zone", "Period", "Notes"]
             right_cols = {1, 2, 3, 7}
 
         for col, hdr in enumerate(headers):
@@ -1123,7 +1137,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             period_str = _fmt_period(p_yr) if (p_yr is not None and not is_empty) else "—"
             notes_str = str(orbit.notes) if orbit.notes else ""
 
-            ecc_str = f"{orbit.eccentricity:.3f}" if orbit.eccentricity > 0 else "—"
+            ecc_part = f"{orbit.eccentricity:.3f}" if orbit.eccentricity > 0 else "—"
+            incl_part = f"{orbit.inclination:.1f}°" if orbit.inclination > 0 else "—"
+            ecc_incl_str = (
+                f"{ecc_part}/{incl_part}"
+                if (orbit.eccentricity > 0 or orbit.inclination > 0)
+                else "—"
+            )
             if detail_attached:
                 detail = getattr(orbit, "detail", None)
                 profile_str = _orbit_profile(orbit)
@@ -1138,7 +1158,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     (orbit.star_designation,       Qt.AlignmentFlag.AlignLeft),
                     (f"{orbit.orbit_number:.2f}",  Qt.AlignmentFlag.AlignRight),
                     (f"{orbit.orbit_au:.3f}",      Qt.AlignmentFlag.AlignRight),
-                    (ecc_str,                      Qt.AlignmentFlag.AlignRight),
+                    (ecc_incl_str,                 Qt.AlignmentFlag.AlignRight),
                     (type_str,                     Qt.AlignmentFlag.AlignLeft),
                     (profile_str,                  Qt.AlignmentFlag.AlignLeft),
                     (codes_str,                    Qt.AlignmentFlag.AlignLeft),
@@ -1153,7 +1173,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     (orbit.star_designation,       Qt.AlignmentFlag.AlignLeft),
                     (f"{orbit.orbit_number:.2f}",  Qt.AlignmentFlag.AlignRight),
                     (f"{orbit.orbit_au:.3f}",      Qt.AlignmentFlag.AlignRight),
-                    (ecc_str,                      Qt.AlignmentFlag.AlignRight),
+                    (ecc_incl_str,                 Qt.AlignmentFlag.AlignRight),
                     (type_str,                     Qt.AlignmentFlag.AlignLeft),
                     (hz_str,                       Qt.AlignmentFlag.AlignLeft),
                     (zone_str,                     Qt.AlignmentFlag.AlignLeft),

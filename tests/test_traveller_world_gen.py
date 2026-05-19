@@ -5840,3 +5840,71 @@ class TestOrbitalEccentricity:
             assert lo <= val <= hi, (
                 f"forced first={first}: expected [{lo}, {hi}], got {val}"
             )
+
+
+# ===========================================================================
+# TestGenerateSystemFromMapOrbitalFlags
+# ===========================================================================
+
+class TestGenerateSystemFromMapOrbitalFlags:
+    """Regression for issue #63: orbital_eccentricity/inclination flags not
+    wired through generate_system_from_map()."""
+
+    def _make_map_data(self):
+        from traveller_map_fetch import MapWorldData
+        return MapWorldData(
+            name="Regina",
+            sector="Spinward Marches",
+            hex_pos="1910",
+            uwp="A788899-C",
+            bases="N",
+            remarks="Ri Ph An Cp",
+            zone="",
+            pbg="703",
+            stars_str="G2 V",
+        )
+
+    def _call(self, **kwargs):
+        import unittest.mock as mock
+        from traveller_map_fetch import generate_system_from_map
+        data = self._make_map_data()
+        with mock.patch("traveller_map_fetch.fetch_world_data", return_value=data):
+            return generate_system_from_map(
+                name=data.name, sector=data.sector, seed=42, **kwargs
+            )
+
+    def test_eccentricity_zero_by_default_from_map(self):
+        # Without the flag, all orbit eccentricities must remain 0.0.
+        sys = self._call()
+        for o in sys.system_orbits.orbits:
+            assert o.eccentricity == 0.0, (
+                f"orbit {o.orbit_number:.2f} eccentricity should be 0.0 by default"
+            )
+
+    def test_eccentricity_range_when_enabled_from_map(self):
+        # With orbital_eccentricity=True, non-empty eccentricities in [0, 0.999].
+        sys = self._call(orbital_eccentricity=True)
+        for o in sys.system_orbits.orbits:
+            if o.world_type != "empty":
+                assert 0.0 <= o.eccentricity <= 0.999, (
+                    f"orbit {o.orbit_number:.2f} eccentricity "
+                    f"{o.eccentricity} out of range"
+                )
+
+    def test_inclination_zero_by_default_from_map(self):
+        # Without the flag, all orbit inclinations must remain 0.0.
+        sys = self._call()
+        for o in sys.system_orbits.orbits:
+            assert o.inclination == 0.0, (
+                f"orbit {o.orbit_number:.2f} inclination should be 0.0 by default"
+            )
+
+    def test_inclination_range_when_enabled_from_map(self):
+        # With orbital_inclination=True, non-empty inclinations in [0, 180].
+        sys = self._call(orbital_inclination=True)
+        for o in sys.system_orbits.orbits:
+            if o.world_type != "empty":
+                assert 0.0 <= o.inclination <= 180.0, (
+                    f"orbit {o.orbit_number:.2f} inclination "
+                    f"{o.inclination} out of range"
+                )

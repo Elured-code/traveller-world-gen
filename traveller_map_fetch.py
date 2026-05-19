@@ -582,12 +582,14 @@ def _recount_orbit_metadata(orbits: SystemOrbits) -> None:
                                 + orbits.terrestrial_count)
 
 
-def generate_system_from_map(
-    name:    Optional[str] = None,
-    sector:  Optional[str] = None,
-    hex_pos: Optional[str] = None,
-    seed:    Optional[int] = None,
-    attach:  bool = False,
+def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
+    name:                 Optional[str] = None,
+    sector:               Optional[str] = None,
+    hex_pos:              Optional[str] = None,
+    seed:                 Optional[int] = None,
+    attach:               bool = False,
+    orbital_eccentricity: bool = False,
+    orbital_inclination:  bool = False,
 ) -> TravellerSystem:
     """
     Fetch a world from TravellerMap and generate a complete star system.
@@ -599,11 +601,13 @@ def generate_system_from_map(
 
     Parameters
     ----------
-    name     World name to search on TravellerMap.  Requires sector.
-    sector   Sector name — always required to avoid same-name ambiguity.
-    hex_pos  4-digit hex position, e.g. '1910'.  Alternative to name.
-    seed     RNG seed for reproducible orbital generation.
-    attach   If True, generate all secondary world and moon profiles.
+    name                 World name to search on TravellerMap.  Requires sector.
+    sector               Sector name — always required to avoid same-name ambiguity.
+    hex_pos              4-digit hex position, e.g. '1910'.  Alternative to name.
+    seed                 RNG seed for reproducible orbital generation.
+    attach               If True, generate all secondary world and moon profiles.
+    orbital_eccentricity When True, roll eccentricity for each orbit (WBH p.27).
+    orbital_inclination  When True, roll inclination for each orbit (WBH p.28).
 
     Returns
     -------
@@ -626,7 +630,9 @@ def generate_system_from_map(
     stellar = reconstruct_star_system(map_data.stars_str)
 
     # Step 3: procedural orbital layout
-    orbits  = generate_orbits(stellar)
+    orbits  = generate_orbits(stellar,
+                              orbital_eccentricity=orbital_eccentricity,
+                              orbital_inclination=orbital_inclination)
 
     # Step 4: canonical mainworld — UWP used verbatim, no dice rolls
     world = reconstruct_world(map_data)
@@ -689,10 +695,12 @@ def generate_system_from_map(
     )
 
     system = TravellerSystem(
-        stellar_system  = stellar,
-        system_orbits   = orbits,
-        mainworld       = world,
-        mainworld_orbit = mw_orbit,
+        stellar_system       = stellar,
+        system_orbits        = orbits,
+        mainworld            = world,
+        mainworld_orbit      = mw_orbit,
+        orbital_eccentricity = orbital_eccentricity,
+        orbital_inclination  = orbital_inclination,
     )
 
     if attach:
