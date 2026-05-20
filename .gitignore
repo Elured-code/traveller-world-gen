@@ -10,7 +10,6 @@ build/
 
 # ── Virtual environments ────────────────────────────────────────────────────
 .venv/
-.venv-1/
 venv/
 env/
 ENV/
@@ -29,7 +28,7 @@ local.settings.json
 .funcignore
 
 # ── Editors ─────────────────────────────────────────────────────────────────
-# .vscode/ is committed — contains recommended extensions and workspace settings
+.vscode/
 .idea/
 *.swp
 *.swo
@@ -44,6 +43,15 @@ local.settings.json
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# ── Install-generated launchers ─────────────────────────────────────────────
+# Created by install.sh / install.ps1 — user-specific, not committed.
+run-gui.command
+run-gui.bat
+run-world.sh
+run-world.bat
+run-mapfetch.sh
+run-mapfetch.bat
 
 # ── Generated outputs ───────────────────────────────────────────────────────
 # The examples/ directory contains generated HTML cards for illustration.

@@ -1,0 +1,85 @@
+Traveller World & System Generator — What's New in v1.2.0
+==========================================================
+
+WORLD PHYSICAL DETAIL
+----------------------
+- Basic Mean Temperature is now shown in World Body detail cards. Temperature
+  is calculated from the world's orbital position and atmosphere type, and is
+  displayed in Kelvin (e.g. "288 K") for any mainworld generated as part of a
+  full star system.
+
+- Axial tilt is now shown in World Body detail cards.
+
+- Day length (rotation period) is now shown in World Body detail cards.
+
+- Worlds that are tidally locked to their primary now have their tidal status
+  shown (e.g. "Tidally locked to primary"). Planet-to-moon tidal lock is also
+  detected and displayed.
+
+- Orbital eccentricity is shown in the orbit table with minimum and maximum
+  orbital distances in AU. Highly eccentric worlds show a note in the orbit
+  table. An optional "Orbital Eccentricity" checkbox in the generator controls
+  whether eccentricity is rolled.
+
+- Orbital inclination is shown in the orbit table for worlds and stars. An
+  optional "Orbital Inclination" checkbox controls whether inclination is rolled.
+
+- Orbital periods are displayed for stars and worlds in the system map, the
+  generator panel, and HTML output.
+
+MOON DETAIL
+-----------
+- Moons now have orbital positions: orbital period, orbital range (near/far AU),
+  and Hill sphere fraction are shown in moon detail cards.
+
+- Moon quantity is influenced by adjacency DMs (moons on adjacent orbits affect
+  each other's counts), giving more realistic results in dense systems.
+
+- Tidal lock chance for a world is reduced if its orbit is highly eccentric.
+
+- Tidal lock for a world is also influenced by the mass and orbital data of its
+  largest moon.
+
+ATMOSPHERE
+----------
+- Two new atmosphere types are generated for worlds in the Non-Habitable Zone
+  (NHZ): Exotic (Dense) and Exotic (Thin). These represent worlds whose
+  atmosphere type is determined by their extreme distance from the star rather
+  than the standard table.
+
+HYDROGRAPHIC DETAIL
+-------------------
+- Worlds with liquid surface coverage now show a surface liquid percentage
+  (e.g. "63%") in their World Body detail card.
+
+SYSTEM MAP & ORBIT TABLE
+------------------------
+- Anomalous orbits — random, eccentric, inclined, retrograde, and trojan —
+  are displayed as notes in the orbit table and system map.
+
+- The orbit table now has an "Ecc/Incl" column showing eccentricity and
+  inclination values.
+
+- The orbit table now has an "Orbit notes" column for anomalous orbit
+  descriptions.
+
+- The system map column headers now include a sub-header row for clarity.
+
+- In binary systems, the primary star's outer zone boundary is now correctly
+  placed in the system map.
+
+HTML OUTPUT
+-----------
+- Fixed a bug where generating multiple worlds in a single session produced
+  malformed HTML output (missing closing tags, overlapping sections).
+
+TOOLS & SCRIPTS
+---------------
+- A standalone render_system_json.py script lets you convert a previously saved
+  system JSON file into an HTML report without re-running the full generator.
+  Usage: python render_system_json.py <system.json>
+
+BUG FIXES
+---------
+- Belt count is now correct for mainworlds fetched from TravellerMap.
+- Orbital flags are now correctly included in TravellerMap API endpoints.

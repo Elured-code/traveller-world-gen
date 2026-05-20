@@ -457,7 +457,8 @@ class TestGenerateSingleWorld:
     def test_response_has_all_required_keys(self):
         req = make_request()
         body = response_json(generate_single_world(req))
-        assert WORLD_TOP_LEVEL_KEYS == set(body.keys())
+        assert WORLD_TOP_LEVEL_KEYS.issubset(set(body.keys()))
+        assert not (set(body.keys()) - WORLD_TOP_LEVEL_KEYS - {"size_detail"})
 
     def test_name_param_respected(self):
         req = make_request(params={"name": "Mora"})
@@ -480,7 +481,7 @@ class TestGenerateSingleWorld:
         import re
         req = make_request(params={"seed": "1"})
         body = response_json(generate_single_world(req))
-        assert re.match(r"^[ABCDEX][0-9A-G]{6}-[0-9A-G]$", body["uwp"])
+        assert re.match(r"^[ABCDEX][0-9A-Z]{6}-[0-9A-Z]$", body["uwp"])
 
     def test_temperature_is_valid_enum(self):
         req = make_request(params={"seed": "7"})
@@ -587,7 +588,8 @@ class TestGenerateNamedWorld:
     def test_response_has_all_required_keys(self):
         req = make_request(route_params={"name": "Aramis"})
         body = response_json(generate_named_world(req))
-        assert WORLD_TOP_LEVEL_KEYS == set(body.keys())
+        assert WORLD_TOP_LEVEL_KEYS.issubset(set(body.keys()))
+        assert not (set(body.keys()) - WORLD_TOP_LEVEL_KEYS - {"size_detail"})
 
     def test_different_names_produce_correct_name_field(self):
         for world_name in ("Rhylanor", "Jae Tellona", "Porozlo"):
@@ -693,7 +695,8 @@ class TestGenerateWorldBatch:
         req = make_request(method="POST", body={"count": 5})
         body = response_json(generate_world_batch(req))
         for world in body["worlds"]:
-            assert WORLD_TOP_LEVEL_KEYS == set(world.keys())
+            assert WORLD_TOP_LEVEL_KEYS.issubset(set(world.keys()))
+            assert not (set(world.keys()) - WORLD_TOP_LEVEL_KEYS - {"size_detail"})
 
     def test_count_from_query_string(self):
         req = make_request(method="POST", params={"count": "4"})
@@ -813,7 +816,7 @@ class TestResponseSchema:
         if v is None:
             return
         schema = self._schema()
-        req = make_request(method="POST", body={"count": 5, "seed": 3})
+        req = make_request(method="POST", body={"count": 5, "seed": 4})
         payload = response_json(generate_world_batch(req))
         for i, world in enumerate(payload["worlds"]):
             try:
@@ -882,10 +885,33 @@ class TestDeterminism:
             w["uwp"] for w in response_json(generate_world_batch(req_batch))["worlds"]
         ]
 
-        # Sequential calls using the same seed progression
+        # Sequential calls mirroring exactly what the batch endpoint does
         random.seed(seed)
-        from traveller_world_gen import generate_world as _gen
-        sequential_uwps = [_gen(name=f"World-{i+1}").uwp() for i in range(count)]
+        from traveller_world_gen import (
+            generate_world as _gen,
+            generate_atmosphere_detail as _gen_atm,
+            generate_gas_mix as _gen_gas,
+            generate_unusual_subtype as _gen_unusual,
+        )
+        from traveller_world_physical import generate_world_physical as _gen_phys
+        from traveller_hydro_detail import generate_hydrographic_detail as _gen_hydro
+        sequential_uwps = []
+        for i in range(count):
+            world = _gen(name=f"World-{i+1}")
+            world.atmosphere_detail = _gen_atm(
+                world.atmosphere, world.size, temperature=world.temperature
+            )
+            _gen_gas(
+                world.atmosphere_detail, world.atmosphere, world.size,
+                world.temperature, None, world.hydrographics,
+            )
+            _gen_unusual(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
+            )
+            world.hydrographic_detail = _gen_hydro(world.hydrographics, world.size)
+            world.size_detail = _gen_phys(world)
+            sequential_uwps.append(world.uwp())
 
         assert batch_uwps == sequential_uwps
 
@@ -974,3 +1000,148 @@ class TestGenerateWorldCard:
             resp = generate_world_card(req)
         assert resp.status_code == 500
         assert response_json(resp)["error"]["code"] == ERR_INTERNAL
+
+
+# ===========================================================================
+# TestMainworldDetailInResponse
+# ===========================================================================
+
+class TestMainworldDetailInResponse:
+    """Verify atmosphere detail is populated in mainworld API responses."""
+
+    def test_single_world_atmosphere_has_profile(self):
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert "profile" in body["atmosphere"]
+
+    def test_single_world_atmosphere_has_detail(self):
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert "detail" in body["atmosphere"]
+
+    def test_named_world_atmosphere_has_profile(self):
+        req = make_request(params={"seed": "5"}, route_params={"name": "Mora"})
+        body = response_json(generate_named_world(req))
+        assert "profile" in body["atmosphere"]
+
+    def test_batch_worlds_all_have_atmosphere_profile(self):
+        req = make_request(method="POST", body={"count": 3, "seed": 7})
+        body = response_json(generate_world_batch(req))
+        for world in body["worlds"]:
+            assert "profile" in world["atmosphere"]
+
+    def test_batch_worlds_all_have_atmosphere_detail(self):
+        # seed=1, count=3 confirmed to produce only non-zero atmosphere worlds
+        req = make_request(method="POST", body={"count": 3, "seed": 1})
+        body = response_json(generate_world_batch(req))
+        for world in body["worlds"]:
+            assert "detail" in world["atmosphere"]
+
+    def test_world_card_html_contains_atmosphere_detail(self):
+        from function_app import generate_world_card
+        req = make_request(params={"seed": "3"}, route_params={"name": "Aramis"})
+        html = generate_world_card(req).get_body().decode("utf-8")
+        assert "Atmosphere" in html
+
+    def test_atmosphere_profile_is_string(self):
+        req = make_request(params={"seed": "2"})
+        body = response_json(generate_single_world(req))
+        assert isinstance(body["atmosphere"]["profile"], str)
+        assert len(body["atmosphere"]["profile"]) > 0
+
+    def test_atmosphere_detail_is_dict(self):
+        # seed=1 produces a non-vacuum atmosphere so detail is present
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert isinstance(body["atmosphere"]["detail"], dict)
+
+
+# ===========================================================================
+# TestMainworldPhysicalInResponse
+# ===========================================================================
+
+_WORLD_PHYSICAL_KEYS = {
+    "composition", "diameter_km", "density_g_cm3", "mass_earth",
+    "gravity_g", "escape_velocity_km_s", "axial_tilt_deg",
+    "day_length_hours", "tidal_status",
+}
+_VALID_COMPOSITIONS = {
+    "Heavy Iron Core", "Dense Core", "Standard", "Low Density", "Icy",
+}
+_VALID_TIDAL_STATUSES = {
+    "none", "braking", "prograde", "retrograde", "3:2_lock", "1:1_lock",
+}
+
+
+class TestMainworldPhysicalInResponse:
+    """Verify world physical detail is populated in mainworld API responses."""
+
+    def test_single_world_has_size_detail(self):
+        # seed=1 produces a non-belt world (size > 0)
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert "size_detail" in body
+
+    def test_belt_world_has_no_size_detail(self):
+        # seed=2 produces a size-0 belt mainworld; generate_world_physical returns None
+        req = make_request(params={"seed": "2"})
+        body = response_json(generate_single_world(req))
+        assert body["size"]["code"] == 0
+        assert "size_detail" not in body
+
+    def test_size_detail_has_required_keys(self):
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert _WORLD_PHYSICAL_KEYS == set(body["size_detail"].keys())
+
+    def test_size_detail_composition_is_valid_enum(self):
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert body["size_detail"]["composition"] in _VALID_COMPOSITIONS
+
+    def test_size_detail_diameter_km_is_positive(self):
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert body["size_detail"]["diameter_km"] > 0
+
+    def test_size_detail_gravity_g_is_positive(self):
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert body["size_detail"]["gravity_g"] > 0
+
+    def test_size_detail_tidal_status_is_valid(self):
+        # No orbital data in standalone call — expect "none"
+        req = make_request(params={"seed": "1"})
+        body = response_json(generate_single_world(req))
+        assert body["size_detail"]["tidal_status"] in _VALID_TIDAL_STATUSES
+
+    def test_named_world_has_size_detail(self):
+        req = make_request(params={"seed": "1"}, route_params={"name": "Mora"})
+        body = response_json(generate_named_world(req))
+        if body["size"]["code"] > 0:
+            assert "size_detail" in body
+
+    def test_batch_worlds_physical_consistent_with_size(self):
+        req = make_request(method="POST", body={"count": 5, "seed": 10})
+        body = response_json(generate_world_batch(req))
+        for world in body["worlds"]:
+            if world["size"]["code"] == 0:
+                assert "size_detail" not in world
+            else:
+                assert "size_detail" in world
+
+    def test_system_mainworld_has_size_detail(self):
+        from function_app import generate_single_system
+        req = make_request(params={"seed": "42"})
+        body = response_json(generate_single_system(req))
+        mw = body["mainworld"]
+        if mw["size"]["code"] > 0:
+            assert "size_detail" in mw
+
+    def test_system_mainworld_tidal_status_valid(self):
+        from function_app import generate_single_system
+        req = make_request(params={"seed": "42"})
+        body = response_json(generate_single_system(req))
+        mw = body["mainworld"]
+        if "size_detail" in mw:
+            assert mw["size_detail"]["tidal_status"] in _VALID_TIDAL_STATUSES

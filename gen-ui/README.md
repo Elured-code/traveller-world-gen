@@ -21,14 +21,14 @@ PySide6 bundles Qt — no system packages (Homebrew, apt, etc.) required.
 Install into the project venv:
 
 ```bash
-.venv-1/bin/pip install "PySide6>=6.4.0"
+.venv/bin/pip install "PySide6>=6.4.0"
 ```
 
 Tested with:
 
 | Package | Version |
 |---------|---------|
-| Python (.venv-1) | 3.11 |
+| Python (.venv) | 3.11 |
 | PySide6 | 6.4+ |
 
 ---
@@ -38,14 +38,14 @@ Tested with:
 From the project root with the venv active:
 
 ```bash
-source .venv-1/bin/activate
+source .venv/bin/activate
 python gen-ui/app.py
 ```
 
 Or without activating the venv:
 
 ```bash
-.venv-1/bin/python3 gen-ui/app.py
+.venv/bin/python3 gen-ui/app.py
 ```
 
 ---

@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traveller worlds</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --color-bg-primary:   #ffffff;
+    --color-bg-secondary: #f5f5f3;
+    --color-bg-tertiary:  #eeede8;
+    --color-text-primary: #1a1a19;
+    --color-text-secondary: #6b6a65;
+    --color-text-danger:  #c0392b;
+    --color-border:       rgba(0,0,0,0.12);
+    --radius-md: 8px;
+    --radius-lg: 12px;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-bg-primary:   #1e1e1c;
+      --color-bg-secondary: #2a2a28;
+      --color-bg-tertiary:  #323230;
+      --color-text-primary: #e8e6de;
+      --color-text-secondary: #9c9a92;
+      --color-text-danger:  #e57373;
+      --color-border:       rgba(255,255,255,0.10);
+    }
+  }
+  body {
+    background: var(--color-bg-tertiary);
+    margin: 0;
+    padding: 1.5rem;
+    color: var(--color-text-primary);
+  }
+  .world-card {
+    background: var(--color-bg-primary);
+    border: 0.5px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 1rem 1.25rem;
+    max-width: 680px;
+    margin: 0 auto;
+    margin-bottom: 1.5rem;
+  }
+  .header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .world-name { font-size: 22px; font-weight: 500; margin: 0; }
+  .uwp {
+    font-family: ui-monospace, "Cascadia Code", "Fira Mono", monospace;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin: 0;
+  }
+  .badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: var(--radius-md);
+    margin: 2px 3px 2px 0;
+  }
+  .zone-green  { background:#e1f5ee; color:#085041; }
+  .zone-amber  { background:#faeeda; color:#633806; }
+  .zone-red    { background:#fcebeb; color:#791f1f; }
+  .trade       { background:#faece7; color:#712b13; }
+  .era-primitive     { background:#f1efe8; color:#444441; }
+  .era-industrial    { background:#faeeda; color:#633806; }
+  .era-prestellar    { background:#e6f1fb; color:#0c447c; }
+  .era-earlystellar  { background:#e1f5ee; color:#085041; }
+  .era-avgstellar    { background:#eeedfe; color:#3c3489; }
+  .era-highstellar   { background:#fbeaf0; color:#72243e; }
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .stat { background: var(--color-bg-secondary); border-radius: var(--radius-md); padding: 12px; }
+  .stat-label  { font-size:12px; color:var(--color-text-secondary); margin:0 0 2px; }
+  .stat-value  { font-size:15px; font-weight:500; margin:0; }
+  .stat-sub    { font-size:13px; color:var(--color-text-secondary); margin:2px 0 0; }
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .inner-card {
+    background: var(--color-bg-primary);
+    border: 0.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 12px;
+  }
+  .inner-label { font-size: 12px; color: var(--color-text-secondary); margin: 0 0 8px; }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 6px 0;
+    border-bottom: 0.5px solid var(--color-border);
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .row-label { font-size:13px; color:var(--color-text-secondary); flex-shrink:0; margin-right:8px; }
+  .trade-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .trade-label { font-size:12px; color:var(--color-text-secondary); }
+  details summary {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 4px 0;
+    margin-top: 12px;
+  }
+  pre {
+    font-family: ui-monospace, "Cascadia Code", "Fira Mono", monospace;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    white-space: pre-wrap;
+    line-height: 1.6;
+    margin: 8px 0 0;
+  }
+  @media (max-width: 500px) {
+    .stat-grid   { grid-template-columns: 1fr 1fr; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+{% macro drow(label, value, danger=false) %}
+<div class="detail-row">
+  <span class="row-label">{{ label }}</span>
+  {% if danger %}
+  <span style="font-size:13px;font-weight:500;text-align:right;color:var(--color-text-danger,#c0392b)">{{ value }}</span>
+  {% else %}
+  <span style="font-size:13px;font-weight:500;text-align:right">{{ value }}</span>
+  {% endif %}
+</div>
+{% endmacro %}
+{% for ctx in worlds %}
+<div class="world-card">
+
+  <div class="header">
+    <p class="world-name">{{ ctx.world.name }}</p>
+    <p class="uwp">{{ ctx.uwp }}</p>
+    <span class="badge {{ ctx.zone_class }}">{{ ctx.world.travel_zone }} zone</span>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat">
+      <p class="stat-label">Starport</p>
+      <p class="stat-value">{{ ctx.world.starport }} — {{ ctx.starport_label }}</p>
+      <p class="stat-sub">{{ ctx.starport_detail }}</p>
+    </div>
+    <div class="stat">
+      <p class="stat-label">Size</p>
+      <p class="stat-value">{{ ctx.size_hex }} — {{ ctx.size_km }} km</p>
+      <p class="stat-sub">Surface gravity {{ ctx.size_gravity }}</p>
+    </div>
+    <div class="stat">
+      <p class="stat-label">Tech level</p>
+      <p class="stat-value">{{ ctx.tl_hex }}</p>
+      <p class="stat-sub"><span class="badge {{ ctx.tl_era_css }}" style="margin:0">{{ ctx.tl_era }}</span></p>
+    </div>
+  </div>
+
+  <div class="detail-grid">
+    <div class="inner-card">
+      <p class="inner-label">Physical characteristics</p>
+      {{ drow("Atmosphere", ctx.atm_hex ~ " — " ~ ctx.atm_name) }}
+      {{ drow("Survival gear", ctx.atm_survival, danger=ctx.atm_survival_danger) }}
+      {{ drow("Temperature", ctx.world.temperature) }}
+      {{ drow("Hydrographics", ctx.hydro_hex ~ " — " ~ ctx.hydro_desc) }}
+      {{ drow("Gas giants", ctx.world.gas_giant_count|string if ctx.world.has_gas_giant else "None") }}
+      {{ drow("Planetoid belts", ctx.world.belt_count|string) }}
+      {{ drow("PBG", ctx.pbg) }}
+    </div>
+    <div class="inner-card">
+      <p class="inner-label">Society</p>
+      {% if ctx.world.population > 0 %}
+      {{ drow("Population", ctx.pop_hex ~ " — " ~ ctx.pop_range ~ " (P=" ~ ctx.world.population_multiplier|string ~ ")") }}
+      {% else %}
+      {{ drow("Population", ctx.pop_hex ~ " — " ~ ctx.pop_range) }}
+      {% endif %}
+      {{ drow("Government", ctx.gov_hex ~ " — " ~ ctx.gov_name) }}
+      {{ drow("Law level", ctx.law_hex) }}
+      {{ drow("Bases", ctx.bases_str) }}
+    </div>
+  </div>
+
+  <div class="trade-row">
+    <span class="trade-label">Trade codes</span>
+    {% if ctx.trade_codes %}
+    {% for tc_label in ctx.trade_codes %}
+    <span class="badge trade">{{ tc_label }}</span>
+    {% endfor %}
+    {% else %}
+    <span style="font-size:13px;color:var(--color-text-secondary)">None</span>
+    {% endif %}
+  </div>
+
+  {% if ctx.world.notes %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Notes</p>
+    <ul style="margin:4px 0 0;padding-left:20px">
+      {% for note in ctx.world.notes %}
+      <li style="margin:4px 0;font-size:13px;color:var(--color-text-secondary)">{{ note }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if ctx.world.atmosphere_detail is not none %}
+  {% set ad = ctx.world.atmosphere_detail %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Atmosphere detail</p>
+    {{ drow("Profile", ctx.atm_profile) }}
+    {% if ad.subtype_name is not none %}
+    {{ drow("Subtype", ad.subtype_name) }}
+    {% endif %}
+    {% if ad.pressure_bar is not none %}
+    {{ drow("Pressure", "%.3f bar"|format(ad.pressure_bar)) }}
+    {% elif ad.subtype_code in ("C", "D", "E") %}
+    {{ drow("Pressure", "> 10.0 bar (extremely dense)") }}
+    {% endif %}
+    {% if ad.oxygen_partial_pressure is not none %}
+    {{ drow("O₂ partial pressure", "%.3f bar"|format(ad.oxygen_partial_pressure)) }}
+    {% endif %}
+    {% if ad.scale_height_km is not none %}
+    {{ drow("Scale height", "%.1f km"|format(ad.scale_height_km)) }}
+    {% endif %}
+    {% if ad.no_safe_altitude %}
+    {{ drow("Safe altitude", "None (no breathable level)") }}
+    {% elif ad.min_safe_altitude_km is not none %}
+    {% if ad.min_safe_altitude_km >= 0 %}
+    {{ drow("Min safe altitude", "%.1f km above baseline"|format(ad.min_safe_altitude_km)) }}
+    {% else %}
+    {{ drow("Max safe depth", "%.1f km below baseline"|format(ad.min_safe_altitude_km|abs)) }}
+    {% endif %}
+    {% endif %}
+    {% for sub in ad.unusual_subtypes %}
+    {{ drow("Unusual subtype", sub.subtype_name ~ " (" ~ sub.subtype_code ~ ")") }}
+    {% endfor %}
+    {% for taint in ad.taints %}
+    {% if ad.taints|length > 1 %}
+    {{ drow("Taint " ~ loop.index|string, taint.subtype) }}
+    {% else %}
+    {{ drow("Taint", taint.subtype) }}
+    {% endif %}
+    {{ drow("Severity", taint.severity) }}
+    {{ drow("Persistence", taint.persistence) }}
+    {% endfor %}
+    {% for hazard in ad.hazards %}
+    {{ drow("Hazard", hazard.hazard) }}
+    {% if hazard.gases %}
+    {{ drow("  Gas mix", hazard.gases|join(", ")) }}
+    {% endif %}
+    {% endfor %}
+    {% if ctx.gas_parts %}
+    {{ drow("Gas mix", ctx.gas_parts) }}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if ctx.world.hydrographic_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Hydrographic detail</p>
+    {{ drow("Surface liquid", ctx.world.hydrographic_detail.surface_liquid_pct|string ~ "%") }}
+  </div>
+  {% endif %}
+
+  {% if ctx.world.size_detail is not none %}
+  {% if ctx.is_belt_phys %}
+  {% set bp = ctx.world.size_detail %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Belt body</p>
+    {{ drow("Belt span", bp.inner_au|string ~ " – " ~ bp.outer_au|string ~ " AU") }}
+    {{ drow("Composition", "M: " ~ bp.m_type_pct|string ~ "% / S: " ~ bp.s_type_pct|string ~ "% / C: " ~ bp.c_type_pct|string ~ "% / Other: " ~ bp.other_pct|string ~ "%") }}
+    {{ drow("Bulk", bp.bulk|string) }}
+    {{ drow("Resource rating", bp.resource_rating|string) }}
+    {{ drow("Significant bodies", bp.size_1_bodies|string ~ " × Size 1, " ~ bp.size_s_bodies|string ~ " × Size S") }}
+  </div>
+  {% else %}
+  {% set p = ctx.world.size_detail %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">World body</p>
+    {{ drow("Composition", p.composition) }}
+    {{ drow("Diameter", "{:,} km".format(p.diameter_km)) }}
+    {{ drow("Density", "%.2f g/cm³"|format(p.density)) }}
+    {{ drow("Mass", "%.4f M⊕"|format(p.mass)) }}
+    {{ drow("Surface gravity", "%.3f G"|format(p.gravity)) }}
+    {{ drow("Escape velocity", "%.2f km/s"|format(p.escape_velocity)) }}
+    {{ drow("Axial tilt", p.axial_tilt|string ~ "°") }}
+    {{ drow("Day length", "%.1f h"|format(p.day_length)) }}
+    {% if p.mean_temperature_k is not none %}
+    {{ drow("Mean temperature", p.mean_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if ctx.tidal_label %}
+    {{ drow("Tidal status", ctx.tidal_label) }}
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <details>
+    <summary>Raw JSON</summary>
+    <pre>{{ ctx.json_str }}</pre>
+  </details>
+
+</div>
+{% endfor %}
+</body>
+</html>

@@ -119,6 +119,107 @@ git clone https://github.com/your-username/traveller-world-gen.git
 cd traveller-world-gen
 ```
 
+### Installation
+
+#### Recommended: use the install script
+
+Each platform has a dedicated script that creates the virtual environment,
+installs all dependencies, and generates ready-to-use launcher scripts.
+
+**macOS / Linux**
+
+```bash
+bash install.sh
+```
+
+Run it with `bash`, not by dot-sourcing (`. ./install.sh`) — the script uses
+`set -euo pipefail`, so any error would close your current terminal if sourced.
+
+After the script finishes, activate the virtual environment in your terminal if
+you want to use `python` / `pytest` / `pylint` directly:
+
+```bash
+source .venv/bin/activate
+```
+
+**Windows — PowerShell** (recommended)
+
+```powershell
+.\install.ps1
+```
+
+If you see an execution-policy error, run this first, then retry:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**Windows — Command Prompt**
+
+```bat
+install.bat
+```
+
+After either Windows script finishes, activate the virtual environment if needed:
+
+```bat
+.venv\Scripts\activate
+```
+
+The generated launcher scripts use absolute paths to the venv interpreter and
+work without activating the virtual environment.
+
+---
+
+#### Manual installation (if you prefer step-by-step)
+
+The core generation modules use only the Python standard library — no third-party
+packages are required to run the CLI scripts or import the modules in your own code.
+Additional dependencies are only needed for the desktop UI, the test suite, or the
+Azure Functions API server.
+
+**1. Create a virtual environment** (recommended for all use cases)
+
+```bash
+# macOS / Linux
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Windows
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+**2. Install dependencies for your use case**
+
+| Use case | Install command | Notes |
+|---|---|---|
+| CLI scripts only | _(nothing)_ | Pure stdlib — no install needed |
+| Desktop UI | `pip install "PySide6>=6.4.0"` | Bundles Qt — no system packages required |
+| Test suite | `pip install pytest jsonschema` | `jsonschema` needed for schema-validation tests only |
+| Azure Functions API | `pip install -r requirements.txt` | Also requires [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) |
+
+**3. Run the desktop UI**
+
+```bash
+python gen-ui/app.py
+```
+
+**4. Run the tests**
+
+```bash
+pytest tests/ -q
+```
+
+**5. Start the API server locally**
+
+```bash
+# Copy the example settings file first (one-time)
+cp local.settings.json.example local.settings.json
+
+func start
+```
+
 ### Generate a system from TravellerMap canonical data
 
 Sector is always required — many world names exist in multiple sectors.

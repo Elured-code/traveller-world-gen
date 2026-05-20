@@ -2,7 +2,7 @@
 traveller_world_physical.py
 ===========================
 Physical world characteristics derived from the UWP size and atmosphere
-codes, following the World Builder's Handbook (WBH pp. 74-78).
+codes, following the World Builder's Handbook (WBH pp. 74-78, 103-107).
 
 Scope
 -----
@@ -32,12 +32,21 @@ Derived properties (WBH p.76-77):
 
 Axial Tilt (WBH p.77):
   Roll 2D to select a tilt band; roll 1D within that band for degrees.
-  Result clamped to 0-90°.
+  On a 2D result of 10+, roll 1D on the Extreme Axial Tilt sub-table,
+  which can produce retrograde tilts up to 180°.
 
 Basic Rotation Rate (WBH p.103):
   Terrestrial worlds: (2D-2) × 4 + 2 + 1D + DMs  (hours)
   DM: +1 per 2 full Gyrs of system age (round down).
-  Tidal effects require orbital data and are deferred.
+
+Tidal Lock Status (WBH pp. 105-107):
+  After basic rotation, roll 2D + DM on the Tidal Lock Status table.
+  Requires orbital distance (AU), orbit number, and host-star mass.
+  DMs come from three sources: general DMs (p.105), star-lock DMs (p.106),
+  and moon-lock DMs (p.107; deferred — requires moon orbital positions).
+  Outcomes range from a simple multiplier on day length through prograde/
+  retrograde slow rotation to 3:2 or 1:1 tidal lock.
+  Deferred: moon-size DM, planet-locked-to-moon check.
 
 Licence
 -------
@@ -59,7 +68,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -158,13 +167,27 @@ def _roll_diameter(size: int) -> int:
 # ---------------------------------------------------------------------------
 
 def _roll_extreme_axial_tilt() -> float:
-    """Placeholder for the WBH Extreme Axial Tilt sub-table (WBH p.77).
+    """Roll on the Extreme Axial Tilt sub-table (WBH p.77).
 
-    The full extreme table is not yet implemented; returns a high-tilt
-    value until the sub-table rules are added.
+    1D selects the band:
+      1–2 : 10 + 1D × 10  →  20–70°   (high axial tilt)
+      3   : 30 + 1D × 10  →  40–90°   (extreme axial tilt)
+      4   : 90 + 1D × 1D  →  91–126°  (retrograde rotation)
+      5   : 180 - 1D × 1D →  144–179° (extreme retrograde)
+      6   : 120 + 1D × 10 →  130–180° (extreme retrograde, high variance)
+    Result clamped to [0, 180].
     """
-    # Extreme axial tilt sub-table not yet implemented (WBH p.77).
-    return float(30 + _roll(2) * 5)   # 40-90° placeholder
+    band = random.randint(1, 6)
+    if band <= 2:
+        return float(10 + random.randint(1, 6) * 10)
+    if band == 3:
+        return float(30 + random.randint(1, 6) * 10)
+    if band == 4:
+        return min(float(90 + random.randint(1, 6) * random.randint(1, 6)), 180.0)
+    if band == 5:
+        return max(float(180 - random.randint(1, 6) * random.randint(1, 6)), 0.0)
+    # band == 6
+    return min(float(120 + random.randint(1, 6) * 10), 180.0)
 
 
 def _roll_axial_tilt() -> float:
@@ -193,6 +216,22 @@ def _roll_axial_tilt() -> float:
     return _roll_extreme_axial_tilt()
 
 
+def _roll_axial_tilt_1d() -> float:
+    """Recompute axial tilt for 1:1 lock: 1D selects band on Axial Tilt table (WBH p.77 Rule 3)."""
+    band = random.randint(1, 6)
+    if band == 1:
+        return round((random.randint(1, 6) - 1) / 50, 2)
+    if band == 2:
+        return round(random.randint(1, 6) / 5, 1)
+    if band == 3:
+        return float(random.randint(1, 6))
+    if band == 4:
+        return float(6 + random.randint(1, 6))
+    if band == 5:
+        return float(5 + random.randint(1, 6) * 5)
+    return _roll_extreme_axial_tilt()  # band == 6
+
+
 # ---------------------------------------------------------------------------
 # Basic Rotation Rate (WBH p.103)
 # ---------------------------------------------------------------------------
@@ -210,11 +249,345 @@ def _roll_day_length(age_gyr: float = 0.0) -> float:
 
     Formula: (2D-2) × 4 + 2 + 1D + DMs
     DM: +1 per 2 full Gyrs of system age (round down).
-    Tidal effects are not applied here; they require orbital data.
     """
     dm = _age_dm(age_gyr)
     hours = (_roll(2) - 2) * 4 + 2 + random.randint(1, 6) + dm
     return round(float(max(1, hours)), 1)
+
+
+# ---------------------------------------------------------------------------
+# Tidal Lock Status (WBH pp. 105-107)
+# ---------------------------------------------------------------------------
+
+TIDAL_STATUS_LABELS: dict[str, str] = {
+    "braking":   "Tidal braking",
+    "prograde":  "Prograde (tidally slowed)",
+    "retrograde": "Retrograde (tidally induced)",
+    "3:2_lock":  "3:2 resonance lock",
+    "1:1_lock":  "1:1 tidal lock (synchronous)",
+}
+
+
+def _orbital_period_hours(orbit_au: float, star_mass: float) -> float:
+    """Orbital period in standard hours. P_years = sqrt(AU³ / M_star)."""
+    return math.sqrt(orbit_au ** 3 / star_mass) * 8766.0
+
+
+def _reroll_axial_tilt_for_lock() -> float:
+    """Reroll axial tilt for 3:2 lock: (2D-2) ÷ 10 degrees (WBH p.105)."""
+    return round((_roll(2) - 2) / 10.0, 1)
+
+
+# Inline copy of _ECC_TABLE from traveller_orbit_gen.py — avoids circular import
+_ECC_TABLE_PHYS = [
+    (5,  -0.001, 1, 1000),
+    (7,   0.000, 1,  200),
+    (9,   0.030, 1,  100),
+    (10,  0.050, 1,   20),
+    (11,  0.050, 2,   20),
+    (99,  0.300, 2,   20),
+]
+
+
+def _reroll_eccentricity_tidal(orbit_number: float, age_gyr: float) -> float:
+    """Re-roll eccentricity with DM-2 for 1:1 tidal lock (WBH p.77 Rule 4)."""
+    dm = -2
+    if orbit_number < 1.0 < age_gyr:
+        dm -= 1
+    first = random.randint(1, 6) + random.randint(1, 6) + dm
+    for max_roll, base, n_dice, divisor in _ECC_TABLE_PHYS:
+        if first <= max_roll:
+            frac = sum(random.randint(1, 6) for _ in range(n_dice)) / divisor
+            return min(0.999, max(0.0, base + frac))
+    return 0.0
+
+
+def _tidal_lock_dm(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+        size: int,
+        axial_tilt: float,
+        atmosphere: int,
+        age_gyr: float,
+        orbit_number: float,
+        star_mass: float,
+        orbit_eccentricity: float = 0.0,
+        moons: list | None = None,
+        num_stars_orbited: int = 1,
+) -> int:
+    """Compute total DM for the planet-to-star Tidal Lock Status roll.
+
+    Combines general DMs (WBH p.105) and star-lock DMs (WBH p.106).
+    At boundary values, uses the DM closer to 0 per WBH edge-condition rule.
+    """
+    dm = -4  # base DM for star lock (WBH p.106)
+
+    # --- General DMs (WBH p.105) ---
+    if size >= 1:
+        dm += math.ceil(size / 3)
+
+    if orbit_eccentricity > 0.1:
+        dm -= int(orbit_eccentricity * 10)
+
+    # Axial tilt DMs are additive (WBH p.105 note)
+    if axial_tilt > 30:
+        dm -= 2
+    if 60 <= axial_tilt <= 120:
+        dm -= 4
+    if 80 <= axial_tilt <= 100:
+        dm -= 4
+
+    # Atmospheric pressure > 2.5 bar: atmosphere code 8+ is a sufficient proxy
+    if atmosphere >= 8:
+        dm -= 2
+
+    if age_gyr < 1:
+        dm -= 2
+    elif age_gyr > 10:
+        dm += 4
+    elif age_gyr >= 5:
+        dm += 2
+
+    # --- Star-lock DMs (WBH p.106) ---
+    if orbit_number < 1:
+        dm += 4 + int(10 * (1 - orbit_number))
+    elif orbit_number < 2:
+        dm += 4
+    elif orbit_number <= 3:
+        dm += 1
+    else:
+        dm -= int(orbit_number) * 2
+
+    if star_mass < 0.5:
+        dm -= 2
+    elif star_mass < 1.0:
+        dm -= 1
+    elif star_mass > 5:
+        dm += 2
+    elif star_mass > 2:
+        dm += 1
+
+    # Moon DM: DM-Total Size of all significant moons Size 1+ (WBH p.106)
+    if moons:
+        total_moon_sz = sum(
+            int(m.size_code) for m in moons
+            if not m.is_ring and m.size_code not in (0, "S")
+            and int(m.size_code) >= 1
+        )
+        dm -= total_moon_sz
+
+    # Multi-star DM: DM-Total number of stars orbited (WBH p.106)
+    if num_stars_orbited > 1:
+        dm -= num_stars_orbited
+
+    return dm
+
+
+def _planet_moon_lock_dm(moon: "Moon", all_moons: list) -> int:
+    """DM for a planet's lock to a specific moon (WBH p.107 left column).
+
+    Base DM is -10; only moons with orbit_pd data can contribute orbit DMs.
+    """
+    dm = -10  # base
+
+    # Moon size DM: DM+Moon Size if Size 1+
+    if moon.size_code not in (0, "S") and int(moon.size_code) >= 1:
+        dm += int(moon.size_code)
+
+    # Moon orbit PD DMs
+    if moon.orbit_pd is not None:
+        pd = moon.orbit_pd
+        if pd < 5:
+            dm += 5 + math.ceil((5 - pd) * 5)   # DM+5+(5-PD)×5 round up
+        elif pd <= 10:
+            dm += 4
+        elif pd <= 20:
+            dm += 2
+        elif pd <= 40:
+            dm += 1
+        elif pd > 60:
+            dm -= 6
+        # 40–60 PD: no DM
+
+    # Multiple significant moons: DM-2 per moon beyond the first
+    sig = [m for m in all_moons
+           if not m.is_ring and m.size_code not in (0, "S")
+           and int(m.size_code) >= 1]
+    extra = len(sig) - 1
+    if extra > 0:
+        dm -= 2 * extra
+
+    return dm
+
+
+def _apply_tidal_lock_result(  # pylint: disable=too-many-return-statements
+        result: int,
+        basic_day_h: float,
+        axial_tilt: float,
+        period_h: float,
+        allow_broken_check: bool = True,
+) -> tuple[float, float, str]:
+    """Apply one row of the Tidal Lock Status table (WBH p.105).
+
+    Returns (day_hours, axial_tilt, tidal_status).
+    allow_broken_check=False suppresses the 1:1 re-roll (used on the reroll itself).
+    """
+    if result <= 2:
+        return basic_day_h, axial_tilt, "none"
+    if result == 3:
+        return round(basic_day_h * 1.5, 1), axial_tilt, "braking"
+    if result == 4:
+        return round(basic_day_h * 2.0, 1), axial_tilt, "braking"
+    if result == 5:
+        return round(basic_day_h * 3.0, 1), axial_tilt, "braking"
+    if result == 6:
+        return round(basic_day_h * 5.0, 1), axial_tilt, "braking"
+    if result == 7:
+        day = float(random.randint(1, 6) * 5 * 24)
+        return day, axial_tilt, "prograde"
+    if result == 8:
+        day = float(random.randint(1, 6) * 20 * 24)
+        return day, axial_tilt, "prograde"
+    if result == 9:
+        day = float(random.randint(1, 6) * 10 * 24)
+        new_tilt = (180.0 - axial_tilt) if axial_tilt < 90.0 else axial_tilt
+        return day, new_tilt, "retrograde"
+    if result == 10:
+        day = float(random.randint(1, 6) * 50 * 24)
+        new_tilt = (180.0 - axial_tilt) if axial_tilt < 90.0 else axial_tilt
+        return day, new_tilt, "retrograde"
+    if result == 11:
+        day = round(period_h * 2.0 / 3.0, 1)
+        new_tilt = _reroll_axial_tilt_for_lock() if axial_tilt > 3.0 else axial_tilt
+        return day, new_tilt, "3:2_lock"
+    # result >= 12: 1:1 tidal lock
+    if allow_broken_check and (random.randint(1, 6) + random.randint(1, 6)) == 12:
+        # Broken tidal lock: reroll on the table with no DMs (WBH p.105 footnote)
+        reroll = random.randint(1, 6) + random.randint(1, 6)
+        return _apply_tidal_lock_result(
+            reroll, basic_day_h, axial_tilt, period_h, allow_broken_check=False
+        )
+    day = round(period_h, 1)
+    new_tilt = _roll_axial_tilt_1d()  # WBH p.77 Rule 3: 1D on Axial Tilt table, unconditional
+    return day, new_tilt, "1:1_lock"
+
+
+def _roll_one_lock_case(dm: int, basic_day_h: float, axial_tilt: float,
+                        period_h: float) -> tuple[float, float, str]:
+    """Roll 2D+DM for one tidal lock case and apply the result."""
+    if dm <= -10:
+        return basic_day_h, axial_tilt, "none"
+    roll = 12 if dm >= 10 else _roll(2) + dm
+    return _apply_tidal_lock_result(roll, basic_day_h, axial_tilt, period_h)
+
+
+def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+        size: int,
+        axial_tilt: float,
+        atmosphere: int,
+        age_gyr: float,
+        orbit_number: float,
+        orbit_au: float,
+        star_mass: float,
+        basic_day_h: float,
+        orbit_eccentricity: float = 0.0,
+        moons: list | None = None,
+        num_stars_orbited: int = 1,
+) -> tuple[float, float, str]:
+    """Roll and apply the Tidal Lock Status table (WBH pp.105-107).
+
+    Handles planet-to-star and planet-to-moon cases in WBH priority order:
+    roll for the highest DM case first; cascade to next if no lock occurs.
+    Returns (day_hours, axial_tilt, tidal_status).
+    """
+    period_h = _orbital_period_hours(orbit_au, star_mass)
+
+    star_dm = _tidal_lock_dm(size, axial_tilt, atmosphere, age_gyr,
+                              orbit_number, star_mass, orbit_eccentricity,
+                              moons=moons, num_stars_orbited=num_stars_orbited)
+
+    # Build candidate list: (dm, lock_type, moon_or_None)
+    # Moon candidates require orbit_pd and Size 1+ (WBH p.107)
+    candidates: list[tuple[str, int, object]] = [("star", star_dm, None)]
+    if moons:
+        for moon in moons:
+            if (not moon.is_ring and moon.orbit_pd is not None
+                    and moon.size_code not in (0, "S")
+                    and int(moon.size_code) >= 1):
+                m_dm = _planet_moon_lock_dm(moon, moons)
+                candidates.append(("moon", m_dm, moon))
+
+    # Highest DM first; ties: moon before star (WBH p.107)
+    candidates.sort(key=lambda c: (-c[1], 0 if c[0] == "moon" else 1))
+
+    for lock_type, dm, moon in candidates:
+        if lock_type == "moon":
+            moon_period_h = moon.orbit_period_hours or period_h
+            day_h, tilt, status = _roll_one_lock_case(
+                dm, basic_day_h, axial_tilt, moon_period_h)
+        else:
+            day_h, tilt, status = _roll_one_lock_case(
+                dm, basic_day_h, axial_tilt, period_h)
+        if status != "none":
+            return day_h, tilt, status
+
+    return basic_day_h, axial_tilt, "none"
+
+
+# ---------------------------------------------------------------------------
+# Basic Mean Temperature Table (WBH p.47)
+# ---------------------------------------------------------------------------
+
+# K values for modified rolls 0-12. Below 0: -5K/step. Above 12: +50K/step.
+# Minimum temperature is 3K. K values are authoritative; the °C column in the
+# book has a typo at roll 0 (shows -85°C; correct value for 178K is -95°C).
+_MEAN_TEMP_TABLE_K: dict[int, int] = {
+    0: 178, 1: 198, 2: 218, 3: 238, 4: 263,
+    5: 278, 6: 283, 7: 288, 8: 293, 9: 298,
+    10: 313, 11: 338, 12: 388,
+}
+
+# Atmosphere DMs for the Basic Mean Temperature roll (HZ Regions table, p.47).
+# Inline copy of TEMPERATURE_DM from traveller_world_gen.py — avoids circular import.
+_MEAN_TEMP_ATM_DM: dict[int, int] = {
+    0:  0,  1:  0,
+    2: -2,  3: -2,
+    4: -1,  5: -1,  14: -1,
+    6:  0,  7:  0,
+    8:  1,  9:  1,
+    10: 2,  13: 2,  15: 2,
+    11: 6,  12: 6,
+    16: 0,  17: 0,
+}
+
+
+def _orbit_dm_for_mean_temp(hz_deviation: float) -> int:
+    """Return the orbital position DM for the Basic Mean Temperature roll.
+
+    If Orbit# < HZCO-1: DM+4 +1 per 0.5 Orbit# below HZCO-1 (round to nearest).
+    If Orbit# > HZCO+1: DM-4 -1 per 0.5 Orbit# above HZCO+1 (round to nearest).
+    In the habitable zone (|hz_deviation| <= 1): DM 0.
+    """
+    if hz_deviation < -1.0:
+        return 4 + round((-hz_deviation - 1.0) * 2)
+    if hz_deviation > 1.0:
+        return -4 - round((hz_deviation - 1.0) * 2)
+    return 0
+
+
+def _compute_mean_temperature(hz_deviation: float, atmosphere: int) -> int:
+    """Compute Basic Mean Temperature in K (WBH p.47).
+
+    Modified roll = 7 + orbital_DM + atmosphere_DM, then table lookup.
+    Extrapolates below roll 0 (-5K/step) and above roll 12 (+50K/step).
+    Result is clamped to a minimum of 3K.
+    """
+    orbit_dm = _orbit_dm_for_mean_temp(hz_deviation)
+    atm_dm = _MEAN_TEMP_ATM_DM.get(atmosphere, 0)
+    modified_roll = 7 + orbit_dm + atm_dm
+    if modified_roll in _MEAN_TEMP_TABLE_K:
+        return max(3, _MEAN_TEMP_TABLE_K[modified_roll])
+    if modified_roll < 0:
+        return max(3, 178 + modified_roll * 5)
+    return max(3, 388 + (modified_roll - 12) * 50)
 
 
 # ---------------------------------------------------------------------------
@@ -235,12 +608,15 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     mass: float             # Relative to Earth
     gravity: float          # Surface gravity in G
     escape_velocity: float  # km/s
-    axial_tilt: float       # Degrees (0-90)
-    day_length: float       # Rotation period in standard hours
+    axial_tilt: float       # Degrees (0–180; >90° = retrograde; post-tidal final value)
+    day_length: float       # Rotation period in standard hours (post-tidal final value)
+    tidal_status: str       # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
+    eccentricity_adjusted: Optional[float] = field(default=None, init=False)
+    mean_temperature_k: Optional[int] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
         """Return physical characteristics as a JSON-compatible dict."""
-        return {
+        d = {
             "composition":          self.composition,
             "diameter_km":          self.diameter_km,
             "density_g_cm3":        self.density,
@@ -249,21 +625,33 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             "escape_velocity_km_s": self.escape_velocity,
             "axial_tilt_deg":       self.axial_tilt,
             "day_length_hours":     self.day_length,
+            "tidal_status":         self.tidal_status,
         }
+        if self.eccentricity_adjusted is not None:
+            d["eccentricity_adjusted"] = round(self.eccentricity_adjusted, 4)
+        if self.mean_temperature_k is not None:
+            d["mean_temperature_k"] = self.mean_temperature_k
+        return d
 
 
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_world_physical(  # pylint: disable=too-many-positional-arguments,too-many-arguments
+def generate_world_physical(  # pylint: disable=too-many-positional-arguments,too-many-arguments,too-many-locals
         world: "World",
         age_gyr: float = 0.0,
+        orbit_number: Optional[float] = None,
+        orbit_au: Optional[float] = None,
+        star_mass: Optional[float] = None,
+        orbit_eccentricity: float = 0.0,
+        hz_deviation: Optional[float] = None,
 ) -> Optional[WorldPhysical]:
     """Generate physical characteristics for a mainworld.
 
-    Implements WBH pp. 74-77, 103: diameter, composition, density, mass,
-    surface gravity, escape velocity, axial tilt, and basic rotation rate.
+    Implements WBH pp. 74-77, 103-107: diameter, composition, density, mass,
+    surface gravity, escape velocity, axial tilt, basic rotation rate, and
+    tidal lock status. Also applies 1:1 lock eccentricity reduction (WBH p.77).
 
     Returns None for Size 0 (belt), Size S, and ring worlds; these
     body types are out of scope and will be handled separately.
@@ -273,8 +661,21 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
     world : World
         The mainworld whose size code drives generation.
     age_gyr : float
-        System age in Gyr, used for the rotation rate age DM (WBH p.103).
+        System age in Gyr, used for the rotation rate age DM and tidal DMs.
         Defaults to 0.0 (no DM) when age is unavailable.
+    orbit_number : float, optional
+        WBH Orbit# of the world's orbit, used for tidal lock DMs.
+    orbit_au : float, optional
+        Orbital distance in AU, used for the orbital period calculation.
+    star_mass : float, optional
+        Host star mass in solar masses, used for tidal lock DMs and period.
+    orbit_eccentricity : float
+        Current orbital eccentricity; applies DM−floor(e×10) to the tidal
+        lock roll when > 0.1 (WBH p.105); also triggers eccentricity
+        reduction on 1:1 lock when > 0.1 (WBH p.77 Rule 4).
+
+    All three of orbit_number, orbit_au, and star_mass must be provided for
+    the tidal lock check to run. If any is None, tidal_status is "none".
 
     Returns
     -------
@@ -296,7 +697,21 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
     gravity = round(rel_d * rel_rho, 3)
     escape_velocity = round(11.186 * math.sqrt(gravity * rel_d), 2)
 
-    return WorldPhysical(
+    tidal_status = "none"
+    if orbit_number is not None and orbit_au is not None and star_mass is not None:
+        day_length, axial_tilt, tidal_status = _roll_tidal_lock_status(
+            size=world.size,
+            axial_tilt=axial_tilt,
+            atmosphere=world.atmosphere,
+            age_gyr=age_gyr,
+            orbit_number=orbit_number,
+            orbit_au=orbit_au,
+            star_mass=star_mass,
+            basic_day_h=day_length,
+            orbit_eccentricity=orbit_eccentricity,
+        )
+
+    wp = WorldPhysical(
         composition=composition,
         diameter_km=diameter_km,
         density=density,
@@ -305,4 +720,51 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         escape_velocity=escape_velocity,
         axial_tilt=axial_tilt,
         day_length=day_length,
+        tidal_status=tidal_status,
     )
+    if tidal_status == "1:1_lock" and orbit_eccentricity > 0.1:
+        new_ecc = _reroll_eccentricity_tidal(orbit_number or 0.0, age_gyr)
+        wp.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
+    if hz_deviation is not None:
+        wp.mean_temperature_k = _compute_mean_temperature(hz_deviation, world.atmosphere)
+    return wp
+
+
+def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        physical: "WorldPhysical",
+        moons: list,
+        world_size: int,
+        world_atmosphere: int,
+        age_gyr: float,
+        orbit_number: float,
+        orbit_au: float,
+        star_mass: float,
+        orbit_eccentricity: float = 0.0,
+        num_stars_orbited: int = 1,
+) -> None:
+    """Re-run the tidal lock check with moon data and apply moon-lock check.
+
+    Called after moon generation completes (WBH pp.106-107). Mutates
+    physical in-place. No-op when moons list is empty.
+    """
+    if not moons:
+        return
+    day_h, tilt, status = _roll_tidal_lock_status(
+        size=world_size,
+        axial_tilt=physical.axial_tilt,
+        atmosphere=world_atmosphere,
+        age_gyr=age_gyr,
+        orbit_number=orbit_number,
+        orbit_au=orbit_au,
+        star_mass=star_mass,
+        basic_day_h=physical.day_length,
+        orbit_eccentricity=orbit_eccentricity,
+        moons=moons,
+        num_stars_orbited=num_stars_orbited,
+    )
+    physical.day_length = day_h
+    physical.axial_tilt = tilt
+    physical.tidal_status = status
+    if status == "1:1_lock" and orbit_eccentricity > 0.1:
+        new_ecc = _reroll_eccentricity_tidal(orbit_number, age_gyr)
+        physical.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)

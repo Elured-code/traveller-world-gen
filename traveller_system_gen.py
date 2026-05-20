@@ -52,6 +52,7 @@ The human author reviewed, directed, and is responsible for the code.
 
 from __future__ import annotations
 
+# pylint: disable=too-many-lines
 import json
 import random
 import secrets
@@ -60,10 +61,18 @@ from typing import Optional
 
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
+from traveller_belt_physical import BeltPhysical
+from traveller_world_physical import TIDAL_STATUS_LABELS, WorldPhysical
+from traveller_hydro_detail import generate_hydrographic_detail
+from html_render import render
 from traveller_world_gen import (
     World,
     generate_size,
     generate_atmosphere,
+    generate_nhz_atmosphere,
+    generate_atmosphere_detail,
+    generate_gas_mix,
+    generate_unusual_subtype,
     temperature_category,
     generate_hydrographics,
     generate_population,
@@ -82,6 +91,7 @@ from traveller_world_gen import (
     HYDROGRAPHIC_NAMES,
     STARPORT_QUALITY_LABEL,
     TEMPERATURE_DM,
+    format_atmosphere_profile,
 )
 
 
@@ -174,6 +184,9 @@ class TravellerSystem:
     system_orbits: SystemOrbits
     mainworld: Optional[World]
     mainworld_orbit: Optional[OrbitSlot]
+    nhz_atmospheres: bool = False
+    orbital_eccentricity: bool = False
+    orbital_inclination: bool = False
 
     def to_dict(self) -> dict:
         """Serialise this system to a JSON-compatible dict."""
@@ -228,8 +241,7 @@ class TravellerSystem:
         """Return a self-contained HTML system card.
 
         Suitable for saving as a standalone .html file or serving directly
-        from the API /api/system/{name}/card endpoint.  Mirrors the inline
-        Claude display style used by World.to_html().
+        from the API /api/system/{name}/card endpoint.
 
         Parameters
         ----------
@@ -237,248 +249,182 @@ class TravellerSystem:
             Pass True when attach_detail() has already been called so the
             card includes secondary world profiles and satellite data.
         """
-        mw  = self.mainworld
+        mw = self.mainworld
 
-        def esc(s: str) -> str:
-            return (str(s).replace("&","&amp;").replace("<","&lt;")
-                         .replace(">","&gt;").replace('"',"&quot;"))
-
-        # ── Stellar summary ───────────────────────────────────────────────
-        star_rows = ""
+        # ── Star rows ─────────────────────────────────────────────────────
+        star_rows = []
         for star in self.stellar_system.stars:
-            orb = (f"  Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)"
+            orb = (f"Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)"
                    if star.orbit_number else "")
-            star_rows += (
-                f'<tr><td class="mono">{esc(star.designation)}</td>'
-                f'<td>{esc(star.classification())}</td>'
-                f'<td class="mono">{esc(f"{star.mass:.2f}")} M☉</td>'
-                f'<td class="mono">{esc(f"{star.temperature:,}")} K</td>'
-                f'<td class="mono">{esc(f"{star.luminosity:.3g}")} L☉</td>'
-                f'<td>{esc(orb)}</td></tr>'
-            )
+            star_rows.append({
+                "designation": star.designation,
+                "classification": star.classification(),
+                "mass": f"{star.mass:.2f}",
+                "temperature": f"{star.temperature:,}",
+                "luminosity": f"{star.luminosity:.3g}",
+                "orbit": orb,
+            })
 
-        # ── Orbital table ─────────────────────────────────────────────────
-        # Build rows from the orbit list; include detail when attached
-        orbit_rows = ""
+        # ── Orbital rows ──────────────────────────────────────────────────
+        orbit_rows = []
         for o in self.system_orbits.orbits:
             detail = getattr(o, "detail", None)
             if o.world_type == "empty":
                 profile = "—"
                 type_cls = "type-empty"
             elif o.canonical_profile:
-                # Canonical mainworld: always show the fetched UWP verbatim,
-                # even if detail has been attached (detail.profile renders
-                # uninhabited worlds as Y{sah}000-0 which is wrong for a
-                # canonical mainworld with pop=0).
-                profile = esc(o.canonical_profile)
+                # Canonical mainworld: always show the fetched UWP verbatim.
+                profile = o.canonical_profile
                 type_cls = ("type-belt" if o.world_type == "belt"
                             else "type-inh" if mw and mw.population > 0
                             else "type-terr")
             elif detail is not None:
-                profile = esc(detail.profile)
-                type_cls = ("type-gg" if detail.is_gas_giant
-                            else "type-belt" if o.world_type == "belt"
-                            else "type-inh" if detail.inhabited
-                            else "type-terr")
+                # Gas giant orbits: use gg_sah as profile (gg_sah is always
+                # the gas giant profile; detail.profile may be a satellite UWP).
+                if o.world_type == "gas_giant":
+                    profile = o.gg_sah or detail.profile
+                    type_cls = "type-gg"
+                else:
+                    profile = detail.profile
+                    type_cls = ("type-belt" if o.world_type == "belt"
+                                else "type-inh" if detail.inhabited
+                                else "type-terr")
             else:
-                profile = ""
-                type_cls = "type-terr"
+                if o.world_type == "gas_giant" and o.gg_sah:
+                    profile = o.gg_sah
+                    type_cls = "type-gg"
+                else:
+                    profile = ""
+                    type_cls = "type-terr"
 
-            mw_mark = " ← mainworld" if o.is_mainworld_candidate else ""
-            row_cls  = "mw-row" if o.is_mainworld_candidate else ""
+            note_parts = []
+            if o.is_mainworld_candidate:
+                note_parts.append("← mainworld")
+            if o.notes:
+                note_parts.append(o.notes)
+
             if o.is_mainworld_candidate and mw:
-                orbit_codes = mw.trade_codes
+                orbit_codes = list(mw.trade_codes)
             elif detail is not None and not detail.is_gas_giant:
-                orbit_codes = detail.trade_codes
+                orbit_codes = list(detail.trade_codes)
             else:
                 orbit_codes = []
-            codes_html = "".join(
-                f'<span class="badge trade">{esc(tc)}</span>'
-                for tc in orbit_codes
+
+            ecc_incl = (
+                f"{o.eccentricity:.3f}/{o.inclination:.1f}°"
+                if (o.eccentricity > 0 or o.inclination > 0)
+                else "—"
             )
-            orbit_rows += (
-                f'<tr class="{row_cls}">'
-                f'<td class="mono">{esc(o.star_designation)}</td>'
-                f'<td class="mono">{o.slot_index}</td>'
-                f'<td class="mono">{o.orbit_number:.2f}</td>'
-                f'<td class="mono">{o.orbit_au:.3f}</td>'
-                f'<td class="{type_cls}">{esc(o.world_type)}</td>'
-                f'<td class="mono profile">{profile}</td>'
-                f'<td class="codes-cell">{codes_html}</td>'
-                f'<td class="zone-{o.temperature_zone}">{esc(o.temperature_zone)}</td>'
-                f'<td class="mw-note">{esc(mw_mark)}</td>'
-                f'</tr>'
-            )
-            # Moon sub-rows when detail is attached
+
+            moons = []
             if detail is not None:
                 for mi, moon in enumerate(detail.moons or [], 1):
                     if moon.is_ring:
-                        rc = moon.ring_count
-                        mp = f"R{rc:02d}"
-                        moon_codes_html = ""
+                        moon_profile = f"R{moon.ring_count:02d}"
+                        moon_codes = []
                     elif moon.detail is not None:
-                        mp = esc(moon.detail.profile)
-                        moon_codes_html = "".join(
-                            f'<span class="badge trade">{esc(tc)}</span>'
-                            for tc in moon.detail.trade_codes
-                        )
+                        moon_profile = moon.detail.profile
+                        moon_codes = list(moon.detail.trade_codes)
                     else:
-                        mp = f"size {esc(moon.size_str)}"
-                        moon_codes_html = ""
-                    orbit_rows += (
-                        f'<tr class="moon-row">'
-                        f'<td></td><td class="mono moon-idx">↳ m{mi}</td>'
-                        f'<td colspan="3" class="moon-type">moon {mi} — '
-                        f'{"ring" if moon.is_ring else "size " + esc(moon.size_str)}</td>'
-                        f'<td class="mono profile">{mp}</td>'
-                        f'<td class="codes-cell">{moon_codes_html}</td>'
-                        f'<td></td><td></td></tr>'
+                        moon_profile = f"size {moon.size_str}"
+                        moon_codes = []
+                    moons.append({
+                        "idx": mi,
+                        "pd_str": (f"{moon.orbit_pd:.1f} PD"
+                                   if moon.orbit_pd is not None else ""),
+                        "km_str": (f"{moon.orbit_km:,.0f} km"
+                                   if moon.orbit_km is not None else ""),
+                        "type_str": ("ring" if moon.is_ring
+                                     else f"size {moon.size_str}"),
+                        "profile": moon_profile,
+                        "codes": moon_codes,
+                        "range_str": (moon.orbit_range.capitalize()
+                                      if moon.orbit_range else ""),
+                    })
+
+            orbit_rows.append({
+                "star_desig": o.star_designation,
+                "slot_index": o.slot_index,
+                "orbit_num": f"{o.orbit_number:.2f}",
+                "orbit_au": f"{o.orbit_au:.3f}",
+                "ecc_incl": ecc_incl,
+                "world_type": o.world_type,
+                "type_cls": type_cls,
+                "profile": profile,
+                "codes": orbit_codes,
+                "temp_zone": o.temperature_zone,
+                "mw_mark": "  ".join(note_parts),
+                "row_cls": "mw-row" if o.is_mainworld_candidate else "",
+                "moons": moons,
+            })
+
+        # ── Mainworld panel data ──────────────────────────────────────────
+        mw_data = None
+        if mw:
+            mw_atm_profile = ""
+            mw_gas_parts = ""
+            if mw.atmosphere_detail is not None:
+                mw_atm_profile = format_atmosphere_profile(
+                    mw.atmosphere, mw.atmosphere_detail)
+                if mw.atmosphere_detail.gas_mix:
+                    mw_gas_parts = " · ".join(
+                        f"{c.gas_name} ({c.gas_code})"
+                        + (f" {c.percentage}%" if c.percentage is not None else "")
+                        for c in mw.atmosphere_detail.gas_mix
                     )
 
-        # ── Mainworld panel ───────────────────────────────────────────────
-        if mw:
-            trade_badges = "".join(
-                f'<span class="badge trade">{esc(tc)}</span>'
-                for tc in mw.trade_codes
-            ) or '<span class="no-val">None</span>'
-            zone_cls = {"Green":"zone-green","Amber":"zone-amber","Red":"zone-red"}.get(
-                mw.travel_zone, "zone-green")
-            mw_panel = f"""
-  <div class="section-title">Mainworld — {esc(mw.name)}</div>
-  <div class="mw-grid">
-    <div class="stat"><p class="sl">UWP</p>
-      <p class="sv mono">{esc(mw.uwp())}</p>
-      <p class="ss"><span class="badge {zone_cls}">{esc(mw.travel_zone)} zone</span></p></div>
-    <div class="stat"><p class="sl">Starport {esc(mw.starport)}</p>
-      <p class="sv">{esc(STARPORT_QUALITY_LABEL.get(mw.starport, "?"))}</p></div>
-    <div class="stat"><p class="sl">Size {esc(to_hex(mw.size))}</p>
-      <p class="sv">{esc(str(mw.size * 1600) + " km" if mw.size else "Belt")}</p></div>
-    <div class="stat"><p class="sl">Atmosphere {esc(to_hex(mw.atmosphere))}</p>
-      <p class="sv">{esc(ATMOSPHERE_NAMES.get(mw.atmosphere, "?"))}</p></div>
-    <div class="stat"><p class="sl">Temperature</p>
-      <p class="sv">{esc(mw.temperature)}</p></div>
-    <div class="stat"><p class="sl">Hydrographics {esc(to_hex(mw.hydrographics))}</p>
-      <p class="sv">{esc(HYDROGRAPHIC_NAMES.get(mw.hydrographics, "?"))}</p></div>
-    <div class="stat"><p class="sl">Population {esc(to_hex(mw.population))}</p>
-      <p class="sv">TL {esc(to_hex(mw.tech_level))}</p></div>
-    <div class="stat"><p class="sl">Government {esc(to_hex(mw.government))}</p>
-      <p class="sv">{esc(GOVERNMENT_NAMES.get(mw.government, "?"))}</p></div>
-    <div class="stat"><p class="sl">Law Level</p>
-      <p class="sv">{esc(to_hex(mw.law_level))}</p></div>
-  </div>
-  <div class="trade-row"><span class="trade-lbl">Trade codes</span>{trade_badges}</div>"""
-        else:
-            mw_panel = '<p class="no-val">No mainworld determined.</p>'
+            phys_data = None
+            if isinstance(mw.size_detail, BeltPhysical):
+                phys_data = {"type": "belt", "data": mw.size_detail}
+            elif isinstance(mw.size_detail, WorldPhysical):
+                p = mw.size_detail
+                tidal_label = (TIDAL_STATUS_LABELS[p.tidal_status]
+                               if p.tidal_status != "none" else "")
+                phys_data = {"type": "world", "data": p,
+                             "tidal_label": tidal_label}
 
-        title       = esc(mw.name if mw else "Unknown") + " system"
-        age         = (f"{self.stellar_system.age_gyr:.2f} Gyr"
-                       if self.stellar_system.age_gyr else "?")
-        nw          = self.system_orbits.total_worlds
-        star_classes = " + ".join(esc(s.classification()) for s in self.stellar_system.stars)
+            mw_data = {
+                "world": mw,
+                "uwp": mw.uwp(),
+                "zone_cls": {
+                    "Green": "zone-green",
+                    "Amber": "zone-amber",
+                    "Red": "zone-red",
+                }.get(mw.travel_zone, "zone-green"),
+                "trade_codes": list(mw.trade_codes),
+                "starport_quality": STARPORT_QUALITY_LABEL.get(mw.starport, "?"),
+                "size_hex": to_hex(mw.size),
+                "size_str": str(mw.size * 1600) + " km" if mw.size else "Belt",
+                "atm_hex": to_hex(mw.atmosphere),
+                "atm_name": ATMOSPHERE_NAMES.get(mw.atmosphere, "?"),
+                "hydro_hex": to_hex(mw.hydrographics),
+                "hydro_name": HYDROGRAPHIC_NAMES.get(mw.hydrographics, "?"),
+                "pop_hex": to_hex(mw.population),
+                "tl_hex": to_hex(mw.tech_level),
+                "gov_hex": to_hex(mw.government),
+                "gov_name": GOVERNMENT_NAMES.get(mw.government, "?"),
+                "law_hex": to_hex(mw.law_level),
+                "phys_data": phys_data,
+                "atm_detail": mw.atmosphere_detail,
+                "atm_profile": mw_atm_profile,
+                "gas_parts": mw_gas_parts,
+                "hydro_detail": mw.hydrographic_detail,
+                "notes": list(mw.notes),
+            }
 
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title>
-<style>
-*,*::before,*::after{{box-sizing:border-box}}
-:root{{
-  --bg1:#ffffff;--bg2:#f5f5f3;--bg3:#eeede8;
-  --txt1:#1a1a19;--txt2:#6b6a65;--txt3:#b0aea7;
-  --bdr:rgba(0,0,0,0.12);--r8:8px;--r12:12px;
-  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
-}}
-@media(prefers-color-scheme:dark){{:root{{
-  --bg1:#1e1e1c;--bg2:#2a2a28;--bg3:#323230;
-  --txt1:#e8e6de;--txt2:#9c9a92;--txt3:#6b6a65;
-  --bdr:rgba(255,255,255,0.10);
-}}}}
-body{{background:var(--bg3);margin:0;padding:1.5rem;color:var(--txt1)}}
-.card{{background:var(--bg1);border:0.5px solid var(--bdr);border-radius:var(--r12);
-  padding:1rem 1.25rem;max-width:900px;margin:0 auto 1rem}}
-.header{{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}}
-h1{{font-size:22px;font-weight:500;margin:0}}
-.sub{{font-size:14px;color:var(--txt2);margin:0}}
-.badge{{display:inline-block;font-size:11px;font-weight:500;padding:2px 9px;
-  border-radius:var(--r8);margin:2px 2px 2px 0}}
-.zone-green{{background:#e1f5ee;color:#085041}}
-.zone-amber{{background:#faeeda;color:#633806}}
-.zone-red{{background:#fcebeb;color:#791f1f}}
-.trade{{background:#faece7;color:#712b13}}
-.b-gray{{background:#f1efe8;color:#444441}}
-.section-title{{font-size:13px;font-weight:500;color:var(--txt2);
-  margin:16px 0 8px;text-transform:uppercase;letter-spacing:0.05em}}
-table{{width:100%;border-collapse:collapse;font-size:12px}}
-th{{text-align:left;padding:4px 6px;color:var(--txt2);font-weight:500;
-  border-bottom:1px solid var(--bdr)}}
-td{{padding:3px 6px;border-bottom:0.5px solid var(--bdr);vertical-align:middle}}
-tr:last-child td{{border-bottom:none}}
-.mono{{font-family:ui-monospace,"Cascadia Code","Fira Mono",monospace}}
-.profile{{color:var(--txt1)}}
-.type-gg{{color:#1a5fa8}}
-.type-inh{{color:#085041;font-weight:500}}
-.type-terr{{color:var(--txt2)}}
-.type-belt{{color:var(--txt3)}}
-.type-empty{{color:var(--txt3)}}
-.mw-row td{{background:var(--bg2);font-weight:500}}
-.mw-note{{font-size:11px;color:#085041}}
-.moon-row td{{color:var(--txt2);font-size:11px;background:var(--bg1)}}
-.moon-type{{padding-left:24px}}
-.moon-idx{{color:var(--txt3)}}
-.zone-boiling{{color:#791f1f;font-weight:500}}
-.zone-hot{{color:#633806;font-weight:500}}
-.zone-temperate{{color:#085041;font-weight:500}}
-.zone-cold{{color:#0c447c}}
-.zone-frozen{{color:var(--txt3)}}
-.mw-grid{{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}}
-@media(max-width:600px){{.mw-grid{{grid-template-columns:repeat(2,1fr)}}}}
-.stat{{background:var(--bg2);border-radius:var(--r8);padding:10px 12px}}
-.sl{{font-size:11px;color:var(--txt2);margin:0 0 2px}}
-.sv{{font-size:14px;font-weight:500;margin:0}}
-.ss{{font-size:11px;color:var(--txt2);margin:2px 0 0}}
-.trade-row{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}}
-.codes-cell{{white-space:nowrap}}
-.trade-lbl{{font-size:12px;color:var(--txt2)}}
-.no-val{{font-size:13px;color:var(--txt2);margin:0}}
-details summary{{font-size:12px;color:var(--txt2);cursor:pointer;padding:4px 0;margin-top:12px}}
-pre{{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
-  white-space:pre-wrap;line-height:1.6;margin:8px 0 0}}
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="header">
-    <h1>{title}</h1>
-    <p class="sub mono">{star_classes}</p>
-    <span class="badge b-gray">{esc(age)}</span>
-    <span class="badge b-gray">{nw} worlds</span>
-  </div>
-
-  <div class="section-title">Stars</div>
-  <table>
-    <thead><tr><th>Desig</th><th>Class</th><th>Mass</th>
-    <th>Temp</th><th>Lum</th><th>Orbit</th></tr></thead>
-    <tbody>{star_rows}</tbody>
-  </table>
-
-  <div class="section-title">Orbital survey{"  ·  detail included" if detail_attached else ""}</div>
-  <table>
-    <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th>
-    <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th></th></tr></thead>
-    <tbody>{orbit_rows}</tbody>
-  </table>
-
-  {mw_panel}
-
-  <details>
-    <summary>Raw JSON</summary>
-    <pre>{esc(self.to_json())}</pre>
-  </details>
-</div>
-</body>
-</html>"""
+        return render("system_card.html",
+            title=(mw.name if mw else "Unknown") + " system",
+            star_classes=" + ".join(
+                s.classification() for s in self.stellar_system.stars),
+            age=(f"{self.stellar_system.age_gyr:.2f} Gyr"
+                 if self.stellar_system.age_gyr else "?"),
+            nw=self.system_orbits.total_worlds,
+            star_rows=star_rows,
+            orbit_rows=orbit_rows,
+            detail_attached=detail_attached,
+            mw_data=mw_data,
+            json_str=self.to_json(),
+        )
 
 
 _GG_EHEX = "0123456789ABCDEFGHIJ"
@@ -491,12 +437,14 @@ def _gg_diameter(gg_sah: str) -> int:
     return 8  # fallback: mid-range GM diameter
 
 
-def generate_mainworld_at_orbit(
+def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements
     name: str,
     orbit: OrbitSlot,
     hzco: float,
     gas_giant_count: int,
     belt_count: int,
+    system_age_gyr: Optional[float] = None,
+    nhz_atmospheres: bool = False,
 ) -> World:
     """
     Generate a mainworld whose temperature is constrained by its orbital
@@ -506,6 +454,9 @@ def generate_mainworld_at_orbit(
     - Temperature uses the orbital HZ deviation instead of a random roll
     - gas_giant_count, belt_count, and population_multiplier come from
       the orbit generation rather than being re-rolled independently
+    - WBH atmosphere detail (pressure, ppo, scale height) is attached
+      via ``generate_atmosphere_detail()``; *system_age_gyr* feeds the
+      WBH p.80 DM+1 to oxygen fraction for systems older than 4 Gyr.
     """
     world = World(name=name)
 
@@ -532,24 +483,56 @@ def generate_mainworld_at_orbit(
         gg_sah = getattr(orbit, "gg_sah", "")
         gg_diam = _gg_diameter(gg_sah)
         world.size = min(max(generate_size(), 1), gg_diam - 1)
-        world.atmosphere = generate_atmosphere(world.size)
+        _nhz = (nhz_atmospheres
+                and orbit.hz_deviation is not None
+                and abs(orbit.hz_deviation) > 1.0)
+        if _nhz:
+            world.atmosphere, _nhz_key = generate_nhz_atmosphere(
+                world.size, orbit.hz_deviation
+            )
+        else:
+            world.atmosphere = generate_atmosphere(world.size)
+            _nhz_key = None
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=orbit.hz_deviation,
             hzco=hzco,
             orbit=orbit.orbit_number,
         )
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, system_age_gyr, world.temperature,
+            hz_deviation=orbit.hz_deviation,
+            exotic_key_override=_nhz_key,
+        )
         world.hydrographics = generate_hydrographics(
             world.size, world.atmosphere, world.temperature
         )
+        if world.atmosphere_detail is not None:
+            generate_gas_mix(
+                world.atmosphere_detail, world.atmosphere, world.size,
+                world.temperature, orbit.hz_deviation, world.hydrographics,
+            )
+            generate_unusual_subtype(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
+            )
         world.notes.append(
             f"Mainworld is a satellite of gas giant {gg_sah or '?'} "
             f"at Orbit# {orbit.orbit_number:.2f} ({orbit.orbit_au:.2f} AU)"
         )
     else:
-        # Steps 1-2: Size and Atmosphere (random as normal)
+        # Steps 1-2: Size and Atmosphere (random as normal, or NHZ override)
         world.size = generate_size()
-        world.atmosphere = generate_atmosphere(world.size)
+        _nhz = (nhz_atmospheres
+                and orbit.hz_deviation is not None
+                and abs(orbit.hz_deviation) > 1.0)
+        if _nhz:
+            world.atmosphere, _nhz_key = generate_nhz_atmosphere(
+                world.size, orbit.hz_deviation
+            )
+        else:
+            world.atmosphere = generate_atmosphere(world.size)
+            _nhz_key = None
 
         # Step 3: Temperature — derived from orbital position (WBH p.46-47)
         world.temperature = generate_temperature_from_orbit(
@@ -559,10 +542,31 @@ def generate_mainworld_at_orbit(
             orbit=orbit.orbit_number,
         )
 
+        # Atmosphere detail needs temperature to characterise exotic/corrosive subtypes
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, system_age_gyr, world.temperature,
+            hz_deviation=orbit.hz_deviation,
+            exotic_key_override=_nhz_key,
+        )
+
         # Step 4: Hydrographics (uses orbital-constrained temperature)
         world.hydrographics = generate_hydrographics(
             world.size, world.atmosphere, world.temperature
         )
+        if world.atmosphere_detail is not None:
+            generate_gas_mix(
+                world.atmosphere_detail, world.atmosphere, world.size,
+                world.temperature, orbit.hz_deviation, world.hydrographics,
+            )
+            generate_unusual_subtype(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
+            )
+
+    # Hydrographic detail — precise surface-liquid percentage (WBH p.93)
+    world.hydrographic_detail = generate_hydrographic_detail(
+        world.hydrographics, world.size
+    )
 
     # Steps 5-7: Population, Government, Law Level
     world.population = generate_population()
@@ -614,7 +618,7 @@ def generate_mainworld_at_orbit(
 
     # Step 13: Travel Zone
     world.travel_zone = assign_travel_zone(
-        world.atmosphere, world.government, world.law_level
+        world.atmosphere, world.government, world.law_level, world.starport
     )
 
     # Record orbital context in notes
@@ -632,14 +636,23 @@ def generate_mainworld_at_orbit(
 def generate_full_system(
     name: str = "Unknown",
     seed: Optional[int] = None,
+    nhz_atmospheres: bool = False,
+    orbital_eccentricity: bool = False,
+    orbital_inclination: bool = False,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system with stellar data, orbital
     structure, and a fully characterised mainworld.
 
     Args:
-        name:  Mainworld name.
-        seed:  Optional RNG seed for reproducible results.
+        name:                 Mainworld name.
+        seed:                 Optional RNG seed for reproducible results.
+        nhz_atmospheres:      When True, worlds outside the habitable zone use
+                              WBH Non-Habitable Zone atmosphere tables.
+        orbital_eccentricity: When True, roll orbital eccentricity for all
+                              worlds and companion stars (WBH p.27).
+        orbital_inclination:  When True, roll orbital inclination for all
+                              worlds and companion stars (WBH p.28).
 
     Returns:
         A TravellerSystem containing stellar data, orbits, and mainworld.
@@ -652,7 +665,8 @@ def generate_full_system(
     stellar = generate_stellar_data()
 
     # Step 2: Orbits and mainworld orbit selection
-    orbits = generate_orbits(stellar)
+    orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
+                             orbital_inclination=orbital_inclination)
 
     mw_orbit = orbits.mainworld_orbit
     mainworld = None
@@ -667,6 +681,8 @@ def generate_full_system(
             hzco=hzco,
             gas_giant_count=orbits.gas_giant_count,
             belt_count=orbits.belt_count,
+            system_age_gyr=stellar.age_gyr,
+            nhz_atmospheres=nhz_atmospheres,
         )
 
     return TravellerSystem(
@@ -674,12 +690,17 @@ def generate_full_system(
         system_orbits=orbits,
         mainworld=mainworld,
         mainworld_orbit=mw_orbit,
+        nhz_atmospheres=nhz_atmospheres,
+        orbital_eccentricity=orbital_eccentricity,
+        orbital_inclination=orbital_inclination,
     )
 
 
 def generate_system_from_world(
     world: World,
     seed: Optional[int] = None,
+    orbital_eccentricity: bool = False,
+    orbital_inclination: bool = False,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system around an existing mainworld.
@@ -706,7 +727,8 @@ def generate_system_from_world(
     random.seed(seed)
 
     stellar = generate_stellar_data()
-    orbits = generate_orbits(stellar)
+    orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
+                             orbital_inclination=orbital_inclination)
 
     # Reconcile PBG: honour the world's canonical gas giant and belt counts
     # rather than the freshly generated orbit counts.
@@ -736,11 +758,32 @@ def generate_system_from_world(
             f"temperature recalculated as {world.temperature}."
         )
 
+    world.atmosphere_detail = generate_atmosphere_detail(
+        world.atmosphere,
+        world.size,
+        stellar.age_gyr,
+        world.temperature,
+        hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
+    )
+    if world.atmosphere_detail is not None:
+        generate_gas_mix(
+            world.atmosphere_detail, world.atmosphere, world.size,
+            world.temperature,
+            mw_orbit.hz_deviation if mw_orbit is not None else None,
+            world.hydrographics,
+        )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
+        )
+
     return TravellerSystem(
         stellar_system=stellar,
         system_orbits=orbits,
         mainworld=world,
         mainworld_orbit=mw_orbit,
+        orbital_eccentricity=orbital_eccentricity,
+        orbital_inclination=orbital_inclination,
     )
 
 
@@ -768,6 +811,8 @@ def main() -> None:
                         help="Number of systems to generate")
     parser.add_argument("--detail", action="store_true",
                         help="Attach all secondary world SAH/social profiles and moon data")
+    parser.add_argument("--nhz-atmospheres", action="store_true",
+                        help="Use WBH Non-Habitable Zone atmosphere tables for out-of-HZ worlds")
     # --format supersedes the legacy --json flag; --json kept for back-compat
     fmt_group = parser.add_mutually_exclusive_group()
     fmt_group.add_argument("--format", choices=["text", "json", "html"],
@@ -799,6 +844,7 @@ def main() -> None:
         system = generate_full_system(
             name=args.name if args.count == 1 else f"{args.name}-{i+1}",
             seed=args.seed if i == 0 else None,
+            nhz_atmospheres=args.nhz_atmospheres,
         )
 
         if want_detail:

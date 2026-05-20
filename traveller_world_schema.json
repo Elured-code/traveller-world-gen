@@ -40,8 +40,8 @@
     },
     "uwp": {
       "type": "string",
-      "pattern": "^[ABCDEX][0-9A-G]{6}-[0-9A-G]$",
-      "description": "Universal World Profile string. Format: Starport + Size + Atmosphere + Hydrographics + Population + Government + Law – TechLevel, all in Traveller hexadecimal (0–9, A–G).",
+      "pattern": "^[ABCDEX][0-9A-Z]{6}-[0-9A-Z]$",
+      "description": "Universal World Profile string. Format: Starport + Size + Atmosphere + Hydrographics + Population + Government + Law – TechLevel, all in Traveller eHex (0–9, A–Z).",
       "examples": [
         "CA6A643-9",
         "A867A69-F",
@@ -117,8 +117,8 @@
         "code": {
           "type": "integer",
           "minimum": 0,
-          "maximum": 15,
-          "description": "Atmosphere code (0 = None; 6 = Standard/Earth-like; 11 = Corrosive; etc.)."
+          "maximum": 17,
+          "description": "Atmosphere code (0 = None; 6 = Standard/Earth-like; 11 = Corrosive; 16 = Gas, Helium; 17 = Gas, Hydrogen — WBH NHZ codes)."
         },
         "name": {
           "type": "string",
@@ -128,6 +128,110 @@
         "survival_gear": {
           "type": "string",
           "description": "Minimum survival gear required for unprotected exposure (e.g. 'Vacc Suit', 'Filter', 'None')."
+        },
+        "detail": {
+          "type": "object",
+          "description": "Quantitative atmosphere characteristics per WBH pp. 78-87. Fields are omitted when not applicable to the atmosphere code.",
+          "additionalProperties": false,
+          "properties": {
+            "subtype_code": {
+              "type": "string",
+              "description": "Atmosphere subtype code from the Exotic or Corrosive/Insidious Atmosphere Subtype table (WBH pp.85-86). Present only for codes A (10), B (11), C (12)."
+            },
+            "subtype_name": {
+              "type": "string",
+              "description": "Atmosphere subtype name, e.g. 'Standard, Irritant' or 'Extremely Dense, Temperature 500K+'."
+            },
+            "pressure_bar": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total atmospheric pressure at mean baseline altitude, in bar (WBH p.79). Omitted when pressure is unbound (subtype C/D/E)."
+            },
+            "oxygen_partial_pressure_bar": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Partial pressure of oxygen at mean baseline altitude, in bar (WBH p.80). Only present for nitrogen-oxygen atmospheres."
+            },
+            "scale_height_km": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Atmospheric scale height in km, approximated as 8.5/gravity (WBH p.81)."
+            },
+            "taints": {
+              "type": "array",
+              "description": "Atmosphere taints (WBH pp.82-85). Present only for tainted atmosphere codes (2, 4, 7, 9).",
+              "items": {
+                "type": "object",
+                "required": ["subtype", "severity_code", "severity", "persistence_code", "persistence"],
+                "additionalProperties": false,
+                "properties": {
+                  "subtype":          { "type": "string" },
+                  "severity_code":    { "type": "integer", "minimum": 1, "maximum": 9 },
+                  "severity":         { "type": "string" },
+                  "persistence_code": { "type": "integer", "minimum": 2, "maximum": 9 },
+                  "persistence":      { "type": "string" }
+                }
+              }
+            },
+            "hazards": {
+              "type": "array",
+              "description": "Insidious atmosphere hazards (WBH p.87). Present only for insidious (code C/12) atmospheres.",
+              "items": {
+                "type": "object",
+                "required": ["hazard_code", "hazard"],
+                "additionalProperties": false,
+                "properties": {
+                  "hazard_code": { "type": "string", "enum": ["B", "R", "G", "T"] },
+                  "hazard":      { "type": "string" },
+                  "gases": {
+                    "type": "array",
+                    "description": "Randomly selected hazardous gas components. Present only for Gas Mix (G) hazards.",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            },
+            "gas_mix": {
+              "type": "array",
+              "description": "Rolled gas components for Exotic/Corrosive/Insidious atmospheres (WBH pp.95+). Present only for codes 10/11/12.",
+              "items": {
+                "type": "object",
+                "required": ["gas_name", "gas_code"],
+                "additionalProperties": false,
+                "properties": {
+                  "gas_name":   { "type": "string" },
+                  "gas_code":   { "type": "string" },
+                  "percentage": { "type": "integer", "minimum": 1, "maximum": 100 }
+                }
+              }
+            },
+            "min_safe_altitude_km": {
+              "type": "number",
+              "description": "Code 13 (D): km above mean baseline (positive) where atmosphere becomes breathable. Code 14 (E): km below mean baseline (negative) required for breathability. Absent when no_safe_altitude is true or not applicable."
+            },
+            "no_safe_altitude": {
+              "type": "boolean",
+              "description": "True when no breathable altitude exists on this world (code 13: O2 too thin at N2-safe altitude; code 14: N2 narcosis at O2-safe depth)."
+            },
+            "unusual_subtypes": {
+              "type": "array",
+              "description": "Rolled subtypes for Unusual (F) atmospheres (WBH pp.92-93). Present only for code 15.",
+              "items": {
+                "type": "object",
+                "required": ["subtype_code", "subtype_name", "description"],
+                "additionalProperties": false,
+                "properties": {
+                  "subtype_code": { "type": "string" },
+                  "subtype_name": { "type": "string" },
+                  "description":  { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "profile": {
+          "type": "string",
+          "description": "WBH p.82 atmosphere profile string in 'A-bar-ppo' form (e.g. '6-1.013-0.212' for Terra)."
         }
       }
     },
@@ -161,6 +265,20 @@
           "type": "string",
           "minLength": 1,
           "description": "Human-readable description of surface liquid coverage."
+        },
+        "detail": {
+          "type": "object",
+          "description": "Precise hydrographic characteristics. Absent for size-0 (belt) worlds.",
+          "required": ["surface_liquid_pct"],
+          "additionalProperties": false,
+          "properties": {
+            "surface_liquid_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Precise surface liquid coverage to the nearest 1%, drawn from a flat random distribution over the code's defined range (WBH p.93)."
+            }
+          }
         }
       }
     },
@@ -335,6 +453,162 @@
       "type": "integer",
       "minimum": 0,
       "description": "The RNG seed used to generate this world. Pass this value as the 'seed' parameter to reproduce identical output."
+    },
+    "size_detail": {
+      "description": "Physical characteristics of the mainworld. Present only when physical detail has been generated. Exactly one of two shapes: WorldPhysical (terrestrial) or BeltPhysical (asteroid belt).",
+      "oneOf": [
+        {
+          "title": "WorldPhysical",
+          "description": "Physical characteristics of a terrestrial mainworld (WBH pp. 74–77, 103–107).",
+          "type": "object",
+          "required": [
+            "composition",
+            "diameter_km",
+            "density_g_cm3",
+            "mass_earth",
+            "gravity_g",
+            "escape_velocity_km_s",
+            "axial_tilt_deg",
+            "day_length_hours",
+            "tidal_status"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "composition": {
+              "type": "string",
+              "enum": ["Heavy Iron Core", "Dense Core", "Standard", "Low Density", "Icy"],
+              "description": "Terrestrial Composition Table result (WBH p.75)."
+            },
+            "diameter_km": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Actual rolled diameter in km."
+            },
+            "density_g_cm3": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Density in g/cm³."
+            },
+            "mass_earth": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Mass relative to Earth (D*³ × ρ*)."
+            },
+            "gravity_g": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Surface gravity in G (D* × ρ*)."
+            },
+            "escape_velocity_km_s": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Escape velocity in km/s."
+            },
+            "axial_tilt_deg": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 180,
+              "description": "Axial tilt in degrees. Values above 90° indicate retrograde rotation."
+            },
+            "day_length_hours": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Rotation period in hours."
+            },
+            "tidal_status": {
+              "type": "string",
+              "enum": ["none", "braking", "prograde", "retrograde", "3:2_lock", "1:1_lock"],
+              "description": "Tidal lock status with the primary star (WBH pp. 105–107)."
+            },
+            "eccentricity_adjusted": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 0.999,
+              "description": "Re-rolled eccentricity for 1:1 tidally-locked worlds with orbit_eccentricity > 0.1 (WBH p.77 Rule 4). Value is min(original_eccentricity, new_roll_with_DM-2). Absent when not applicable."
+            },
+            "mean_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Basic Mean Temperature in Kelvin (WBH p.47). Computed from orbital HZ deviation and atmosphere DMs. Present only when hz_deviation is available at generation time."
+            }
+          }
+        },
+        {
+          "title": "BeltPhysical",
+          "description": "Physical characteristics of an asteroid belt mainworld (WBH pp. 131–133).",
+          "type": "object",
+          "required": [
+            "inner_au",
+            "outer_au",
+            "m_type_pct",
+            "s_type_pct",
+            "c_type_pct",
+            "other_pct",
+            "bulk",
+            "resource_rating",
+            "size_1_bodies",
+            "size_s_bodies"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "inner_au": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Inner boundary of belt span in AU."
+            },
+            "outer_au": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Outer boundary of belt span in AU."
+            },
+            "m_type_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Metallic asteroid percentage."
+            },
+            "s_type_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Silicate (rocky) asteroid percentage."
+            },
+            "c_type_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Carbonaceous asteroid percentage."
+            },
+            "other_pct": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100,
+              "description": "Residual 'other' percentage. m_type_pct + s_type_pct + c_type_pct + other_pct == 100."
+            },
+            "bulk": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Belt bulk rating."
+            },
+            "resource_rating": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 12,
+              "description": "Resource rating (clamped to [2, 12])."
+            },
+            "size_1_bodies": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of Size 1 significant planetoids."
+            },
+            "size_s_bodies": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Count of Size S significant planetoids."
+            }
+          }
+        }
+      ]
     }
   },
   "$defs": {

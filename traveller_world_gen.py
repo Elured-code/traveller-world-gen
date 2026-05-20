@@ -35,10 +35,16 @@ The human author reviewed, directed, and is responsible for the code.
 # pylint: disable=too-many-lines
 
 import json
+import math
 import random
 import argparse
 from dataclasses import dataclass, field
-from typing import List, Optional, TYPE_CHECKING
+from typing import List, Optional, Union, TYPE_CHECKING
+
+from traveller_world_physical import TIDAL_STATUS_LABELS
+from traveller_belt_physical import BeltPhysical
+from traveller_hydro_detail import HydrographicDetail
+from html_render import render
 
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
@@ -62,22 +68,20 @@ def roll(num_dice: int, modifier: int = 0) -> int:
 # Hexadecimal helper
 # ---------------------------------------------------------------------------
 
-# Traveller uses base-16 for UWP digits above 9: A=10, B=11 ... F=15, G=16
-_HEX_DIGITS = "0123456789ABCDEFG"
+# Traveller eHex: 0–9 then A=10 … G=16, H=17, I=18 … Z=35 (covers max TL 28)
+_HEX_DIGITS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 def to_hex(value: int) -> str:
-    """Convert an integer to a single Traveller hexadecimal character."""
-    value = max(0, value)
-    if value < len(_HEX_DIGITS):
-        return _HEX_DIGITS[value]
-    return str(value)   # fallback for very high values
+    """Convert an integer to a single Traveller eHex character."""
+    value = max(0, min(value, len(_HEX_DIGITS) - 1))
+    return _HEX_DIGITS[value]
 
 
 # ---------------------------------------------------------------------------
 # Lookup tables  (all directly from the 2022 Core Rulebook)
 # ---------------------------------------------------------------------------
 
-# Atmosphere descriptions (p.250), indexed by atmosphere code 0-15
+# Atmosphere descriptions (p.250 + WBH NHZ), indexed by atmosphere code 0-17
 ATMOSPHERE_NAMES = {
     0:  "None",
     1:  "Trace",
@@ -95,6 +99,8 @@ ATMOSPHERE_NAMES = {
     13: "Very Dense",
     14: "Low",
     15: "Unusual",
+    16: "Gas, Helium",
+    17: "Gas, Hydrogen",
 }
 
 # Survival gear required by atmosphere (p.250)
@@ -115,6 +121,8 @@ ATMOSPHERE_GEAR = {
     13: "None",   # Very Dense: may be habitable at altitude
     14: "None",   # Low: breathable in lowlands
     15: "Varies",
+    16: "Vacc Suit",
+    17: "Vacc Suit",
 }
 
 # Hydrographic descriptions (p.251), indexed by code 0-10
@@ -245,6 +253,7 @@ TEMPERATURE_DM = {
     8:  1,  9:  1,
     10: 2,  13: 2,  15: 2,
     11: 6,  12: 6,
+    16: 0,  17: 0,
 }
 
 def temperature_category(modified_roll: int) -> str:
@@ -261,6 +270,1179 @@ def temperature_category(modified_roll: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# WBH atmosphere detail (pp. 78-82)
+# ---------------------------------------------------------------------------
+#
+# The Core Rulebook atmosphere code is a single digit (0-15).  The
+# World Builder's Handbook expands each code with quantitative
+# characteristics: pressure in bar, oxygen partial pressure, and
+# atmospheric scale height.  This block adds those derived values
+# without disturbing the canonical UWP code.
+
+# Pressure spans (WBH p.79 "Atmosphere Codes" table).  Each entry is
+# (minimum_bar, span_bar); actual pressure is minimum + span * variance
+# where variance is a linear 0..1 value.  Codes without a defined span
+# (0, A=10, B=11, C=12, F=15, G=16, H=17) are intentionally absent —
+# vacuum, exotic, corrosive, insidious, unusual and gas-dwarf
+# atmospheres do not have a single representative pressure.
+ATMOSPHERE_PRESSURE_SPAN_BAR = {
+    1:  (0.001, 0.089),  # Trace
+    2:  (0.10,  0.32),   # Very Thin, Tainted
+    3:  (0.10,  0.32),   # Very Thin
+    4:  (0.43,  0.27),   # Thin, Tainted
+    5:  (0.43,  0.27),   # Thin
+    6:  (0.70,  0.79),   # Standard
+    7:  (0.70,  0.79),   # Standard, Tainted
+    8:  (1.50,  0.99),   # Dense
+    9:  (1.50,  0.99),   # Dense, Tainted
+    13: (2.50,  7.50),   # Very Dense
+    14: (0.10,  0.32),   # Low
+}
+
+# Atmosphere codes for which oxygen partial pressure is meaningful
+# (nitrogen-oxygen mixes per WBH p.80).  Trace (1) has a pressure but
+# no defined oxygen content, so it is excluded.
+_PPO_CODES = frozenset({2, 3, 4, 5, 6, 7, 8, 9, 13, 14})
+
+# Surface gravity in G by Size code, matching the dict already used
+# in World.to_dict().  Used by the scale-height approximation.
+SIZE_GRAVITY_G = {
+    0:  0.00,
+    1:  0.05,
+    2:  0.15,
+    3:  0.25,
+    4:  0.35,
+    5:  0.45,
+    6:  0.70,
+    7:  0.90,
+    8:  1.00,
+    9:  1.25,
+    10: 1.40,
+}
+
+
+def _dice(num: int) -> int:
+    """Sum *num* d6 rolls without clamping.
+
+    ``roll()`` clamps negative results to zero, which is wrong for
+    WBH formulas where a negative variance term is legitimate
+    (e.g. the (2D-7)/100 term in the oxygen-fraction formula).
+    """
+    return sum(random.randint(1, 6) for _ in range(num))
+
+
+def _atmosphere_pressure_bar(code: int) -> Optional[float]:
+    """Return total atmospheric pressure in bar (WBH p.79).
+
+    Rolls a linear variance across the code's defined span using
+    ``((1D-1)*5 + (1D-1)) / 30`` per the WBH formula.  Returns ``None``
+    for codes without a defined pressure span.
+    """
+    span = ATMOSPHERE_PRESSURE_SPAN_BAR.get(code)
+    if span is None:
+        return None
+    minimum, width = span
+    variance = (
+        (random.randint(1, 6) - 1) * 5 + (random.randint(1, 6) - 1)
+    ) / 30
+    return round(minimum + width * variance, 3)
+
+
+def _subtype_pressure_bar(
+    min_bar: float,
+    span_bar: Optional[float],
+) -> Optional[float]:
+    """Roll pressure within a subtype's defined range (WBH pp.85-86).
+
+    Uses the same WBH variance formula as ``_atmosphere_pressure_bar()``.
+    Returns ``None`` when ``span_bar`` is ``None`` (unbound pressure ≥ 10.0 bar).
+    """
+    if span_bar is None:
+        return None
+    variance = (
+        (random.randint(1, 6) - 1) * 5 + (random.randint(1, 6) - 1)
+    ) / 30
+    return round(max(0.0, min_bar + span_bar * variance), 3)
+
+
+def _oxygen_partial_pressure(
+    code: int,
+    total_pressure_bar: Optional[float],
+    system_age_gyr: Optional[float] = None,
+) -> Optional[float]:
+    """Return oxygen partial pressure in bar (WBH p.80).
+
+    Only meaningful for nitrogen-oxygen atmospheres (codes 2-9, D, E).
+    The WBH oxygen-fraction formula is ``(1D + DMs)/20 + (2D-7)/100``
+    with DM+1 when system age exceeds 4 Gyr.  If the rolled fraction
+    is zero or negative it is rerolled as ``1D * 0.01`` per WBH.
+    Returns ``None`` if the code is not breathable or pressure is
+    unknown.
+    """
+    if code not in _PPO_CODES or total_pressure_bar is None:
+        return None
+    dm = 1 if (system_age_gyr is not None and system_age_gyr > 4.0) else 0
+    fraction = (random.randint(1, 6) + dm) / 20 + (_dice(2) - 7) / 100
+    if fraction <= 0:
+        fraction = random.randint(1, 6) * 0.01
+    return round(fraction * total_pressure_bar, 3)
+
+
+def _scale_height_km(size: int, code: int) -> Optional[float]:
+    """Return atmospheric scale height in km (WBH p.81).
+
+    Uses the simple approximation ``8.5 / gravity`` from p.81, which
+    assumes near-Terran temperature and gas mix.  Returns ``None`` for
+    code 0 (no atmosphere) or sizes whose gravity is effectively zero.
+    """
+    if code == 0:
+        return None
+    gravity = SIZE_GRAVITY_G.get(size)
+    if not gravity:
+        return None
+    return round(8.5 / gravity, 2)
+
+
+# ---------------------------------------------------------------------------
+# Exotic / Corrosive / Insidious atmosphere tables (WBH pp.85-87)
+# ---------------------------------------------------------------------------
+
+_EXOTIC_CODES = frozenset({10})
+_CI_CODES     = frozenset({11, 12})   # Corrosive (B) and Insidious (C)
+
+# Exotic Atmosphere Subtype table (WBH p.85).
+# 2D+DM → (subtype_code, type_name, pressure_min_bar, pressure_span_bar)
+# pressure_span_bar=None means pressure is unbound (≥ 10.0 bar).
+_EXOTIC_SUBTYPE_TABLE: dict = {
+    2:  ("2", "Very Thin, Irritant",                   0.10, 0.32),
+    3:  ("3", "Very Thin",                              0.10, 0.32),
+    4:  ("4", "Thin, Irritant",                         0.43, 0.27),
+    5:  ("5", "Thin",                                   0.43, 0.27),
+    6:  ("6", "Standard",                               0.70, 0.79),
+    7:  ("7", "Standard, Irritant",                     0.70, 0.79),
+    8:  ("8", "Dense",                                  1.50, 0.99),
+    9:  ("9", "Dense, Irritant",                        1.50, 0.99),
+    10: ("A", "Very Dense",                             2.50, 7.50),
+    11: ("B", "Very Dense, Irritant",                   2.50, 7.50),
+    12: ("C", "Very Dense, Occasionally Corrosive",     2.50, 7.50),
+    13: ("A", "Very Dense",                             2.50, 7.50),
+    14: ("B", "Very Dense, Irritant",                   2.50, 7.50),
+}
+
+# Corrosive and Insidious Atmosphere Subtype table (WBH p.86).
+# 2D+DM → (subtype_code, type_name, pressure_min_bar, pressure_span_bar)
+_CI_SUBTYPE_TABLE: dict = {
+    1:  ("1", "Very Thin, Temperature 50K or less",            0.10, 0.32),
+    2:  ("2", "Very Thin, Irritant",                           0.10, 0.32),
+    3:  ("3", "Very Thin",                                     0.10, 0.32),
+    4:  ("4", "Thin, Irritant",                                0.43, 0.27),
+    5:  ("5", "Thin",                                          0.43, 0.27),
+    6:  ("6", "Standard",                                      0.70, 0.79),
+    7:  ("7", "Standard, Irritant",                            0.70, 0.79),
+    8:  ("8", "Dense",                                         1.50, 0.99),
+    9:  ("9", "Dense, Irritant",                               1.50, 0.99),
+    10: ("A", "Very Dense",                                    2.50, 7.50),
+    11: ("B", "Very Dense, Irritant",                          2.50, 7.50),
+    12: ("C", "Extremely Dense",                              10.00, None),
+    13: ("D", "Extremely Dense, Temperature 500K+",           10.00, None),
+    14: ("E", "Extremely Dense, Temperature 500K+, Irritant", 10.00, None),
+}
+
+# ---------------------------------------------------------------------------
+# Non-Habitable Zone (NHZ) Atmosphere tables (WBH pp.78-79)
+# ---------------------------------------------------------------------------
+# Each entry: (atm_code, base_exotic_key, irritant_exotic_key, star, dagger)
+#   atm_code          — UWP atmosphere code result
+#   base_exotic_key   — _EXOTIC_SUBTYPE_TABLE key when no irritant (code 10 only)
+#   irritant_exotic_key — key used when irritant roll succeeds (code 10 only)
+#   star              — True: roll 1D ≥4 to apply irritant_exotic_key
+#   dagger            — True: DM+1 to irritant roll when hz_deviation ≤ -3.0
+# Keys are 2D-7+Size roll results (clamped to 0; max reachable is 15).
+# Entries 16–17 exist for theoretical completeness only.
+
+_NHZ_HOT_A: dict = {   # HZCO ≤ -2.01
+     0: ( 0, None, None, False, False),
+     1: ( 0, None, None, False, False),
+     2: ( 1, None, None, False, False),
+     3: ( 1, None, None, False, False),
+     4: (10,    3,    2,  True, False),
+     5: (10,    5,    4,  True, False),
+     6: (10,    6,    7,  True, False),
+     7: (10,    8,    9,  True,  True),
+     8: (10,   10,   11,  True,  True),
+     9: (11, None, None, False, False),
+    10: (11, None, None, False, False),
+    11: (11, None, None, False, False),
+    12: (12, None, None, False, False),
+    13: (11, None, None, False, False),
+    14: (12, None, None, False, False),
+    15: (15, None, None, False, False),
+    16: (16, None, None, False, False),
+    17: (17, None, None, False, False),
+}
+
+_NHZ_HOT_B: dict = {   # HZCO -1.01 to -2.0
+     0: ( 0, None, None, False, False),
+     1: ( 1, None, None, False, False),
+     2: (10,    2, None, False, False),
+     3: (10,    3, None, False, False),
+     4: (10,    4, None, False, False),
+     5: (10,    5, None, False, False),
+     6: (10,    6, None, False, False),
+     7: (10,    7, None, False, False),
+     8: (10,    8, None, False, False),
+     9: (10,    9, None, False, False),
+    10: (10,   10,   11,  True, False),
+    11: (11, None, None, False, False),
+    12: (12, None, None, False, False),
+    13: (11, None, None, False, False),
+    14: (12, None, None, False, False),
+    15: (15, None, None, False, False),
+    16: (16, None, None, False, False),
+    17: (17, None, None, False, False),
+}
+
+_NHZ_COLD_A: dict = {   # HZCO +1.01 to +3.0
+     0: ( 0, None, None, False, False),
+     1: ( 1, None, None, False, False),
+     2: ( 1, None, None, False, False),
+     3: (10,    3,    2,  True, False),
+     4: (10,    4, None, False, False),
+     5: (10,    5, None, False, False),
+     6: (10,    6, None, False, False),
+     7: (10,    7, None, False, False),
+     8: (10,    8, None, False, False),
+     9: (10,    9, None, False, False),
+    10: (10,   10,   11,  True, False),
+    11: (11, None, None, False, False),
+    12: (12, None, None, False, False),
+    13: (13, None, None, False, False),
+    14: (14, None, None, False, False),
+    15: (15, None, None, False, False),
+    16: (16, None, None, False, False),
+    17: (17, None, None, False, False),
+}
+
+_NHZ_COLD_B: dict = {   # HZCO ≥ +3.01 — same as Cold A except 13→Gas Helium, 14→Gas Hydrogen
+     0: ( 0, None, None, False, False),
+     1: ( 1, None, None, False, False),
+     2: ( 1, None, None, False, False),
+     3: (10,    3,    2,  True, False),
+     4: (10,    4, None, False, False),
+     5: (10,    5, None, False, False),
+     6: (10,    6, None, False, False),
+     7: (10,    7, None, False, False),
+     8: (10,    8, None, False, False),
+     9: (10,    9, None, False, False),
+    10: (10,   10,   11,  True, False),
+    11: (11, None, None, False, False),
+    12: (12, None, None, False, False),
+    13: (16, None, None, False, False),
+    14: (17, None, None, False, False),
+    15: (15, None, None, False, False),
+    16: (16, None, None, False, False),
+    17: (17, None, None, False, False),
+}
+
+# Insidious Atmosphere Hazard table (WBH p.87).
+# 2D+DM → (hazard_code, hazard_name)
+_INSIDIOUS_HAZARD_TABLE: dict = {
+    4:  ("B", "Biologic"),
+    5:  ("R", "Radioactivity"),
+    6:  ("G", "Gas Mix"),
+    7:  ("G", "Gas Mix"),
+    8:  ("T", "Temperature"),
+    9:  ("G", "Gas Mix"),
+    10: ("T", "Temperature"),
+    11: ("R", "Radioactivity"),
+    12: ("T", "Temperature"),
+}
+
+# Hazardous atmospheric gases (Taint=Y) from the Atmospheric Gas Composition
+# table (WBH pp.88-89). Used when rolling a Gas Mix hazard.
+_HAZARDOUS_GASES = [
+    "Methane (CH₄)",
+    "Ammonia (NH₃)",
+    "Hydrofluoric Acid (HF)",
+    "Sodium (Na)",
+    "Carbon Monoxide (CO)",
+    "Hydrogen Cyanide (HCN)",
+    "Ethane (C₂H₆)",
+    "Hydrochloric Acid (HCl)",
+    "Fluorine (F₂)",
+    "Carbon Dioxide (CO₂)",
+    "Formamide (CH₃NO)",
+    "Formic Acid (CH₂O₂)",
+    "Sulphur Dioxide (SO₂)",
+    "Chlorine (Cl₂)",
+    "Sulphuric Acid (H₂SO₄)",
+]
+
+# ---------------------------------------------------------------------------
+# Atmosphere Gas Mix tables (WBH pp.95+)
+# ---------------------------------------------------------------------------
+
+# Gas name → chemical code (from Atmospheric Gas Composition table, WBH p.87).
+# "Silicates" and "Metal Vapours" are not in the p.87 table; codes are assigned.
+_GAS_CODES: dict = {
+    "Silicates":          "SO",
+    "Metal Vapours":      "MV",
+    "Hydrogen":           "H₂",
+    "Helium":             "He",
+    "Methane":            "CH₄",
+    "Ammonia":            "NH₃",
+    "Water Vapour":       "H₂O",
+    "Hydrofluoric Acid":  "HF",
+    "Neon":               "Ne",
+    "Sodium":             "Na",
+    "Nitrogen":           "N₂",
+    "Carbon Monoxide":    "CO",
+    "Hydrogen Cyanide":   "HCN",
+    "Ethane":             "C₂H₆",
+    "Hydrochloric Acid":  "HCl",
+    "Fluorine":           "F₂",
+    "Argon":              "Ar",
+    "Carbon Dioxide":     "CO₂",
+    "Formamide":          "CH₃NO",
+    "Formic Acid":        "CH₂O₂",
+    "Sulphur Dioxide":    "SO₂",
+    "Chlorine":           "Cl₂",
+    "Krypton":            "Kr",
+    "Sulphuric Acid":     "H₂SO₄",
+}
+
+# Each table maps a 2D+DM result to {A: gas_name, B: gas_name, C: gas_name}
+# where A=Exotic, B=Corrosive, C=Insidious.  Carbon Monoxide entries
+# (CO*) are replaced by _roll_single_gas() per the CO* footnote.
+
+# Boiling Atmosphere Gas Mix — HZCO ≤ -2.01 (453 K+)
+_GAS_MIX_BOILING_VH: dict = {
+    -2: {"A": "Silicates",       "B": "Silicates",       "C": "Metal Vapours"},
+    -1: {"A": "Sodium",          "B": "Sodium",          "C": "Silicates"},
+     0: {"A": "Krypton",         "B": "Krypton",         "C": "Sodium"},
+     1: {"A": "Argon",           "B": "Argon",           "C": "Sulphuric Acid"},
+     2: {"A": "Sulphur Dioxide", "B": "Sulphur Dioxide", "C": "Hydrochloric Acid"},
+     3: {"A": "Carbon Monoxide", "B": "Hydrogen Cyanide","C": "Chlorine"},
+     4: {"A": "Carbon Dioxide",  "B": "Formamide",       "C": "Fluorine"},
+     5: {"A": "Nitrogen",        "B": "Carbon Dioxide",  "C": "Formic Acid"},
+     6: {"A": "Carbon Dioxide",  "B": "Nitrogen",        "C": "Water Vapour"},
+     7: {"A": "Nitrogen",        "B": "Carbon Dioxide",  "C": "Nitrogen"},
+     8: {"A": "Water Vapour",    "B": "Sulphur Dioxide", "C": "Carbon Dioxide"},
+     9: {"A": "Sulphur Dioxide", "B": "Water Vapour",    "C": "Sulphur Dioxide"},
+    10: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Hydrogen Cyanide"},
+    11: {"A": "Methane",         "B": "Ammonia",         "C": "Ammonia"},
+    12: {"A": "Water Vapour",    "B": "Ammonia",         "C": "Hydrofluoric Acid"},
+    13: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+}
+
+# Boiling Atmosphere Gas Mix — HZCO -1.01 to -2.0 (353-453 K)
+_GAS_MIX_BOILING_H: dict = {
+     1: {"A": "Krypton",         "B": "Argon",           "C": "Hydrochloric Acid"},
+     2: {"A": "Argon",           "B": "Sulphur Dioxide", "C": "Chlorine"},
+     3: {"A": "Sulphur Dioxide", "B": "Hydrogen Cyanide","C": "Fluorine"},
+     4: {"A": "Ethane",          "B": "Ethane",          "C": "Formic Acid"},
+     5: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Water Vapour"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Dioxide"},
+     8: {"A": "Nitrogen",        "B": "Sulphur Dioxide", "C": "Sulphur Dioxide"},
+     9: {"A": "Water Vapour",    "B": "Water Vapour",    "C": "Hydrogen Cyanide"},
+    10: {"A": "Sulphur Dioxide", "B": "Nitrogen",        "C": "Ammonia"},
+    11: {"A": "Methane",         "B": "Ammonia",         "C": "Methane"},
+    12: {"A": "Neon",            "B": "Ammonia",         "C": "Hydrofluoric Acid"},
+    13: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+}
+
+# Hot Atmosphere Gas Mix (303-353 K)
+_GAS_MIX_HOT: dict = {
+     1: {"A": "Krypton",         "B": "Argon",           "C": "Hydrochloric Acid"},
+     2: {"A": "Argon",           "B": "Sulphur Dioxide", "C": "Chlorine"},
+     3: {"A": "Sulphur Dioxide", "B": "Hydrogen Cyanide","C": "Fluorine"},
+     4: {"A": "Ethane",          "B": "Ethane",          "C": "Sulphur Dioxide"},
+     5: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Monoxide"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Dioxide"},
+     8: {"A": "Nitrogen",        "B": "Sulphur Dioxide", "C": "Ethane"},
+     9: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Hydrogen Cyanide"},
+    10: {"A": "Sulphur Dioxide", "B": "Nitrogen",        "C": "Ammonia"},
+    11: {"A": "Methane",         "B": "Ammonia",         "C": "Methane"},
+    12: {"A": "Neon",            "B": "Ammonia",         "C": "Hydrofluoric Acid"},
+    13: {"A": "Methane",         "B": "Methane",         "C": "Helium"},
+}
+
+# Temperate Atmosphere Gas Mix (273-303 K)
+_GAS_MIX_TEMPERATE: dict = {
+     1: {"A": "Krypton",         "B": "Krypton",         "C": "Argon"},
+     2: {"A": "Argon",           "B": "Chlorine",        "C": "Chlorine"},
+     3: {"A": "Sulphur Dioxide", "B": "Argon",           "C": "Fluorine"},
+     4: {"A": "Nitrogen",        "B": "Sulphur Dioxide", "C": "Sulphur Dioxide"},
+     5: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Carbon Monoxide"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Dioxide"},
+     8: {"A": "Ethane",          "B": "Ethane",          "C": "Ethane"},
+     9: {"A": "Nitrogen",        "B": "Ammonia",         "C": "Ammonia"},
+    10: {"A": "Neon",            "B": "Ammonia",         "C": "Ammonia"},
+    11: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+    12: {"A": "Methane",         "B": "Helium",          "C": "Helium"},
+    13: {"A": "Helium",          "B": "Hydrogen",        "C": "Hydrogen"},
+}
+
+# Cold Atmosphere Gas Mix (223-273 K)
+_GAS_MIX_COLD: dict = {
+     1: {"A": "Krypton",         "B": "Krypton",         "C": "Argon"},
+     2: {"A": "Argon",           "B": "Chlorine",        "C": "Chlorine"},
+     3: {"A": "Ethane",          "B": "Argon",           "C": "Fluorine"},
+     4: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Ethane"},
+     5: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Carbon Monoxide"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Carbon Dioxide",  "B": "Carbon Dioxide",  "C": "Carbon Dioxide"},
+     8: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     9: {"A": "Ethane",          "B": "Ethane",          "C": "Ethane"},
+    10: {"A": "Methane",         "B": "Ammonia",         "C": "Ammonia"},
+    11: {"A": "Neon",            "B": "Methane",         "C": "Methane"},
+    12: {"A": "Methane",         "B": "Helium",          "C": "Helium"},
+    13: {"A": "Helium",          "B": "Hydrogen",        "C": "Hydrogen"},
+}
+
+# Frozen Atmosphere Gas Mix — HZCO +1.01 to +3.0 (123-223 K)
+_GAS_MIX_FROZEN_M: dict = {
+     1: {"A": "Krypton",         "B": "Krypton",         "C": "Krypton"},
+     2: {"A": "Argon",           "B": "Argon",           "C": "Argon"},
+     3: {"A": "Argon",           "B": "Argon",           "C": "Fluorine"},
+     4: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     5: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     6: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Carbon Monoxide"},
+     7: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     8: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+     9: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+    10: {"A": "Methane",         "B": "Neon",            "C": "Neon"},
+    11: {"A": "Neon",            "B": "Methane",         "C": "Helium"},
+    12: {"A": "Methane",         "B": "Helium",          "C": "Hydrogen"},
+    13: {"A": "Helium",          "B": "Hydrogen",        "C": "Hydrogen"},
+}
+
+# Frozen Atmosphere Gas Mix — HZCO +3.01+ (below 123 K)
+_GAS_MIX_FROZEN_D: dict = {
+     1: {"A": "Krypton",         "B": "Krypton",         "C": "Krypton"},
+     2: {"A": "Argon",           "B": "Argon",           "C": "Argon"},
+     3: {"A": "Argon",           "B": "Argon",           "C": "Fluorine"},
+     4: {"A": "Methane",         "B": "Methane",         "C": "Methane"},
+     5: {"A": "Carbon Monoxide", "B": "Carbon Monoxide", "C": "Carbon Monoxide"},
+     6: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     7: {"A": "Nitrogen",        "B": "Nitrogen",        "C": "Nitrogen"},
+     8: {"A": "Neon",            "B": "Neon",            "C": "Neon"},
+     9: {"A": "Helium",          "B": "Helium",          "C": "Helium"},
+    10: {"A": "Helium",          "B": "Helium",          "C": "Helium"},
+    11: {"A": "Hydrogen",        "B": "Hydrogen",        "C": "Hydrogen"},
+    12: {"A": "Hydrogen",        "B": "Hydrogen",        "C": "Hydrogen"},
+    13: {"A": "Hydrogen",        "B": "Hydrogen",        "C": "Hydrogen"},
+}
+
+# ---------------------------------------------------------------------------
+# Atmosphere taint tables (WBH pp.82-85)
+# ---------------------------------------------------------------------------
+
+# Atmosphere codes that always carry a taint (per UWP definition).
+_TAINTED_CODES = frozenset({2, 4, 7, 9})
+
+# Single-char profile codes that identify O2-driven subtypes.
+_O2_TAINT_CODES = frozenset({"L", "H"})
+
+# Subtype rolls that map to Biologic — rerolled per issue #28.
+_BIOLOGIC_SUBTYPE_ROLLS = frozenset({4, 9})
+
+# DM applied to the subtype 2D roll by atmosphere code (others: 0).
+_TAINT_SUBTYPE_DM = {4: -2, 9: 2}
+
+# 2D+DM → (subtype name, single-char profile code).
+# Entries 4 and 9 (Biologic) are absent — the roll function rerolls them.
+_TAINT_SUBTYPE_TABLE = {
+    2:  ("Low Oxygen",        "L"),
+    3:  ("Radioactivity",     "R"),
+    5:  ("Gas Mix",           "G"),
+    6:  ("Particulates",      "P"),
+    7:  ("Gas Mix",           "G"),
+    8:  ("Sulphur Compounds", "S"),
+    10: ("Particulates",      "P"),   # result 10: Particulates + roll again
+    11: ("Radioactivity",     "R"),
+    12: ("High Oxygen",       "H"),
+}
+
+# Severity code (1-9) → descriptive name (WBH p.83).
+_TAINT_SEVERITY_TABLE = {
+    1: "Trivial irritant",
+    2: "Surmountable irritant",
+    3: "Minor irritant",
+    4: "Major irritant",
+    5: "Serious irritant",
+    6: "Hazardous irritant",
+    7: "Long term lethal: DM-2 to aging rolls",
+    8: "Inevitably lethal: death within 1D days",
+    9: "Rapidly lethal: death within 1D minutes",
+}
+
+# Persistence code (2-9) → descriptive name (WBH p.83).
+_TAINT_PERSISTENCE_TABLE = {
+    2: "Occasional and brief",
+    3: "Occasional and lingering",
+    4: "Irregular",
+    5: "Fluctuating",
+    6: "Varying: 2D daily on 6-, reduce severity 1D h",
+    7: "Varying: 2D daily on 4-, reduce severity 1D h",
+    8: "Varying: 2D daily on 2, reduce severity 1D h",
+    9: "Constant",
+}
+
+
+def _taint_severity_code(raw: int) -> int:
+    """Map a raw 2D+DM roll to a severity code 1–9 (WBH p.83)."""
+    return max(1, min(9, raw - 3))
+
+
+def _taint_persistence_code(raw: int) -> int:
+    """Map a raw 2D+DM roll to a persistence code 2–9 (WBH p.83)."""
+    return max(2, min(9, raw))
+
+
+def _roll_single_taint(atm_code: int, ppo: Optional[float] = None) -> tuple:
+    """Roll one taint for a tainted atmosphere (WBH pp.82-83).
+
+    Returns ``(Taint, needs_second_roll)``.  ``needs_second_roll`` is
+    ``True`` only when the subtype roll is 10 (Particulates and roll
+    again).  Biologic results (subtype rolls 4 and 9) are rerolled
+    until a non-Biologic subtype is obtained (issue #28).
+
+    ``ppo`` constrains H/L subtypes to physically valid ranges (issue #55):
+    High Oxygen (H) is only accepted when ppo > 0.5 bar; Low Oxygen (L)
+    is only accepted when ppo < 0.1 bar.  When ``ppo`` is ``None`` the
+    constraint is not applied (backwards-compatible default).
+
+    Severity and persistence DMs:
+    - L/H subtypes: +4 to severity, +4 to persistence (or +6 if
+      severity code ≥ 8).
+    """
+    dm = _TAINT_SUBTYPE_DM.get(atm_code, 0)
+    while True:
+        raw_sub = max(2, min(12, roll(2) + dm))
+        if raw_sub in _BIOLOGIC_SUBTYPE_ROLLS:
+            continue
+        subtype_name, subtype_code = _TAINT_SUBTYPE_TABLE[raw_sub]
+        if subtype_code == "H" and ppo is not None and ppo <= 0.5:
+            continue
+        if subtype_code == "L" and ppo is not None and ppo >= 0.1:
+            continue
+        break
+    needs_second = raw_sub == 10
+
+    sev_dm = 4 if subtype_code in _O2_TAINT_CODES else 0
+    sev_code = _taint_severity_code(roll(2) + sev_dm)
+
+    per_dm = (6 if sev_code >= 8 else 4) if subtype_code in _O2_TAINT_CODES else 0
+    per_code = _taint_persistence_code(roll(2) + per_dm)
+
+    return Taint(
+        subtype=subtype_name,
+        subtype_code=subtype_code,
+        severity_code=sev_code,
+        severity=_TAINT_SEVERITY_TABLE[sev_code],
+        persistence_code=per_code,
+        persistence=_TAINT_PERSISTENCE_TABLE[per_code],
+    ), needs_second
+
+
+@dataclass
+class Taint:
+    """One atmosphere taint (WBH pp.82-85).
+
+    Stores both the human-readable names and the compact profile codes
+    used in the WBH p.82 atmosphere profile string.
+    """
+    subtype:          str   # descriptive name, e.g. "Particulates"
+    subtype_code:     str   # single-char profile code, e.g. "P"
+    severity_code:    int   # 1–9
+    severity:         str   # e.g. "Major irritant"
+    persistence_code: int   # 2–9
+    persistence:      str   # e.g. "Irregular"
+
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict.  ``subtype_code`` is omitted
+        as it is derivable from ``subtype``."""
+        return {
+            "subtype":          self.subtype,
+            "severity_code":    self.severity_code,
+            "severity":         self.severity,
+            "persistence_code": self.persistence_code,
+            "persistence":      self.persistence,
+        }
+
+
+@dataclass
+class InsidiousHazard:
+    """One hazard present in an insidious atmosphere (WBH p.87).
+
+    ``gases`` is populated only for Gas Mix hazards; it lists randomly-
+    selected hazardous atmospheric components from the Atmospheric Gas
+    Composition table (WBH pp.88-89).
+    """
+    hazard_code: str
+    hazard:      str
+    gases:       list = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict.  ``gases`` is omitted when empty."""
+        d: dict = {"hazard_code": self.hazard_code, "hazard": self.hazard}
+        if self.gases:
+            d["gases"] = self.gases
+        return d
+
+
+def _roll_exotic_subtype(
+    size: int,
+    hz_deviation: Optional[float],
+) -> tuple:
+    """Roll and look up an Exotic Atmosphere subtype (WBH p.85).
+
+    Returns ``(subtype_code, subtype_name, pressure_bar_or_None)``.
+    DMs: Size 2–4 = DM-2; Orbit < HZCO-1 (hz_deviation < -1.0) = DM-2;
+    Orbit > HZCO+2 (hz_deviation > +2.0) = DM+2.
+    """
+    dm = 0
+    if 2 <= size <= 4:
+        dm -= 2
+    if hz_deviation is not None:
+        if hz_deviation < -1.0:
+            dm -= 2
+        elif hz_deviation > 2.0:
+            dm += 2
+    raw = max(2, min(14, _dice(2) + dm))
+    s_code, s_name, min_bar, span_bar = _EXOTIC_SUBTYPE_TABLE[raw]
+    return s_code, s_name, _subtype_pressure_bar(min_bar, span_bar)
+
+
+def _roll_ci_subtype(
+    atm_code: int,
+    size: int,
+    hz_deviation: Optional[float],
+) -> tuple:
+    """Roll and look up a Corrosive/Insidious Atmosphere subtype (WBH p.86).
+
+    Returns ``(subtype_code, subtype_name, pressure_bar_or_None)``.
+    DMs: Size 2–4 = DM-3; Size 8+ = DM+2; Orbit < HZCO-1 = DM+4;
+    Orbit > HZCO+2 = DM-2; Insidious (code 12) = DM+2.
+    """
+    dm = 0
+    if 2 <= size <= 4:
+        dm -= 3
+    elif size >= 8:
+        dm += 2
+    if hz_deviation is not None:
+        if hz_deviation < -1.0:
+            dm += 4
+        elif hz_deviation > 2.0:
+            dm -= 2
+    if atm_code == 12:
+        dm += 2
+    raw = max(1, min(14, _dice(2) + dm))
+    s_code, s_name, min_bar, span_bar = _CI_SUBTYPE_TABLE[raw]
+    return s_code, s_name, _subtype_pressure_bar(min_bar, span_bar)
+
+
+def _roll_insidious_hazard(subtype_code: str) -> list:
+    """Roll the Insidious Atmosphere Hazard table (WBH p.87).
+
+    Returns a list of ``InsidiousHazard`` objects.  Subtype D or E
+    automatically adds a Temperature hazard before the table roll.
+    Subtype C/D/E applies DM+2 to the hazard roll.  Gas Mix hazards
+    randomly select 1–3 components from ``_HAZARDOUS_GASES``.
+    """
+    hazards: list = []
+    dm = 2 if subtype_code in ("C", "D", "E") else 0
+    if subtype_code in ("D", "E"):
+        hazards.append(InsidiousHazard(hazard_code="T", hazard="Temperature"))
+    raw = max(4, min(12, _dice(2) + dm))
+    h_code, h_name = _INSIDIOUS_HAZARD_TABLE[raw]
+    gases: list = []
+    if h_code == "G":
+        n_roll = _dice(1)
+        n = 1 if n_roll <= 2 else (2 if n_roll <= 4 else 3)
+        gases = random.sample(_HAZARDOUS_GASES, n)
+    hazards.append(InsidiousHazard(hazard_code=h_code, hazard=h_name, gases=gases))
+    return hazards
+
+
+@dataclass
+class GasMixComponent:
+    """One gas component in an atmosphere's gas mix (WBH pp.95+).
+
+    ``percentage`` is the whole-number percentage of this gas in the
+    atmosphere (e.g. 75 for 75%).  It is omitted when not determined.
+    """
+    gas_name:   str
+    gas_code:   str
+    percentage: Optional[int] = None
+
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict."""
+        d: dict = {"gas_name": self.gas_name, "gas_code": self.gas_code}
+        if self.percentage is not None:
+            d["percentage"] = self.percentage
+        return d
+
+
+@dataclass
+class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
+    """Quantitative atmosphere characteristics (WBH pp. 78-95+).
+
+    Supplements the UWP single-digit atmosphere code with pressure,
+    oxygen partial pressure, scale height, taint detail, and (for
+    exotic/corrosive/insidious codes) the rolled subtype, hazards,
+    and gas mix components.
+    Each field is optional because the relevant rule does not apply
+    to every code.
+    """
+    pressure_bar:            Optional[float] = None
+    oxygen_partial_pressure: Optional[float] = None
+    scale_height_km:         Optional[float] = None
+    taints:                  list = field(default_factory=list)
+    subtype_code:            Optional[str]   = None
+    subtype_name:            Optional[str]   = None
+    hazards:                 list = field(default_factory=list)
+    gas_mix:                 list = field(default_factory=list)
+    min_safe_altitude_km:    Optional[float] = None
+    no_safe_altitude:        bool = field(default=False)
+    unusual_subtypes:        list = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        """Return the detail as a JSON-friendly dict.
+
+        Numeric fields are omitted when ``None``; list fields are omitted
+        when empty.  Both conventions keep the JSON compact for worlds
+        where the rule does not apply.
+        """
+        out: dict = {}
+        if self.subtype_code is not None:
+            out["subtype_code"] = self.subtype_code
+        if self.subtype_name is not None:
+            out["subtype_name"] = self.subtype_name
+        if self.pressure_bar is not None:
+            out["pressure_bar"] = self.pressure_bar
+        if self.oxygen_partial_pressure is not None:
+            out["oxygen_partial_pressure_bar"] = self.oxygen_partial_pressure
+        if self.scale_height_km is not None:
+            out["scale_height_km"] = self.scale_height_km
+        if self.taints:
+            out["taints"] = [t.to_dict() for t in self.taints]
+        if self.hazards:
+            out["hazards"] = [h.to_dict() for h in self.hazards]
+        if self.gas_mix:
+            out["gas_mix"] = [c.to_dict() for c in self.gas_mix]
+        if self.min_safe_altitude_km is not None:
+            out["min_safe_altitude_km"] = self.min_safe_altitude_km
+        if self.no_safe_altitude:
+            out["no_safe_altitude"] = True
+        if self.unusual_subtypes:
+            out["unusual_subtypes"] = [s.to_dict() for s in self.unusual_subtypes]
+        return out
+
+
+def _select_gas_mix_table(  # pylint: disable=too-many-return-statements
+    temperature: str,
+    hz_deviation: Optional[float],
+) -> tuple:
+    """Select the gas mix table and generation parameters for an atmosphere.
+
+    Returns ``(table, min_result, max_result, size_lo_dm, extra_dm, co_sub)``
+    where ``size_lo_dm`` is the DM for size 1–7 (always DM+1 for size A+),
+    ``extra_dm`` is a fixed additional DM (e.g. estimated temperature
+    sub-range), and ``co_sub`` is the CO* substitute gas name when the
+    world has water hydrographics.
+
+    Boiling very-hot (~600 K estimated) falls below the 700 K threshold so
+    no extra temperature DM is applied.  Frozen deep (~80 K estimated) is
+    in the 70–100 K band so DM+3 is applied as a fixed estimate.  A GitHub
+    issue tracks refining these DMs once mean temperature in K is available.
+    """
+    if temperature == "Boiling" and hz_deviation is not None and hz_deviation <= -2.01:
+        return (_GAS_MIX_BOILING_VH, -2, 13, -1, 0, "Carbon Dioxide")
+    if temperature == "Boiling":
+        return (_GAS_MIX_BOILING_H, 1, 13, -1, 0, "Carbon Dioxide")
+    if temperature == "Hot":
+        return (_GAS_MIX_HOT, 1, 13, -1, 0, "Carbon Dioxide")
+    if temperature == "Cold":
+        return (_GAS_MIX_COLD, 1, 13, -1, 0, "Carbon Dioxide")
+    if temperature == "Frozen" and hz_deviation is not None and hz_deviation >= 3.01:
+        return (_GAS_MIX_FROZEN_D, 1, 13, -3, 3, "Nitrogen")
+    if temperature == "Frozen":
+        return (_GAS_MIX_FROZEN_M, 1, 13, -1, 0, "Nitrogen")
+    return (_GAS_MIX_TEMPERATE, 1, 13, -1, 0, "Carbon Dioxide")
+
+
+def _roll_single_gas(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    table: dict,
+    col: str,
+    min_result: int,
+    max_result: int,
+    size: int,
+    size_lo_dm: int,
+    extra_dm: int,
+    hydro: int,
+    co_sub: str,
+) -> tuple:
+    """Roll on one column of a gas mix table and return ``(gas_name, gas_code)``.
+
+    Applies size DMs (``size_lo_dm`` for size 1–7, DM+1 for size A+) and
+    ``extra_dm``, then clamps to ``[min_result, max_result]``.  Carbon
+    Monoxide results are replaced with ``co_sub`` when ``hydro > 0``
+    (WBH CO* footnote).
+    """
+    dm = extra_dm
+    if 1 <= size <= 7:
+        dm += size_lo_dm
+    elif size >= 10:
+        dm += 1
+    result = max(min_result, min(max_result, _dice(2) + dm))
+    gas_name = table[result][col]
+    if gas_name == "Carbon Monoxide" and hydro > 0:
+        gas_name = co_sub
+    return gas_name, _GAS_CODES.get(gas_name, gas_name)
+
+
+def _roll_gas_mix(  # pylint: disable=too-many-locals
+    atm_code: int,
+    size: int,
+    temperature: str,
+    hz_deviation: Optional[float],
+    hydro: int,
+) -> list:
+    """Roll primary and secondary gas components for an A/B/C atmosphere.
+
+    Returns a list of up to two ``GasMixComponent`` entries.  Primary
+    percentage is ``(_dice(1) + 4) × 10``, capped at 100.  Secondary
+    percentage is ``(_dice(1) + 4) × 10`` of the remainder.  When both
+    rolls yield the same gas the percentages are summed into one entry.
+    """
+    col = {10: "A", 11: "B", 12: "C"}[atm_code]
+    table, min_r, max_r, size_lo_dm, extra_dm, co_sub = _select_gas_mix_table(
+        temperature, hz_deviation
+    )
+    prim_name, prim_code = _roll_single_gas(
+        table, col, min_r, max_r, size, size_lo_dm, extra_dm, hydro, co_sub
+    )
+    prim_pct = min(100, (_dice(1) + 4) * 10)
+    sec_name, sec_code = _roll_single_gas(
+        table, col, min_r, max_r, size, size_lo_dm, extra_dm, hydro, co_sub
+    )
+    sec_pct = (_dice(1) + 4) * 10 * (100 - prim_pct) // 100
+    if prim_name == sec_name:
+        return [GasMixComponent(
+            gas_name=prim_name, gas_code=prim_code,
+            percentage=min(100, prim_pct + sec_pct),
+        )]
+    components: list = [GasMixComponent(
+        gas_name=prim_name, gas_code=prim_code, percentage=prim_pct,
+    )]
+    if sec_pct > 0:
+        components.append(GasMixComponent(
+            gas_name=sec_name, gas_code=sec_code, percentage=sec_pct,
+        ))
+    return components
+
+
+def _compute_very_dense_altitude(
+    pressure_bar: float, ppo: float, scale_height_km: float,
+) -> tuple:
+    """Return ``(min_safe_altitude_km, no_safe_altitude)`` for a Very Dense (D) atmosphere.
+
+    Habitable locations require N₂ < 2.0 bar AND O₂ < 0.5 bar.
+    Bad ratio = max(ppo / 0.5, n2 / 2.0).  Min safe altitude = ln(bad_ratio) × H.
+    If O₂ at that altitude < 0.1 bar no breathable level exists.
+    """
+    n2 = pressure_bar - ppo
+    bad_ratio = max(ppo / 0.5, n2 / 2.0)
+    if bad_ratio <= 1.0:
+        return 0.0, False
+    min_alt = math.log(bad_ratio) * scale_height_km
+    if ppo / bad_ratio < 0.1:
+        return None, True
+    return round(min_alt, 1), False
+
+
+def _compute_low_altitude(
+    pressure_bar: float, ppo: float, scale_height_km: float,
+) -> tuple:
+    """Return ``(safe_depth_km as negative float, no_safe_altitude)`` for a Low (E) atmosphere.
+
+    Surface O₂ < 0.1 bar; must descend into depressions.
+    Low bad ratio = 0.1 / ppo.  Safe depth = ln(low_bad_ratio) × H, stored negative.
+    If N₂ at that depth > 2.0 bar no breathable level exists.
+    """
+    if ppo <= 0:
+        return None, True
+    low_bad_ratio = 0.1 / ppo
+    safe_depth = math.log(low_bad_ratio) * scale_height_km
+    n2_at_depth = (pressure_bar - ppo) * low_bad_ratio
+    if n2_at_depth > 2.0:
+        return None, True
+    return -round(safe_depth, 1), False
+
+
+def generate_atmosphere_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-positional-arguments,too-many-arguments
+    code: int,
+    size: int,
+    system_age_gyr: Optional[float] = None,
+    temperature: Optional[str] = None,  # pylint: disable=unused-argument
+    hz_deviation: Optional[float] = None,
+    exotic_key_override: Optional[int] = None,
+) -> AtmosphereDetail:
+    """Generate quantitative atmosphere characteristics for a world.
+
+    Combines the WBH pp.79-93 helpers into a single ``AtmosphereDetail``.
+    Safe to call for any atmosphere code: fields that do not apply to
+    the given code are left as ``None``.
+
+    ``hz_deviation`` drives the orbit-position DMs on the exotic and
+    corrosive/insidious subtype tables.  Pass ``orbit.hz_deviation`` from
+    the orbit slot; standalone worlds with no orbit pass ``None``.
+    ``temperature`` is reserved for gas composition (Phase 4).
+
+    ``exotic_key_override`` bypasses the normal exotic subtype roll when
+    set; the value is used as a direct key into ``_EXOTIC_SUBTYPE_TABLE``.
+    Used by NHZ atmosphere generation to pass a pre-determined subtype.
+    """
+    if code in (16, 17):
+        return AtmosphereDetail()
+
+    subtype_code: Optional[str] = None
+    subtype_name: Optional[str] = None
+    hazards: list = []
+
+    if code in _EXOTIC_CODES:
+        if exotic_key_override is not None:
+            s_code, s_name, min_bar, span_bar = _EXOTIC_SUBTYPE_TABLE[exotic_key_override]
+            subtype_code, subtype_name = s_code, s_name
+            pressure = _subtype_pressure_bar(min_bar, span_bar)
+        else:
+            subtype_code, subtype_name, pressure = _roll_exotic_subtype(
+                size, hz_deviation
+            )
+    elif code in _CI_CODES:
+        subtype_code, subtype_name, pressure = _roll_ci_subtype(
+            code, size, hz_deviation
+        )
+        if code == 12 and subtype_code is not None:
+            hazards = _roll_insidious_hazard(subtype_code)
+    else:
+        pressure = _atmosphere_pressure_bar(code)
+
+    ppo = _oxygen_partial_pressure(code, pressure, system_age_gyr)
+
+    taints: list = []
+    if code in _TAINTED_CODES:
+        taint, needs_second = _roll_single_taint(code, ppo)
+        taints.append(taint)
+        if needs_second:
+            second, _ = _roll_single_taint(code, ppo)
+            taints.append(second)
+    if code in (13, 14) and random.randint(1, 6) >= 4:
+        taint, needs_second = _roll_single_taint(code, ppo)
+        taints.append(taint)
+        if needs_second:
+            second, _ = _roll_single_taint(code, ppo)
+            taints.append(second)
+
+    scale = _scale_height_km(size, code)
+
+    min_safe_alt: Optional[float] = None
+    no_safe_alt: bool = False
+    if code == 13 and pressure is not None and ppo is not None and scale is not None:
+        min_safe_alt, no_safe_alt = _compute_very_dense_altitude(pressure, ppo, scale)
+    elif code == 14 and pressure is not None and ppo is not None and scale is not None:
+        min_safe_alt, no_safe_alt = _compute_low_altitude(pressure, ppo, scale)
+
+    return AtmosphereDetail(
+        pressure_bar=pressure,
+        oxygen_partial_pressure=ppo,
+        scale_height_km=scale,
+        taints=taints,
+        subtype_code=subtype_code,
+        subtype_name=subtype_name,
+        hazards=hazards,
+        min_safe_altitude_km=min_safe_alt,
+        no_safe_altitude=no_safe_alt,
+    )
+
+
+def generate_gas_mix(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    detail: AtmosphereDetail,
+    atm_code: int,
+    size: int,
+    temperature: str,
+    hz_deviation: Optional[float],
+    hydro: int,
+) -> None:
+    """Populate ``detail.gas_mix`` for Exotic/Corrosive/Insidious atmospheres.
+
+    No-op for codes outside {10, 11, 12}.  Call this after
+    ``generate_hydrographics()`` so the CO* substitution rule can check
+    whether the world has water hydrographics.
+    """
+    if atm_code not in _EXOTIC_CODES | _CI_CODES:
+        return
+    detail.gas_mix = _roll_gas_mix(atm_code, size, temperature, hz_deviation, hydro)
+
+
+# ---------------------------------------------------------------------------
+# Unusual atmosphere subtype generation (WBH pp.92-93, code 15 / F)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class UnusualSubtype:
+    """One subtype of an Unusual (F) atmosphere (WBH pp.92-93)."""
+    subtype_code: str   # "1"–"9", "A", "F"; "" only for the Combination sentinel
+    subtype_name: str
+    description:  str
+
+    def to_dict(self) -> dict:
+        """Return a JSON-friendly dict."""
+        return {
+            "subtype_code": self.subtype_code,
+            "subtype_name": self.subtype_name,
+            "description":  self.description,
+        }
+
+
+# D26 table (roll random.randint(1,2)*10 + random.randint(1,6) → 11–26).
+# Entries: (subtype_code, subtype_name, atmospheric_conditions_description)
+_UNUSUAL_SUBTYPE_TABLE: dict = {
+    11: ("1", "Dense, Extreme",
+         "Density between 10 and 100 bar, possibly with free oxygen"),
+    12: ("2", "Dense, Very Extreme",
+         "Density between 100 and 1,000 bar, possibly with free oxygen"),
+    13: ("3", "Dense, Crushing",
+         "Density above 1,000 bar; surface may be unreachable or indistinct"),
+    14: ("4", "Ellipsoid",
+         "Tidal forces or fast rotation elongate one axis; "
+         "pressure may range from near vacuum to very dense"),
+    15: ("5", "High Radiation",
+         "Internal or external factors bombard the world with constant high radiation"),
+    16: ("6", "Layered",
+         "Different altitudes have different gas compositions"),
+    21: ("7", "Panthalassic",
+         "A world ocean hundreds of km deep; pressure at least standard, often very dense"),
+    22: ("8", "Steam",
+         "Water vapor merges with oceans; very dense or above pressures"),
+    23: ("9", "Variable Pressure",
+         "Tides or storms cause large variations in atmospheric pressure"),
+    24: ("A", "Variable Composition",
+         "Composition varies with seasons, lifeform lifecycles, or other factors"),
+    25: ("",  "Combination",          "Roll two compatible types"),
+    26: ("F", "Other",                "Something else entirely"),
+}
+
+
+def _d26() -> int:
+    """Roll D26 (1D2 × 10 + 1D6), giving results 11–26."""
+    return random.randint(1, 2) * 10 + random.randint(1, 6)
+
+
+def _roll_unusual_subtype(
+    size: int,
+    hydro: int,
+    allow_combination: bool = True,
+) -> UnusualSubtype:
+    """Roll one Unusual atmosphere subtype, rerolling if prerequisites not met.
+
+    Prerequisites (WBH pp.92-93):
+    - Layered (D26=16):      SIZE_GRAVITY_G[size] > 1.2  →  size ≥ 9
+    - Panthalassic (D26=21): hydro == 10
+    - Steam (D26=22):        hydro >= 5
+    Pressure prerequisites for Panthalassic/Steam are not checked here
+    because code-15 worlds have no defined pressure span.
+    """
+    while True:
+        result = _d26()
+        code, name, desc = _UNUSUAL_SUBTYPE_TABLE[result]
+        if code == "" and not allow_combination:
+            continue
+        if result == 16 and SIZE_GRAVITY_G.get(size, 0.0) <= 1.2:
+            continue
+        if result == 21 and hydro != 10:
+            continue
+        if result == 22 and hydro < 5:
+            continue
+        return UnusualSubtype(subtype_code=code, subtype_name=name, description=desc)
+
+
+def generate_unusual_subtype(
+    detail: AtmosphereDetail,
+    atm_code: int,
+    size: int,
+    hydro: int,
+) -> None:
+    """Populate ``detail.unusual_subtypes`` for Unusual (F) atmospheres.
+
+    No-op for codes other than 15.  Call this after
+    ``generate_hydrographics()`` so Panthalassic/Steam prerequisites
+    can be evaluated against actual hydro.
+    """
+    if atm_code != 15:
+        return
+    first = _roll_unusual_subtype(size, hydro, allow_combination=True)
+    if first.subtype_code == "":
+        sub1 = _roll_unusual_subtype(size, hydro, allow_combination=False)
+        sub2 = _roll_unusual_subtype(size, hydro, allow_combination=False)
+        detail.unusual_subtypes = [sub1, sub2]
+    else:
+        detail.unusual_subtypes = [first]
+
+
+def format_atmosphere_profile(
+    code: int, detail: Optional[AtmosphereDetail],
+) -> str:
+    """Return the WBH p.82/p.88/p.93 atmosphere profile string.
+
+    Format is ``A-bar-ppo[-T.S.P...][:XX-##:YY-##]`` where A is the eHex
+    atmosphere code, ``bar`` is the total pressure, ``ppo`` is the oxygen
+    partial pressure, each ``T.S.P`` triplet encodes a taint (subtype code,
+    severity code, persistence code), and ``:XX-##`` entries are gas-mix
+    components (code and two-digit percentage).  Any field is dropped when
+    not applicable.  For Unusual (F, code 15) the format is ``F-S#[.#]``
+    per WBH p.93.  Examples::
+
+        format_atmosphere_profile(6, detail)   # "6-1.013-0.212"
+        format_atmosphere_profile(7, detail)   # "7-1.148-0.138-P.7.9"
+        format_atmosphere_profile(0, None)     # "0"
+        format_atmosphere_profile(10, detail)  # "A-St4-0.55:N₂-75:CO₂-20"
+    """
+    if detail is None:
+        return to_hex(code)
+    if code in (16, 17):
+        return to_hex(code)
+    if code == 15:
+        if detail.unusual_subtypes:
+            codes = ".".join(
+                s.subtype_code for s in detail.unusual_subtypes if s.subtype_code
+            )
+            return f"F-S{codes}"
+        return "F"
+    parts = [to_hex(code)]
+    if detail.pressure_bar is not None:
+        parts.append(f"{detail.pressure_bar:g}")
+    if detail.oxygen_partial_pressure is not None:
+        parts.append(f"{detail.oxygen_partial_pressure:g}")
+    for taint in detail.taints:
+        parts.append(f"{taint.subtype_code}.{taint.severity_code}.{taint.persistence_code}")
+    base = "-".join(parts)
+    if detail.gas_mix:
+        gas_tokens = "".join(
+            f":{c.gas_code}-{c.percentage:02d}" if c.percentage is not None
+            else f":{c.gas_code}"
+            for c in detail.gas_mix
+        )
+        return base + gas_tokens
+    return base
+
+
+# ---------------------------------------------------------------------------
 # World dataclass
 # ---------------------------------------------------------------------------
 
@@ -270,8 +1452,10 @@ class World:  # pylint: disable=too-many-instance-attributes
     name:           str   = "Unknown"
     size:           int   = 0
     atmosphere:     int   = 0
-    temperature:    str   = "Temperate"
-    hydrographics:  int   = 0
+    atmosphere_detail:    Optional[AtmosphereDetail]    = None
+    temperature:          str   = "Temperate"
+    hydrographics:        int   = 0
+    hydrographic_detail:  Optional[HydrographicDetail]  = None
     population:     int   = 0
     government:     int   = 0
     law_level:      int   = 0
@@ -285,7 +1469,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     trade_codes:    List[str] = field(default_factory=list)
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
-    physical:       Optional["WorldPhysical"] = field(default=None, init=False)
+    size_detail:    Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -304,8 +1488,30 @@ class World:  # pylint: disable=too-many-instance-attributes
         )
 
     # ------------------------------------------------------------------
-    # JSON output
+    # JSON output helpers
     # ------------------------------------------------------------------
+    def _atmosphere_dict(self) -> dict:
+        """Return the atmosphere block for ``to_dict()``.
+
+        Always includes ``code``, ``name`` and ``survival_gear``.  When
+        an ``AtmosphereDetail`` is attached, its non-None fields are
+        nested under ``detail`` and a derived WBH profile string is
+        added under ``profile``.
+        """
+        block: dict = {
+            "code": self.atmosphere,
+            "name": ATMOSPHERE_NAMES.get(self.atmosphere, "Unknown"),
+            "survival_gear": ATMOSPHERE_GEAR.get(self.atmosphere, "Unknown"),
+        }
+        if self.atmosphere_detail is not None:
+            detail = self.atmosphere_detail.to_dict()
+            if detail:
+                block["detail"] = detail
+            block["profile"] = format_atmosphere_profile(
+                self.atmosphere, self.atmosphere_detail
+            )
+        return block
+
     def to_dict(self) -> dict:
         """Return all world data as a plain Python dict.
 
@@ -335,17 +1541,15 @@ class World:  # pylint: disable=too-many-instance-attributes
                     8: "1.00G", 9: "1.25G", 10: "1.40G",
                 }.get(self.size, "Unknown"),
             },
-            "atmosphere": {
-                "code": self.atmosphere,
-                "name": ATMOSPHERE_NAMES.get(self.atmosphere, "Unknown"),
-                "survival_gear": ATMOSPHERE_GEAR.get(self.atmosphere, "Unknown"),
-            },
+            "atmosphere": self._atmosphere_dict(),
             "temperature": self.temperature,
             "hydrographics": {
                 "code": self.hydrographics,
                 "description": HYDROGRAPHIC_NAMES.get(
                     self.hydrographics, "Unknown"
                 ),
+                **({"detail": self.hydrographic_detail.to_dict()}
+                   if self.hydrographic_detail is not None else {}),
             },
             "population": {
                 "code": self.population,
@@ -376,7 +1580,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             "trade_codes": self.trade_codes,
             "travel_zone": self.travel_zone,
             "notes": self.notes,
-            **({"physical": self.physical.to_dict()} if self.physical else {}),
+            **({"size_detail": self.size_detail.to_dict()} if self.size_detail else {}),
         }
 
     def to_json(self, indent: int = 2) -> str:
@@ -475,328 +1679,25 @@ class World:  # pylint: disable=too-many-instance-attributes
             return "era-avgstellar"
         return "era-highstellar"
 
-    def to_html(self) -> str:  # pylint: disable=too-many-locals
+    def to_html(self) -> str:
         """Return a self-contained HTML card representing this world.
 
-        The output matches the inline display widget shown in Claude
-        conversation responses and can be embedded in any HTML page,
-        saved as a standalone .html file, or served directly from the
-        Azure Functions API.
+        The output can be embedded in any HTML page, saved as a standalone
+        .html file, or served directly from the Azure Functions API.
 
-        Tech Level era labels use the rulebook-correct era names
-        (Traveller 2022 Core Rulebook pp. 6-7):
-            TL 0-3  = Primitive,  TL 4-6  = Industrial,
-            TL 7-9  = Pre-Stellar, TL 10-11 = Early Stellar,
-            TL 12-14 = Average Stellar, TL 15+ = High Stellar
+        Tech Level era labels (Traveller 2022 Core Rulebook pp. 6-7):
+            TL 0-3 = Primitive, TL 4-6 = Industrial, TL 7-9 = Pre-Stellar,
+            TL 10-11 = Early Stellar, TL 12-14 = Average Stellar, TL 15+ = High Stellar
 
         Returns:
-            A UTF-8 HTML string. No external resources are required —
-            all CSS is inlined in a <style> block.
+            A UTF-8 HTML string with all CSS inlined; no external resources.
         """
-        d = self.to_dict()
-
-        # --- helper lambdas for HTML escaping and badge rendering --------
-        def esc(s: str) -> str:
-            """Minimal HTML-escape for inline text values."""
-            return (str(s)
-                    .replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                    .replace('"', "&quot;"))
-
-        def row(label: str, value: str, danger: bool = False) -> str:
-            """Render one label/value detail row."""
-            val_style = (
-                'style="font-size:13px;font-weight:500;text-align:right;'
-                'color:var(--color-text-danger,#c0392b)"'
-                if danger
-                else 'style="font-size:13px;font-weight:500;text-align:right"'
-            )
-            return (
-                f'<div class="detail-row">'
-                f'<span class="row-label">{esc(label)}</span>'
-                f'<span {val_style}>{esc(value)}</span>'
-                f'</div>'
-            )
-
-        def badge(text: str, css_class: str) -> str:
-            return f'<span class="badge {esc(css_class)}">{esc(text)}</span>'
-
-        # --- travel zone badge -------------------------------------------
-        zone_class = {
-            "Green": "zone-green",
-            "Amber": "zone-amber",
-            "Red":   "zone-red",
-        }.get(self.travel_zone, "zone-green")
-        zone_badge = badge(f"{self.travel_zone} zone", zone_class)
-
-        # --- trade code badges -------------------------------------------
-        trade_code_full = {
-            "Ag": "Ag — Agricultural",   "As": "As — Asteroid",
-            "Ba": "Ba — Barren",         "De": "De — Desert",
-            "Fl": "Fl — Fluid Oceans",   "Ga": "Ga — Garden",
-            "Hi": "Hi — High Population","Ht": "Ht — High Tech",
-            "Ic": "Ic — Ice-Capped",     "In": "In — Industrial",
-            "Lo": "Lo — Low Population", "Lt": "Lt — Low Tech",
-            "Na": "Na — Non-Agricultural","Ni": "Ni — Non-Industrial",
-            "Po": "Po — Poor",           "Ri": "Ri — Rich",
-            "Va": "Va — Vacuum",         "Wa": "Wa — Waterworld",
-        }
-        trade_badges = "".join(
-            badge(trade_code_full.get(tc, tc), "trade")
-            for tc in self.trade_codes
-        ) or '<span style="font-size:13px;color:var(--color-text-secondary)">None</span>'
-
-        # --- bases string ------------------------------------------------
-        base_full = {
-            "N": "N (Naval)", "S": "S (Scout)", "M": "M (Military)",
-            "H": "H (Highport)", "C": "C (Corsair)",
-        }
-        bases_str = "  ".join(base_full.get(b, b) for b in self.bases) or "None"
-
-        # --- TL era -------------------------------------------------------
-        tl_era     = self._tl_era(self.tech_level)
-        tl_era_css = self._tl_era_css(self.tech_level)
-
-        # --- notes HTML ---------------------------------------------------
-        if self.notes:
-            notes_items = "".join(
-                f'<li style="margin:4px 0;font-size:13px;'
-                f'color:var(--color-text-secondary)">{esc(n)}</li>'
-                for n in self.notes
-            )
-            notes_html = (
-                f'<div class="inner-card" style="margin-top:12px">'
-                f'<p class="inner-label">Notes</p>'
-                f'<ul style="margin:4px 0 0;padding-left:20px">'
-                f'{notes_items}</ul></div>'
-            )
-        else:
-            notes_html = ""
-
-        # --- survival gear warning (only shown when gear is required) ----
-        gear = d["atmosphere"]["survival_gear"]
-        gear_danger = gear not in ("None", "Varies")
-        survival_row = row("Survival gear", gear, danger=gear_danger)
-
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(self.name)} — {esc(self.uwp())}</title>
-<style>
-  *, *::before, *::after {{ box-sizing: border-box; }}
-  :root {{
-    --color-bg-primary:   #ffffff;
-    --color-bg-secondary: #f5f5f3;
-    --color-bg-tertiary:  #eeede8;
-    --color-text-primary: #1a1a19;
-    --color-text-secondary: #6b6a65;
-    --color-text-danger:  #c0392b;
-    --color-border:       rgba(0,0,0,0.12);
-    --radius-md: 8px;
-    --radius-lg: 12px;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{
-      --color-bg-primary:   #1e1e1c;
-      --color-bg-secondary: #2a2a28;
-      --color-bg-tertiary:  #323230;
-      --color-text-primary: #e8e6de;
-      --color-text-secondary: #9c9a92;
-      --color-text-danger:  #e57373;
-      --color-border:       rgba(255,255,255,0.10);
-    }}
-  }}
-  body {{
-    background: var(--color-bg-tertiary);
-    margin: 0;
-    padding: 1.5rem;
-    color: var(--color-text-primary);
-  }}
-  .world-card {{
-    background: var(--color-bg-primary);
-    border: 0.5px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: 1rem 1.25rem;
-    max-width: 680px;
-    margin: 0 auto;
-  }}
-  .header {{
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 16px;
-  }}
-  .world-name {{
-    font-size: 22px;
-    font-weight: 500;
-    margin: 0;
-  }}
-  .uwp {{
-    font-family: ui-monospace, "Cascadia Code", "Fira Mono", monospace;
-    font-size: 18px;
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    margin: 0;
-  }}
-  .badge {{
-    display: inline-block;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 3px 10px;
-    border-radius: var(--radius-md);
-    margin: 2px 3px 2px 0;
-  }}
-  .zone-green  {{ background:#e1f5ee; color:#085041; }}
-  .zone-amber  {{ background:#faeeda; color:#633806; }}
-  .zone-red    {{ background:#fcebeb; color:#791f1f; }}
-  .trade       {{ background:#faece7; color:#712b13; }}
-  .era-primitive     {{ background:#f1efe8; color:#444441; }}
-  .era-industrial    {{ background:#faeeda; color:#633806; }}
-  .era-prestellar    {{ background:#e6f1fb; color:#0c447c; }}
-  .era-earlystellar  {{ background:#e1f5ee; color:#085041; }}
-  .era-avgstellar    {{ background:#eeedfe; color:#3c3489; }}
-  .era-highstellar   {{ background:#fbeaf0; color:#72243e; }}
-  .stat-grid {{
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-bottom: 12px;
-  }}
-  .stat {{
-    background: var(--color-bg-secondary);
-    border-radius: var(--radius-md);
-    padding: 12px;
-  }}
-  .stat-label  {{ font-size:12px; color:var(--color-text-secondary); margin:0 0 2px; }}
-  .stat-value  {{ font-size:15px; font-weight:500; margin:0; }}
-  .stat-sub    {{ font-size:13px; color:var(--color-text-secondary); margin:2px 0 0; }}
-  .detail-grid {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 12px;
-  }}
-  .inner-card {{
-    background: var(--color-bg-primary);
-    border: 0.5px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: 12px;
-  }}
-  .inner-label {{
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    margin: 0 0 8px;
-  }}
-  .detail-row {{
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 6px 0;
-    border-bottom: 0.5px solid var(--color-border);
-  }}
-  .detail-row:last-child {{ border-bottom: none; }}
-  .row-label {{ font-size:13px; color:var(--color-text-secondary); flex-shrink:0; margin-right:8px; }}
-  .trade-row {{
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 4px;
-  }}
-  .trade-label {{ font-size:12px; color:var(--color-text-secondary); }}
-  details summary {{
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    padding: 4px 0;
-    margin-top: 12px;
-  }}
-  pre {{
-    font-family: ui-monospace, "Cascadia Code", "Fira Mono", monospace;
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    white-space: pre-wrap;
-    line-height: 1.6;
-    margin: 8px 0 0;
-  }}
-  @media (max-width: 500px) {{
-    .stat-grid   {{ grid-template-columns: 1fr 1fr; }}
-    .detail-grid {{ grid-template-columns: 1fr; }}
-  }}
-</style>
-</head>
-<body>
-<div class="world-card">
-
-  <div class="header">
-    <p class="world-name">{esc(self.name)}</p>
-    <p class="uwp">{esc(self.uwp())}</p>
-    {zone_badge}
-  </div>
-
-  <div class="stat-grid">
-    <div class="stat">
-      <p class="stat-label">Starport</p>
-      <p class="stat-value">{esc(self.starport)} — {esc(STARPORT_QUALITY_LABEL.get(self.starport, "?"))}</p>
-      <p class="stat-sub">{esc(STARPORT_FACILITY_DETAIL.get(self.starport, ""))}</p>
-    </div>
-    <div class="stat">
-      <p class="stat-label">Size</p>
-      <p class="stat-value">{esc(to_hex(self.size))} — {esc(d["size"]["diameter_km"])} km</p>
-      <p class="stat-sub">Surface gravity {esc(d["size"]["surface_gravity"])}</p>
-    </div>
-    <div class="stat">
-      <p class="stat-label">Tech level</p>
-      <p class="stat-value">{esc(to_hex(self.tech_level))}</p>
-      <p class="stat-sub"><span class="badge {esc(tl_era_css)}" style="margin:0">{esc(tl_era)}</span></p>
-    </div>
-  </div>
-
-  <div class="detail-grid">
-    <div class="inner-card">
-      <p class="inner-label">Physical characteristics</p>
-      {row("Atmosphere", f'{to_hex(self.atmosphere)} — {d["atmosphere"]["name"]}')}
-      {survival_row}
-      {row("Temperature", self.temperature)}
-      {row("Hydrographics", f'{to_hex(self.hydrographics)} — {d["hydrographics"]["description"].split(" (")[0]}')}
-      {row("Gas giants", str(self.gas_giant_count) if self.has_gas_giant else "None")}
-      {row("Planetoid belts", str(self.belt_count))}
-      {row("PBG", f'{self.population_multiplier}{self.belt_count}{self.gas_giant_count}')}
-    </div>
-    <div class="inner-card">
-      <p class="inner-label">Society</p>
-      {row("Population", f'{to_hex(self.population)} — {d["population"]["range"]}{" (P=" + str(self.population_multiplier) + ")" if self.population > 0 else ""}')}
-      {row("Government", f'{to_hex(self.government)} — {d["government"]["name"]}')}
-      {row("Law level", to_hex(self.law_level))}
-      {row("Bases", bases_str)}
-    </div>
-  </div>
-
-  <div class="trade-row">
-    <span class="trade-label">Trade codes</span>
-    {trade_badges}
-  </div>
-
-  {notes_html}
-
-  <details>
-    <summary>Raw JSON</summary>
-    <pre>{esc(self.to_json())}</pre>
-  </details>
-
-</div>
-</body>
-</html>"""
+        return render("world_card.html", ctx=_world_html_ctx(self))
 
     # ------------------------------------------------------------------
     # Human-readable summary
     # ------------------------------------------------------------------
-    def summary(self) -> str:
+    def summary(self) -> str:  # pylint: disable=too-many-branches,too-many-statements,too-many-locals
         """Return a human-readable summary of this world's characteristics."""
         pop_range = {
             0: "None", 1: "Few (1+)", 2: "Hundreds", 3: "Thousands",
@@ -844,6 +1745,89 @@ class World:  # pylint: disable=too-many-instance-attributes
             f"  Tech Level  : {to_hex(self.tech_level)}",
         ]
 
+        if self.atmosphere_detail is not None:
+            ad = self.atmosphere_detail
+            lines.append(f"{'-'*56}")
+            profile = format_atmosphere_profile(self.atmosphere, ad)
+            lines.append(f"  {'Atm. profile':<12}: {profile}")
+            if ad.subtype_name is not None:
+                lines.append(f"  {'Subtype':<12}: {ad.subtype_name}")
+            if ad.pressure_bar is not None:
+                lines.append(f"  {'Pressure':<12}: {ad.pressure_bar:.3f} bar")
+            elif ad.subtype_code in ("C", "D", "E"):
+                lines.append(f"  {'Pressure':<12}: > 10.0 bar (extremely dense)")
+            if ad.oxygen_partial_pressure is not None:
+                lines.append(f"  {'O2 ppo':<12}: {ad.oxygen_partial_pressure:.3f} bar")
+            if ad.scale_height_km is not None:
+                lines.append(f"  {'Scale ht.':<12}: {ad.scale_height_km:.1f} km")
+            if ad.no_safe_altitude:
+                lines.append(f"  {'Safe alt.':<12}: None (no breathable level)")
+            elif ad.min_safe_altitude_km is not None:
+                if ad.min_safe_altitude_km >= 0:
+                    lines.append(
+                        f"  {'Min safe alt':<12}: {ad.min_safe_altitude_km:.1f} km above baseline"
+                    )
+                else:
+                    depth = abs(ad.min_safe_altitude_km)
+                    lines.append(
+                        f"  {'Max safe dep':<12}: {depth:.1f} km below baseline"
+                    )
+            for sub in ad.unusual_subtypes:
+                lines.append(f"  {'Subtype':<12}: {sub.subtype_name} ({sub.subtype_code})")
+            for i, taint in enumerate(ad.taints):
+                label = f"Taint {i + 1}" if len(ad.taints) > 1 else "Taint"
+                lines.append(
+                    f"  {label:<12}: {taint.subtype}"
+                    f"  sev {taint.severity_code}  per {taint.persistence_code}"
+                )
+            for hazard in ad.hazards:
+                lines.append(f"  {'Hazard':<12}: {hazard.hazard}")
+                if hazard.gases:
+                    lines.append(f"  {'  Gas mix':<12}: {', '.join(hazard.gases)}")
+            if ad.gas_mix:
+                gas_parts = ", ".join(
+                    f"{c.gas_name} ({c.gas_code})"
+                    + (f" {c.percentage}%" if c.percentage is not None else "")
+                    for c in ad.gas_mix
+                )
+                lines.append(f"  {'Gas mix':<12}: {gas_parts}")
+
+        if self.hydrographic_detail is not None:
+            lines.append(f"{'-'*56}")
+            lines.append(
+                f"  {'Surface liq.':<12}: "
+                f"{self.hydrographic_detail.surface_liquid_pct}%"
+            )
+
+        if self.size_detail:
+            p = self.size_detail
+            lines.append(f"{'-'*56}")
+            if isinstance(p, BeltPhysical):
+                lines.append("  Belt body")
+                lines.append(f"  Belt span   : {p.inner_au} – {p.outer_au} AU")
+                lines.append(
+                    f"  Composition : M: {p.m_type_pct}% / S: {p.s_type_pct}%"
+                    f" / C: {p.c_type_pct}% / Other: {p.other_pct}%"
+                )
+                lines.append(f"  Bulk        : {p.bulk}")
+                lines.append(f"  Resource    : {p.resource_rating}")
+                lines.append(
+                    f"  Bodies      : {p.size_1_bodies} × Size 1,"
+                    f" {p.size_s_bodies} × Size S"
+                )
+            else:
+                lines.append("  World body")
+                lines.append(f"  Composition : {p.composition}")
+                lines.append(f"  Diameter    : {p.diameter_km:,} km")
+                lines.append(f"  Density     : {p.density:.2f} g/cm³")
+                lines.append(f"  Mass        : {p.mass:.4f} M⊕")
+                lines.append(f"  Gravity     : {p.gravity:.3f} G")
+                lines.append(f"  Esc. vel.   : {p.escape_velocity:.2f} km/s")
+                lines.append(f"  Axial tilt  : {p.axial_tilt}°")
+                lines.append(f"  Day length  : {p.day_length:.1f} h")
+                if p.tidal_status != "none":
+                    lines.append(f"  Tidal status: {TIDAL_STATUS_LABELS[p.tidal_status]}")
+
         if self.notes:
             lines.append(f"{'-'*56}")
             lines.append("  Notes:")
@@ -852,6 +1836,92 @@ class World:  # pylint: disable=too-many-instance-attributes
 
         lines.append(f"{'='*56}")
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# HTML context builder — shared by World.to_html() and the multi-world CLI
+# ---------------------------------------------------------------------------
+
+def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,protected-access
+    """Build the Jinja2 context dict for a world card template render."""
+    d = world.to_dict()
+    gear = d["atmosphere"]["survival_gear"]
+
+    is_belt_phys = isinstance(world.size_detail, BeltPhysical)
+    if world.size_detail and not is_belt_phys:
+        size_km = f"{world.size_detail.diameter_km:,}"
+        size_gravity = f"{world.size_detail.gravity:.2f}G"
+    else:
+        size_km = d["size"]["diameter_km"]
+        size_gravity = d["size"]["surface_gravity"]
+
+    atm_profile = ""
+    gas_parts = ""
+    if world.atmosphere_detail is not None:
+        atm_profile = format_atmosphere_profile(world.atmosphere, world.atmosphere_detail)
+        if world.atmosphere_detail.gas_mix:
+            gas_parts = " · ".join(
+                f"{c.gas_name} ({c.gas_code})"
+                + (f" {c.percentage}%" if c.percentage is not None else "")
+                for c in world.atmosphere_detail.gas_mix
+            )
+
+    tidal_label = ""
+    if (world.size_detail is not None and not is_belt_phys
+            and world.size_detail.tidal_status != "none"):
+        tidal_label = TIDAL_STATUS_LABELS[world.size_detail.tidal_status]
+
+    _trade_lookup = {
+        "Ag": "Ag — Agricultural", "As": "As — Asteroid",
+        "Ba": "Ba — Barren",       "De": "De — Desert",
+        "Fl": "Fl — Fluid Oceans", "Ga": "Ga — Garden",
+        "Hi": "Hi — High Population", "Ht": "Ht — High Tech",
+        "Ic": "Ic — Ice-Capped",   "In": "In — Industrial",
+        "Lo": "Lo — Low Population", "Lt": "Lt — Low Tech",
+        "Na": "Na — Non-Agricultural", "Ni": "Ni — Non-Industrial",
+        "Po": "Po — Poor",         "Ri": "Ri — Rich",
+        "Va": "Va — Vacuum",       "Wa": "Wa — Waterworld",
+    }
+    _base_full = {
+        "N": "N (Naval)", "S": "S (Scout)", "M": "M (Military)",
+        "H": "H (Highport)", "C": "C (Corsair)",
+    }
+
+    return {
+        "world": world,
+        "uwp": world.uwp(),
+        "zone_class": {
+            "Green": "zone-green", "Amber": "zone-amber", "Red": "zone-red",
+        }.get(world.travel_zone, "zone-green"),
+        "tl_era": world._tl_era(world.tech_level),  # pylint: disable=protected-access
+        "tl_era_css": world._tl_era_css(world.tech_level),  # pylint: disable=protected-access
+        "starport_label": STARPORT_QUALITY_LABEL.get(world.starport, "?"),
+        "starport_detail": STARPORT_FACILITY_DETAIL.get(world.starport, ""),
+        "size_hex": to_hex(world.size),
+        "size_km": size_km,
+        "size_gravity": size_gravity,
+        "atm_hex": to_hex(world.atmosphere),
+        "atm_name": d["atmosphere"]["name"],
+        "atm_survival": gear,
+        "atm_survival_danger": gear not in ("None", "Varies"),
+        "hydro_hex": to_hex(world.hydrographics),
+        "hydro_desc": d["hydrographics"]["description"].split(" (")[0],
+        "pop_hex": to_hex(world.population),
+        "pop_range": d["population"]["range"],
+        "gov_hex": to_hex(world.government),
+        "gov_name": d["government"]["name"],
+        "law_hex": to_hex(world.law_level),
+        "tl_hex": to_hex(world.tech_level),
+        "bases_str": "  ".join(_base_full.get(b, b) for b in world.bases) or "None",
+        "trade_codes": [_trade_lookup.get(tc, tc) for tc in world.trade_codes],
+        "pbg": (f"{world.population_multiplier}"
+                f"{world.belt_count}{world.gas_giant_count}"),
+        "is_belt_phys": is_belt_phys,
+        "atm_profile": atm_profile,
+        "gas_parts": gas_parts,
+        "tidal_label": tidal_label,
+        "json_str": world.to_json(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -874,6 +1944,45 @@ def generate_atmosphere(size: int) -> int:
     if size <= 1:
         return 0
     return max(0, roll(2, -7 + size))
+
+
+def generate_nhz_atmosphere(size: int, hz_deviation: float) -> tuple:
+    """Generate atmosphere for a Non-Habitable Zone world (WBH pp.78-79).
+
+    Rolls 2D-7+Size and looks up the result in the appropriate NHZ column
+    based on ``hz_deviation``.  Returns ``(atm_code, exotic_key)`` where
+    ``exotic_key`` is the ``_EXOTIC_SUBTYPE_TABLE`` key when
+    ``atm_code == 10``; ``None`` otherwise.
+
+    The caller is responsible for ensuring ``abs(hz_deviation) > 1.0``.
+    Worlds with size ≤ 1 cannot retain an atmosphere and return ``(0, None)``.
+    """
+    if size <= 1:
+        return 0, None
+
+    result = max(0, roll(2, -7 + size))
+
+    if hz_deviation <= -2.01:
+        table = _NHZ_HOT_A
+    elif hz_deviation <= -1.01:
+        table = _NHZ_HOT_B
+    elif hz_deviation <= 3.0:
+        table = _NHZ_COLD_A
+    else:
+        table = _NHZ_COLD_B
+
+    result = min(result, max(table))
+    atm_code, base_key, irr_key, star, dagger = table[result]
+
+    exotic_key: Optional[int] = None
+    if atm_code == 10:
+        if star:
+            dm = 1 if (dagger and hz_deviation <= -3.0) else 0
+            exotic_key = irr_key if random.randint(1, 6) + dm >= 4 else base_key
+        else:
+            exotic_key = base_key
+
+    return atm_code, exotic_key
 
 
 def generate_temperature(atmosphere: int) -> str:
@@ -900,6 +2009,8 @@ def generate_hydrographics(size: int, atmosphere: int, temperature: str) -> int:
         notes they keep their hydrographics even when hot/boiling.
     """
     if size <= 1:
+        return 0
+    if atmosphere in (16, 17):
         return 0
 
     # Base roll: 2D-7 + Atmosphere code
@@ -1285,18 +2396,20 @@ def assign_trade_codes(  # pylint: disable=too-many-arguments,too-many-positiona
 
 
 def assign_travel_zone(atmosphere: int, government: int,
-                       law_level: int) -> str:
+                       law_level: int, starport: str) -> str:
     """Step 13 — Travel Zone (p.260).
 
-    Green is the default safe zone (no special designation).
+    Starport X worlds are automatically Red zones — no facilities means
+    the world is inaccessible or under interdiction.
     Amber worlds warrant caution: unusual atmosphere, unstable government,
     or extreme law level.
-    Red zones are referee-assigned interdictions (e.g. quarantine, Imperium
-    edict) and are only suggested here — the referee makes the final call.
+    Green is the default safe zone.
 
     Amber criteria (p.260):
       Atmosphere 10+, OR Government 0/7/10, OR Law Level 0 or 9+
     """
+    if starport == "X":
+        return "Red"
     amber = (
         atmosphere >= 10
         or government in (0, 7, 10)
@@ -1304,7 +2417,6 @@ def assign_travel_zone(atmosphere: int, government: int,
         or law_level >= 9
     )
     return "Amber" if amber else "Green"
-    # Note: Red zones are not randomly generated — they are referee decisions.
 
 
 # ---------------------------------------------------------------------------
@@ -1399,7 +2511,7 @@ def generate_world(name: str = "Unknown") -> World:
 
     # --- Step 13: Travel Zone ---
     world.travel_zone = assign_travel_zone(
-        world.atmosphere, world.government, world.law_level
+        world.atmosphere, world.government, world.law_level, world.starport
     )
 
     return world
@@ -1463,40 +2575,10 @@ def main():  # pylint: disable=too-many-branches
 
     elif args.html:
         if len(worlds) == 1:
-            # Single world: emit the full standalone HTML document.
             print(worlds[0].to_html())
         else:
-            # Multiple worlds: wrap all cards in one HTML page.
-            # Strip the outer <html>…</body> wrapper from each card after
-            # the first, keeping only the inner <div class="world-card">.
-            import re  # pylint: disable=import-outside-toplevel
-            cards_html = []
-            for w in worlds:
-                full = w.to_html()
-                # Extract just the world-card div from each world's HTML
-                match = re.search(
-                    r'(<div class="world-card">.*?</div>)\s*</body>',
-                    full, re.DOTALL
-                )
-                cards_html.append(match.group(1) if match else full)
-
-            # Re-use the CSS from the first world's page, adjust body style
-            first_html = worlds[0].to_html()
-            # Replace the single-card body content with all cards
-            combined = re.sub(
-                r'<body>.*</body>',
-                '<body>\n'
-                + '\n'.join(cards_html)
-                + '\n</body>',
-                first_html,
-                flags=re.DOTALL,
-            )
-            # Adjust body padding and add gap between cards
-            combined = combined.replace(
-                "max-width: 680px;\n    margin: 0 auto;",
-                "max-width: 680px;\n    margin: 0 auto;\n    margin-bottom: 1.5rem;",
-            )
-            print(combined)
+            print(render("world_list.html",
+                         worlds=[_world_html_ctx(w) for w in worlds]))
 
     else:
         for i, world in enumerate(worlds):
