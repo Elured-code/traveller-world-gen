@@ -177,6 +177,7 @@ def _attach_mainworld_physical(system) -> None:
         orbit_au=mw_orbit.orbit_au if mw_orbit is not None else None,
         star_mass=system.stellar_system.primary.mass,
         orbit_eccentricity=orbit_ecc,
+        hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
     )
     if mw_orbit is not None and mw.size_detail is not None:
         adj = mw.size_detail.eccentricity_adjusted

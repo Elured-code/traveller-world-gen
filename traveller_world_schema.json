@@ -525,6 +525,11 @@
               "minimum": 0,
               "maximum": 0.999,
               "description": "Re-rolled eccentricity for 1:1 tidally-locked worlds with orbit_eccentricity > 0.1 (WBH p.77 Rule 4). Value is min(original_eccentricity, new_roll_with_DM-2). Absent when not applicable."
+            },
+            "mean_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Basic Mean Temperature in Kelvin (WBH p.47). Computed from orbital HZ deviation and atmosphere DMs. Present only when hz_deviation is available at generation time."
             }
           }
         },

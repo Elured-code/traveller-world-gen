@@ -44,6 +44,7 @@ from typing import List, Optional, Union, TYPE_CHECKING
 from traveller_world_physical import TIDAL_STATUS_LABELS
 from traveller_belt_physical import BeltPhysical
 from traveller_hydro_detail import HydrographicDetail
+from html_render import render
 
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
@@ -1678,426 +1679,20 @@ class World:  # pylint: disable=too-many-instance-attributes
             return "era-avgstellar"
         return "era-highstellar"
 
-    def to_html(self) -> str:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    def to_html(self) -> str:
         """Return a self-contained HTML card representing this world.
 
-        The output matches the inline display widget shown in Claude
-        conversation responses and can be embedded in any HTML page,
-        saved as a standalone .html file, or served directly from the
-        Azure Functions API.
+        The output can be embedded in any HTML page, saved as a standalone
+        .html file, or served directly from the Azure Functions API.
 
-        Tech Level era labels use the rulebook-correct era names
-        (Traveller 2022 Core Rulebook pp. 6-7):
-            TL 0-3  = Primitive,  TL 4-6  = Industrial,
-            TL 7-9  = Pre-Stellar, TL 10-11 = Early Stellar,
-            TL 12-14 = Average Stellar, TL 15+ = High Stellar
+        Tech Level era labels (Traveller 2022 Core Rulebook pp. 6-7):
+            TL 0-3 = Primitive, TL 4-6 = Industrial, TL 7-9 = Pre-Stellar,
+            TL 10-11 = Early Stellar, TL 12-14 = Average Stellar, TL 15+ = High Stellar
 
         Returns:
-            A UTF-8 HTML string. No external resources are required —
-            all CSS is inlined in a <style> block.
+            A UTF-8 HTML string with all CSS inlined; no external resources.
         """
-        d = self.to_dict()
-
-        # --- helper lambdas for HTML escaping and badge rendering --------
-        def esc(s: str) -> str:
-            """Minimal HTML-escape for inline text values."""
-            return (str(s)
-                    .replace("&", "&amp;")
-                    .replace("<", "&lt;")
-                    .replace(">", "&gt;")
-                    .replace('"', "&quot;"))
-
-        def row(label: str, value: str, danger: bool = False) -> str:
-            """Render one label/value detail row."""
-            val_style = (
-                'style="font-size:13px;font-weight:500;text-align:right;'
-                'color:var(--color-text-danger,#c0392b)"'
-                if danger
-                else 'style="font-size:13px;font-weight:500;text-align:right"'
-            )
-            return (
-                f'<div class="detail-row">'
-                f'<span class="row-label">{esc(label)}</span>'
-                f'<span {val_style}>{esc(value)}</span>'
-                f'</div>'
-            )
-
-        def badge(text: str, css_class: str) -> str:
-            return f'<span class="badge {esc(css_class)}">{esc(text)}</span>'
-
-        # --- travel zone badge -------------------------------------------
-        zone_class = {
-            "Green": "zone-green",
-            "Amber": "zone-amber",
-            "Red":   "zone-red",
-        }.get(self.travel_zone, "zone-green")
-        zone_badge = badge(f"{self.travel_zone} zone", zone_class)
-
-        # --- trade code badges -------------------------------------------
-        trade_code_full = {
-            "Ag": "Ag — Agricultural",   "As": "As — Asteroid",
-            "Ba": "Ba — Barren",         "De": "De — Desert",
-            "Fl": "Fl — Fluid Oceans",   "Ga": "Ga — Garden",
-            "Hi": "Hi — High Population","Ht": "Ht — High Tech",
-            "Ic": "Ic — Ice-Capped",     "In": "In — Industrial",
-            "Lo": "Lo — Low Population", "Lt": "Lt — Low Tech",
-            "Na": "Na — Non-Agricultural","Ni": "Ni — Non-Industrial",
-            "Po": "Po — Poor",           "Ri": "Ri — Rich",
-            "Va": "Va — Vacuum",         "Wa": "Wa — Waterworld",
-        }
-        trade_badges = "".join(
-            badge(trade_code_full.get(tc, tc), "trade")
-            for tc in self.trade_codes
-        ) or '<span style="font-size:13px;color:var(--color-text-secondary)">None</span>'
-
-        # --- bases string ------------------------------------------------
-        base_full = {
-            "N": "N (Naval)", "S": "S (Scout)", "M": "M (Military)",
-            "H": "H (Highport)", "C": "C (Corsair)",
-        }
-        bases_str = "  ".join(base_full.get(b, b) for b in self.bases) or "None"
-
-        # --- TL era -------------------------------------------------------
-        tl_era     = self._tl_era(self.tech_level)
-        tl_era_css = self._tl_era_css(self.tech_level)
-
-        # --- notes HTML ---------------------------------------------------
-        if self.notes:
-            notes_items = "".join(
-                f'<li style="margin:4px 0;font-size:13px;'
-                f'color:var(--color-text-secondary)">{esc(n)}</li>'
-                for n in self.notes
-            )
-            notes_html = (
-                f'<div class="inner-card" style="margin-top:12px">'
-                f'<p class="inner-label">Notes</p>'
-                f'<ul style="margin:4px 0 0;padding-left:20px">'
-                f'{notes_items}</ul></div>'
-            )
-        else:
-            notes_html = ""
-
-        # --- survival gear warning (only shown when gear is required) ----
-        gear = d["atmosphere"]["survival_gear"]
-        gear_danger = gear not in ("None", "Varies")
-        survival_row = row("Survival gear", gear, danger=gear_danger)
-
-        # --- atmosphere detail card ---
-        if self.atmosphere_detail is not None:
-            ad = self.atmosphere_detail
-            atm_rows = row("Profile", format_atmosphere_profile(self.atmosphere, ad))
-            if ad.subtype_name is not None:
-                atm_rows += row("Subtype", ad.subtype_name)
-            if ad.pressure_bar is not None:
-                atm_rows += row("Pressure", f"{ad.pressure_bar:.3f} bar")
-            elif ad.subtype_code in ("C", "D", "E"):
-                atm_rows += row("Pressure", "&gt; 10.0 bar (extremely dense)")
-            if ad.oxygen_partial_pressure is not None:
-                atm_rows += row("O₂ partial pressure", f"{ad.oxygen_partial_pressure:.3f} bar")
-            if ad.scale_height_km is not None:
-                atm_rows += row("Scale height", f"{ad.scale_height_km:.1f} km")
-            if ad.no_safe_altitude:
-                atm_rows += row("Safe altitude", "None (no breathable level)")
-            elif ad.min_safe_altitude_km is not None:
-                if ad.min_safe_altitude_km >= 0:
-                    atm_rows += row("Min safe altitude",
-                                    f"{ad.min_safe_altitude_km:.1f} km above baseline")
-                else:
-                    atm_rows += row("Max safe depth",
-                                    f"{abs(ad.min_safe_altitude_km):.1f} km below baseline")
-            for sub in ad.unusual_subtypes:
-                atm_rows += row("Unusual subtype",
-                                f"{sub.subtype_name} ({sub.subtype_code})")
-            for i, taint in enumerate(ad.taints):
-                prefix = f"Taint {i + 1}" if len(ad.taints) > 1 else "Taint"
-                atm_rows += row(prefix, taint.subtype)
-                atm_rows += row("Severity", taint.severity)
-                atm_rows += row("Persistence", taint.persistence)
-            for hazard in ad.hazards:
-                atm_rows += row("Hazard", hazard.hazard)
-                if hazard.gases:
-                    atm_rows += row("  Gas mix", ", ".join(hazard.gases))
-            if ad.gas_mix:
-                gas_parts = " &middot; ".join(
-                    f"{c.gas_name} ({c.gas_code})"
-                    + (f" {c.percentage}%" if c.percentage is not None else "")
-                    for c in ad.gas_mix
-                )
-                atm_rows += row("Gas mix", gas_parts)
-            atmosphere_html = (
-                '<div class="inner-card" style="margin-top:12px">'
-                '<p class="inner-label">Atmosphere detail</p>'
-                + atm_rows
-                + '</div>'
-            )
-        else:
-            atmosphere_html = ""
-
-        # --- hydrographic detail card ---
-        if self.hydrographic_detail is not None:
-            hd = self.hydrographic_detail
-            hydrographic_html = (
-                '<div class="inner-card" style="margin-top:12px">'
-                '<p class="inner-label">Hydrographic detail</p>'
-                + row("Surface liquid", f"{hd.surface_liquid_pct}%")
-                + '</div>'
-            )
-        else:
-            hydrographic_html = ""
-
-        # --- physical detail card (WorldPhysical or BeltPhysical) ---
-        if self.size_detail:
-            p = self.size_detail
-            if isinstance(p, BeltPhysical):
-                physical_html = (
-                    '<div class="inner-card" style="margin-top:12px">'
-                    '<p class="inner-label">Belt body</p>'
-                    + row("Belt span", f"{p.inner_au} – {p.outer_au} AU")
-                    + row("Composition",
-                          f"M: {p.m_type_pct}% / S: {p.s_type_pct}% / "
-                          f"C: {p.c_type_pct}% / Other: {p.other_pct}%")
-                    + row("Bulk", str(p.bulk))
-                    + row("Resource rating", str(p.resource_rating))
-                    + row("Significant bodies",
-                          f"{p.size_1_bodies} × Size 1, "
-                          f"{p.size_s_bodies} × Size S")
-                    + '</div>'
-                )
-            else:
-                physical_html = (
-                    '<div class="inner-card" style="margin-top:12px">'
-                    '<p class="inner-label">World body</p>'
-                    + row("Composition", p.composition)
-                    + row("Diameter", f"{p.diameter_km:,} km")
-                    + row("Density", f"{p.density:.2f} g/cm³")
-                    + row("Mass", f"{p.mass:.4f} M⊕")
-                    + row("Surface gravity", f"{p.gravity:.3f} G")
-                    + row("Escape velocity", f"{p.escape_velocity:.2f} km/s")
-                    + row("Axial tilt", f"{p.axial_tilt}°")
-                    + row("Day length", f"{p.day_length:.1f} h")
-                    + (row("Tidal status", TIDAL_STATUS_LABELS[p.tidal_status])
-                       if p.tidal_status != "none" else "")
-                    + '</div>'
-                )
-        else:
-            physical_html = ""
-
-        return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{esc(self.name)} — {esc(self.uwp())}</title>
-<style>
-  *, *::before, *::after {{ box-sizing: border-box; }}
-  :root {{
-    --color-bg-primary:   #ffffff;
-    --color-bg-secondary: #f5f5f3;
-    --color-bg-tertiary:  #eeede8;
-    --color-text-primary: #1a1a19;
-    --color-text-secondary: #6b6a65;
-    --color-text-danger:  #c0392b;
-    --color-border:       rgba(0,0,0,0.12);
-    --radius-md: 8px;
-    --radius-lg: 12px;
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  }}
-  @media (prefers-color-scheme: dark) {{
-    :root {{
-      --color-bg-primary:   #1e1e1c;
-      --color-bg-secondary: #2a2a28;
-      --color-bg-tertiary:  #323230;
-      --color-text-primary: #e8e6de;
-      --color-text-secondary: #9c9a92;
-      --color-text-danger:  #e57373;
-      --color-border:       rgba(255,255,255,0.10);
-    }}
-  }}
-  body {{
-    background: var(--color-bg-tertiary);
-    margin: 0;
-    padding: 1.5rem;
-    color: var(--color-text-primary);
-  }}
-  .world-card {{
-    background: var(--color-bg-primary);
-    border: 0.5px solid var(--color-border);
-    border-radius: var(--radius-lg);
-    padding: 1rem 1.25rem;
-    max-width: 680px;
-    margin: 0 auto;
-  }}
-  .header {{
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 16px;
-  }}
-  .world-name {{
-    font-size: 22px;
-    font-weight: 500;
-    margin: 0;
-  }}
-  .uwp {{
-    font-family: ui-monospace, "Cascadia Code", "Fira Mono", monospace;
-    font-size: 18px;
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    margin: 0;
-  }}
-  .badge {{
-    display: inline-block;
-    font-size: 12px;
-    font-weight: 500;
-    padding: 3px 10px;
-    border-radius: var(--radius-md);
-    margin: 2px 3px 2px 0;
-  }}
-  .zone-green  {{ background:#e1f5ee; color:#085041; }}
-  .zone-amber  {{ background:#faeeda; color:#633806; }}
-  .zone-red    {{ background:#fcebeb; color:#791f1f; }}
-  .trade       {{ background:#faece7; color:#712b13; }}
-  .era-primitive     {{ background:#f1efe8; color:#444441; }}
-  .era-industrial    {{ background:#faeeda; color:#633806; }}
-  .era-prestellar    {{ background:#e6f1fb; color:#0c447c; }}
-  .era-earlystellar  {{ background:#e1f5ee; color:#085041; }}
-  .era-avgstellar    {{ background:#eeedfe; color:#3c3489; }}
-  .era-highstellar   {{ background:#fbeaf0; color:#72243e; }}
-  .stat-grid {{
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-bottom: 12px;
-  }}
-  .stat {{
-    background: var(--color-bg-secondary);
-    border-radius: var(--radius-md);
-    padding: 12px;
-  }}
-  .stat-label  {{ font-size:12px; color:var(--color-text-secondary); margin:0 0 2px; }}
-  .stat-value  {{ font-size:15px; font-weight:500; margin:0; }}
-  .stat-sub    {{ font-size:13px; color:var(--color-text-secondary); margin:2px 0 0; }}
-  .detail-grid {{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 12px;
-  }}
-  .inner-card {{
-    background: var(--color-bg-primary);
-    border: 0.5px solid var(--color-border);
-    border-radius: var(--radius-md);
-    padding: 12px;
-  }}
-  .inner-label {{
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    margin: 0 0 8px;
-  }}
-  .detail-row {{
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding: 6px 0;
-    border-bottom: 0.5px solid var(--color-border);
-  }}
-  .detail-row:last-child {{ border-bottom: none; }}
-  .row-label {{ font-size:13px; color:var(--color-text-secondary); flex-shrink:0; margin-right:8px; }}
-  .trade-row {{
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 4px;
-  }}
-  .trade-label {{ font-size:12px; color:var(--color-text-secondary); }}
-  details summary {{
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    padding: 4px 0;
-    margin-top: 12px;
-  }}
-  pre {{
-    font-family: ui-monospace, "Cascadia Code", "Fira Mono", monospace;
-    font-size: 12px;
-    color: var(--color-text-secondary);
-    white-space: pre-wrap;
-    line-height: 1.6;
-    margin: 8px 0 0;
-  }}
-  @media (max-width: 500px) {{
-    .stat-grid   {{ grid-template-columns: 1fr 1fr; }}
-    .detail-grid {{ grid-template-columns: 1fr; }}
-  }}
-</style>
-</head>
-<body>
-<div class="world-card">
-
-  <div class="header">
-    <p class="world-name">{esc(self.name)}</p>
-    <p class="uwp">{esc(self.uwp())}</p>
-    {zone_badge}
-  </div>
-
-  <div class="stat-grid">
-    <div class="stat">
-      <p class="stat-label">Starport</p>
-      <p class="stat-value">{esc(self.starport)} — {esc(STARPORT_QUALITY_LABEL.get(self.starport, "?"))}</p>
-      <p class="stat-sub">{esc(STARPORT_FACILITY_DETAIL.get(self.starport, ""))}</p>
-    </div>
-    <div class="stat">
-      <p class="stat-label">Size</p>
-      <p class="stat-value">{esc(to_hex(self.size))} — {esc(f"{self.size_detail.diameter_km:,}" if (self.size_detail and not isinstance(self.size_detail, BeltPhysical)) else d["size"]["diameter_km"])} km</p>
-      <p class="stat-sub">Surface gravity {esc(f"{self.size_detail.gravity:.2f}G" if (self.size_detail and not isinstance(self.size_detail, BeltPhysical)) else d["size"]["surface_gravity"])}</p>
-    </div>
-    <div class="stat">
-      <p class="stat-label">Tech level</p>
-      <p class="stat-value">{esc(to_hex(self.tech_level))}</p>
-      <p class="stat-sub"><span class="badge {esc(tl_era_css)}" style="margin:0">{esc(tl_era)}</span></p>
-    </div>
-  </div>
-
-  <div class="detail-grid">
-    <div class="inner-card">
-      <p class="inner-label">Physical characteristics</p>
-      {row("Atmosphere", f'{to_hex(self.atmosphere)} — {d["atmosphere"]["name"]}')}
-      {survival_row}
-      {row("Temperature", self.temperature)}
-      {row("Hydrographics", f'{to_hex(self.hydrographics)} — {d["hydrographics"]["description"].split(" (")[0]}')}
-      {row("Gas giants", str(self.gas_giant_count) if self.has_gas_giant else "None")}
-      {row("Planetoid belts", str(self.belt_count))}
-      {row("PBG", f'{self.population_multiplier}{self.belt_count}{self.gas_giant_count}')}
-    </div>
-    <div class="inner-card">
-      <p class="inner-label">Society</p>
-      {row("Population", f'{to_hex(self.population)} — {d["population"]["range"]}{" (P=" + str(self.population_multiplier) + ")" if self.population > 0 else ""}')}
-      {row("Government", f'{to_hex(self.government)} — {d["government"]["name"]}')}
-      {row("Law level", to_hex(self.law_level))}
-      {row("Bases", bases_str)}
-    </div>
-  </div>
-
-  <div class="trade-row">
-    <span class="trade-label">Trade codes</span>
-    {trade_badges}
-  </div>
-
-  {notes_html}
-  {atmosphere_html}
-  {hydrographic_html}
-  {physical_html}
-
-  <details>
-    <summary>Raw JSON</summary>
-    <pre>{esc(self.to_json())}</pre>
-  </details>
-
-</div>
-</body>
-</html>"""
+        return render("world_card.html", ctx=_world_html_ctx(self))
 
     # ------------------------------------------------------------------
     # Human-readable summary
@@ -2241,6 +1836,92 @@ class World:  # pylint: disable=too-many-instance-attributes
 
         lines.append(f"{'='*56}")
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# HTML context builder — shared by World.to_html() and the multi-world CLI
+# ---------------------------------------------------------------------------
+
+def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,protected-access
+    """Build the Jinja2 context dict for a world card template render."""
+    d = world.to_dict()
+    gear = d["atmosphere"]["survival_gear"]
+
+    is_belt_phys = isinstance(world.size_detail, BeltPhysical)
+    if world.size_detail and not is_belt_phys:
+        size_km = f"{world.size_detail.diameter_km:,}"
+        size_gravity = f"{world.size_detail.gravity:.2f}G"
+    else:
+        size_km = d["size"]["diameter_km"]
+        size_gravity = d["size"]["surface_gravity"]
+
+    atm_profile = ""
+    gas_parts = ""
+    if world.atmosphere_detail is not None:
+        atm_profile = format_atmosphere_profile(world.atmosphere, world.atmosphere_detail)
+        if world.atmosphere_detail.gas_mix:
+            gas_parts = " · ".join(
+                f"{c.gas_name} ({c.gas_code})"
+                + (f" {c.percentage}%" if c.percentage is not None else "")
+                for c in world.atmosphere_detail.gas_mix
+            )
+
+    tidal_label = ""
+    if (world.size_detail is not None and not is_belt_phys
+            and world.size_detail.tidal_status != "none"):
+        tidal_label = TIDAL_STATUS_LABELS[world.size_detail.tidal_status]
+
+    _trade_lookup = {
+        "Ag": "Ag — Agricultural", "As": "As — Asteroid",
+        "Ba": "Ba — Barren",       "De": "De — Desert",
+        "Fl": "Fl — Fluid Oceans", "Ga": "Ga — Garden",
+        "Hi": "Hi — High Population", "Ht": "Ht — High Tech",
+        "Ic": "Ic — Ice-Capped",   "In": "In — Industrial",
+        "Lo": "Lo — Low Population", "Lt": "Lt — Low Tech",
+        "Na": "Na — Non-Agricultural", "Ni": "Ni — Non-Industrial",
+        "Po": "Po — Poor",         "Ri": "Ri — Rich",
+        "Va": "Va — Vacuum",       "Wa": "Wa — Waterworld",
+    }
+    _base_full = {
+        "N": "N (Naval)", "S": "S (Scout)", "M": "M (Military)",
+        "H": "H (Highport)", "C": "C (Corsair)",
+    }
+
+    return {
+        "world": world,
+        "uwp": world.uwp(),
+        "zone_class": {
+            "Green": "zone-green", "Amber": "zone-amber", "Red": "zone-red",
+        }.get(world.travel_zone, "zone-green"),
+        "tl_era": world._tl_era(world.tech_level),  # pylint: disable=protected-access
+        "tl_era_css": world._tl_era_css(world.tech_level),  # pylint: disable=protected-access
+        "starport_label": STARPORT_QUALITY_LABEL.get(world.starport, "?"),
+        "starport_detail": STARPORT_FACILITY_DETAIL.get(world.starport, ""),
+        "size_hex": to_hex(world.size),
+        "size_km": size_km,
+        "size_gravity": size_gravity,
+        "atm_hex": to_hex(world.atmosphere),
+        "atm_name": d["atmosphere"]["name"],
+        "atm_survival": gear,
+        "atm_survival_danger": gear not in ("None", "Varies"),
+        "hydro_hex": to_hex(world.hydrographics),
+        "hydro_desc": d["hydrographics"]["description"].split(" (")[0],
+        "pop_hex": to_hex(world.population),
+        "pop_range": d["population"]["range"],
+        "gov_hex": to_hex(world.government),
+        "gov_name": d["government"]["name"],
+        "law_hex": to_hex(world.law_level),
+        "tl_hex": to_hex(world.tech_level),
+        "bases_str": "  ".join(_base_full.get(b, b) for b in world.bases) or "None",
+        "trade_codes": [_trade_lookup.get(tc, tc) for tc in world.trade_codes],
+        "pbg": (f"{world.population_multiplier}"
+                f"{world.belt_count}{world.gas_giant_count}"),
+        "is_belt_phys": is_belt_phys,
+        "atm_profile": atm_profile,
+        "gas_parts": gas_parts,
+        "tidal_label": tidal_label,
+        "json_str": world.to_json(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -2894,40 +2575,10 @@ def main():  # pylint: disable=too-many-branches
 
     elif args.html:
         if len(worlds) == 1:
-            # Single world: emit the full standalone HTML document.
             print(worlds[0].to_html())
         else:
-            # Multiple worlds: wrap all cards in one HTML page.
-            # Strip the outer <html>…</body> wrapper from each card after
-            # the first, keeping only the inner <div class="world-card">.
-            import re  # pylint: disable=import-outside-toplevel
-            cards_html = []
-            for w in worlds:
-                full = w.to_html()
-                # Extract just the world-card div from each world's HTML
-                match = re.search(
-                    r'(<div class="world-card">.*?</div>)\s*</body>',
-                    full, re.DOTALL
-                )
-                cards_html.append(match.group(1) if match else full)
-
-            # Re-use the CSS from the first world's page, adjust body style
-            first_html = worlds[0].to_html()
-            # Replace the single-card body content with all cards
-            combined = re.sub(
-                r'<body>.*</body>',
-                '<body>\n'
-                + '\n'.join(cards_html)
-                + '\n</body>',
-                first_html,
-                flags=re.DOTALL,
-            )
-            # Adjust body padding and add gap between cards
-            combined = combined.replace(
-                "max-width: 680px;\n    margin: 0 auto;",
-                "max-width: 680px;\n    margin: 0 auto;\n    margin-bottom: 1.5rem;",
-            )
-            print(combined)
+            print(render("world_list.html",
+                         worlds=[_world_html_ctx(w) for w in worlds]))
 
     else:
         for i, world in enumerate(worlds):

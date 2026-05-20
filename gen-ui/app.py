@@ -84,7 +84,9 @@ from traveller_world_gen import (  # noqa: E402
     generate_world,
     to_hex as _to_hex,
 )
-from traveller_world_physical import generate_world_physical, apply_moon_tidal_effects, TIDAL_STATUS_LABELS  # noqa: E402
+from traveller_world_physical import (  # noqa: E402
+    generate_world_physical, apply_moon_tidal_effects, TIDAL_STATUS_LABELS,
+)
 from traveller_belt_physical import BeltPhysical  # noqa: E402
 from traveller_hydro_detail import (  # noqa: E402
     HydrographicDetail,
@@ -681,7 +683,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 orbit_au = mw_orbit.orbit_au if mw_orbit is not None else None
                 star_mass = stars[0].mass if stars else None
                 world.size_detail = generate_world_physical(
-                    world, age, orbit_number, orbit_au, star_mass
+                    world, age, orbit_number, orbit_au, star_mass,
+                    hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
                 )
                 if world.atmosphere_detail is None:
                     hz_dev = mw_orbit.hz_deviation if mw_orbit is not None else None
@@ -712,7 +715,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     det = mw_orbit.detail
                     if det is not None:
                         if mw_orbit.world_type == "gas_giant":
-                            moons = det.moons[0].detail.moons if det.moons and det.moons[0].detail else []
+                            first = det.moons[0] if det.moons else None
+                            moons = first.detail.moons if first and first.detail else []
                         else:
                             moons = det.moons or []
                         stars = system.stellar_system.stars  # type: ignore[attr-defined]
@@ -1470,6 +1474,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             ("Escape velocity", f"{physical.escape_velocity:.2f} km/s"),
             ("Axial tilt",      f"{physical.axial_tilt}°"),
             ("Day length",      f"{physical.day_length:.1f} h"),
+            *([("Mean temperature", f"{physical.mean_temperature_k} K")]
+              if physical.mean_temperature_k is not None else []),
             *([("Tidal status", TIDAL_STATUS_LABELS[physical.tidal_status])]
               if physical.tidal_status != "none" else []),
         ]:
