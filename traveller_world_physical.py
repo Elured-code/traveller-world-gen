@@ -533,6 +533,120 @@ def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-posi
 
 
 # ---------------------------------------------------------------------------
+# Seismic Stress (WBH Seismology section, ~pp. 125-128)
+# ---------------------------------------------------------------------------
+
+# Solar-to-Earth mass conversion (1 M☉ = 333,000 M⊕, approximate)
+_SOLAR_TO_EARTH_MASS = 333_000.0
+
+# AU to millions of km (1 AU = 149.5978707 Mkm)
+_AU_TO_MKM = 149.597_870_7
+
+
+def _compute_rss(
+        size: int,
+        density: float,
+        age_gyr: float,
+        moons: list | None = None,
+        is_moon: bool = False,
+) -> int:
+    """Compute Residual Seismic Stress (WBH p.125).
+
+    Formula: floor(Size - Age_Gyr + DMs)², treating floor values < 1 as 0.
+    DMs: is_moon +1; density > 1.0 +2; density < 0.5 -1;
+         significant moon sizes summed (Size 1+), capped at +12.
+    """
+    dm = 0
+    if is_moon:
+        dm += 1
+    if density > 1.0:
+        dm += 2
+    elif density < 0.5:
+        dm -= 1
+    if moons:
+        total_moon_sz = sum(
+            int(m.size_code) for m in moons
+            if not m.is_ring
+            and m.size_code not in (0, "S")
+            and int(m.size_code) >= 1
+        )
+        dm += min(12, total_moon_sz)
+    raw = size - age_gyr + dm
+    floor_val = math.floor(raw)
+    if floor_val < 1:
+        return 0
+    return floor_val * floor_val
+
+
+def _compute_thf(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        diameter_km: float,
+        world_mass_earth: float,
+        star_mass_solar: float,
+        orbit_au: float,
+        orbit_eccentricity: float,
+        orbit_period_hours: float,
+) -> int:
+    """Compute Tidal Heating Factor for a world around its primary (WBH p.127).
+
+    Formula: (PrimaryMass⊕)² × (diameter_km/1600)⁵ × e² /
+             (3000 × DistanceMkm⁵ × PeriodDays × WorldMass⊕)
+    Values < 1 are treated as 0 (ignored per WBH rule).
+    """
+    if orbit_eccentricity <= 0.0 or world_mass_earth <= 0.0:
+        return 0
+    star_mass_earth = star_mass_solar * _SOLAR_TO_EARTH_MASS
+    size_factor = diameter_km / 1600.0
+    distance_mkm = orbit_au * _AU_TO_MKM
+    period_days = orbit_period_hours / 24.0
+    if distance_mkm <= 0.0 or period_days <= 0.0:
+        return 0
+    thf = (
+        star_mass_earth ** 2
+        * size_factor ** 5
+        * orbit_eccentricity ** 2
+    ) / (
+        3_000.0
+        * distance_mkm ** 5
+        * period_days
+        * world_mass_earth
+    )
+    return max(0, int(thf))
+
+
+def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        physical: "WorldPhysical",
+        world_size: int,
+        age_gyr: float,
+        star_mass_solar: float,
+        orbit_au: float,
+        orbit_eccentricity: float,
+        orbit_period_hours: float,
+        moons: list | None = None,
+        is_moon: bool = False,
+) -> None:
+    """Compute and set all seismic stress fields on WorldPhysical (WBH ~pp. 125-128).
+
+    Sets residual_seismic_stress, tidal_heating_factor, total_seismic_stress,
+    and seismic_temperature_k (only when it differs from mean_temperature_k).
+    Mutates physical in-place.
+    """
+    rss = _compute_rss(world_size, physical.density, age_gyr, moons, is_moon)
+    thf = _compute_thf(
+        physical.diameter_km, physical.mass, star_mass_solar,
+        orbit_au, orbit_eccentricity, orbit_period_hours,
+    )
+    tss = rss + thf
+    physical.residual_seismic_stress = rss
+    physical.tidal_heating_factor = thf
+    physical.total_seismic_stress = tss
+    if physical.mean_temperature_k is not None and tss > 0:
+        old_t = physical.mean_temperature_k
+        adj = round((old_t ** 4 + tss ** 4) ** 0.25)
+        if adj != old_t:
+            physical.seismic_temperature_k = max(old_t, adj)
+
+
+# ---------------------------------------------------------------------------
 # Basic Mean Temperature Table (WBH p.47)
 # ---------------------------------------------------------------------------
 
@@ -613,6 +727,10 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     tidal_status: str       # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
     eccentricity_adjusted: Optional[float] = field(default=None, init=False)
     mean_temperature_k: Optional[int] = field(default=None, init=False)
+    residual_seismic_stress: Optional[int] = field(default=None, init=False)
+    tidal_heating_factor: Optional[int] = field(default=None, init=False)
+    total_seismic_stress: Optional[int] = field(default=None, init=False)
+    seismic_temperature_k: Optional[int] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
         """Return physical characteristics as a JSON-compatible dict."""
@@ -631,6 +749,14 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["eccentricity_adjusted"] = round(self.eccentricity_adjusted, 4)
         if self.mean_temperature_k is not None:
             d["mean_temperature_k"] = self.mean_temperature_k
+        if self.residual_seismic_stress is not None:
+            d["residual_seismic_stress"] = self.residual_seismic_stress
+        if self.tidal_heating_factor:
+            d["tidal_heating_factor"] = self.tidal_heating_factor
+        if self.total_seismic_stress is not None:
+            d["total_seismic_stress"] = self.total_seismic_stress
+        if self.seismic_temperature_k is not None:
+            d["seismic_temperature_k"] = self.seismic_temperature_k
         return d
 
 
@@ -730,7 +856,7 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
     return wp
 
 
-def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         physical: "WorldPhysical",
         moons: list,
         world_size: int,
@@ -741,30 +867,44 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
         star_mass: float,
         orbit_eccentricity: float = 0.0,
         num_stars_orbited: int = 1,
+        is_moon: bool = False,
 ) -> None:
-    """Re-run the tidal lock check with moon data and apply moon-lock check.
+    """Re-run the tidal lock check with moon data and compute seismic stress.
 
-    Called after moon generation completes (WBH pp.106-107). Mutates
-    physical in-place. No-op when moons list is empty.
+    Called after moon generation completes (WBH pp.106-107, ~pp.125-128).
+    Mutates physical in-place. Tidal lock re-run is skipped when moons is
+    empty, but seismic stress is always computed.
     """
-    if not moons:
-        return
-    day_h, tilt, status = _roll_tidal_lock_status(
-        size=world_size,
-        axial_tilt=physical.axial_tilt,
-        atmosphere=world_atmosphere,
+    if moons:
+        day_h, tilt, status = _roll_tidal_lock_status(
+            size=world_size,
+            axial_tilt=physical.axial_tilt,
+            atmosphere=world_atmosphere,
+            age_gyr=age_gyr,
+            orbit_number=orbit_number,
+            orbit_au=orbit_au,
+            star_mass=star_mass,
+            basic_day_h=physical.day_length,
+            orbit_eccentricity=orbit_eccentricity,
+            moons=moons,
+            num_stars_orbited=num_stars_orbited,
+        )
+        physical.day_length = day_h
+        physical.axial_tilt = tilt
+        physical.tidal_status = status
+        if status == "1:1_lock" and orbit_eccentricity > 0.1:
+            new_ecc = _reroll_eccentricity_tidal(orbit_number, age_gyr)
+            physical.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
+
+    period_h = _orbital_period_hours(orbit_au, star_mass) if star_mass > 0 else 0.0
+    _apply_seismic_stress(
+        physical,
+        world_size=world_size,
         age_gyr=age_gyr,
-        orbit_number=orbit_number,
+        star_mass_solar=star_mass,
         orbit_au=orbit_au,
-        star_mass=star_mass,
-        basic_day_h=physical.day_length,
         orbit_eccentricity=orbit_eccentricity,
+        orbit_period_hours=period_h,
         moons=moons,
-        num_stars_orbited=num_stars_orbited,
+        is_moon=is_moon,
     )
-    physical.day_length = day_h
-    physical.axial_tilt = tilt
-    physical.tidal_status = status
-    if status == "1:1_lock" and orbit_eccentricity > 0.1:
-        new_ecc = _reroll_eccentricity_tidal(orbit_number, age_gyr)
-        physical.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)

@@ -201,18 +201,17 @@ def _get_mainworld_moons(system) -> list:
 
 
 def _apply_mainworld_moon_tidal(system) -> None:
-    """Apply moon tidal DMs to mainworld WorldPhysical (WBH pp.106-107).
+    """Apply moon tidal DMs and compute seismic stress for mainworld.
 
     Must be called after both attach_detail() and _attach_mainworld_physical().
-    No-op when the mainworld has no physical detail or no generated moons.
+    No-op when the mainworld has no physical detail or orbit.
     """
     mw = system.mainworld
     mw_orbit = system.mainworld_orbit
     if mw is None or mw.size_detail is None or mw_orbit is None:
         return
     moons = _get_mainworld_moons(system)
-    if not moons:
-        return
+    is_moon = mw_orbit.world_type == "gas_giant"
     apply_moon_tidal_effects(
         mw.size_detail,
         moons=moons,
@@ -223,6 +222,7 @@ def _apply_mainworld_moon_tidal(system) -> None:
         orbit_au=mw_orbit.orbit_au,
         star_mass=system.stellar_system.primary.mass,
         orbit_eccentricity=mw_orbit.eccentricity,
+        is_moon=is_moon,
     )
     if mw.size_detail.eccentricity_adjusted is not None:
         mw_orbit.eccentricity = mw.size_detail.eccentricity_adjusted

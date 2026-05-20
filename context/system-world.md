@@ -298,10 +298,11 @@ apply_moon_tidal_effects(
     star_mass: float,
     orbit_eccentricity: float = 0.0,
     num_stars_orbited: int = 1,
+    is_moon: bool = False,             # True when mainworld is a satellite of a gas giant
 ) -> None
-# Re-runs the full tidal lock check with moon data. Mutates physical in-place.
-# Must be called AFTER generate_moons() completes (three-phase pipeline).
-# Propagates eccentricity_adjusted back to caller when 1:1 lock fires.
+# Re-runs the tidal lock check with moon data (only when moons is non-empty).
+# Always computes seismic stress (RSS + THF) and sets fields on physical.
+# Mutates physical in-place. Must be called AFTER generate_moons() completes.
 # Call sites: function_app._apply_mainworld_moon_tidal(), gen-ui _finish_system_generation().
 ```
 
