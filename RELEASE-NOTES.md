@@ -1,3 +1,37 @@
+# Release Notes — v1.3.0 (draft)
+
+**Branch:** `feature/updates` → `main`
+**Sessions:** 55–
+**Tests:** 1107
+
+---
+
+## World Physical Detail
+
+- **Seismic stress** is now calculated for every mainworld that has physical detail
+  generated (i.e., when "World physical" is checked in the app). Three components are
+  shown in the World Body card:
+  - **Residual Seismic Stress** — derived from the world's size, age, density, and
+    moon sizes. A young, large, dense world with big moons will have high residual stress.
+  - **Tidal Heating Factor** — contribution from orbital eccentricity around the primary
+    star. Significant only for close, highly eccentric orbits (e.g., tidally locked
+    worlds that have retained eccentricity through resonance).
+  - **Total Seismic Stress** — sum of the above (Tidal Stress Factor from WBH p.126
+    is deferred — see below).
+  - **Seismic Temperature** — the mean temperature adjusted for internal heat:
+    ⁴√(T⁴ + TSS⁴). Shown only when the adjustment rounds to a different value than
+    the base mean temperature.
+
+---
+
+## Known Gaps / Deferred
+
+- **Tidal Stress Factor** (WBH p.126) — the contribution to total seismic stress from
+  tidal effects in metres, divided by 10. Deferred pending availability of the p.126
+  formula text. Tracked as issue #67.
+
+---
+
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
