@@ -225,24 +225,24 @@ STARPORT_QUALITY = {
 
 # Tech Level DMs from various characteristics (p.258-259)
 # Starport DMs
-STARPORT_TL_DM = {"A": 6, "B": 4, "C": 2, "D": 1, "E": 1, "X": -4}
+STARPORT_TL_DM = {"A": 6, "B": 4, "C": 2, "X": -4}  # D and E give +0
 
 # Size DMs for TL
 SIZE_TL_DM = {0: 2, 1: 2, 2: 1, 3: 1, 4: 1}   # codes ≥5 give +0
 
-# Atmosphere DMs for TL
-ATMOSPHERE_TL_DM = {0: 1, 1: 1, 2: 1, 3: 1, 4: 1, 5: 1,
-                    14: 1, 15: 1}  # codes 6-13 give +0
+# Atmosphere DMs for TL (codes 0-3 and 10-15 give +1; 4-9 give +0)
+ATMOSPHERE_TL_DM = {0: 1, 1: 1, 2: 1, 3: 1,
+                    10: 1, 11: 1, 12: 1, 13: 1, 14: 1, 15: 1}
 
-# Hydrographics DMs for TL
-HYDROGRAPHICS_TL_DM = {9: 1, 10: 2}    # codes 0-8 give +0
+# Hydrographics DMs for TL (0 and 8 give +1; A gives +2; others +0)
+HYDROGRAPHICS_TL_DM = {0: 1, 8: 1, 10: 2}
 
 # Population DMs for TL
 POPULATION_TL_DM = {1: 1, 2: 1, 3: 1, 4: 1, 5: 1,
                     8: 1, 9: 2, 10: 4}  # others give +0
 
 # Government DMs for TL
-GOVERNMENT_TL_DM = {0: 1, 5: 1, 13: -2, 14: -2}  # others give +0
+GOVERNMENT_TL_DM = {0: 1, 5: 1, 7: 2, 13: -2, 14: -2}  # others give +0
 
 # Temperature DMs by Atmosphere code (p.251)
 TEMPERATURE_DM = {

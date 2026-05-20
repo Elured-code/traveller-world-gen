@@ -2,7 +2,7 @@
 
 **Branch:** `feature/updates` → `main`
 **Sessions:** 55–
-**Tests:** 1107
+**Tests:** 1119
 
 ---
 
@@ -21,6 +21,20 @@
   - **Seismic Temperature** — the mean temperature adjusted for internal heat:
     ⁴√(T⁴ + TSS⁴). Shown only when the adjustment rounds to a different value than
     the base mean temperature.
+
+---
+
+## Bug Fixes
+
+- **Tech Level DM table** (WBH p.259): 12 values were wrong or missing across five
+  DM tables. Corrected:
+  - Starport D and E: were incorrectly giving +1; now correctly give +0.
+  - Atmosphere 4 and 5: were incorrectly giving +1; now correctly give +0.
+  - Atmosphere 10–13: were missing (giving +0); now correctly give +1 each.
+  - Hydrographics 0 and 8: were missing (giving +0); now correctly give +1 each.
+  - Hydrographics 9: was incorrectly giving +1; now correctly gives +0.
+  - Government 7 (Balkanisation): was missing (giving +0); now correctly gives +2.
+  - 12 new tests added to `TestGenerateTechLevel`; test count 1107 → 1119.
 
 ---
 

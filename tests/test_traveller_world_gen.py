@@ -1689,6 +1689,80 @@ class TestGenerateTechLevel:
             result = generate_tech_level("X", 5, 6, 5, 0, 13)
             assert result >= 0
 
+    # ------------------------------------------------------------------
+    # Starport D and E give no bonus (WBH p.259 table, blank entries)
+    # ------------------------------------------------------------------
+    def test_starport_d_gives_no_dm(self):
+        # D (+0), size 5, atm 6, hydro 5, pop 5 (+1), gov 5 (+1) = DM+2
+        # 1D(3) + 2 = 5
+        with fixed_roll(3):
+            assert generate_tech_level("D", 5, 6, 5, 5, 5) == 5
+
+    def test_starport_e_gives_no_dm(self):
+        # E (+0), size 5, atm 6, hydro 5, pop 5 (+1), gov 5 (+1) = DM+2
+        # 1D(3) + 2 = 5
+        with fixed_roll(3):
+            assert generate_tech_level("E", 5, 6, 5, 5, 5) == 5
+
+    # ------------------------------------------------------------------
+    # Atmosphere 4 and 5 give no bonus; 10-13 each give +1
+    # ------------------------------------------------------------------
+    def test_atmosphere_4_gives_no_dm(self):
+        # Atm 4 (+0); total DM = 2+0+0+0+1+1 = 4; 1D(3)+4 = 7
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 4, 5, 5, 5) == 7
+
+    def test_atmosphere_5_gives_no_dm(self):
+        # Atm 5 (+0); same as baseline = 7
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 5, 5, 5, 5) == 7
+
+    def test_atmosphere_10_gives_dm_plus_1(self):
+        # Atm 10 (+1); DM = 2+0+1+0+1+1 = 5; 1D(3)+5 = 8
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 10, 5, 5, 5) == 8
+
+    def test_atmosphere_11_gives_dm_plus_1(self):
+        # Atm 11 (+1); 1D(3)+5 = 8
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 11, 5, 5, 5) == 8
+
+    def test_atmosphere_12_gives_dm_plus_1(self):
+        # Atm 12 (+1); 1D(3)+5 = 8
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 12, 5, 5, 5) == 8
+
+    def test_atmosphere_13_gives_dm_plus_1(self):
+        # Atm 13 (+1); 1D(3)+5 = 8
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 13, 5, 5, 5) == 8
+
+    # ------------------------------------------------------------------
+    # Hydrographics 0 and 8 give +1; 9 gives +0; A (10) gives +2
+    # ------------------------------------------------------------------
+    def test_hydrographics_0_gives_dm_plus_1(self):
+        # Hydro 0 (+1); DM = 2+0+0+1+1+1 = 5; 1D(3)+5 = 8
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 6, 0, 5, 5) == 8
+
+    def test_hydrographics_8_gives_dm_plus_1(self):
+        # Hydro 8 (+1); 1D(3)+5 = 8
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 6, 8, 5, 5) == 8
+
+    def test_hydrographics_9_gives_no_dm(self):
+        # Hydro 9 (+0); DM = 2+0+0+0+1+1 = 4; 1D(3)+4 = 7
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 6, 9, 5, 5) == 7
+
+    # ------------------------------------------------------------------
+    # Government 7 (Balkanisation) gives +2
+    # ------------------------------------------------------------------
+    def test_government_7_gives_dm_plus_2(self):
+        # Gov 7 (+2); DM = 2+0+0+0+1+2 = 5; 1D(3)+5 = 8
+        with fixed_roll(3):
+            assert generate_tech_level("C", 5, 6, 5, 5, 7) == 8
+
 
 # ===========================================================================
 # TestAssignTradeCodes
