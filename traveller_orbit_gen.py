@@ -15,8 +15,12 @@ Implements the world placement procedure from WBH pp.36-51:
   - World type placement in order: empty, gas giants, belts, terrestrials (p.51)
   - Mainworld candidate selection (p.51)
 
-Out of scope: anomalous orbits (Step 7), eccentricity (Step 9),
-orbital periods, Special Circumstances chapter.
+Implements anomalous orbits (Step 7, pp.49-50): random, eccentric, inclined,
+retrograde, and trojan orbit types.
+
+Implements orbital eccentricity (Step 9, p.27): eccentricity values for worlds,
+belts, and companion stars when orbital_eccentricity=True is passed to
+generate_orbits().
 
 Licence
 -------
@@ -186,6 +190,67 @@ def _gg_sah_roll(spectral: str, lum_class: str) -> str:
     return f"GL{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
 
 
+# Eccentricity Values table (WBH p.27): (max_first_roll, base, n_dice, divisor)
+# The sentinel value 99 in the last row catches all results of 12+.
+_ECC_TABLE = [
+    (5,  -0.001, 1, 1000),
+    (7,   0.000, 1,  200),
+    (9,   0.030, 1,  100),
+    (10,  0.050, 1,   20),
+    (11,  0.050, 2,   20),
+    (99,  0.300, 2,   20),
+]
+
+# DMs applied to the first roll of _roll_eccentricity() for anomalous orbit
+# types (WBH pp.49-50). Trojan types are absent — no DM specified.
+_ANOM_ECC_DM: dict = {
+    "random":     2,
+    "eccentric":  5,
+    "inclined":   2,
+    "retrograde": 2,
+}
+
+
+def _roll_eccentricity(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        orbit_number: float, system_age_gyr: float,
+        extra_stars: int = 0,
+        is_belt: bool = False,
+        is_star: bool = False,
+        anomaly_dm: int = 0) -> float:
+    """Roll orbital eccentricity per WBH p.27 Eccentricity Values table."""
+    dm = 2 if is_star else 0
+    dm += extra_stars
+    dm += anomaly_dm
+    if orbit_number < 1.0 < system_age_gyr:
+        dm -= 1
+    if is_belt:
+        dm += 1
+    first = roll(2, dm)
+    for max_roll, base, n_dice, divisor in _ECC_TABLE:
+        if first <= max_roll:
+            second = roll(n_dice) / divisor
+            return min(0.999, max(0.0, base + second))
+    return 0.0  # unreachable; satisfies type checker
+
+
+def _roll_inclination() -> float:  # pylint: disable=too-many-return-statements
+    """Roll orbital inclination per WBH p.28 Inclination table."""
+    first = roll(2)
+    if first <= 6:
+        return random.randint(1, 6) / 2                                    # Very Low: 0.5–3°
+    if first == 7:
+        return float(random.randint(1, 6))                                 # Low: 1–6°
+    if first == 8:
+        return float(roll(2))                                              # Moderate: 2–12°
+    if first == 9:
+        return float(roll(2) * 3 + random.randint(1, 6))                  # High: 7–42°
+    if first == 10:
+        return float((random.randint(1, 6) + 1) * 5 + random.randint(1, 6))  # Very High: 11–41°
+    if first == 11:
+        return float(roll(3) * 5 - random.randint(1, 6))                  # Extreme: 9–89°
+    return max(0.0, 180.0 - _roll_inclination())                          # Retrograde: 12
+
+
 @dataclass
 class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     """One orbit slot in a star system, with world type and zone data."""
@@ -202,6 +267,11 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     notes: str = ""
     canonical_profile: str = ""  # UWP set when mainworld comes from canonical data
     gg_sah: str = ""             # gas giant SAH rolled at orbit gen time (e.g. "GM9")
+    anomaly_type: str = ""       # ""|"random"|"eccentric"|"inclined"|"retrograde"
+                                 # |"trojan_leading"|"trojan_trailing"
+    orbit_period_yr: Optional[float] = field(default=None, init=False)
+    eccentricity: float = field(default=0.0, init=False)
+    inclination: float = field(default=0.0, init=False)
     detail: Optional["WorldDetail"] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
@@ -222,6 +292,16 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["canonical_profile"] = self.canonical_profile
         if self.gg_sah:
             d["gg_sah"] = self.gg_sah
+        if self.anomaly_type:
+            d["anomaly_type"] = self.anomaly_type
+        if self.orbit_period_yr is not None:
+            d["orbit_period_yr"] = self.orbit_period_yr
+        if self.eccentricity > 0:
+            d["eccentricity"] = round(self.eccentricity, 4)
+            d["orbit_au_min"] = round(self.orbit_au * (1 - self.eccentricity), 3)
+            d["orbit_au_max"] = round(self.orbit_au * (1 + self.eccentricity), 3)
+        if self.inclination > 0:
+            d["inclination"] = round(self.inclination, 2)
         # Include secondary world / satellite detail if attach_detail() has run
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
@@ -269,7 +349,7 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
         """Serialise this system's orbits to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent)
 
-    def summary(self) -> str:  # pylint: disable=too-many-locals
+    def summary(self) -> str:  # pylint: disable=too-many-locals,too-many-branches
         """
         Human-readable orbital summary.
 
@@ -301,7 +381,12 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
         lines.append("  " + "-" * 82)
         for o in self.orbits:
             hz   = "★" if o.is_habitable_zone else " "
-            mw   = "  ← mainworld" if o.is_mainworld_candidate else ""
+            if o.is_mainworld_candidate:
+                mw = "  ← mainworld"
+            elif o.anomaly_type and o.notes:
+                mw = f"  [{o.notes}]"
+            else:
+                mw = ""
             detail = o.detail
             if o.canonical_profile:
                 profile = o.canonical_profile
@@ -346,7 +431,9 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
         return "\n".join(lines)
 
 
-def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+                    orbital_eccentricity: bool = False,
+                    orbital_inclination: bool = False) -> SystemOrbits:
     """Generate all orbit slots for a star system (WBH pp.36-51)."""
     result = SystemOrbits(stellar_system=system)
     primary_stars = [s for s in system.stars if s.role != "companion"]
@@ -374,9 +461,10 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
     result.empty_orbits = empty
 
     # MAO and HZCO per star
-    star_hzco: Dict[str, float] = {}
-    star_mao:  Dict[str, float] = {}
+    star_hzco:  Dict[str, float] = {}
+    star_mao:   Dict[str, float] = {}
     star_avail: Dict[str, Tuple[float,float]] = {}
+    star_outer: Dict[str, Tuple[float,float]] = {}   # outer zone beyond companion excl.
 
     for star in primary_stars:
         mao = get_mao(star)
@@ -391,16 +479,28 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
 
         # Available orbit range — table ends at orbit# 17 (8512 AU)
         max_o = 17.0
+        outer_lo = mao   # accumulates max(companion+3) for companions with valid inner zone
+        has_outer = False
         if star.role == "primary":
             for other in primary_stars:
                 if other.role in ("close","near","far") and other.orbit_number:
                     excl = other.orbit_number - 1.0
                     if excl > mao:
                         max_o = min(max_o, excl)
+                        outer_lo = max(outer_lo, other.orbit_number + 3.0)
+                        has_outer = True
+                    else:
+                        # Companion orbit is inside MAO+1: no inner zone exists.
+                        # Push MAO past the outer exclusion boundary (WBH: companion+3).
+                        mao = max(mao, other.orbit_number + 3.0)
+                        star_mao[star.designation] = mao
         elif star.role in ("close","near","far") and star.orbit_number:
             max_o = max(mao+0.1, star.orbit_number - 3.0)
         elif star.role == "companion":
             max_o = 0.65
+
+        if has_outer and outer_lo < 17.0:
+            star_outer[star.designation] = (outer_lo, 17.0)
 
         star_avail[star.designation] = (mao, max_o)
         result.star_mao[star.designation] = mao
@@ -412,17 +512,20 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
     if len(primary_stars) == 1:
         alloc = {primary_stars[0].designation: result.total_worlds}
     else:
-        total_range = sum(
-            max(0.0, star_avail[s.designation][1] - star_avail[s.designation][0])
-            for s in primary_stars
-        )
+        def _avail_range(s: Star) -> float:
+            des = s.designation
+            inner = max(0.0, star_avail[des][1] - star_avail[des][0])
+            oz = star_outer.get(des)
+            return inner + (max(0.0, oz[1] - oz[0]) if oz else 0.0)
+
+        total_range = sum(_avail_range(s) for s in primary_stars)
         alloc: Dict[str, int] = {}
         remaining = result.total_worlds
         for i, star in enumerate(primary_stars):
             if i == len(primary_stars)-1:
                 alloc[star.designation] = remaining
             else:
-                rng = max(0.0, star_avail[star.designation][1] - star_avail[star.designation][0])
+                rng = _avail_range(star)
                 n = round(result.total_worlds * rng / max(total_range, 0.01))
                 n = max(0, min(n, remaining))
                 alloc[star.designation] = n
@@ -435,139 +538,157 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
 
     for star in primary_stars:
         d = star.designation
-        n_worlds = alloc.get(d, 0)
-        n_empty_here = empty if star == primary_stars[0] else 0
-        total_slots = n_worlds + n_empty_here
-        if total_slots <= 0:
-            continue
+        n_worlds_total = alloc.get(d, 0)
+        n_empty_here   = empty if star == primary_stars[0] else 0
 
-        mao = star_mao[d]
-        hzco = star_hzco[d]
-        _, max_o = star_avail[d]
-
-        # Baseline number (WBH p.44)
-        bn_dm = 0
-        if has_companion:
-            bn_dm -= 2
-        if star.lum_class in ("Ia","Ib","II"):
-            bn_dm += 3
-        elif star.lum_class == "III":
-            bn_dm += 2
-        elif star.lum_class == "IV":
-            bn_dm += 1
-        elif star.lum_class == "VI":
-            bn_dm -= 1
-        bn_dm -= secondary_count
-        tw = result.total_worlds
-        if tw < 6:
-            bn_dm -= 4
-        elif tw <= 9:
-            bn_dm -= 3
-        elif tw <= 12:
-            bn_dm -= 2
-        elif tw <= 15:
-            bn_dm -= 1
-        elif tw >= 18:
-            bn_dm += 1
-        baseline_num = max(0, roll(2, bn_dm))
-
-        # Baseline Orbit# (WBH p.44-46)
-        vs = 0.1 if hzco >= 1.0 else 0.01
-        n_total_stars = len(primary_stars)
-        if 1 <= baseline_num <= total_slots:
-            # Step 3a: baseline world is in the habitable zone
-            var = (roll(2)-7) * vs
-            baseline_orbit = max(mao, hzco + var)
-        elif baseline_num < 1:
-            # Step 3b: cold system — all worlds are beyond the HZCO.
-            # WBH p.45: Baseline Orbit# = HZCO − baseline_number + Total Worlds + (2D-7)/10
-            # baseline_number is ≤0 so subtracting it adds its absolute value.
-            # Total Worlds is added as whole Orbit#s (no 0.1 multiplier) to push
-            # the baseline — and therefore the innermost world — well outside the HZ.
-            anchor = max(mao, hzco)
-            if anchor >= 1.0:
-                var = (roll(2)-7) / 10.0
-                # FIX: add total_worlds as whole Orbit#s, not total_slots*0.1
-                baseline_orbit = anchor + abs(baseline_num) + n_worlds + var
-            else:
-                # Sub-Orbit#1 HZCO: use 1/10 scaling throughout (WBH p.45)
-                var = (roll(2)-2) / 100.0
-                baseline_orbit = anchor + abs(baseline_num)/10.0 + n_worlds/10.0 + var
-            baseline_orbit = max(mao, baseline_orbit)
-            baseline_num = 1
+        # Split worlds between inner zone and outer zone (if one exists)
+        if d in star_outer:
+            mao_i, max_o_i = star_avail[d]
+            mao_o, max_o_o = star_outer[d]
+            inner_rng = max(0.0, max_o_i - mao_i)
+            outer_rng = max(0.0, max_o_o - mao_o)
+            total_rng  = max(inner_rng + outer_rng, 0.01)
+            inner_n    = round(n_worlds_total * inner_rng / total_rng)
+            inner_n    = max(0, min(inner_n, n_worlds_total))
+            outer_n    = n_worlds_total - inner_n
+            zones = [
+                (mao_i, max_o_i, inner_n, n_empty_here),
+                (mao_o, max_o_o, outer_n, 0),
+            ]
         else:
-            # Step 3c: hot system — all worlds are inside the HZCO
-            inner = hzco - baseline_num + total_slots
-            if inner < 1.0 or hzco < 1.0:
-                var = (roll(2)-7) / 100.0
-                baseline_orbit = hzco - baseline_num/10.0 + total_slots/10.0 + var
-            else:
+            mao_i, max_o_i = star_avail[d]
+            zones = [(mao_i, max_o_i, n_worlds_total, n_empty_here)]
+
+        hzco         = star_hzco[d]
+        n_total_stars = len(primary_stars)
+
+        for zone_mao, zone_max_o, zone_n, zone_empty in zones:
+            total_slots = zone_n + zone_empty
+            if total_slots <= 0:
+                continue
+
+            # Baseline number (WBH p.44)
+            bn_dm = 0
+            if has_companion:
+                bn_dm -= 2
+            if star.lum_class in ("Ia","Ib","II"):
+                bn_dm += 3
+            elif star.lum_class == "III":
+                bn_dm += 2
+            elif star.lum_class == "IV":
+                bn_dm += 1
+            elif star.lum_class == "VI":
+                bn_dm -= 1
+            bn_dm -= secondary_count
+            tw = result.total_worlds
+            if tw < 6:
+                bn_dm -= 4
+            elif tw <= 9:
+                bn_dm -= 3
+            elif tw <= 12:
+                bn_dm -= 2
+            elif tw <= 15:
+                bn_dm -= 1
+            elif tw >= 18:
+                bn_dm += 1
+            baseline_num = max(0, roll(2, bn_dm))
+
+            # Baseline Orbit# (WBH p.44-46)
+            vs = 0.1 if hzco >= 1.0 else 0.01
+            if 1 <= baseline_num <= total_slots:
+                # Step 3a: baseline world is in the habitable zone
                 var = (roll(2)-7) * vs
-                baseline_orbit = inner + var
-            baseline_orbit = max(mao, min(baseline_orbit, hzco - 0.01))
-            baseline_num = total_slots
-
-        baseline_orbit = max(mao, min(baseline_orbit, max_o - 0.01))
-
-        # Spread (WBH p.48)
-        # Formula: Spread = (Baseline Orbit# - MAO) / Baseline Number
-        spread = (baseline_orbit - mao) / max(1, baseline_num)
-        # Maximum Spread = Primary's Available Orbits / (All Slots + Total Stars)
-        # Denominator uses total_slots (worlds + empty) so every slot gets a
-        # spread unit, preventing outer slots from piling up at the ceiling.
-        avail = max_o - mao
-        max_spread = avail / max(total_slots + n_total_stars, 1)
-        # Minimum spread: when baseline_num is large the formula above collapses
-        # to HZCO/total_slots (~0.4 for a G star with 8 worlds), pinning all
-        # slots near the inner system.  Enforce a floor so worlds span at least
-        # half the available range.
-        min_spread = avail / max(total_slots * 2, 1)
-        spread = max(min_spread, min(spread, max_spread))
-        spread = min(spread, max_spread)
-        spread = max(0.01, spread)
-
-        # Place slots (WBH p.48-49)
-        # Inner Slot Orbit# = (MAO + Spread) + (2D-7) × Spread/10
-        # Each subsequent slot: Previous + Spread + (2D-7) × Spread/10
-        slots: List[float] = []
-        current = mao + spread + (roll(2)-7)*0.1*spread
-        current = max(mao, current)
-        for _ in range(total_slots):
-            current = max(mao, min(current, max_o))
-            # Additive gap check (was multiplicative `* 1.1`, which triggered
-            # constantly once orbit# exceeded spread/0.1 and halved every step).
-            if slots and current - slots[-1] < spread * 0.4:
-                current = min(slots[-1] + spread * 0.5, max_o)
-            # Stop if we cannot advance past the last slot (at ceiling)
-            if slots and round(current, 2) == round(slots[-1], 2):
-                break
-            slots.append(round(current, 2))
-            current += spread + (roll(2)-7)*0.1*spread
-
-        # Assign world types
-        empty_set = set(random.sample(range(len(slots)), min(n_empty_here, len(slots))))
-        for si, on in enumerate(slots):
-            au = _orbit_to_au(on)
-            dev = on - hzco
-            in_hz = abs(dev) <= 1.0
-            tz = _temp_zone(dev, hzco, on)
-            if si in empty_set:
-                wtype = "empty"
-            elif pool_idx < len(pool):
-                wtype = pool[pool_idx]
-                pool_idx += 1
+                baseline_orbit = max(zone_mao, hzco + var)
+            elif baseline_num < 1:
+                # Step 3b: cold system — all worlds are beyond the HZCO.
+                # WBH p.45: Baseline Orbit# = HZCO − baseline_number + Total Worlds + (2D-7)/10
+                # baseline_number is ≤0 so subtracting it adds its absolute value.
+                # Total Worlds is added as whole Orbit#s (no 0.1 multiplier) to push
+                # the baseline — and therefore the innermost world — well outside the HZ.
+                anchor = max(zone_mao, hzco)
+                if anchor >= 1.0:
+                    var = (roll(2)-7) / 10.0
+                    # FIX: add total_worlds as whole Orbit#s, not total_slots*0.1
+                    baseline_orbit = anchor + abs(baseline_num) + zone_n + var
+                else:
+                    # Sub-Orbit#1 HZCO: use 1/10 scaling throughout (WBH p.45)
+                    var = (roll(2)-2) / 100.0
+                    baseline_orbit = anchor + abs(baseline_num)/10.0 + zone_n/10.0 + var
+                baseline_orbit = max(zone_mao, baseline_orbit)
+                baseline_num = 1
             else:
-                wtype = "terrestrial"
-            slot_gg_sah = (
-                _gg_sah_roll(star.spectral_type, star.lum_class)
-                if wtype == "gas_giant" else ""
-            )
-            result.orbits.append(OrbitSlot(
-                star_designation=d, orbit_number=on, orbit_au=au,
-                slot_index=si+1, world_type=wtype,
-                is_habitable_zone=in_hz, hz_deviation=round(dev,3),
-                temperature_zone=tz, gg_sah=slot_gg_sah,
-            ))
+                # Step 3c: hot system — all worlds are inside the HZCO
+                inner = hzco - baseline_num + total_slots
+                if inner < 1.0 or hzco < 1.0:
+                    var = (roll(2)-7) / 100.0
+                    baseline_orbit = hzco - baseline_num/10.0 + total_slots/10.0 + var
+                else:
+                    var = (roll(2)-7) * vs
+                    baseline_orbit = inner + var
+                baseline_orbit = max(zone_mao, min(baseline_orbit, hzco - 0.01))
+                baseline_num = total_slots
+
+            baseline_orbit = max(zone_mao, min(baseline_orbit, zone_max_o - 0.01))
+
+            # Spread (WBH p.48)
+            # Formula: Spread = (Baseline Orbit# - MAO) / Baseline Number
+            spread = (baseline_orbit - zone_mao) / max(1, baseline_num)
+            # Maximum Spread = Primary's Available Orbits / (All Slots + Total Stars)
+            # Denominator uses total_slots (worlds + empty) so every slot gets a
+            # spread unit, preventing outer slots from piling up at the ceiling.
+            avail = zone_max_o - zone_mao
+            max_spread = avail / max(total_slots + n_total_stars, 1)
+            # Minimum spread: when baseline_num is large the formula above collapses
+            # to HZCO/total_slots (~0.4 for a G star with 8 worlds), pinning all
+            # slots near the inner system.  Enforce a floor so worlds span at least
+            # half the available range.
+            min_spread = avail / max(total_slots * 2, 1)
+            spread = max(min_spread, min(spread, max_spread))
+            spread = min(spread, max_spread)
+            spread = max(0.01, spread)
+
+            # Place slots (WBH p.48-49)
+            # Inner Slot Orbit# = (MAO + Spread) + (2D-7) × Spread/10
+            # Each subsequent slot: Previous + Spread + (2D-7) × Spread/10
+            slots: List[float] = []
+            current = zone_mao + spread + (roll(2)-7)*0.1*spread
+            current = max(zone_mao, current)
+            for _ in range(total_slots):
+                current = max(zone_mao, min(current, zone_max_o))
+                # Additive gap check (was multiplicative `* 1.1`, which triggered
+                # constantly once orbit# exceeded spread/0.1 and halved every step).
+                if slots and current - slots[-1] < spread * 0.4:
+                    current = min(slots[-1] + spread * 0.5, zone_max_o)
+                # Stop if we cannot advance past the last slot (at ceiling)
+                if slots and round(current, 2) == round(slots[-1], 2):
+                    break
+                slots.append(round(current, 2))
+                current += spread + (roll(2)-7)*0.1*spread
+
+            # Assign world types — pool_idx shared across all zones
+            empty_set = set(random.sample(range(len(slots)), min(zone_empty, len(slots))))
+            for si, on in enumerate(slots):
+                au = _orbit_to_au(on)
+                dev = on - hzco
+                in_hz = abs(dev) <= 1.0
+                tz = _temp_zone(dev, hzco, on)
+                if si in empty_set:
+                    wtype = "empty"
+                elif pool_idx < len(pool):
+                    wtype = pool[pool_idx]
+                    pool_idx += 1
+                else:
+                    wtype = "terrestrial"
+                slot_gg_sah = (
+                    _gg_sah_roll(star.spectral_type, star.lum_class)
+                    if wtype == "gas_giant" else ""
+                )
+                result.orbits.append(OrbitSlot(
+                    star_designation=d, orbit_number=on, orbit_au=au,
+                    slot_index=si+1, world_type=wtype,
+                    is_habitable_zone=in_hz, hz_deviation=round(dev,3),
+                    temperature_zone=tz, gg_sah=slot_gg_sah,
+                ))
 
     result.orbits.sort(key=lambda o: (o.star_designation, o.orbit_au))
 
@@ -579,6 +700,116 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
     result.total_worlds      = (result.gas_giant_count
                                 + result.belt_count
                                 + result.terrestrial_count)
+
+    # ── Step 7: Anomalous orbits (WBH pp.49-50) ─────────────────────────────
+    # Roll 2D: ≤9 → 0, 10 → 1, 11 → 2, 12 → 3 anomalous orbits.
+    # Each anomalous orbit adds 1 terrestrial (or belt when tp already at 13).
+    anom_count = max(0, roll(2) - 9)
+    if anom_count > 0:
+        eligible = [
+            s for s in primary_stars
+            if star_avail.get(s.designation, (0.0, 0.0))[1]
+               > star_avail.get(s.designation, (0.0, 0.0))[0]
+        ]
+        for _ in range(anom_count):
+            if not eligible:
+                break
+            anom_star = random.choice(eligible) if len(eligible) > 1 else eligible[0]
+            anom_d = anom_star.designation
+            a_hzco = star_hzco.get(anom_d, 0.0)
+
+            anom_wtype = "belt" if result.terrestrial_count >= 13 else "terrestrial"
+
+            atype_r = roll(2)
+            if atype_r <= 7:
+                anom_type = "random"
+            elif atype_r == 8:
+                anom_type = "eccentric"
+            elif atype_r == 9:
+                anom_type = "inclined"
+            elif atype_r <= 11:
+                anom_type = "retrograde"
+            else:
+                anom_type = "trojan"
+
+            anom_on    = None
+            anom_notes = ""
+
+            if anom_type == "trojan":
+                host_slots = [
+                    o for o in result.orbits
+                    if o.star_designation == anom_d and o.world_type != "empty"
+                ]
+                if not host_slots:
+                    anom_type = "random"
+                else:
+                    host = random.choice(host_slots)
+                    anom_on = host.orbit_number
+                    pos = "leading" if roll(1) <= 3 else "trailing"
+                    anom_type = f"trojan_{pos}"
+                    anom_notes = f"Trojan {pos} (L{'4' if pos == 'leading' else '5'})"
+
+            if anom_on is None:
+                # 2D-2 + d10 fractional, clamped within the star's valid zone.
+                # Use star_avail / star_outer to respect companion exclusion bands.
+                # Add ±0.01 clearance so the orbit never lands exactly on a zone
+                # boundary (which coincides with the exclusion band edge).
+                z_lo, z_hi = star_avail[anom_d]
+                oz = star_outer.get(anom_d)
+                if oz and roll(1) >= 4:   # 50/50 inner vs outer zone
+                    z_lo, z_hi = oz
+                z_lo = z_lo + 0.01
+                z_hi = min(z_hi, 20.0) - 0.01
+                if z_lo > z_hi:
+                    z_lo = z_hi = round((z_lo + z_hi) / 2.0, 2)
+                existing = {
+                    round(o.orbit_number, 2)
+                    for o in result.orbits if o.star_designation == anom_d
+                }
+                candidate = z_lo
+                for _attempt in range(4):
+                    candidate = max(
+                        z_lo,
+                        min(roll(2, -2) + random.randint(0, 9) / 10.0, z_hi),
+                    )
+                    if round(candidate, 2) not in existing:
+                        break
+                    adj = roll(1) * random.choice((-1, 1))
+                    candidate = max(z_lo, min(candidate + adj, z_hi))
+                anom_on = round(candidate, 2)
+
+            if anom_type == "inclined":
+                inc_deg = (roll(1, 2)) * 10 + random.randint(0, 9)
+                anom_notes = f"Inclined {inc_deg}°"
+            elif anom_type == "retrograde":
+                anom_notes = "Retrograde"
+            elif anom_type == "eccentric":
+                anom_notes = "Eccentric"
+            elif anom_type == "random":
+                anom_notes = "Random orbit"
+
+            anom_au  = _orbit_to_au(anom_on)
+            anom_dev = round(anom_on - a_hzco, 3)
+
+            result.orbits.append(OrbitSlot(
+                star_designation=anom_d,
+                orbit_number=anom_on,
+                orbit_au=anom_au,
+                slot_index=0,
+                world_type=anom_wtype,
+                is_habitable_zone=abs(anom_dev) <= 1.0,
+                hz_deviation=anom_dev,
+                temperature_zone=_temp_zone(anom_dev, a_hzco, anom_on),
+                anomaly_type=anom_type,
+                notes=anom_notes,
+            ))
+            if anom_wtype == "belt":
+                result.belt_count += 1
+            else:
+                result.terrestrial_count += 1
+            result.total_worlds += 1
+
+        result.orbits.sort(key=lambda o: (o.star_designation, o.orbit_au))
 
     # Mainworld selection (WBH p.51)
     candidates = [o for o in result.orbits if o.world_type != "empty"]
@@ -604,16 +835,80 @@ def generate_orbits(system: StarSystem) -> SystemOrbits:  # pylint: disable=too-
             notes.append("cool side")
         best.notes = ", ".join(notes)
 
+    # Compute world orbital periods: P (yr) = sqrt(AU³ / M_central)
+    # M_central = designated star mass + companions whose orbit_au < world orbit_au.
+    # Planet mass correction (WBH: mE × 0.000003) is negligible for standard worlds
+    # and is omitted here.
+    _stars_by_d = {s.designation: s for s in system.stars}
+    _comp_by_parent: Dict[str, List[Star]] = {}
+    for _s in system.stars:
+        if _s.role == "companion":
+            _comp_by_parent.setdefault(_s.designation[:-1], []).append(_s)
+
+    for o in result.orbits:
+        _star = _stars_by_d.get(o.star_designation)
+        if _star is None or o.orbit_au <= 0:
+            continue
+        _mc = _star.mass
+        for _comp in _comp_by_parent.get(o.star_designation, []):
+            if _comp.orbit_au is not None and _comp.orbit_au < o.orbit_au:
+                _mc += _comp.mass
+        if _mc > 0:
+            o.orbit_period_yr = round(math.sqrt(o.orbit_au ** 3 / _mc), 4)
+
+    # ── Orbital eccentricity (WBH p.27) — only when flag is set ──────────────
+    if orbital_eccentricity:
+        age = system.stars[0].age_gyr or 0.0
+        primary_desig = system.stars[0].designation
+
+        for o in result.orbits:
+            if o.world_type == "empty":
+                continue
+            extra = sum(
+                1 for s in system.stars
+                if s.role in ("close", "near", "far")
+                and s.orbit_number is not None
+                and o.star_designation == primary_desig
+                and s.orbit_number < o.orbit_number
+            )
+            o.eccentricity = _roll_eccentricity(
+                o.orbit_number, age,
+                extra_stars=extra,
+                is_belt=(o.world_type == "belt"),
+                anomaly_dm=_ANOM_ECC_DM.get(o.anomaly_type, 0),
+            )
+
+        for s in system.stars:
+            if s.role in ("close", "near", "far") and s.orbit_number is not None:
+                s.orbit_eccentricity = _roll_eccentricity(
+                    s.orbit_number, age, is_star=True
+                )
+
+    # ── Orbital inclination (WBH p.28) — only when flag is set ──────────────
+    if orbital_inclination:
+        for o in result.orbits:
+            if o.world_type == "empty":
+                continue
+            if o.anomaly_type == "inclined":
+                continue  # angle already stored in notes
+            o.inclination = _roll_inclination()
+
+        for s in system.stars:
+            if s.role in ("close", "near", "far") and s.orbit_number is not None:
+                s.orbit_inclination = _roll_inclination()
+
     return result
 
 
-def generate_full_system(seed=None):
+def generate_full_system(seed=None, orbital_eccentricity: bool = False,
+                         orbital_inclination: bool = False):
     """Generate a stellar system with orbits, optionally seeding the RNG."""
     from traveller_stellar_gen import generate_stellar_data  # pylint: disable=import-outside-toplevel
     if seed is not None:
         random.seed(seed)
     system = generate_stellar_data()
-    orbits = generate_orbits(system)
+    orbits = generate_orbits(system, orbital_eccentricity=orbital_eccentricity,
+                             orbital_inclination=orbital_inclination)
     return system, orbits
 
 

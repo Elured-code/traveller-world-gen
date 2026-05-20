@@ -140,7 +140,12 @@ from typing import Optional
 
 import azure.functions as func
 
-from traveller_world_gen import World, generate_world
+from traveller_world_gen import (
+    World, generate_world, generate_atmosphere_detail, generate_gas_mix,
+    generate_unusual_subtype,
+)
+from traveller_world_physical import generate_world_physical, apply_moon_tidal_effects
+from traveller_hydro_detail import generate_hydrographic_detail
 from traveller_system_gen import generate_full_system, generate_system_from_world
 from traveller_world_detail import attach_detail
 from traveller_map_fetch import generate_system_from_map
@@ -149,12 +154,78 @@ from shared.helpers import (
     ok, error,
     ERR_INVALID_BODY, ERR_INTERNAL, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
     apply_seed, parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
+    parse_orbital_eccentricity, parse_orbital_inclination,
     parse_seed, parse_sector, parse_world_json,
 )
 
 logger = logging.getLogger(__name__)
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
+
+
+def _attach_mainworld_physical(system) -> None:
+    """Populate size_detail on the system mainworld using full orbital parameters."""
+    mw = system.mainworld
+    if mw is None:
+        return
+    mw_orbit = system.mainworld_orbit
+    orbit_ecc = mw_orbit.eccentricity if mw_orbit is not None else 0.0
+    mw.size_detail = generate_world_physical(
+        mw,
+        age_gyr=system.stellar_system.primary.age_gyr,
+        orbit_number=mw_orbit.orbit_number if mw_orbit is not None else None,
+        orbit_au=mw_orbit.orbit_au if mw_orbit is not None else None,
+        star_mass=system.stellar_system.primary.mass,
+        orbit_eccentricity=orbit_ecc,
+        hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
+    )
+    if mw_orbit is not None and mw.size_detail is not None:
+        adj = mw.size_detail.eccentricity_adjusted
+        if adj is not None:
+            mw_orbit.eccentricity = adj
+
+
+def _get_mainworld_moons(system) -> list:
+    """Return the generated Moon objects for the mainworld (after attach_detail)."""
+    mw_orbit = system.mainworld_orbit
+    if mw_orbit is None or mw_orbit.detail is None:
+        return []
+    if mw_orbit.world_type == "gas_giant":
+        # Mainworld is a gas giant satellite; its moons are on the satellite WorldDetail
+        if mw_orbit.detail.moons:
+            sat = mw_orbit.detail.moons[0]
+            if sat.detail:
+                return sat.detail.moons or []
+        return []
+    return mw_orbit.detail.moons or []
+
+
+def _apply_mainworld_moon_tidal(system) -> None:
+    """Apply moon tidal DMs to mainworld WorldPhysical (WBH pp.106-107).
+
+    Must be called after both attach_detail() and _attach_mainworld_physical().
+    No-op when the mainworld has no physical detail or no generated moons.
+    """
+    mw = system.mainworld
+    mw_orbit = system.mainworld_orbit
+    if mw is None or mw.size_detail is None or mw_orbit is None:
+        return
+    moons = _get_mainworld_moons(system)
+    if not moons:
+        return
+    apply_moon_tidal_effects(
+        mw.size_detail,
+        moons=moons,
+        world_size=mw.size,
+        world_atmosphere=mw.atmosphere,
+        age_gyr=system.stellar_system.primary.age_gyr,
+        orbit_number=mw_orbit.orbit_number,
+        orbit_au=mw_orbit.orbit_au,
+        star_mass=system.stellar_system.primary.mass,
+        orbit_eccentricity=mw_orbit.eccentricity,
+    )
+    if mw.size_detail.eccentricity_adjusted is not None:
+        mw_orbit.eccentricity = mw.size_detail.eccentricity_adjusted
 
 
 # ===========================================================================
@@ -178,6 +249,21 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
     try:
         seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, temperature=world.temperature
+        )
+        generate_gas_mix(
+            world.atmosphere_detail, world.atmosphere, world.size,
+            world.temperature, None, world.hydrographics,
+        )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
+        )
+        world.hydrographic_detail = generate_hydrographic_detail(
+            world.hydrographics, world.size
+        )
+        world.size_detail = generate_world_physical(world)
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
@@ -210,6 +296,21 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
     try:
         seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, temperature=world.temperature
+        )
+        generate_gas_mix(
+            world.atmosphere_detail, world.atmosphere, world.size,
+            world.temperature, None, world.hydrographics,
+        )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
+        )
+        world.hydrographic_detail = generate_hydrographic_detail(
+            world.hydrographics, world.size
+        )
+        world.size_detail = generate_world_physical(world)
     except Exception as exc:
         logger.exception("Error generating world: %s", exc)
         return error("An unexpected error occurred while generating the world.",
@@ -263,7 +364,23 @@ def generate_world_batch(req: func.HttpRequest) -> func.HttpResponse:
         seed = apply_seed(seed)
         worlds = []
         for i in range(count):
-            d = generate_world(name=f"{prefix}{i+1}").to_dict()
+            world = generate_world(name=f"{prefix}{i+1}")
+            world.atmosphere_detail = generate_atmosphere_detail(
+                world.atmosphere, world.size, temperature=world.temperature
+            )
+            generate_gas_mix(
+                world.atmosphere_detail, world.atmosphere, world.size,
+                world.temperature, None, world.hydrographics,
+            )
+            generate_unusual_subtype(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
+            )
+            world.hydrographic_detail = generate_hydrographic_detail(
+                world.hydrographics, world.size
+            )
+            world.size_detail = generate_world_physical(world)
+            d = world.to_dict()
             d["seed"] = seed
             worlds.append(d)
     except Exception as exc:
@@ -297,6 +414,21 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
     try:
         seed = apply_seed(seed)
         world = generate_world(name=name or "World-1")
+        world.atmosphere_detail = generate_atmosphere_detail(
+            world.atmosphere, world.size, temperature=world.temperature
+        )
+        generate_gas_mix(
+            world.atmosphere_detail, world.atmosphere, world.size,
+            world.temperature, None, world.hydrographics,
+        )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
+        )
+        world.hydrographic_detail = generate_hydrographic_detail(
+            world.hydrographics, world.size
+        )
+        world.size_detail = generate_world_physical(world)
         html = world.to_html()
     except Exception as exc:
         logger.exception("Error generating world card: %s", exc)
@@ -338,11 +470,18 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     want_detail = parse_detail(req)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
-        system = generate_full_system(name=name or "World-1")
+        system = generate_full_system(name=name or "World-1",
+                                      orbital_eccentricity=want_ecc,
+                                      orbital_inclination=want_incl)
         if want_detail:
             attach_detail(system)
+        _attach_mainworld_physical(system)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -377,11 +516,18 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     want_detail = parse_detail(req)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
-        system = generate_full_system(name=name or "World-1")
+        system = generate_full_system(name=name or "World-1",
+                                      orbital_eccentricity=want_ecc,
+                                      orbital_inclination=want_incl)
         if want_detail:
             attach_detail(system)
+        _attach_mainworld_physical(system)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -433,10 +579,16 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     fmt = parse_format(req)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
-        system = generate_full_system(name=name or "World-1")
+        system = generate_full_system(name=name or "World-1",
+                                      orbital_eccentricity=want_ecc,
+                                      orbital_inclination=want_incl)
         attach_detail(system)
+        _attach_mainworld_physical(system)
+        _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating full system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -486,11 +638,18 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
     if err:
         return err
     want_detail = parse_detail(req)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
-        system = generate_full_system(name=name or "World-1")
+        system = generate_full_system(name=name or "World-1",
+                                      orbital_eccentricity=want_ecc,
+                                      orbital_inclination=want_incl)
         if want_detail:
             attach_detail(system)
+        _attach_mainworld_physical(system)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
         html = system.to_html(detail_attached=want_detail)
     except Exception as exc:
         logger.exception("Error generating system card: %s", exc)
@@ -514,6 +673,8 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
     seed: Optional[int],
     want_detail: bool,
     fmt: str,
+    want_ecc: bool = False,
+    want_incl: bool = False,
 ) -> func.HttpResponse:
     """Shared implementation for both map/system endpoint variants."""
     seed = apply_seed(seed)
@@ -521,6 +682,8 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
         system = generate_system_from_map(
             name=name, sector=sector, hex_pos=hex_pos,
             seed=seed, attach=want_detail,
+            orbital_eccentricity=want_ecc,
+            orbital_inclination=want_incl,
         )
     except LookupError as exc:
         logger.warning("TravellerMap lookup failed: %s", exc)
@@ -537,6 +700,9 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
             "An unexpected error occurred while generating the map system.",
             ERR_INTERNAL, status_code=500,
         )
+    _attach_mainworld_physical(system)
+    if want_detail:
+        _apply_mainworld_moon_tidal(system)
     mw = system.mainworld
     logger.info(
         "Generated map system name=%s stars=%d worlds=%d detail=%s format=%s uwp=%s",
@@ -601,12 +767,19 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
         return err
     want_detail = parse_detail(req)
     fmt = parse_format(req)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
     try:
         seed = apply_seed(seed)
         world = World.from_dict(world_dict)
-        system = generate_system_from_world(world, seed=seed)
+        system = generate_system_from_world(world, seed=seed,
+                                            orbital_eccentricity=want_ecc,
+                                            orbital_inclination=want_incl)
         if want_detail:
             attach_detail(system)
+        _attach_mainworld_physical(system)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating system from world: %s", exc)
         return error(
@@ -638,7 +811,8 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
 
 
 @app.route(route="map/system", methods=["GET", "POST"])
-def generate_map_system(req: func.HttpRequest) -> func.HttpResponse:
+def generate_map_system(  # pylint: disable=too-many-return-statements
+        req: func.HttpRequest) -> func.HttpResponse:
     """Fetch canonical data from TravellerMap, then generate a full system.
 
     Sector is always required.  Identify the world by name (within that
@@ -691,7 +865,10 @@ def generate_map_system(req: func.HttpRequest) -> func.HttpResponse:
         )
     want_detail = parse_detail(req)
     fmt = parse_format(req)
-    return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
+    return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt,
+                                want_ecc, want_incl)
 
 
 @app.route(route="map/system/{name}", methods=["GET"])
@@ -736,4 +913,7 @@ def generate_named_map_system(req: func.HttpRequest) -> func.HttpResponse:
         return err
     want_detail = parse_detail(req)
     fmt = parse_format(req)
-    return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt)
+    want_ecc = parse_orbital_eccentricity(req)
+    want_incl = parse_orbital_inclination(req)
+    return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt,
+                                want_ecc, want_incl)

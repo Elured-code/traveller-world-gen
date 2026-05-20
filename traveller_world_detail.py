@@ -114,10 +114,12 @@ from traveller_system_gen import TravellerSystem, generate_temperature_from_orbi
 from traveller_world_gen import (
     assign_trade_codes,
     generate_atmosphere,
+    generate_nhz_atmosphere,
     generate_hydrographics,
     to_hex,
 )
 from traveller_moon_gen import generate_moons, moons_str, Moon
+from traveller_belt_physical import generate_belt_physical, BeltPhysical
 
 
 # ---------------------------------------------------------------------------
@@ -198,15 +200,21 @@ def _gas_giant_sah(star_spectral: str, star_lum_class: str) -> str:
     return f"GL{_ehex(_roll(2, 6))}"             # 8-18
 
 
-def _terrestrial_sah(orbit: OrbitSlot, hzco: float) -> tuple[int, int, int]:
+def _terrestrial_sah(
+    orbit: OrbitSlot,
+    hzco: float,
+    nhz_atmospheres: bool = False,
+) -> tuple[int, int, int]:
     """
     Generate (size, atmosphere, hydrographics) for a terrestrial world.
     Temperature is derived from orbital position for physical consistency.
     Returns (size, atmosphere, hydrographics) as integers.
     """
     size = _terrestrial_size()
-    atm_size = min(size, 9)
-    atmosphere = generate_atmosphere(atm_size)
+    if nhz_atmospheres and abs(orbit.hz_deviation) > 1.0:
+        atmosphere, _ = generate_nhz_atmosphere(size, orbit.hz_deviation)
+    else:
+        atmosphere = generate_atmosphere(min(size, 9))
     temperature = generate_temperature_from_orbit(
         atmosphere=atmosphere,
         hz_deviation=orbit.hz_deviation,
@@ -314,7 +322,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
     """Physical and social details for one orbit slot."""
 
     __slots__ = ("sah", "population", "government", "law_level",
-                 "tech_level", "spaceport", "moons", "trade_codes")
+                 "tech_level", "spaceport", "moons", "trade_codes", "physical")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -327,6 +335,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.tech_level = tech_level
         self.spaceport  = spaceport
         self.moons      = moons if moons is not None else []
+        self.physical: BeltPhysical | None = None
         # Gas giants and rings carry no trade codes
         if (len(sah) == 3 and sah[0] == "G" and sah[1] in ("S", "M", "L")) \
                 or (len(sah) >= 1 and sah[0] == "R"):
@@ -389,13 +398,65 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             "trade_codes": self.trade_codes,
             "moons_str":   moons_str(self.moons),
             "moons":       [m.to_dict() for m in self.moons],
+            "physical":    self.physical.to_dict() if self.physical is not None else None,
         }
 
 
 
-def _moons_for(detail: WorldDetail, orbit_number: float) -> list:
-    """Generate moons for a WorldDetail based on its SAH."""
+def _moon_adjacency_context(
+        orbit_number: float,
+        star_designation: str,
+        system_orbits: SystemOrbits,
+        stellar_system,
+) -> dict:
+    """
+    Build the three adjacency DM keyword args for generate_moons() (WBH p.56).
+
+    Returns a dict with keys star_mao, companion_exclusion_zones,
+    is_adjacent_outermost_far — unpack directly into generate_moons(**ctx).
+    """
+    # Condition: adjacent to a companion's exclusion zone
+    zones = []
+    for star in stellar_system.stars:
+        if star.designation == star_designation:
+            continue
+        role = getattr(star, "role", "")
+        if role in ("Close", "Near", "Far"):
+            lo = star.orbit_number - 1.0
+            hi = star.orbit_number + 3.0
+            zones.append((lo, hi))
+
+    # Condition: adjacent to the host star's MAO boundary
+    mao = system_orbits.star_mao.get(star_designation, 0.0)
+
+    # Condition: adjacent to outermost slot of any Far star
+    far_stars = [s for s in stellar_system.stars if getattr(s, "role", "") == "Far"]
+    is_adj_far = False
+    if far_stars:
+        far_desig = far_stars[-1].designation
+        far_orbit_numbers = [
+            o.orbit_number for o in system_orbits.orbits
+            if o.star_designation == far_desig
+        ]
+        if far_orbit_numbers:
+            outermost = max(far_orbit_numbers)
+            is_adj_far = abs(orbit_number - outermost) <= 1.0
+
+    return {
+        "star_mao": mao,
+        "companion_exclusion_zones": zones or None,
+        "is_adjacent_outermost_far": is_adj_far,
+    }
+
+
+def _moons_for(detail: WorldDetail, orbit_number: float,
+               orbit_au: float = 0.0,
+               planet_ecc: float = 0.0,
+               star_mass_solar: float = 0.0,
+               adjacency_ctx: dict | None = None) -> list:
+    """Generate moons for a WorldDetail based on its SAH and orbital context."""
     sah = detail.sah
+    ctx = adjacency_ctx or {}
     if sah == "000":                      # belt — no moons
         return []
     if detail.is_gas_giant:
@@ -405,13 +466,19 @@ def _moons_for(detail: WorldDetail, orbit_number: float) -> list:
         return generate_moons(
             size_code=diam, orbit_number=orbit_number,
             is_gas_giant=True, gg_category=cat, gg_diameter=diam,
+            orbit_au=orbit_au, star_mass_solar=star_mass_solar, planet_ecc=planet_ecc,
+            **ctx,
         )
     # Terrestrial
     try:
         sz = int(sah[0], 16)
     except ValueError:
         sz = 1
-    return generate_moons(size_code=sz, orbit_number=orbit_number)
+    return generate_moons(
+        size_code=sz, orbit_number=orbit_number,
+        orbit_au=orbit_au, star_mass_solar=star_mass_solar, planet_ecc=planet_ecc,
+        **ctx,
+    )
 
 
 def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-return-statements
@@ -424,6 +491,7 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
     mw_law: int,
     mw_tl: int,
     max_secondary_pop: int,
+    nhz_atmospheres: bool = False,
 ) -> "WorldDetail":
     """
     Generate full WorldDetail for a significant moon (WBH pp.57, 78-99, 155-180).
@@ -474,8 +542,10 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
                            law_level=law, tech_level=tl, spaceport=port)
 
     # Size 2+: generate atmosphere and hydrographics
-    atm_size = min(sz, 9)
-    atmosphere = generate_atmosphere(atm_size)
+    if nhz_atmospheres and abs(hz_deviation) > 1.0:
+        atmosphere, _ = generate_nhz_atmosphere(sz, hz_deviation)
+    else:
+        atmosphere = generate_atmosphere(min(sz, 9))
     temperature = generate_temperature_from_orbit(
         atmosphere=atmosphere,
         hz_deviation=hz_deviation,
@@ -503,7 +573,10 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
 # Main generation function
 # ---------------------------------------------------------------------------
 
-def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    system: TravellerSystem,
+    nhz_atmospheres: bool = False,
+) -> dict[str, WorldDetail]:
     """
     Generate WorldDetail for every non-mainworld, non-empty orbit slot.
 
@@ -521,6 +594,24 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
     max_secondary_pop = max(0, mw_pop - random.randint(1, 6))
 
     primary = system.stellar_system.primary
+
+    # Belt physical: precompute per-star orbit generation spreads (WBH p.131).
+    # Spread = (max Orbit# − MAO) / n_orbits — the per-slot step used in orbit
+    # placement; this is what WBH calls "system orbit spread" in the span formula.
+    non_empty = [o for o in orbits.orbits if o.world_type != "empty"]
+    outermost_au = max((o.orbit_au for o in non_empty), default=0.0)
+    star_orbit_spreads: dict[str, float] = {}
+    for _desig in {o.star_designation for o in non_empty}:
+        _star_ne = [o for o in non_empty if o.star_designation == _desig]
+        _mao = orbits.star_mao.get(_desig, 0.0)
+        _max_orb = max(o.orbit_number for o in _star_ne)
+        star_orbit_spreads[_desig] = (
+            (_max_orb - _mao) / len(_star_ne) if _star_ne else 0.0
+        )
+    is_exploited = (mainworld is not None
+                    and "In" in mainworld.trade_codes
+                    and mainworld.tech_level >= 8)
+
     result: dict[str, WorldDetail] = {}
 
     for orbit in orbits.orbits:
@@ -559,6 +650,25 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
                     sah="000", population=pop, government=gov,
                     law_level=law, tech_level=tl, spaceport=port,
                 )
+            # Belt physical detail (WBH pp.131-133)
+            same_star_outward = sorted(
+                [o for o in orbits.orbits
+                 if o.star_designation == orbit.star_designation
+                 and o.orbit_au > orbit.orbit_au
+                 and o.world_type != "empty"],
+                key=lambda o: o.orbit_au,
+            )
+            next_is_gg = bool(same_star_outward
+                              and same_star_outward[0].world_type == "gas_giant")
+            result[key].physical = generate_belt_physical(
+                orbit_au=orbit.orbit_au,
+                hz_deviation=orbit.hz_deviation,
+                age_gyr=primary.age_gyr or 0.0,
+                orbit_spread=star_orbit_spreads.get(orbit.star_designation, 0.0),
+                next_is_gas_giant=next_is_gg,
+                is_outermost=orbit.orbit_au >= outermost_au,
+                is_exploited=is_exploited,
+            )
 
         elif orbit.world_type == "gas_giant":
             # Gas giants: never directly inhabited (moons are out of scope).
@@ -570,7 +680,7 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
 
         else:
             # Terrestrial world
-            size, atm, hydro = _terrestrial_sah(orbit, hzco)
+            size, atm, hydro = _terrestrial_sah(orbit, hzco, nhz_atmospheres)
             sah = f"{to_hex(size)}{to_hex(atm)}{to_hex(hydro)}"
 
             # Check for population
@@ -607,7 +717,18 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
         hzco_here = orbits.star_hzco.get(desig, 1.0)
         hz_dev    = parent_orbit.hz_deviation
 
-        world_detail.moons = _moons_for(world_detail, on)
+        host_for_moon = next(
+            (s for s in system.stellar_system.stars if s.designation == desig),
+            system.stellar_system.primary,
+        )
+        world_detail.moons = _moons_for(
+            world_detail, on,
+            orbit_au=parent_orbit.orbit_au,
+            planet_ecc=parent_orbit.eccentricity,
+            star_mass_solar=host_for_moon.mass,
+            adjacency_ctx=_moon_adjacency_context(
+                on, desig, orbits, system.stellar_system),
+        )
 
         # Generate full SAH + social detail for every significant moon
         for moon in world_detail.moons:
@@ -622,18 +743,20 @@ def generate_system_detail(system: TravellerSystem) -> dict[str, WorldDetail]:  
                     mw_law=mw_law,
                     mw_tl=mw_tl,
                     max_secondary_pop=max_secondary_pop,
+                    nhz_atmospheres=nhz_atmospheres,
                 )
 
     return result
 
 
-def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-locals
+def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-locals,too-many-branches
     """
     Compute WorldDetail for all orbits and attach as `orbit.detail`
     on each OrbitSlot. Also attaches detail for the mainworld orbit
     (extracting values from the mainworld World object).
     """
-    detail_map = generate_system_detail(system)
+    nhz = system.nhz_atmospheres
+    detail_map = generate_system_detail(system, nhz_atmospheres=nhz)
     mainworld  = system.mainworld
 
     for orbit in system.system_orbits.orbits:
@@ -649,7 +772,22 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                 mw_size = 0
             else:
                 mw_size = int(mainworld.uwp()[1], 16) if mainworld.uwp()[1] not in ('S',) else 1
-            mw_moons = generate_moons(mw_size, orbit.orbit_number)
+            phys    = mainworld.size_detail if mainworld else None
+            mw_diam = phys.diameter_km if phys and hasattr(phys, "diameter_km") else 0.0
+            mw_mass = phys.mass        if phys and hasattr(phys, "mass")        else 0.0
+            mw_ctx = _moon_adjacency_context(
+                orbit.orbit_number, orbit.star_designation,
+                system.system_orbits, system.stellar_system,
+            )
+            mw_moons = generate_moons(
+                mw_size, orbit.orbit_number,
+                orbit_au=orbit.orbit_au,
+                planet_ecc=orbit.eccentricity,
+                star_mass_solar=system.stellar_system.primary.mass,
+                planet_diameter_km=mw_diam,
+                planet_mass_earth=mw_mass,
+                **mw_ctx,
+            )
             mw_hzco   = system.system_orbits.star_hzco.get(orbit.star_designation, 1.0)
             mw_hz_dev = orbit.hz_deviation
             for moon in mw_moons:
@@ -664,8 +802,10 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                         mw_law=mainworld.law_level,
                         mw_tl=mainworld.tech_level,
                         max_secondary_pop=max(0, mainworld.population - random.randint(1,6)),
+                        nhz_atmospheres=nhz,
                     )
-            orbit.detail = WorldDetail(
+            # WorldDetail for the satellite body itself (with its own moons).
+            satellite_detail = WorldDetail(
                 sah=sah,
                 population=mainworld.population,
                 government=mainworld.government,
@@ -674,10 +814,68 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                 spaceport=mainworld.starport,
                 moons=mw_moons,
             )
+            if orbit.world_type == "gas_giant":
+                # The orbit slot holds the gas giant; the mainworld is its
+                # satellite.  Represent the satellite as the first moon sub-row
+                # so the orbit table shows its UWP beneath the gas giant profile.
+                satellite_moon = Moon(size_code=mw_size)
+                satellite_moon.detail = satellite_detail
+                orbit.detail = WorldDetail(
+                    sah=orbit.gg_sah,
+                    population=0,
+                    government=0,
+                    law_level=0,
+                    tech_level=0,
+                    spaceport="-",
+                    moons=[satellite_moon],
+                )
+            else:
+                orbit.detail = satellite_detail
         elif orbit.world_type == "empty":
             orbit.detail = None
         else:
             orbit.detail = detail_map.get(key)
+
+    # Belt physical for belt mainworld — mirrors secondary belt logic in
+    # generate_system_detail(), placed here to avoid seed disruption for
+    # secondary belts that are processed earlier in that function.
+    if (mainworld is not None and mainworld.size == 0
+            and system.mainworld_orbit is not None):
+        mw_orbit = system.mainworld_orbit
+        orbits_obj = system.system_orbits
+        non_empty = [o for o in orbits_obj.orbits if o.world_type != "empty"]
+        outermost_au = max((o.orbit_au for o in non_empty), default=0.0)
+        mw_desig = mw_orbit.star_designation
+        mw_star_ne = [o for o in non_empty if o.star_designation == mw_desig]
+        mw_mao = orbits_obj.star_mao.get(mw_desig, 0.0)
+        mw_max_orb = max(
+            (o.orbit_number for o in mw_star_ne), default=mw_mao
+        )
+        orbit_spread = (
+            (mw_max_orb - mw_mao) / len(mw_star_ne) if mw_star_ne else 0.0
+        )
+        same_star_outward = sorted(
+            [o for o in orbits_obj.orbits
+             if o.star_designation == mw_orbit.star_designation
+             and o.orbit_au > mw_orbit.orbit_au
+             and o.world_type != "empty"],
+            key=lambda o: o.orbit_au,
+        )
+        next_is_gg = bool(same_star_outward
+                          and same_star_outward[0].world_type == "gas_giant")
+        is_exploited = "In" in mainworld.trade_codes and mainworld.tech_level >= 8
+        bp = generate_belt_physical(
+            orbit_au=mw_orbit.orbit_au,
+            hz_deviation=mw_orbit.hz_deviation,
+            age_gyr=system.stellar_system.primary.age_gyr or 0.0,
+            orbit_spread=orbit_spread,
+            next_is_gas_giant=next_is_gg,
+            is_outermost=mw_orbit.orbit_au >= outermost_au,
+            is_exploited=is_exploited,
+        )
+        if mw_orbit.detail is not None:
+            mw_orbit.detail.physical = bp
+        mainworld.size_detail = bp
 
 
 def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-many-locals

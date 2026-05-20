@@ -14,12 +14,14 @@ A technical reference for developers working on the `traveller-world-gen` codeba
    - [traveller_orbit_gen.py](#42-traveller_orbit_genpy)
    - [traveller_system_gen.py](#43-traveller_system_genpy)
    - [traveller_world_gen.py](#44-traveller_world_genpy)
-   - [traveller_world_detail.py](#45-traveller_world_detailpy)
-   - [traveller_moon_gen.py](#46-traveller_moon_genpy)
-   - [function_app.py and shared/helpers.py](#47-function_apppy-and-sharedhelperspy)
-   - [traveller_map_fetch.py](#48-traveller_map_fetchpy)
-   - [system_map.py](#49-system_mappy)
-   - [gen-ui/app.py](#410-gen-uiapppy)
+   - [traveller_world_physical.py](#45-traveller_world_physicalpy)
+   - [traveller_world_detail.py](#46-traveller_world_detailpy)
+   - [traveller_moon_gen.py](#47-traveller_moon_genpy)
+   - [function_app.py and shared/helpers.py](#48-function_apppy-and-sharedhelperspy)
+   - [traveller_map_fetch.py](#49-traveller_map_fetchpy)
+   - [system_map.py](#410-system_mappy)
+   - [gen-ui/app.py](#411-gen-uiapppy)
+   - [render_system_json.py](#412-render_system_jsonpy)
 5. [Key design decisions](#5-key-design-decisions)
 6. [Compliance audit history](#6-compliance-audit-history)
 7. [Deferred and out-of-scope features](#7-deferred-and-out-of-scope-features)
@@ -49,10 +51,12 @@ traveller-world-gen/
 ├── traveller_orbit_gen.py      # Orbit placement: MAO, HZCO, spread, world slots
 ├── traveller_system_gen.py     # Integration: stellar + orbits + mainworld
 ├── traveller_world_gen.py      # Mainworld: all 13 CRB steps, UWP, trade codes
+├── traveller_world_physical.py # WBH pp.74-77,103: diameter, density, gravity, axial tilt, day length
 ├── traveller_world_detail.py   # Secondary worlds and satellites: SAH + social
 ├── traveller_moon_gen.py       # Moon quantity, sizing, and SAH/social detail
 ├── traveller_map_fetch.py      # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
 ├── traveller_world_schema.json # JSON Schema (draft 2020-12) for World.to_dict()
+├── render_system_json.py       # Standalone: renders a TravellerSystem JSON file to self-contained HTML
 ├── system_map.py               # SVG star system map: per-star arc zones, log-AU radial scale, orbit table
 │
 ├── function_app.py             # Azure Functions HTTP endpoints (13 routes)
@@ -163,10 +167,11 @@ class Star:
     temperature: int        # Kelvin
     diameter: float         # Solar diameters
     luminosity: float       # Solar luminosities (Stefan-Boltzmann derived)
-    orbit_number: float     # Orbit# of this star around the primary (0.0 for primary)
-    orbit_au: float         # AU equivalent
-    age_gyr: float          # System age in Gyr (same for all stars)
-    ms_lifespan_gyr: float  # Main sequence lifespan in Gyr
+    orbit_number: float         # Orbit# of this star around the primary (0.0 for primary)
+    orbit_au: float             # AU equivalent
+    age_gyr: float              # System age in Gyr (same for all stars)
+    ms_lifespan_gyr: float      # Main sequence lifespan in Gyr
+    orbit_period_yr: Optional[float]  # Orbital period in years; None for primary
 
 @dataclass
 class StarSystem:
@@ -175,6 +180,8 @@ class StarSystem:
 ```
 
 **Companion vs secondary stars:** Companion stars share the same `orbit_number` as their parent and have `role="companion"`. Their designation is the parent's designation plus a lowercase letter (e.g., parent `"A"` → companion `"Aa"`, `"Ab"`). Close/Near/Far secondary stars have `role` set to their separation type and a separate `orbit_number`.
+
+**Orbital periods:** `Star.orbit_period_yr` is computed in `generate_stellar_data()` using `Period (yr) = √(AU³ / (M_central + m))`. For companions, `M_central` is the parent star's mass alone. For secondaries, `M_central` is the combined mass of all stars whose effective system position is inside the secondary's orbit — including companions to inner stars (a companion Ba to B has effective position = B's orbit#, so it is included in Ca's central mass). No dice rolls are made; the computation runs after all generation is complete and does not affect any other seed. The period is included in `Star.to_dict()` and shown in `StarSystem.summary()` and the `system_map.py` table zone.
 
 **Mass ordering invariant:** The primary star is always the most massive. Non-primary star types are determined by comparing `candidate.mass > parent.mass`, not by spectral letter alone (M0 V = 0.50 M☉ vs M7 V = 0.12 M☉ — same letter, very different mass). This was a compliance bug fixed during development.
 
@@ -217,6 +224,8 @@ class OrbitSlot:
                             # mainworld placed here; takes display priority over detail.profile
     gg_sah: str             # gas giant SAH rolled at orbit-gen time (e.g. "GM9");
                             # empty string for non-gas-giant slots
+    orbit_period_yr: Optional[float]  # field(default=None, init=False); orbital period in
+                            # years; computed by generate_orbits(); None for empty slots
     detail: Optional[WorldDetail] = field(default=None, init=False)
                             # populated by attach_detail(); None until then
 
@@ -241,6 +250,12 @@ class SystemOrbits:
 **Orbit# vs AU:** Orbit# is the WBH's logarithmic orbital scale. The relationship to AU is non-linear — see `_orbit_to_au()` in `traveller_stellar_gen.py` for the lookup table. When drawing maps or computing habitable zone boundaries for display, always convert Orbit# to AU first and build the radius scale from AU values, not Orbit# values. Using Orbit# values directly as if they were AU will produce incorrect habitable zone placement on any log-radial map.
 
 **Mainworld selection scoring:** The best candidate is the world with the lowest score on `(type_penalty + hz_penalty + temperature_penalty + star_penalty, abs(hz_deviation))`. Terrestrial worlds score better than gas giants; habitable zone worlds score better than non-HZ; temperate > cold/hot > frozen > boiling; primary star worlds score better than secondary star worlds.
+
+**World orbital periods:** `OrbitSlot.orbit_period_yr` is computed in `generate_orbits()` after all slots are placed, using `P = √(AU³ / M_central)`. `M_central` = designated star mass + mass of any companion stars whose `orbit_au < orbit_slot.orbit_au` (WBH: a world outside a companion's orbit includes the companion in the central mass). Empty slots have `orbit_period_yr = None`. The period is included in `OrbitSlot.to_dict()` and displayed in the `system_map.py` Period column and gen-ui System Orbits card.
+
+**Orbital eccentricity (WBH p.27):** `generate_orbits()` accepts `orbital_eccentricity: bool = False`. When True, a post-placement pass calls `_roll_eccentricity()` for each non-empty orbit slot and each close/near/far secondary star. Two rolls: `2D+DM` selects a table row; a second `1D` or `2D` divided by a row-specific divisor gives the fractional part; result clamped to [0.000, 0.999]. `OrbitSlot.eccentricity` (`field(default=0.0, init=False)`) is populated; `to_dict()` emits `"eccentricity"`, `"orbit_au_min"` (`AU × (1−e)`), and `"orbit_au_max"` (`AU × (1+e)`) when non-zero. `Star.orbit_eccentricity: float = 0.0` is set for secondary stars; `Star.to_dict()` similarly emits min/max. When the flag is False (default), no new dice roll and no seed disruption occurs. The flag is stored in `TravellerSystem.orbital_eccentricity` and plumbed through `generate_full_system()`, `generate_system_from_world()`, and all API endpoints via `parse_orbital_eccentricity()` in `shared/helpers.py`. In the gen-ui, an "Orbital Eccentricity" checkbox (enabled with "System detail") controls the flag. Display: see Orbital Inclination below for column format.
+
+**Orbital inclination (WBH p.28):** `generate_orbits()` accepts `orbital_inclination: bool = False`. When True, a post-placement pass calls `_roll_inclination()` for each non-empty orbit slot and each close/near/far secondary star. Slots with `anomaly_type == "inclined"` are skipped (their angle is already stored in `notes`). `_roll_inclination()` uses a 6-row 2D severity table (Very Low / Low / Moderate / High / Very High / Extreme), each with a different degree formula, plus a recursive retrograde case (2D = 12 → `max(0, 180 − re-roll)`). `OrbitSlot.inclination` (`field(default=0.0, init=False)`) is populated; `to_dict()` emits `"inclination"` (2 d.p.) when > 0. `Star.orbit_inclination: float = 0.0` is set for secondary stars. When the flag is False (default), no new dice roll and no seed disruption occurs. The flag is stored in `TravellerSystem.orbital_inclination` and plumbed through `generate_full_system()`, `generate_system_from_world()`, and all API endpoints via `parse_orbital_inclination()` in `shared/helpers.py`. In the gen-ui, an "Orbital Inclination" checkbox (enabled with "System detail") controls the flag. Display: gen-ui and `to_html()` orbit table share a combined **Ecc/Incl** column. When eccentricity > 0 or inclination > 0 the cell shows `{ecc}/{incl}°`; when neither is set the cell shows `—`.
 
 ---
 
@@ -268,7 +283,9 @@ class TravellerSystem:
     system_orbits: SystemOrbits
     mainworld: Optional[World]
     mainworld_orbit: Optional[OrbitSlot]
-    # methods: .to_dict(), .to_json(), .summary(), .to_html(detail_attached)
+    # methods: .to_dict(), .to_json(), .summary(), .to_html(detail_attached: bool)
+    # to_html() renders a full system card including a mainworld panel with
+    # WorldPhysical and atmosphere detail inner-cards when present.
 ```
 
 **Gas giant mainworld (WBH p.57):** When the selected mainworld orbit is a gas giant, `generate_mainworld_at_orbit()` generates the mainworld as a satellite of that giant rather than the giant itself. The helper `_gg_diameter(gg_sah: str) -> int` decodes the eHex diameter digit from the gas giant's `gg_sah` string (e.g. `"GM9"` → 9 Terran diameters). The satellite's size is clamped to `min(max(generate_size(), 1), gg_diameter - 1)`. A note recording the host giant's SAH and orbital position is appended to `world.notes`. The `gg_sah` value used here was rolled at orbit-gen time and stored in `OrbitSlot.gg_sah`, so there is no second SAH roll.
@@ -308,7 +325,12 @@ Individual step functions are also public and used by `traveller_system_gen.py`:
 size: int       = generate_size()
 atm: int        = generate_atmosphere(size)
 temp: str       = generate_temperature(atmosphere)      # standalone (random roll)
+detail: AtmosphereDetail = generate_atmosphere_detail(atm, size,
+                               system_age_gyr=None, temperature=None, hz_deviation=None)
 hydro: int      = generate_hydrographics(size, atm, temp)
+                  # --- post-hydrographics: mutate detail in-place ---
+                  generate_gas_mix(detail, atm, size, temp, hz_deviation=None, hydro=hydro)
+                  generate_unusual_subtype(detail, atm, size, hydro)
 pop: int        = generate_population()
 gov: int        = generate_government(population)
 law: int        = generate_law_level(government)
@@ -319,14 +341,16 @@ codes: List[str]= assign_trade_codes(size, atm, hydro, pop, gov, law, tl)
 zone: str       = assign_travel_zone(atm, gov, law)
 ```
 
-When called from `generate_mainworld_at_orbit()` in `traveller_system_gen.py`, `generate_temperature` is bypassed and the orbit-derived temperature is injected instead.
+When called from `generate_mainworld_at_orbit()` in `traveller_system_gen.py`, `generate_temperature` is bypassed and the orbit-derived temperature is injected instead. `generate_atmosphere_detail` receives both `temperature` and `hz_deviation` from the orbital context.
 
 **World dataclass fields:**
 
 ```python
 @dataclass
 class World:
-    name: str; size: int; atmosphere: int; temperature: str
+    name: str; size: int; atmosphere: int
+    atmosphere_detail: Optional[AtmosphereDetail] = None  # WBH pp. 78–93, Sessions 31–35
+    temperature: str
     hydrographics: int; population: int; government: int
     law_level: int; starport: str; tech_level: int
     has_gas_giant: bool; gas_giant_count: int; belt_count: int
@@ -335,8 +359,36 @@ class World:
     trade_codes: List[str]      # e.g. ["Ag","Ni","Ri"]
     travel_zone: str            # "Green" | "Amber" | "Red"
     notes: List[str]
+    size_detail: Optional[Union["WorldPhysical", "BeltPhysical"]] = field(default=None, init=False)
+                                # set by generate_world_physical() or attach_detail(); None until called
     # methods: .uwp(), .summary(), .to_dict(), .to_json(), .to_html()
 ```
+
+**`AtmosphereDetail` (WBH pp. 78–93, Sessions 31–35):** quantitative atmosphere
+fields supplementing the single-digit CRB atmosphere code.
+
+```python
+@dataclass
+class AtmosphereDetail:
+    pressure_bar:            Optional[float]  # WBH p.79, codes 1–9, D, E
+    oxygen_partial_pressure: Optional[float]  # WBH p.80, codes 2–9, D, E only
+    scale_height_km:         Optional[float]  # WBH p.81, 8.5/gravity approx
+    taints:                  list             # List[Taint]; codes 2,4,7,9 + optional 13,14
+    subtype_code:            Optional[str]    # Exotic/CI subtype code, e.g. "St4"
+    subtype_name:            Optional[str]    # e.g. "Standard Exotic (4)"
+    hazards:                 list             # List[InsidiousHazard]; code 12 (C) only
+    gas_mix:                 Optional[list]   # List[GasMixComponent]; codes 10/11/12 only
+    min_safe_altitude_km:    Optional[float]  # Code 13: km above baseline; code 14: km below
+    no_safe_altitude:        bool             # True when no breathable altitude band exists
+    unusual_subtypes:        list             # List[UnusualSubtype]; code 15 (F) only
+```
+
+Generated by `generate_atmosphere_detail(code, size, system_age_gyr=None, temperature=None, hz_deviation=None)`.
+After hydrographics, also call `generate_gas_mix(detail, atm_code, size, temperature, hz_deviation, hydro)`
+for codes 10/11/12, and `generate_unusual_subtype(detail, atm_code, size, hydro)` for code 15.
+JSON output nests non-None/non-empty fields under `"atmosphere"."detail"` and adds a WBH p.82
+profile string under `"atmosphere"."profile"` (e.g. `"6-1.013-0.212"` for Terra,
+`"F-S7"` for a Panthalassic Unusual atmosphere).
 
 **`World.from_dict(d)`** reconstructs a `World` from the dict produced by `to_dict()`. It handles both the nested form (`starport: {code: "A", ...}`) and flat forms where the value is the code directly. Missing fields receive safe defaults. Used by `generate_system_from_world()` and the `/api/system/from-world` endpoint.
 
@@ -346,7 +398,73 @@ class World:
 
 ---
 
-### 4.5 `traveller_world_detail.py`
+### 4.5 `traveller_world_physical.py`
+
+Implements WBH pp. 74–77, 103. Generates detailed physical characteristics for a mainworld given its size code.
+
+**Key public API:**
+
+```python
+physical: Optional[WorldPhysical] = generate_world_physical(
+    world: World,
+    age_gyr: float = 0.0,               # system age for rotation rate DM
+    orbit_number: Optional[float] = None,
+    orbit_au: Optional[float] = None,
+    star_mass: Optional[float] = None,
+    orbit_eccentricity: float = 0.0,    # if > 0.1 and 1:1 lock, triggers Rule 4
+) -> Optional[WorldPhysical]
+# Returns None for size 0 (belts); size S/R worlds not yet handled here.
+# Tidal lock runs when all three orbit params are non-None.
+```
+
+**Key dataclass:**
+
+```python
+@dataclass
+class WorldPhysical:       # pylint: disable=too-many-instance-attributes
+    composition: str       # Terrestrial Composition Table category
+    diameter_km: int       # actual rolled diameter in km
+    density: float         # g/cm³
+    mass: float            # relative to Earth (D*³ × ρ*)
+    gravity: float         # surface gravity in G (D* × ρ*)
+    escape_velocity: float # km/s  (11.186 × √(gravity × D*))
+    axial_tilt: float      # degrees, 0.0–180.0; post-tidal final value
+    day_length: float      # rotation period in hours; post-tidal final value
+    tidal_status: str      # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
+    eccentricity_adjusted: Optional[float]  # field(default=None, init=False)
+    # Set when tidal_status=="1:1_lock" and orbit_eccentricity > 0.1 (WBH p.77 Rule 4).
+
+    def to_dict(self) -> dict: ...
+    # keys: composition, diameter_km, density_g_cm3, mass_earth,
+    #       gravity_g, escape_velocity_km_s, axial_tilt_deg, day_length_hours,
+    #       tidal_status[, eccentricity_adjusted]
+```
+
+**Tidal lock DMs (WBH pp.105–106):** `_tidal_lock_dm()` combines general DMs (size, eccentricity, axial tilt, atmosphere pressure, system age) with star-lock DMs (base −4, orbit# band, star mass band). Eccentricity DM (Session 50): `e > 0.1 → DM − floor(e × 10)`. Passed as `orbit_eccentricity: float = 0.0`; no effect when `orbital_eccentricity=False` (default).
+
+**1:1 tidal lock interactions (WBH p.77, Session 44):**
+- **Rule 3** — Axial tilt: `_roll_axial_tilt_1d()` rolls 1D to select one of the 6 Axial Tilt table bands, then 1D within that band. Replaces the pre-lock tilt unconditionally (no `> 3.0` guard). The 3:2 lock axial tilt is unchanged ((2D-2)/10, only when tilt > 3°).
+- **Rule 4** — Eccentricity: if `orbit_eccentricity > 0.1`, `_reroll_eccentricity_tidal()` re-rolls with DM-2; `min(original, new)` is stored in `WorldPhysical.eccentricity_adjusted`. `_attach_mainworld_physical()` in `function_app.py` propagates the reduction back to the orbit slot.
+
+**Generation tables:**
+
+| Step | WBH | Procedure |
+|------|-----|-----------|
+| Composition | p.75 | Roll 2D + size DM on Terrestrial Composition Table → 5 categories (Heavy Iron Core / Dense Core / Standard / Low Density / Icy) |
+| Density | p.75–76 | Roll 1D on Terrestrial Density Table for the composition category → base + 1D × multiplier g/cm³ |
+| Diameter | p.74 | Base = size × 1,600 km; variation = (2D−7) × 200 km |
+| Derived | p.76–77 | D* = diameter/12742; ρ* = density/5.515; mass = D*³×ρ*; gravity = D*×ρ*; v_e = 11.186×√(gravity×D*) |
+| Axial tilt | p.77 | 2D selects band (6 bands); 1D within band gives degrees; ≥10 triggers extreme sub-table (up to 180°) |
+| Day length | p.103 | (2D−2)×4 + 2 + 1D + DMs; DM+1 per 2 full Gyrs of system age |
+| Tidal lock | pp.105–107 | 2D+DM on Tidal Lock Status table; 11 outcomes from no-effect through 1:1 lock |
+
+**Deferred within this module:** moon-size DM in star-lock check, planet-locked-to-moon check, multi-star orbit DM (all blocked by upstream features not yet implemented).
+
+**Integration with `World`:** `World.size_detail` is an `Optional[Union[WorldPhysical, BeltPhysical]]` field (`field(default=None, init=False)`). The gen-ui sets it when the "Physical detail" checkbox is checked (for standalone worlds) or via `attach_detail()` for belt mainworlds. If set, `World.to_dict()` includes a `"size_detail"` key; `World.to_html()` adds a "World Body" or "Belt Body" inner card below the atmosphere detail card; `World.summary()` adds a "World body" section. When `size_detail` is `None`, all output is unchanged.
+
+---
+
+### 4.6 `traveller_world_detail.py`
 
 Generates SAH (Size/Atmosphere/Hydrographics) profiles and full social data for every non-mainworld body in the system — orbital secondaries, belts, and significant moons.
 
@@ -405,19 +523,25 @@ class WorldDetail:
 
 ---
 
-### 4.6 `traveller_moon_gen.py`
+### 4.7 `traveller_moon_gen.py`
 
-Implements WBH pp. 55–57.
+Implements WBH pp. 55–57 (moon quantity/sizing) and WBH pp. 74–77 (orbit placement).
 
 **Key public API:**
 
 ```python
 moons: List[Moon] = generate_moons(
-    size_code: int | str,   # planet size (int 1–15, or "S")
-    orbit_number: float,    # orbital Orbit# for DM check
+    size_code: int | str,             # planet size (int 1–15, or "S")
+    orbit_number: float,              # orbital Orbit# for DM check
     is_gas_giant: bool = False,
-    gg_category: str = "M", # "S", "M", or "L"
-    gg_diameter: int = 8,   # Terran diameters, for moon size capping
+    gg_category: str = "M",           # "S", "M", or "L"
+    gg_diameter: int = 8,             # Terran diameters, for moon size capping
+    # Orbit placement (all 0.0 = skip):
+    planet_diameter_km: float = 0.0,  # 0.0 → estimated from size_code
+    planet_mass_earth: float = 0.0,   # 0.0 → estimated from size_code
+    orbit_au: float = 0.0,
+    star_mass_solar: float = 0.0,
+    planet_ecc: float = 0.0,
 ) -> List[Moon]
 
 display: str = moons_str(moons: List[Moon]) -> str
@@ -428,15 +552,41 @@ display: str = moons_str(moons: List[Moon]) -> str
 
 ```python
 @dataclass
-class Moon:
+class Moon:  # pylint: disable=too-many-instance-attributes
     size_code: int | str    # int 0–F, or "S"; 0 means ring when is_ring=True
     is_ring: bool = False
-    is_gas_giant_moon: bool = False  # moon is itself a small gas giant
+    is_gas_giant_moon: bool = False   # moon is itself a small gas giant
     detail: Optional[WorldDetail] = None  # populated by attach_detail()
     _ring_count: int    # field(default=1, init=False) — set by _consolidate()
 
+    # Orbit placement fields (all field(default=..., init=False)):
+    orbit_pd: Optional[float]           # orbital distance in Planetary Diameters
+    orbit_km: Optional[float]           # orbit_pd × planet_diameter_km
+    orbit_range: Optional[str]          # "inner"|"middle"|"outer"|"excess"
+    orbit_period_hours: Optional[float] # orbital period in hours
+    ring_centre_pd: Optional[float]     # rings only
+    ring_span_pd: Optional[float]       # rings only
+    orbit_eccentricity: float           # default 0.0 (deferred)
+    orbit_retrograde: bool              # default False (deferred)
+
     # properties: .size_str, __repr__
 ```
+
+All orbit fields default to `None` (or 0.0/False) until `generate_moons()` is
+called with `orbit_au` and `star_mass_solar` provided. `to_dict()` omits `None`
+orbit fields.
+
+**Orbit placement** runs when `orbit_au > 0` and `star_mass_solar > 0`:
+
+1. **Hill sphere** sets the outer moon limit: `floor(Hill_PD / 2)` PD, where `Hill_AU = orbit_au × (1 − ecc) × ∛(mass_earth × 3e-6 / (3 × star_mass_solar))` and `Hill_PD = Hill_AU × 149,597,870.9 / diameter_km`.
+2. **Moon removal:** limit < 1 PD → no moons or rings; limit = 1 PD → first moon becomes ring.
+3. **Moon Orbit Range** = `Moon Limit − 2` (capped at `200 + n_moons`).
+4. **Orbit PD rolling** uses the Inner/Middle/Outer table (DM+1 when MOR < 60); PDs sorted ascending, collisions resolved by bumping outer moon out 1 PD.
+5. **Ring placement:** centre = `0.4 + roll(2)/8` PD; span = `roll(3)/100 + 0.07` PD; inner edge clamped ≥ 0.55 PD.
+
+For secondary worlds (no `WorldPhysical`), diameter and mass are estimated from size code.
+For the mainworld, `WorldPhysical.diameter_km` and `WorldPhysical.mass` are used
+(accessed via `mainworld.size_detail` — not `mainworld.physical`).
 
 **Quantity DM:** The only DM currently applied is `DM-1 per dice` when `orbit_number < 1.0`. Other adjacency conditions (companion-induced MAO, Close/Near star exclusion zone proximity) require eccentricity data that is not yet generated, so they are omitted.
 
@@ -446,7 +596,7 @@ class Moon:
 
 ---
 
-### 4.7 `function_app.py` and `shared/helpers.py`
+### 4.8 `function_app.py` and `shared/helpers.py`
 
 The Azure Functions REST API layer. Not required for local use of the generation modules.
 
@@ -478,13 +628,13 @@ Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` e
 
 **`/api/system/full` behaviour:** Calls `generate_full_system()` then unconditionally calls `attach_detail()`. No `detail` parameter is accepted or needed. The `format` parameter then controls serialisation: `to_dict()` for JSON, `to_html(detail_attached=True)` for HTML, `summary()` for text.
 
-**`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). The `URLError` handler logs the upstream detail server-side but returns only a generic message to the caller. Supports `detail` and `format` identically to the system endpoints.
+**`/api/map/system` behaviour:** Delegates to `generate_system_from_map()` in `traveller_map_fetch.py`. Catches `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502 `UPSTREAM_ERROR`), and general `Exception` (→ 500 `INTERNAL_ERROR`). The `URLError` handler logs the upstream detail server-side but returns only a generic message to the caller. Supports `detail`, `format`, `orbital_eccentricity`, and `orbital_inclination` identically to the system endpoints.
 
 **`/api/system/from-world` behaviour:** Calls `parse_world_json()` to validate the body, reconstructs a `World` via `World.from_dict()`, then calls `generate_system_from_world()`. PBG counts from the world are reconciled into the generated `SystemOrbits`. The mainworld orbit slot receives `canonical_profile = world.uwp()`. Temperature is recalculated from orbital HZ deviation — the temperature in the input JSON is discarded. Supports `detail` and `format` identically to the system endpoints. Returns `400 INVALID_BODY` if the body is missing or malformed.
 
 ---
 
-### 4.8 `traveller_map_fetch.py`
+### 4.9 `traveller_map_fetch.py`
 
 Fetches canonical world data from the public TravellerMap REST API and uses it
 to seed a full system generation. Uses only Python stdlib (`urllib.request`) —
@@ -499,6 +649,8 @@ system: TravellerSystem = generate_system_from_map(
     hex_pos: Optional[str] = None,
     seed: Optional[int] = None,
     attach: bool = False,
+    orbital_eccentricity: bool = False,
+    orbital_inclination: bool = False,
 ) -> TravellerSystem
 ```
 
@@ -559,8 +711,9 @@ If `hex_pos` is provided directly (bypassing name search), step 1 is skipped.
 5. `reconstruct_world(map_data)` — canonical UWP digits extracted via eHex decoding; no dice rolled; gas/belt counts from PBG override the procedural counts in `SystemOrbits`
 6. Stamp the best mainworld orbit slot: `mw_orbit.canonical_profile = world.uwp()` and correct `mw_orbit.world_type` to `"terrestrial"` or `"belt"` based on the canonical size digit
 7. `generate_temperature_from_orbit()` — canonical temperature derived from orbital position (temperature is not in the UWP)
-8. Assemble `TravellerSystem`
-9. `attach_detail()` if `attach=True`
+8. `generate_atmosphere_detail()` with `hz_deviation` for orbit-position DMs; then `generate_gas_mix()` and `generate_unusual_subtype()` — mirrors the pipeline in `generate_mainworld_at_orbit()`
+9. Assemble `TravellerSystem`
+10. `attach_detail()` if `attach=True`
 
 **Uninhabited mainworlds:** Worlds with population = 0 (social string `000`) are handled
 correctly. `reconstruct_world()` sets `population = 0` from the UWP. The canonical UWP
@@ -595,12 +748,12 @@ python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detai
 
 ---
 
-### 4.9 `system_map.py`
+### 4.10 `system_map.py`
 
 Generates an SVG diagram of a complete star system. The canvas has two zones stacked vertically:
 
 - **Arc zones** — one per star that has orbit slots. Each zone uses its own log-AU radial scale so the star's orbits fill the available width. Arcs are right-facing semicircles; the sweep angle per orbit is set so every arc reaches the same top and bottom y-coordinate within its zone. Companion-star dashed arcs are rendered inside the primary zone for context.
-- **Table zone** — one column per star, listing orbit slots in orbit-number order. Column count grows with the stellar system; use `--width` to avoid cramping on multi-star systems.
+- **Table zone** — one column per star, listing orbit slots in orbit-number order. Column count grows with the stellar system; use `--width` to avoid cramping on multi-star systems. Each column has a star header line, a column label sub-header row (`#  Orbit#  AU  Type  Profile  Codes  Zone ♦  Period`), and then one data row per orbit slot. The `Zone ♦` column shows the temperature zone followed by the moon count (e.g., `Temperate  3♦`) when `attach_detail()` has been called. The `Period` column shows the orbital period auto-scaled to hours, days, or years for both companion/secondary star rows (from `Star.orbit_period_yr`) and world orbit rows (from `OrbitSlot.orbit_period_yr`); empty orbit slots suppress the period cell. In the primary star's column, close/near/far secondary stars are also listed as rows interleaved by orbit number, and non-primary column headers include the star's orbital period.
 
 **Key public API:**
 
@@ -651,7 +804,7 @@ python system_map.py --name Mora --seed 7
 
 ---
 
-### 4.10 `gen-ui/app.py`
+### 4.11 `gen-ui/app.py`
 
 PySide6 (Qt6) desktop UI for local interactive use. Run with:
 
@@ -670,7 +823,32 @@ python gen-ui/app.py
 | `_map_btn` | `QPushButton \| None` | Reference to the active "System Map" button; `None` when no system result is displayed |
 | `_map_windows` | `list[object]` | Open `SystemMapWindow` instances; list keeps them alive (Python GC otherwise collects shown windows) |
 
+**Source row checkboxes:** Five checkboxes live below the Procedural/TravellerMap radio buttons:
+
+| Checkbox | Enabled when | Effect |
+|----------|-------------|--------|
+| "Full system" | Always | Calls `generate_full_system()` instead of `generate_world()` |
+| "Attach detail" | "Full system" checked | Calls `attach_detail()` after system generation |
+| "Physical detail" | "Full system" checked | Calls `generate_world_physical(world, age_gyr)` on the mainworld after generation; populates `world.size_detail` |
+| "NHZ Atmospheres" | "Full system" checked | Passes `nhz_atmospheres=True` to `generate_full_system()` |
+| "Orbital Eccentricity" | "Full system" checked | Passes `orbital_eccentricity=True` to `generate_full_system()`; populates `OrbitSlot.eccentricity` values shown in the Ecc/Incl column |
+| "Orbital Inclination" | "Full system" checked | Passes `orbital_inclination=True` to `generate_full_system()`; populates `OrbitSlot.inclination` values shown in the Ecc/Incl column |
+
+`_on_system_detail_toggled()` enables/disables all five dependent checkboxes together and unchecks them when "Full system" is turned off.
+
 The "System Map" button lives in `_build_system_summary_header()` (system results only; not shown in world-only mode). It is enabled/disabled in sync with the "Full system" checkbox: `_on_full_system_toggled()` calls `_map_btn.setEnabled(checked)` when the reference is set, and `_clear_status()` nulls `_map_btn` whenever the result panel is replaced.
+
+**`_build_physical_card(w)`** — returns a `QGroupBox("World Body")` when `w.size_detail` is set, or `None` otherwise. Dispatches on `isinstance(w.size_detail, BeltPhysical)` to render either the full `WorldPhysical` card (8 rows: composition, diameter, density, mass, surface gravity, escape velocity, axial tilt, day length, tidal status when applicable) or the `BeltPhysical` card (span, composition, bulk, resource rating, significant bodies). Added to `_build_world_card()` below the trade codes section.
+
+**`_build_atmosphere_card(w)`** — returns a `QGroupBox("Atmosphere Detail")` when `w.atmosphere_detail` is an `AtmosphereDetail` instance, or `None` otherwise. Renders: profile string, subtype (if present), pressure, O₂ partial pressure, scale height, altitude rows (min safe altitude or no-safe-altitude flag), unusual subtype rows, taint rows (subtype/severity/persistence per taint), insidious hazard rows, and gas mix rows. Atmosphere detail is generated unconditionally for every world (not gated on the Physical detail checkbox).
+
+**`_build_stellar_card(system)`** — displays system age (`stars[0].age_gyr`) as a plain label above the star table, inside the `QGroupBox`. Age is read from the first star in the stellar system (all stars share the same age).
+
+**`_build_orbits_card(system, detail_attached)`** — builds the System Orbits grid. Both header variants include a right-aligned `"Ecc"` column (after `"AU"`), a right-aligned `"Period"` column, and a left-aligned `"Notes"` column (last). AU cells show bare `orbit_au:.3f`; `ecc_str` is `f"{orbit.eccentricity:.3f}"` or `"—"`:
+- detail_attached: 11 columns — `Star | Orbit# | AU | Ecc | Type | Profile | Codes | HZ | Zone | Period | Notes`; `right_cols={1,2,3,9}`
+- not detail_attached: 9 columns — `Star | Orbit# | AU | Ecc | Type | HZ | Zone | Period | Notes`; `right_cols={1,2,3,7}`
+
+`notes_str` is populated from `OrbitSlot.notes` for every slot that carries a note. `period_str` uses `_fmt_period()`.
 
 **`SystemMapWindow`** — a non-modal `QMainWindow` opened by the "System Map" button. One window is created per click; multiple windows can coexist.
 
@@ -691,6 +869,50 @@ class SystemMapWindow(QMainWindow):
 `_render()` is called once at construction and again on every theme toggle. The `QSvgWidget` is sized to the exact SVG canvas dimensions (`_CANVAS_W × canvas_h`) so the `QScrollArea` provides correct scrollbars for large maps.
 
 **Keyboard shortcuts** — `QKeySequence::Quit` (Cmd+Q on macOS, Ctrl+Q on Windows/Linux) and `QKeySequence::Close` (Cmd+W / Ctrl+W) are registered globally on `AppWindow`. Qt resolves the correct platform key automatically.
+
+---
+
+### 4.12 `render_system_json.py`
+
+Standalone script that reads any system JSON file produced by `TravellerSystem.to_dict()` and renders it as a rich, self-contained HTML document. Requires no project module imports — stdlib only (`json`, `sys`, `html`, `pathlib`).
+
+**Usage:**
+
+```bash
+# Render to a named output file
+python render_system_json.py system.json output.html
+
+# Render to <input-stem>.html in the same directory (default)
+python render_system_json.py system.json
+```
+
+**Rendered sections:**
+
+| Section | Content |
+|---------|---------|
+| System header | Name, age, star count, mainworld UWP |
+| Stars table | Designation, type/class, mass, temperature, diameter, luminosity, orbit, period |
+| Habitable zones | Per star: inner/outer HZ orbit#, MAO, temperature zone |
+| World counts | Gas giant / belt / terrestrial / total / empty chips |
+| Orbital survey | 11-column table: Star, #, Orbit#, AU, Period, Ecc/Incl, Type, Profile, Codes, Zone, Notes; moon sub-rows when `attach_detail()` data is present |
+| Mainworld panel | 11-cell stats grid, trade code badges, World Body or Belt Body card, atmosphere detail card, hydrographic detail card, notes |
+| Raw JSON | Collapsible `<details>` block |
+
+**Key helpers:**
+
+```python
+def ehex(code: int) -> str:     # 0–16 → "0"–"G" (Traveller eHex encoding)
+def fmt_period(yr: float) -> str # auto-scales to h / d / y
+def _orbit_profile(slot: dict) -> tuple[str, str]  # (profile_text, css_class)
+def _render_physical(sd: dict) -> str   # WorldPhysical or BeltPhysical card
+def _render_atmosphere(atm: dict) -> str
+def _render_mainworld(mw: dict) -> str
+def render(data: dict) -> str           # top-level entry point
+```
+
+`WorldPhysical` vs `BeltPhysical` is distinguished by checking `"composition" in size_detail` — `BeltPhysical` uses `"span_au"` instead. The CSS mirrors the `to_html()` design: same CSS variables, dark mode support, temperature zone colouring, and trade code badge classes.
+
+**Adding to `render_system_json.py`:** The script is intentionally self-contained. When the JSON schema adds new top-level keys to `TravellerSystem.to_dict()` or `World.to_dict()`, add the corresponding render logic to the appropriate `_render_*` helper. Do not import from project modules — use `_get(d, *keys)` for safe nested dict access.
 
 ---
 
@@ -734,7 +956,13 @@ Fixed by adding `min_spread = avail / max(total_slots * 2, 1)` as a floor so tha
 
 **Gas giant mainworld generates terrestrial UWP instead of satellite UWP (medium severity).** `generate_mainworld_at_orbit()` had a `"belt"` branch but no `"gas_giant"` branch. When the selected mainworld orbit was a gas giant, generation fell through to the terrestrial path, rolling size 0–10 freely — including sizes 8–10 that are impossible for any moon, and with no relation to the host giant's size. Statistical analysis over 1,000 systems confirmed 13.8% were affected. Fix: `_gg_sah_roll()` was inlined in `traveller_orbit_gen.py` to roll and store the gas giant SAH in `OrbitSlot.gg_sah` during `generate_orbits()`. A new gas giant branch in `generate_mainworld_at_orbit()` treats the mainworld as a satellite: size is clamped to `[1, gg_diameter − 1]` (WBH p.57), with normal atmosphere/temperature/hydrographics generation and a satellite note appended to the world. `traveller_world_detail.py` reuses `orbit.gg_sah` rather than re-rolling. The RNG sequence shifts for all systems containing a gas giant (unavoidable new dice at orbit-gen time).
 
+**Primary star outer zone never populated in binary systems (medium severity).** When a companion star at orbit# `C` left a valid inner zone (`C − 1.0 > MAO`), the code set `max_o = C − 1.0` and placed all primary worlds in the inner zone `[MAO, C − 1.0]`. The outer zone `[C + 3.0, 17.0]` is valid WBH territory but was never used — all that orbital range was effectively ceded to Star B. Fix (Session 39 cont.): `generate_orbits()` now tracks the outer zone per primary star in a `star_outer` dict; proportional world allocation accounts for the combined inner + outer range; the placement loop iterates over both zones via a `for zone in zones` inner loop, running the full baseline → spread → slot algorithm once per zone. The world-type pool is shared across zones so types are drawn in a single continuous sequence. Verified by `TestPrimaryOuterZone` (seed 1 spot-check + 500-seed exclusion scan).
+
+**Companion star exclusion zone not enforced when companion orbit# < 1.0 (high severity).** WBH forbids primary-star worlds in the band `[companion_orbit − 1.0, companion_orbit + 3.0]`. The original code set `max_o = min(max_o, companion_orbit − 1.0)` only when `companion_orbit − 1.0 > mao`. For companions at orbit# < 1.0 (e.g., orbit# 0.90), `excl = −0.10 < mao ≈ 0.012`, so the guard never fired and no exclusion was applied. Primary worlds were then legally placed starting from MAO ≈ 0.012, putting them inside the forbidden zone (e.g., orbit# 0.94, 1.94, and 2.64 for a companion at 0.90 — all within the zone). Fix (Session 39): added an `else` branch that pushes `mao = max(mao, companion_orbit + 3.0)` when `excl ≤ mao`. `star_mao[designation]` is also updated in-place because it is read again later in the same function for orbit placement. Verified by `TestCompanionExclusionZone` (500-seed scan).
+
 **Ag trade code applied to unpopulated worlds (medium severity).** `assign_trade_codes()` in `traveller_world_gen.py` checked `4 <= size <= 9` (a spurious size criterion not present in CRB p.260), `4 <= atmosphere <= 8` (upper bound off by one), and `5 <= hydrographics <= 7` (range shifted vs. CRB). The population criterion `5 <= population <= 7` was missing entirely, allowing uninhabited worlds (population 0) and underpopulated or overpopulated worlds to receive the Ag code. Fix (Session 15): replaced the check with the correct CRB p.260 criteria — `4 <= atmosphere <= 9`, `4 <= hydrographics <= 8`, `5 <= population <= 7`. Six boundary tests added. No RNG sequence change — `assign_trade_codes()` is deterministic given its arguments and calls no dice rolls.
+
+**Gas giant mainworld orbit displays satellite UWP instead of gas giant profile (medium severity).** When `attach_detail()` ran on a system whose mainworld was a satellite of a gas giant, `orbit.detail` was built using the satellite's SAH (`uwp[1:4]`). This made `orbit.detail.is_gas_giant == False` and `orbit.detail.profile` return the satellite's UWP (e.g. `A689521-B`) in the gas giant orbit row — hiding the gas giant's own profile (`orbit.gg_sah`, e.g. `GM7`). A secondary symptom: after a display-layer fix, the satellite disappeared entirely from the orbit table when the gas giant had no additional moons, because there were no moon sub-rows to show it. Three-layer fix (Session 24): (1) `attach_detail()` in `traveller_world_detail.py` — `orbit.detail` now uses `sah=orbit.gg_sah`, making `is_gas_giant=True` and `profile="GM7"`; the satellite is wrapped as `Moon(size_code=mw_size)` and inserted as `moons[0]`, appearing as a moon sub-row beneath the gas giant profile; (2) `_orbit_profile()` in `gen-ui/app.py` — returns `gg_sah` for any gas giant orbit before falling through to `detail.profile`, acting as a display-layer safety net independent of whether `attach_detail()` has run; (3) `to_html()` in `traveller_system_gen.py` — gas giant orbits now use `gg_sah` and the `type-gg` CSS class in both the "detail attached" and "no detail" code paths. The fix is consistent across gen-ui display, HTML output, and JSON output (`orbit.detail.profile` = `"GM7"`, satellite reachable as `orbit.detail.moons[0].detail`). No RNG sequence change — `attach_detail()` creates no new dice rolls. (GitHub issue #22.)
 
 ---
 
@@ -746,7 +974,7 @@ The following WBH features are explicitly noted as not yet implemented. Page ref
 
 **Eccentricity (Step 9, WBH p.51).** Orbital eccentricity for planets. This would affect the moon quantity DM for planets near exclusion zones (currently only the `orbit_number < 1.0` DM is applied), and would affect Hill sphere calculations for moons. Not implemented.
 
-**Orbital periods.** `P = √(AU³ / M)` for single-star systems. Not computed or stored.
+**Orbital periods — planet mass correction.** World orbital periods use `P = √(AU³ / M_central)` without the WBH planet-mass correction `(mE × 0.000003)`. For superjovian planets the correction is ≤ 0.17% of the period (≈ 1000 M⊕ around a G-type star) and is omitted.
 
 **Moon orbit adjacency DMs.** Three of the four DM conditions for moon quantity (WBH p.56) require knowledge of whether an orbit slot is adjacent to a companion-induced MAO, a Close/Near star unavailability zone, or the outermost slot of a Far star. These require eccentricity data and spread values that are not currently passed through to `traveller_moon_gen.py`. Only the `orbit_number < 1.0` condition is implemented.
 
@@ -756,11 +984,9 @@ The following WBH features are explicitly noted as not yet implemented. Page ref
 
 **Secondary world classifications** (WBH p.163). Colony, Farming, Freeport, Military Base, Mining Facility, Penal Colony, Research Base — trade codes for secondary worlds based on their characteristics and relationship to the mainworld. Not implemented.
 
-**World physical detail beyond SAH** (WBH pp. 74–130). Precise diameter, density, gravity, mass, escape velocity, axial tilt, day length, seismic stress, tidal heating, atmospheric composition, hydrographic composition, native life ratings. The codebase stops at the SAH level.
+**World physical detail beyond basic** (WBH pp. 78–130). Basic physical characteristics (diameter, density, composition, mass, gravity, escape velocity, axial tilt, day length, tidal lock) are implemented in `traveller_world_physical.py`. Atmosphere detail through Phase 5 (pressure, O₂, scale height, taints, exotic/CI subtypes, gas composition, altitude bands, and Unusual subtypes) is implemented in `traveller_world_gen.py`. Remaining: seismic stress, tidal heating, hydrographic composition, native life ratings. Biologic taint (WBH p.83) is blocked on native-life ratings.
 
 **Moon orbit placement** (WBH pp. 74–77). Hill sphere calculation, Roche limit, Moon Orbit Range, and orbital distances in planetary diameters. Moons are sized and detailed but not given orbital positions within their parent's system.
-
-**Belt physical detail** (WBH pp. 131–133). Belt span, composition percentages, bulk, resource rating, and significant belt bodies (Size 1 and S). Belts currently have a fixed SAH of `000`.
 
 ---
 
@@ -842,6 +1068,10 @@ python traveller_world_gen.py --name Cogri --seed 42 --json
 # Moon generation detail (legacy entry point)
 python traveller_world_detail.py --name Varanthos --seed 6056
 
+# Render system JSON to a standalone HTML document
+python render_system_json.py examples/system_seed42.json
+python render_system_json.py my_system.json my_system.html
+
 # SVG star system map (dark background by default)
 python system_map.py --name Ardenne --seed 1000 --out ardenne.svg
 
@@ -881,10 +1111,12 @@ func start   # requires Azure Functions Core Tools v4
 All six generation modules target **10.00/10 per file** with Pylint 4.x. Check a single file:
 
 ```bash
-.venv-1/bin/pylint traveller_stellar_gen.py
+.venv/bin/pylint traveller_stellar_gen.py
 ```
 
 Multi-file runs will show R0801 (duplicate-code) due to shared HTML boilerplate in `traveller_system_gen.py` and `traveller_world_gen.py`. This is expected — the code is intentionally kept separate (different data structures) and the per-file target is what matters.
+
+The VS Code Pylint extension can trigger the same false positives when it analyses multiple open files. `.vscode/settings.json` suppresses them via `"pylint.args": ["--disable=duplicate-code,too-many-lines"]`. See `docs/VSCODE.md` for details.
 
 Common inline suppression comments used in this codebase (with `# pylint: disable=`):
 

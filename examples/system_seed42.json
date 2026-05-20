@@ -1,0 +1,249 @@
+{
+  "star_count": 3,
+  "age_gyr": 5.4,
+  "stars": [
+    {
+      "designation": "A",
+      "role": "primary",
+      "classification": "K9 V",
+      "spectral_type": "K",
+      "subtype": 9,
+      "luminosity_class": "V",
+      "mass_solar": 0.5,
+      "temperature_k": 3700,
+      "diameter_solar": 0.7,
+      "luminosity_solar": 0.0827,
+      "orbit_number": 0.0,
+      "orbit_au": 0.0,
+      "age_gyr": 5.4,
+      "ms_lifespan_gyr": 56.57,
+      "orbit_period_yr": null,
+      "colour": "Light Orange",
+      "special_notes": ""
+    },
+    {
+      "designation": "B",
+      "role": "far",
+      "classification": "M0 V",
+      "spectral_type": "M",
+      "subtype": 0,
+      "luminosity_class": "V",
+      "mass_solar": 0.5,
+      "temperature_k": 3700,
+      "diameter_solar": 0.7,
+      "luminosity_solar": 0.0827,
+      "orbit_number": 13.3,
+      "orbit_au": 691.6,
+      "age_gyr": 5.4,
+      "ms_lifespan_gyr": 56.57,
+      "orbit_period_yr": 17034.5259,
+      "colour": "Orange-Red",
+      "special_notes": ""
+    },
+    {
+      "designation": "Aa",
+      "role": "companion",
+      "classification": "M6 V",
+      "spectral_type": "M",
+      "subtype": 6,
+      "luminosity_class": "V",
+      "mass_solar": 0.14,
+      "temperature_k": 2850,
+      "diameter_solar": 0.175,
+      "luminosity_solar": 0.0018,
+      "orbit_number": 0.22,
+      "orbit_au": 0.244,
+      "age_gyr": 5.4,
+      "ms_lifespan_gyr": 1363.58,
+      "orbit_period_yr": 0.1507,
+      "colour": "Orange-Red",
+      "special_notes": ""
+    }
+  ],
+  "orbits": {
+    "gas_giant_count": 3,
+    "belt_count": 0,
+    "terrestrial_count": 3,
+    "total_worlds": 6,
+    "empty_orbits": 0,
+    "star_zones": {
+      "A": {
+        "mao": 0.02,
+        "hzco": 0.45,
+        "hz_inner": 0.02,
+        "hz_outer": 1.45
+      },
+      "B": {
+        "mao": 0.02,
+        "hzco": 0.44,
+        "hz_inner": 0.02,
+        "hz_outer": 1.44
+      }
+    },
+    "orbits": [
+      {
+        "star": "A",
+        "orbit_number": 1.66,
+        "orbit_au": 0.598,
+        "slot_index": 1,
+        "world_type": "terrestrial",
+        "is_habitable_zone": false,
+        "hz_deviation": 1.21,
+        "temperature_zone": "frozen",
+        "is_mainworld_candidate": false,
+        "notes": "",
+        "orbit_period_yr": 0.578
+      },
+      {
+        "star": "A",
+        "orbit_number": 3.5,
+        "orbit_au": 1.3,
+        "slot_index": 2,
+        "world_type": "terrestrial",
+        "is_habitable_zone": false,
+        "hz_deviation": 3.05,
+        "temperature_zone": "frozen",
+        "is_mainworld_candidate": false,
+        "notes": "",
+        "orbit_period_yr": 1.8528
+      },
+      {
+        "star": "A",
+        "orbit_number": 5.96,
+        "orbit_au": 5.104,
+        "slot_index": 3,
+        "world_type": "gas_giant",
+        "is_habitable_zone": false,
+        "hz_deviation": 5.51,
+        "temperature_zone": "frozen",
+        "is_mainworld_candidate": false,
+        "notes": "",
+        "gg_sah": "GLE",
+        "orbit_period_yr": 14.4137
+      },
+      {
+        "star": "B",
+        "orbit_number": 1.22,
+        "orbit_au": 0.466,
+        "slot_index": 1,
+        "world_type": "gas_giant",
+        "is_habitable_zone": true,
+        "hz_deviation": 0.78,
+        "temperature_zone": "cold",
+        "is_mainworld_candidate": true,
+        "notes": "in HZ, cool side",
+        "gg_sah": "GS3",
+        "orbit_period_yr": 0.4499
+      },
+      {
+        "star": "B",
+        "orbit_number": 2.25,
+        "orbit_au": 0.775,
+        "slot_index": 2,
+        "world_type": "gas_giant",
+        "is_habitable_zone": false,
+        "hz_deviation": 1.81,
+        "temperature_zone": "frozen",
+        "is_mainworld_candidate": false,
+        "notes": "",
+        "gg_sah": "GS4",
+        "orbit_period_yr": 0.9649
+      },
+      {
+        "star": "B",
+        "orbit_number": 3.96,
+        "orbit_au": 1.576,
+        "slot_index": 3,
+        "world_type": "terrestrial",
+        "is_habitable_zone": false,
+        "hz_deviation": 3.52,
+        "temperature_zone": "frozen",
+        "is_mainworld_candidate": false,
+        "notes": "",
+        "orbit_period_yr": 2.798
+      }
+    ],
+    "mainworld_orbit": {
+      "star": "B",
+      "orbit_number": 1.22,
+      "orbit_au": 0.466,
+      "slot_index": 1,
+      "world_type": "gas_giant",
+      "is_habitable_zone": true,
+      "hz_deviation": 0.78,
+      "temperature_zone": "cold",
+      "is_mainworld_candidate": true,
+      "notes": "in HZ, cool side",
+      "gg_sah": "GS3",
+      "orbit_period_yr": 0.4499
+    }
+  },
+  "mainworld": {
+    "name": "Unknown",
+    "uwp": "D211449-A",
+    "starport": {
+      "code": "D",
+      "description": "Poor (Unrefined fuel, limited repair)"
+    },
+    "size": {
+      "code": 2,
+      "diameter_km": "3,200",
+      "surface_gravity": "0.15G"
+    },
+    "atmosphere": {
+      "code": 1,
+      "name": "Trace",
+      "survival_gear": "Vacc Suit",
+      "detail": {
+        "pressure_bar": 0.078,
+        "scale_height_km": 56.67
+      },
+      "profile": "1-0.078"
+    },
+    "temperature": "Cold",
+    "hydrographics": {
+      "code": 1,
+      "description": "Dry world (6-15%)",
+      "detail": {
+        "surface_liquid_pct": 9
+      }
+    },
+    "population": {
+      "code": 4,
+      "range": "Tens of thousands"
+    },
+    "government": {
+      "code": 4,
+      "name": "Representative Democracy"
+    },
+    "law_level": 9,
+    "tech_level": 10,
+    "has_gas_giant": true,
+    "gas_giant_count": 3,
+    "belt_count": 0,
+    "population_multiplier": 4,
+    "pbg": "403",
+    "bases": [],
+    "trade_codes": [
+      "Ic",
+      "Ni"
+    ],
+    "travel_zone": "Amber",
+    "notes": [
+      "Mainworld is a satellite of gas giant GS3 at Orbit# 1.22 (0.47 AU)",
+      "Orbits Star B at Orbit# 1.22 (0.466 AU). HZ deviation +0.78 → base temperature raw roll 4."
+    ],
+    "size_detail": {
+      "composition": "Dense Core",
+      "diameter_km": 3600,
+      "density_g_cm3": 5.4,
+      "mass_earth": 0.0221,
+      "gravity_g": 0.277,
+      "escape_velocity_km_s": 3.13,
+      "axial_tilt_deg": 114.0,
+      "day_length_hours": 36.0,
+      "tidal_status": "braking",
+      "mean_temperature_k": 288
+    }
+  }
+}

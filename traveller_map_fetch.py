@@ -87,8 +87,11 @@ from traveller_stellar_gen import (
 )
 from traveller_orbit_gen import SystemOrbits, generate_orbits
 from traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
-from traveller_world_gen import World
+from traveller_world_gen import (
+    World, generate_atmosphere_detail, generate_gas_mix, generate_unusual_subtype,
+)
 from traveller_world_detail import attach_detail
+from traveller_hydro_detail import generate_hydrographic_detail
 
 
 # ---------------------------------------------------------------------------
@@ -540,16 +543,28 @@ def _reconcile_orbit_types(orbits: SystemOrbits,
     Redistribute world types in non-mainworld, non-empty slots to match
     the canonical gas-giant and belt counts from the PBG field.
 
-    Slots are re-typed in-place; excess slots become terrestrial.
-    Mainworld and empty slots are left unchanged.
+    When the canonical total exceeds the number of available non-empty
+    non-mainworld slots, empty slots are promoted to world slots so the
+    canonical counts can always be honoured.  Excess slots beyond the
+    canonical total become terrestrial.  Mainworld slots are left unchanged.
     Call _recount_orbit_metadata() after the mainworld type is resolved.
     """
     slots = [o for o in orbits.orbits
              if o.world_type != "empty" and not o.is_mainworld_candidate]
+
+    # Promote empty slots when canonical counts exceed available world slots
+    needed = canonical_gg + canonical_belt - len(slots)
+    if needed > 0:
+        empties = [o for o in orbits.orbits if o.world_type == "empty"]
+        for slot in empties[:needed]:
+            slot.world_type = "terrestrial"  # placeholder; overwritten below
+        slots = [o for o in orbits.orbits
+                 if o.world_type != "empty" and not o.is_mainworld_candidate]
+
     n = len(slots)
     pool = ["gas_giant"] * canonical_gg + ["belt"] * canonical_belt
     if len(pool) > n:
-        pool = pool[:n]
+        pool = pool[:n]  # only reachable if no empty slots remain
     else:
         pool += ["terrestrial"] * (n - len(pool))
     random.shuffle(pool)
@@ -567,12 +582,14 @@ def _recount_orbit_metadata(orbits: SystemOrbits) -> None:
                                 + orbits.terrestrial_count)
 
 
-def generate_system_from_map(
-    name:    Optional[str] = None,
-    sector:  Optional[str] = None,
-    hex_pos: Optional[str] = None,
-    seed:    Optional[int] = None,
-    attach:  bool = False,
+def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
+    name:                 Optional[str] = None,
+    sector:               Optional[str] = None,
+    hex_pos:              Optional[str] = None,
+    seed:                 Optional[int] = None,
+    attach:               bool = False,
+    orbital_eccentricity: bool = False,
+    orbital_inclination:  bool = False,
 ) -> TravellerSystem:
     """
     Fetch a world from TravellerMap and generate a complete star system.
@@ -584,11 +601,13 @@ def generate_system_from_map(
 
     Parameters
     ----------
-    name     World name to search on TravellerMap.  Requires sector.
-    sector   Sector name — always required to avoid same-name ambiguity.
-    hex_pos  4-digit hex position, e.g. '1910'.  Alternative to name.
-    seed     RNG seed for reproducible orbital generation.
-    attach   If True, generate all secondary world and moon profiles.
+    name                 World name to search on TravellerMap.  Requires sector.
+    sector               Sector name — always required to avoid same-name ambiguity.
+    hex_pos              4-digit hex position, e.g. '1910'.  Alternative to name.
+    seed                 RNG seed for reproducible orbital generation.
+    attach               If True, generate all secondary world and moon profiles.
+    orbital_eccentricity When True, roll eccentricity for each orbit (WBH p.27).
+    orbital_inclination  When True, roll inclination for each orbit (WBH p.28).
 
     Returns
     -------
@@ -611,7 +630,9 @@ def generate_system_from_map(
     stellar = reconstruct_star_system(map_data.stars_str)
 
     # Step 3: procedural orbital layout
-    orbits  = generate_orbits(stellar)
+    orbits  = generate_orbits(stellar,
+                              orbital_eccentricity=orbital_eccentricity,
+                              orbital_inclination=orbital_inclination)
 
     # Step 4: canonical mainworld — UWP used verbatim, no dice rolls
     world = reconstruct_world(map_data)
@@ -619,7 +640,12 @@ def generate_system_from_map(
     # Step 5: reconcile orbit slot types with canonical PBG gas-giant and belt
     # counts.  generate_orbits() used random rolls; we reassign world types
     # across non-mainworld, non-empty slots so the placed types match PBG.
-    _reconcile_orbit_types(orbits, world.gas_giant_count, world.belt_count)
+    # WBH convention: belt_count includes the mainworld when it is a belt
+    # (size 0).  Subtract 1 so the mainworld slot isn't double-counted —
+    # its type is set explicitly to "belt" in Step 6.
+    mw_is_belt = world.size == 0
+    belt_for_reconcile = max(0, world.belt_count - (1 if mw_is_belt else 0))
+    _reconcile_orbit_types(orbits, world.gas_giant_count, belt_for_reconcile)
 
     # Step 6: resolve mainworld orbit slot; stamp it with the canonical UWP so
     # the orbit table shows the real profile instead of blank/procedural data.
@@ -646,11 +672,35 @@ def generate_system_from_map(
             f"HZ dev {mw_orbit.hz_deviation:+.2f}"
         )
 
+    world.atmosphere_detail = generate_atmosphere_detail(
+        world.atmosphere,
+        world.size,
+        stellar.age_gyr,
+        world.temperature,
+        hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
+    )
+    if world.atmosphere_detail is not None:
+        generate_gas_mix(
+            world.atmosphere_detail, world.atmosphere, world.size,
+            world.temperature,
+            mw_orbit.hz_deviation if mw_orbit is not None else None,
+            world.hydrographics,
+        )
+        generate_unusual_subtype(
+            world.atmosphere_detail, world.atmosphere,
+            world.size, world.hydrographics,
+        )
+    world.hydrographic_detail = generate_hydrographic_detail(
+        world.hydrographics, world.size
+    )
+
     system = TravellerSystem(
-        stellar_system  = stellar,
-        system_orbits   = orbits,
-        mainworld       = world,
-        mainworld_orbit = mw_orbit,
+        stellar_system       = stellar,
+        system_orbits        = orbits,
+        mainworld            = world,
+        mainworld_orbit      = mw_orbit,
+        orbital_eccentricity = orbital_eccentricity,
+        orbital_inclination  = orbital_inclination,
     )
 
     if attach:

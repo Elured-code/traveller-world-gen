@@ -340,6 +340,9 @@ class Star:  # pylint: disable=too-many-instance-attributes
     orbit_au: Optional[float] = None       # Approximate AU
     age_gyr: Optional[float] = None        # System age in Gyr (primary only)
     ms_lifespan_gyr: Optional[float] = None  # Main sequence lifespan
+    orbit_period_yr: Optional[float] = None  # Orbital period in years
+    orbit_eccentricity: float = 0.0          # 0.0 until generate_orbits() populates it
+    orbit_inclination: float = 0.0           # 0.0 until generate_orbits() populates it
     special_notes: str = ""     # e.g. "protostar", "post-stellar"
 
     def classification(self) -> str:
@@ -357,7 +360,7 @@ class Star:  # pylint: disable=too-many-instance-attributes
 
     def to_dict(self) -> dict:
         """Serialise this star to a JSON-compatible dict."""
-        return {
+        d = {
             "designation": self.designation,
             "role": self.role,
             "classification": self.classification(),
@@ -373,9 +376,19 @@ class Star:  # pylint: disable=too-many-instance-attributes
             "age_gyr": round(self.age_gyr, 3) if self.age_gyr is not None else None,
             "ms_lifespan_gyr": (round(self.ms_lifespan_gyr, 2)
                                 if self.ms_lifespan_gyr is not None else None),
+            "orbit_period_yr": (round(self.orbit_period_yr, 4)
+                                if self.orbit_period_yr is not None else None),
             "colour": self.colour(),
             "special_notes": self.special_notes,
         }
+        if self.orbit_eccentricity > 0:
+            d["orbit_eccentricity"] = round(self.orbit_eccentricity, 4)
+            if self.orbit_au is not None:
+                d["orbit_au_min"] = round(self.orbit_au * (1 - self.orbit_eccentricity), 3)
+                d["orbit_au_max"] = round(self.orbit_au * (1 + self.orbit_eccentricity), 3)
+        if self.orbit_inclination > 0:
+            d["orbit_inclination"] = round(self.orbit_inclination, 2)
+        return d
 
 
 # ---------------------------------------------------------------------------
@@ -423,7 +436,17 @@ class StarSystem:
         for star in self.stars:
             orbit_str = ""
             if star.orbit_number is not None:
-                orbit_str = f"  Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)"
+                period_str = ""
+                if star.orbit_period_yr is not None:
+                    p_d = star.orbit_period_yr * 365.25
+                    if p_d < 1.0:
+                        period_str = f"  {p_d * 24:.1f}h"
+                    elif p_d < 365.25:
+                        period_str = f"  {p_d:.1f}d"
+                    else:
+                        period_str = f"  {star.orbit_period_yr:.2f}y"
+                orbit_str = (f"  Orbit# {star.orbit_number:.2f} "
+                             f"({star.orbit_au:.2f} AU){period_str}")
             lines.append(
                 f"  {star.designation:<4}  {star.classification():<12}  "
                 f"Mass {star.mass:.2f}☉  T {star.temperature:,}K  "
@@ -999,7 +1022,7 @@ def _secondary_orbit(slot: str) -> Tuple[float, float]:
 # Top-level system generation
 # ---------------------------------------------------------------------------
 
-def generate_stellar_data() -> StarSystem:  # pylint: disable=too-many-locals
+def generate_stellar_data() -> StarSystem:  # pylint: disable=too-many-locals,too-many-branches
     """
     Generate complete stellar data for a star system.
 
@@ -1071,6 +1094,35 @@ def generate_stellar_data() -> StarSystem:  # pylint: disable=too-many-locals
     for star in system.stars:
         if star.age_gyr is None:
             star.age_gyr = primary.age_gyr
+
+    # Compute orbital periods: Period (yr) = sqrt(AU^3 / (M_central + m))
+    # M_central for companions = parent mass only.
+    # M_central for secondaries = combined mass of all stars with effective
+    # system orbit# < this star's orbit# (companions move with their parent).
+    _sb_desig = {st.designation: st for st in system.stars}
+
+    def _eff_sysorn(st: Star) -> float:
+        if st.role != "companion":
+            return st.orbit_number or 0.0
+        par = _sb_desig.get(st.designation[:-1])
+        return (par.orbit_number or 0.0) if par else 0.0
+
+    for st in system.stars:
+        if st.role == "primary" or st.orbit_au is None or st.orbit_au <= 0:
+            continue
+        if st.role == "companion":
+            par = _sb_desig.get(st.designation[:-1])
+            m_central = par.mass if par else 0.0
+        else:
+            my_orn = st.orbit_number or 0.0
+            m_central = sum(
+                other.mass for other in system.stars
+                if other is not st and _eff_sysorn(other) < my_orn
+            )
+        if m_central > 0:
+            st.orbit_period_yr = round(
+                math.sqrt(st.orbit_au ** 3 / (m_central + st.mass)), 4
+            )
 
     return system
 
