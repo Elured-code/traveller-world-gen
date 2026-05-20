@@ -260,11 +260,15 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     # Set when tidal_status=="1:1_lock" and orbit_eccentricity > 0.1 (WBH p.77 Rule 4).
     # Value = min(original_eccentricity, re-rolled eccentricity with DM-2).
     # _attach_mainworld_physical() propagates this back to the orbit slot.
+    mean_temperature_k: Optional[int] = field(default=None, init=False)
+    # Basic Mean Temperature in Kelvin (WBH p.47). Set when hz_deviation is passed
+    # to generate_world_physical(). Computed from orbital DM + atmosphere DM applied
+    # to base roll 7; extrapolates below 0 (-5K/step) and above 12 (+50K/step); min 3K.
 
     # method: .to_dict()
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
     #       gravity_g, escape_velocity_km_s, axial_tilt_deg, day_length_hours,
-    #       tidal_status[, eccentricity_adjusted]  ← only when not None
+    #       tidal_status[, eccentricity_adjusted][, mean_temperature_k]  ← only when not None
 ```
 
 ---

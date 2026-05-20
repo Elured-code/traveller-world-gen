@@ -20,14 +20,13 @@ from traveller_moon_gen import Moon  # pylint: disable=import-error
 from traveller_world_physical import (
     TIDAL_STATUS_LABELS,
     WorldPhysical,
-    _age_dm,
     _apply_tidal_lock_result,
+    _compute_mean_temperature,
     _orbital_period_hours,
+    _orbit_dm_for_mean_temp,
     _planet_moon_lock_dm,
-    _reroll_axial_tilt_for_lock,
     _reroll_eccentricity_tidal,
     _roll_axial_tilt_1d,
-    _roll_extreme_axial_tilt,
     _roll_tidal_lock_status,
     _tidal_lock_dm,
     apply_moon_tidal_effects,
@@ -727,3 +726,134 @@ class TestApplyMoonTidalEffects:
         with patch("traveller_world_physical.random.randint", return_value=1):
             apply_moon_tidal_effects(wp, moons=[ring], **self._KWARGS)
         assert wp.day_length != pytest.approx(50.0)
+
+
+# ---------------------------------------------------------------------------
+# _orbit_dm_for_mean_temp
+# ---------------------------------------------------------------------------
+
+class TestOrbitDmForMeanTemp:
+    def test_habitable_zone_no_dm(self):
+        # |hz_deviation| <= 1 → DM 0
+        assert _orbit_dm_for_mean_temp(0.0) == 0
+        assert _orbit_dm_for_mean_temp(0.5) == 0
+        assert _orbit_dm_for_mean_temp(-0.5) == 0
+        assert _orbit_dm_for_mean_temp(1.0) == 0
+        assert _orbit_dm_for_mean_temp(-1.0) == 0
+
+    def test_inner_zone_base_dm(self):
+        # Just inside HZCO-1 (dev < -1): DM+4 + 0 = +4
+        # hz_deviation = -1.1 → (-(-1.1) - 1) * 2 = 0.1 * 2 = 0.2 → round(0.2)=0 → DM=4
+        assert _orbit_dm_for_mean_temp(-1.1) == 4
+
+    def test_inner_zone_increments(self):
+        # Each 0.5 Orbit# below HZCO-1 adds +1
+        # hz_deviation = -1.5 → deviation below HZCO-1 = 0.5 → round(0.5*2)=1 → DM=5
+        assert _orbit_dm_for_mean_temp(-1.5) == 5
+        # hz_deviation = -2.0 → deviation = 1.0 → round(1.0*2)=2 → DM=6
+        assert _orbit_dm_for_mean_temp(-2.0) == 6
+        # hz_deviation = -3.0 → deviation = 2.0 → round(2.0*2)=4 → DM=8
+        assert _orbit_dm_for_mean_temp(-3.0) == 8
+
+    def test_outer_zone_base_dm(self):
+        # Just beyond HZCO+1 (dev > 1): DM-4 - 0 = -4
+        assert _orbit_dm_for_mean_temp(1.1) == -4
+
+    def test_outer_zone_increments(self):
+        # hz_deviation = 1.5 → deviation above HZCO+1 = 0.5 → round(0.5*2)=1 → DM=-5
+        assert _orbit_dm_for_mean_temp(1.5) == -5
+        # hz_deviation = 2.0 → deviation = 1.0 → round(1.0*2)=2 → DM=-6
+        assert _orbit_dm_for_mean_temp(2.0) == -6
+        # hz_deviation = 3.0 → deviation = 2.0 → round(2.0*2)=4 → DM=-8
+        assert _orbit_dm_for_mean_temp(3.0) == -8
+
+
+# ---------------------------------------------------------------------------
+# _compute_mean_temperature
+# ---------------------------------------------------------------------------
+
+class TestComputeMeanTemperature:
+    def test_hzco_standard_atm(self):
+        # hz_deviation=0, atm=6 (DM 0) → modified roll=7 → 288K
+        assert _compute_mean_temperature(0.0, 6) == 288
+
+    def test_table_lookup_roll_0(self):
+        # Need modified_roll=0: 7 + orbit_dm + atm_dm = 0
+        # Use hz_deviation=0, atm=2 (DM-2) → roll=5 → 278K; not 0
+        # Use hz_deviation=-1.0 (DM=0), atm=2 (DM-2) → roll=5 → 278K
+        # To get roll 0: need orbit_dm + atm_dm = -7
+        # hz_deviation=2.0 (orbit_dm=-6), atm=3 (DM-2) → roll=7-6-2=-1 → below 0
+        # Try: hz_deviation=2.0 (orbit_dm=-6), atm=2 (DM-2) → roll=7-6-2=-1
+        # For roll exactly 0: hz_deviation=1.5 (orbit_dm=-5), atm=2 (DM-2) → roll=0
+        assert _compute_mean_temperature(1.5, 2) == 178  # roll=0 → 178K
+
+    def test_table_lookup_selected_entries(self):
+        # roll 7 = 288K (atm DM 0)
+        assert _compute_mean_temperature(0.0, 6) == 288
+        # roll 8 = 293K (atm code 8 or 9 → DM+1)
+        assert _compute_mean_temperature(0.0, 8) == 293
+        # roll 9 = 298K (atm code 10 → DM+2)
+        assert _compute_mean_temperature(0.0, 10) == 298
+        # roll 10 = 313K (atm code 13 → DM+2, but need DM+3; use DM+2 from atm 10 + small orbit)
+        # Easier: hz_deviation=-1.0 (DM=0), atm 13 (DM+2) → roll 9 → 298K
+        # Use hz_deviation=-1.25 (DM=+4+round(0.25*2)=+4+round(0.5)=+5, but -1.25 < -1)
+        # Wait: hz_deviation=-1.25 → orbit_dm = 4+round((-(-1.25)-1)*2)=4+round(0.5)=4+0=4
+        # (Python rounds 0.5 to 0 — banker's rounding)
+        # Just verify roll 12 = 388K: need DM+5; no atm gives exactly +5
+        # Use hz_deviation=-1.5 (orbit_dm=+5), atm=6 (DM=0) → roll=12 → 388K
+        assert _compute_mean_temperature(-1.5, 6) == 388  # roll 12
+
+    def test_dense_atmosphere_raises_temp(self):
+        # atm 11 or 12 → DM+6, hz_deviation=0 → roll=13 → above 12: 388+50=438K
+        assert _compute_mean_temperature(0.0, 11) == 438
+
+    def test_thin_atmosphere_lowers_temp(self):
+        # atm 2 → DM-2, hz_deviation=0 → roll=5 → 278K
+        assert _compute_mean_temperature(0.0, 2) == 278
+
+    def test_below_zero_extrapolation(self):
+        # hz_deviation=2.0 (DM-6), atm=2 (DM-2) → roll= 7-6-2=-1 → 178+(-1)*5=173K
+        assert _compute_mean_temperature(2.0, 2) == 173
+
+    def test_above_twelve_extrapolation(self):
+        # hz_deviation=-2.0 (DM+6), atm=11 (DM+6) → roll=7+6+6=19 → 388+(19-12)*50=738K
+        assert _compute_mean_temperature(-2.0, 11) == 738
+
+    def test_minimum_temperature_3k(self):
+        """Temperature is clamped to 3K minimum for extreme outer orbits."""
+        # hz_deviation=20 → DM=-4-round(19*2)=-42, roll=7-42=-35
+        # → 178+(-35)*5=178-175=3K → max(3,3)=3K
+        assert _compute_mean_temperature(20.0, 0) == 3
+
+    def test_generate_world_physical_sets_mean_temperature(self):
+        """mean_temperature_k is set when hz_deviation is provided."""
+        world = _World(size=6, atmosphere=6)
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            wp = generate_world_physical(world, hz_deviation=0.0)
+        assert wp is not None
+        assert wp.mean_temperature_k == 288  # HZ world, atm 6 → roll 7 → 288K
+
+    def test_generate_world_physical_no_mean_temp_without_hz(self):
+        """mean_temperature_k is None when hz_deviation is not provided."""
+        world = _World(size=6, atmosphere=6)
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            wp = generate_world_physical(world)
+        assert wp is not None
+        assert wp.mean_temperature_k is None
+
+    def test_to_dict_includes_mean_temperature(self):
+        """to_dict() emits mean_temperature_k when set."""
+        world = _World(size=6, atmosphere=6)
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            wp = generate_world_physical(world, hz_deviation=0.0)
+        assert wp is not None
+        d = wp.to_dict()
+        assert d["mean_temperature_k"] == 288
+
+    def test_to_dict_omits_mean_temperature_when_none(self):
+        """to_dict() omits mean_temperature_k when not computed."""
+        world = _World(size=6, atmosphere=6)
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            wp = generate_world_physical(world)
+        assert wp is not None
+        assert "mean_temperature_k" not in wp.to_dict()

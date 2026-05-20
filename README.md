@@ -121,6 +121,58 @@ cd traveller-world-gen
 
 ### Installation
 
+#### Recommended: use the install script
+
+Each platform has a dedicated script that creates the virtual environment,
+installs all dependencies, and generates ready-to-use launcher scripts.
+
+**macOS / Linux**
+
+```bash
+bash install.sh
+```
+
+Run it with `bash`, not by dot-sourcing (`. ./install.sh`) — the script uses
+`set -euo pipefail`, so any error would close your current terminal if sourced.
+
+After the script finishes, activate the virtual environment in your terminal if
+you want to use `python` / `pytest` / `pylint` directly:
+
+```bash
+source .venv/bin/activate
+```
+
+**Windows — PowerShell** (recommended)
+
+```powershell
+.\install.ps1
+```
+
+If you see an execution-policy error, run this first, then retry:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**Windows — Command Prompt**
+
+```bat
+install.bat
+```
+
+After either Windows script finishes, activate the virtual environment if needed:
+
+```bat
+.venv\Scripts\activate
+```
+
+The generated launcher scripts use absolute paths to the venv interpreter and
+work without activating the virtual environment.
+
+---
+
+#### Manual installation (if you prefer step-by-step)
+
 The core generation modules use only the Python standard library — no third-party
 packages are required to run the CLI scripts or import the modules in your own code.
 Additional dependencies are only needed for the desktop UI, the test suite, or the

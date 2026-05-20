@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --bg1:#ffffff;--bg2:#f5f5f3;--bg3:#eeede8;
+  --txt1:#1a1a19;--txt2:#6b6a65;--txt3:#b0aea7;
+  --bdr:rgba(0,0,0,0.12);--r8:8px;--r12:12px;
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg1:#1e1e1c;--bg2:#2a2a28;--bg3:#323230;
+  --txt1:#e8e6de;--txt2:#9c9a92;--txt3:#6b6a65;
+  --bdr:rgba(255,255,255,0.10);
+}}
+body{background:var(--bg3);margin:0;padding:1.5rem;color:var(--txt1)}
+.card{background:var(--bg1);border:0.5px solid var(--bdr);border-radius:var(--r12);
+  padding:1rem 1.25rem;max-width:1000px;margin:0 auto 1rem}
+.header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:22px;font-weight:500;margin:0}
+.sub{font-size:14px;color:var(--txt2);margin:0}
+.badge{display:inline-block;font-size:11px;font-weight:500;padding:2px 9px;
+  border-radius:var(--r8);margin:2px 2px 2px 0}
+.zone-green{background:#e1f5ee;color:#085041}
+.zone-amber{background:#faeeda;color:#633806}
+.zone-red{background:#fcebeb;color:#791f1f}
+.trade{background:#faece7;color:#712b13}
+.b-gray{background:#f1efe8;color:#444441}
+.section-title{font-size:13px;font-weight:500;color:var(--txt2);
+  margin:16px 0 8px;text-transform:uppercase;letter-spacing:0.05em}
+.table-scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:4px 6px;color:var(--txt2);font-weight:500;
+  border-bottom:1px solid var(--bdr);white-space:nowrap}
+td{padding:3px 6px;border-bottom:0.5px solid var(--bdr);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.mono{font-family:ui-monospace,"Cascadia Code","Fira Mono",monospace}
+.dim{color:var(--txt3)}
+.profile{color:var(--txt1)}
+.type-gg{color:#1a5fa8}
+.type-inh{color:#085041;font-weight:500}
+.type-terr{color:var(--txt2)}
+.type-belt{color:var(--txt3)}
+.type-empty{color:var(--txt3)}
+.mw-row td{background:var(--bg2);font-weight:500}
+.mw-note{font-size:11px;color:#085041}
+.moon-row td{color:var(--txt2);font-size:11px;background:var(--bg1)}
+.moon-type{padding-left:24px}
+.moon-idx{color:var(--txt3)}
+.note-cell{font-size:11px;color:var(--txt2)}
+.zone-boiling{color:#791f1f;font-weight:500}
+.zone-hot{color:#633806;font-weight:500}
+.zone-temperate{color:#085041;font-weight:500}
+.zone-cold{color:#0c447c}
+.zone-frozen{color:var(--txt3)}
+.mw-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
+@media(max-width:640px){.mw-grid{grid-template-columns:repeat(2,1fr)}}
+.stat{background:var(--bg2);border-radius:var(--r8);padding:10px 12px}
+.sl{font-size:11px;color:var(--txt2);margin:0 0 2px}
+.sv{font-size:14px;font-weight:500;margin:0}
+.ss{font-size:11px;color:var(--txt2);margin:2px 0 0}
+.trade-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
+.codes-cell{white-space:nowrap}
+.trade-lbl{font-size:12px;color:var(--txt2)}
+.no-val{font-size:13px;color:var(--txt2);margin:0}
+.inner-card{background:var(--bg1);border:0.5px solid var(--bdr);border-radius:var(--r8);
+  padding:10px 12px;margin-top:10px}
+.inner-lbl{font-size:11px;color:var(--txt2);margin:0 0 6px}
+.drow{display:flex;justify-content:space-between;align-items:baseline;
+  padding:4px 0;border-bottom:0.5px solid var(--bdr);font-size:12px}
+.drow:last-child{border-bottom:none}
+.dlbl{color:var(--txt2);flex-shrink:0;margin-right:8px}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.chip{font-size:12px;color:var(--txt2);background:var(--bg2);
+  padding:3px 10px;border-radius:var(--r8)}
+.note-list{margin:4px 0 0;padding-left:18px;font-size:12px;color:var(--txt2);
+  line-height:1.6}
+details summary{font-size:12px;color:var(--txt2);cursor:pointer;padding:4px 0;margin-top:12px}
+pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
+  white-space:pre-wrap;line-height:1.6;margin:8px 0 0}
+</style>
+</head>
+<body>
+{% macro drow(label, value) %}<div class="drow"><span class="dlbl">{{ label }}</span><span>{{ value }}</span></div>{% endmacro %}
+<div class="card">
+  <div class="header">
+    <h1>{{ title }}</h1>
+    <p class="sub mono">{{ star_classes }}</p>
+    <span class="badge b-gray">{{ age_str }}</span>
+    <span class="badge b-gray">{{ n_worlds }} worlds</span>
+  </div>
+
+  <div class="section-title">Stars</div>
+  <table>
+    <thead><tr>
+      <th>Desig</th><th>Class</th><th>Mass</th>
+      <th>Temp</th><th>Lum</th><th>Orbit</th><th>Notes</th>
+    </tr></thead>
+    <tbody>
+    {% for s in star_rows %}
+    <tr>
+      <td class="mono">{{ s.designation }}</td>
+      <td class="mono">{{ s.classification }}</td>
+      <td class="mono">{{ s.mass_str }}</td>
+      <td class="mono">{{ s.temp_str }}</td>
+      <td class="mono">{{ s.lum_str }}</td>
+      <td>{{ s.orbit_str }}</td>
+      <td class="note-cell">{{ s.note_str }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if zone_rows %}
+  <div class="section-title">Habitable zones</div>
+  <table style="max-width:420px">
+    <thead><tr><th>Star</th><th>MAO</th><th>HZCO</th><th>HZ band</th></tr></thead>
+    <tbody>
+    {% for z in zone_rows %}
+    <tr>
+      <td class="mono">{{ z.designation }}</td>
+      <td class="mono">{{ z.mao }}</td>
+      <td class="mono">{{ z.hzco }}</td>
+      <td class="mono">{{ z.hz_band }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <div class="chip-row">
+    <span class="chip">Gas giants: {{ orbit_counts.gas_giants }}</span>
+    <span class="chip">Belts: {{ orbit_counts.belts }}</span>
+    <span class="chip">Terrestrial: {{ orbit_counts.terrestrial }}</span>
+    <span class="chip">Empty: {{ orbit_counts.empty }}</span>
+  </div>
+
+  <div class="section-title">Orbital survey{% if detail_present %}  ·  detail included{% endif %}</div>
+  <div class="table-scroll">
+  <table>
+    <thead><tr>
+      <th>Star</th><th>#</th><th>Orbit#</th><th>AU</th>
+      <th>Period</th><th>Ecc/Incl</th><th>Type</th>
+      <th>Profile</th><th>Codes</th><th>Zone</th><th></th>
+    </tr></thead>
+    <tbody>
+    {% for o in orbit_rows %}
+    <tr class="{{ o.row_cls }}">
+      <td class="mono">{{ o.star }}</td>
+      <td class="mono">{{ o.slot_index }}</td>
+      <td class="mono">{{ o.orbit_num }}</td>
+      <td class="mono">{{ o.orbit_au }}</td>
+      <td class="mono dim">{{ o.period_str }}</td>
+      <td class="mono">{{ o.ecc_incl }}</td>
+      <td class="{{ o.type_cls }}">{{ o.world_type_display }}</td>
+      <td class="mono profile">{{ o.profile }}</td>
+      <td class="codes-cell">{% for tc in o.codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}</td>
+      <td class="zone-{{ o.temp_zone }}">{{ o.temp_zone }}</td>
+      <td class="mw-note">{{ o.note_cell }}</td>
+    </tr>
+    {% for moon in o.moons %}
+    <tr class="moon-row">
+      <td></td>
+      <td class="mono moon-idx">↳ m{{ moon.idx }}</td>
+      <td class="mono">{{ moon.pd_str }}</td>
+      <td class="mono">{{ moon.km_str }}</td>
+      <td class="mono dim">{{ moon.period_str }}</td>
+      <td></td>
+      <td class="moon-type">{{ moon.size_label }}</td>
+      <td class="mono profile">{{ moon.profile }}</td>
+      <td class="codes-cell">{% for tc in moon.codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}</td>
+      <td>{{ moon.range_str }}</td>
+      <td></td>
+    </tr>
+    {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  {% if mw is not none %}
+  <div class="section-title">Mainworld — {{ mw.name }}</div>
+  <div class="mw-grid">
+    <div class="stat">
+      <p class="sl">UWP</p>
+      <p class="sv mono">{{ mw.uwp }}</p>
+      <p class="ss"><span class="badge {{ mw.zone_cls }}">{{ mw.zone }} zone</span></p>
+    </div>
+    <div class="stat">
+      <p class="sl">Starport {{ mw.sp_code }}</p>
+      <p class="sv">{{ mw.sp_desc }}</p>
+    </div>
+    <div class="stat">
+      <p class="sl">Size {{ mw.sz_hex }}</p>
+      <p class="sv">{{ mw.sz_label }}</p>
+      {% if mw.grav_label %}<p class="ss">{{ mw.grav_label }}</p>{% endif %}
+    </div>
+    <div class="stat">
+      <p class="sl">Atmosphere {{ mw.atm_hex }}</p>
+      <p class="sv">{{ mw.atm_name }}</p>
+      {% if mw.atm_gear %}<p class="ss">{{ mw.atm_gear }}</p>{% endif %}
+    </div>
+    <div class="stat">
+      <p class="sl">Temperature</p>
+      <p class="sv">{{ mw.temp }}</p>
+    </div>
+    <div class="stat">
+      <p class="sl">Hydrographics {{ mw.hyd_hex }}</p>
+      <p class="sv">{{ mw.hyd_desc }}</p>
+    </div>
+    <div class="stat">
+      <p class="sl">Population {{ mw.pop_hex }}</p>
+      <p class="sv">{{ mw.pop_range }}</p>
+      <p class="ss">TL {{ mw.tl_hex }}</p>
+    </div>
+    <div class="stat">
+      <p class="sl">Government {{ mw.gov_hex }}</p>
+      <p class="sv">{{ mw.gov_name }}</p>
+    </div>
+    <div class="stat">
+      <p class="sl">Law Level</p>
+      <p class="sv mono">{{ mw.law_hex }}</p>
+    </div>
+    <div class="stat">
+      <p class="sl">PBG</p>
+      <p class="sv mono">{{ mw.pbg }}</p>
+    </div>
+    <div class="stat">
+      <p class="sl">Bases</p>
+      <p class="sv">{{ mw.bases_str }}</p>
+    </div>
+  </div>
+  <div class="trade-row">
+    <span class="trade-lbl">Trade codes</span>
+    {% if mw.trade_codes %}
+    {% for tc in mw.trade_codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}
+    {% else %}
+    <span class="no-val">None</span>
+    {% endif %}
+  </div>
+  {% if mw.phys_rows %}
+  <div class="inner-card">
+    <p class="inner-lbl">{{ mw.phys_title }}</p>
+    {% for row in mw.phys_rows %}{{ drow(row.label, row.value) }}{% endfor %}
+  </div>
+  {% endif %}
+  {% if mw.atm_rows %}
+  <div class="inner-card">
+    <p class="inner-lbl">Atmosphere detail</p>
+    {% for row in mw.atm_rows %}{{ drow(row.label, row.value) }}{% endfor %}
+  </div>
+  {% endif %}
+  {% if mw.hyd_pct is not none %}
+  <div class="inner-card">
+    <p class="inner-lbl">Hydrographic detail</p>
+    {{ drow("Surface liquid", mw.hyd_pct|string ~ "%") }}
+  </div>
+  {% endif %}
+  {% if mw.notes %}
+  <div class="inner-card">
+    <p class="inner-lbl">Notes</p>
+    <ul class="note-list">{% for note in mw.notes %}<li>{{ note }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="no-val">No mainworld determined.</p>
+  {% endif %}
+
+  <details>
+    <summary>Raw JSON</summary>
+    <pre>{{ json_str }}</pre>
+  </details>
+</div>
+</body>
+</html>

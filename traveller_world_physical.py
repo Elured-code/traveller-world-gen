@@ -533,6 +533,64 @@ def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-posi
 
 
 # ---------------------------------------------------------------------------
+# Basic Mean Temperature Table (WBH p.47)
+# ---------------------------------------------------------------------------
+
+# K values for modified rolls 0-12. Below 0: -5K/step. Above 12: +50K/step.
+# Minimum temperature is 3K. K values are authoritative; the °C column in the
+# book has a typo at roll 0 (shows -85°C; correct value for 178K is -95°C).
+_MEAN_TEMP_TABLE_K: dict[int, int] = {
+    0: 178, 1: 198, 2: 218, 3: 238, 4: 263,
+    5: 278, 6: 283, 7: 288, 8: 293, 9: 298,
+    10: 313, 11: 338, 12: 388,
+}
+
+# Atmosphere DMs for the Basic Mean Temperature roll (HZ Regions table, p.47).
+# Inline copy of TEMPERATURE_DM from traveller_world_gen.py — avoids circular import.
+_MEAN_TEMP_ATM_DM: dict[int, int] = {
+    0:  0,  1:  0,
+    2: -2,  3: -2,
+    4: -1,  5: -1,  14: -1,
+    6:  0,  7:  0,
+    8:  1,  9:  1,
+    10: 2,  13: 2,  15: 2,
+    11: 6,  12: 6,
+    16: 0,  17: 0,
+}
+
+
+def _orbit_dm_for_mean_temp(hz_deviation: float) -> int:
+    """Return the orbital position DM for the Basic Mean Temperature roll.
+
+    If Orbit# < HZCO-1: DM+4 +1 per 0.5 Orbit# below HZCO-1 (round to nearest).
+    If Orbit# > HZCO+1: DM-4 -1 per 0.5 Orbit# above HZCO+1 (round to nearest).
+    In the habitable zone (|hz_deviation| <= 1): DM 0.
+    """
+    if hz_deviation < -1.0:
+        return 4 + round((-hz_deviation - 1.0) * 2)
+    if hz_deviation > 1.0:
+        return -4 - round((hz_deviation - 1.0) * 2)
+    return 0
+
+
+def _compute_mean_temperature(hz_deviation: float, atmosphere: int) -> int:
+    """Compute Basic Mean Temperature in K (WBH p.47).
+
+    Modified roll = 7 + orbital_DM + atmosphere_DM, then table lookup.
+    Extrapolates below roll 0 (-5K/step) and above roll 12 (+50K/step).
+    Result is clamped to a minimum of 3K.
+    """
+    orbit_dm = _orbit_dm_for_mean_temp(hz_deviation)
+    atm_dm = _MEAN_TEMP_ATM_DM.get(atmosphere, 0)
+    modified_roll = 7 + orbit_dm + atm_dm
+    if modified_roll in _MEAN_TEMP_TABLE_K:
+        return max(3, _MEAN_TEMP_TABLE_K[modified_roll])
+    if modified_roll < 0:
+        return max(3, 178 + modified_roll * 5)
+    return max(3, 388 + (modified_roll - 12) * 50)
+
+
+# ---------------------------------------------------------------------------
 # WorldPhysical dataclass
 # ---------------------------------------------------------------------------
 
@@ -554,6 +612,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     day_length: float       # Rotation period in standard hours (post-tidal final value)
     tidal_status: str       # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
     eccentricity_adjusted: Optional[float] = field(default=None, init=False)
+    mean_temperature_k: Optional[int] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
         """Return physical characteristics as a JSON-compatible dict."""
@@ -570,6 +629,8 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
         }
         if self.eccentricity_adjusted is not None:
             d["eccentricity_adjusted"] = round(self.eccentricity_adjusted, 4)
+        if self.mean_temperature_k is not None:
+            d["mean_temperature_k"] = self.mean_temperature_k
         return d
 
 
@@ -584,6 +645,7 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         orbit_au: Optional[float] = None,
         star_mass: Optional[float] = None,
         orbit_eccentricity: float = 0.0,
+        hz_deviation: Optional[float] = None,
 ) -> Optional[WorldPhysical]:
     """Generate physical characteristics for a mainworld.
 
@@ -663,10 +725,12 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
     if tidal_status == "1:1_lock" and orbit_eccentricity > 0.1:
         new_ecc = _reroll_eccentricity_tidal(orbit_number or 0.0, age_gyr)
         wp.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
+    if hz_deviation is not None:
+        wp.mean_temperature_k = _compute_mean_temperature(hz_deviation, world.atmosphere)
     return wp
 
 
-def apply_moon_tidal_effects(
+def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         physical: "WorldPhysical",
         moons: list,
         world_size: int,

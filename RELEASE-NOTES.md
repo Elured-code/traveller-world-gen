@@ -1,8 +1,52 @@
 # Release Notes — v1.2.0
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 36–52
-**Tests:** 1068 (up from 890 in v1.1)
+**Sessions:** 36–54
+**Tests:** 1085
+
+---
+
+## Improvements
+
+### Basic Mean Temperature (Session 54, WBH p.47)
+
+`WorldPhysical` gains `mean_temperature_k: Optional[int]` — the Basic Mean Temperature
+in Kelvin computed from orbital position and atmosphere code.
+
+**Formula:** modified roll = 7 (base/HZCO) + orbital DM + atmosphere DM.
+Orbital DMs: `+4 +1 per 0.5 Orbit# below HZCO-1`; `−4 −1 per 0.5 Orbit# above HZCO+1`.
+Atmosphere DMs are the same HZ Regions table DMs used for temperature categories.
+Table lookup covers rolls 0–12 (178K–388K); extrapolates below 0 (−5K/step) and
+above 12 (+50K/step); minimum 3K.
+
+**Call sites:** `generate_world_physical()` gains `hz_deviation: Optional[float] = None`
+parameter; `function_app._attach_mainworld_physical()` and `gen-ui/app.py` both pass
+`mw_orbit.hz_deviation`. Value is absent when hz_deviation is not available (e.g., simple
+standalone world generation without orbit context).
+
+**Display:** all four HTML templates gain a "Mean temperature" row after "Day length";
+`render_system_json.py._phys_rows()` and `traveller_world_schema.json` updated.
+
+17 new tests in `TestOrbitDmForMeanTemp` (7) and `TestComputeMeanTemperature` (10);
+**1085 tests** pass.
+
+### HTML Template Refactor (Session 53, issue #40)
+
+`World.to_html()` and `TravellerSystem.to_html()` now use Jinja2 templates
+instead of hand-built f-strings. This eliminates doubled braces in CSS blocks,
+makes the HTML structure directly editable without touching Python, and enables
+Jinja2's built-in autoescaping (replaces the custom `esc()` helper).
+
+**New files:**
+- `html_render.py` — thin rendering module with a module-level `jinja2.Environment`
+- `templates/world_card.html` — single world card
+- `templates/world_list.html` — multi-world list (used by `--html` with multiple worlds)
+- `templates/system_card.html` — full system card
+
+**`requirements.txt`** gains `Jinja2>=3.1.0`.
+
+The multi-world CLI `--html` output was previously stitched together with a fragile
+regex that re-parsed each card's HTML. It now uses `world_list.html` directly.
 
 ---
 

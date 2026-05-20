@@ -92,23 +92,45 @@ For TravellerMap mainworld orbit slots, `canonical_profile` takes display
 priority over `WorldDetail.profile`. Without this, an uninhabited mainworld
 (population = 0) would display as `Y{SAH}000-0` rather than its true UWP.
 
-### `TravellerSystem.to_html()` mainworld detail rendering (Sessions 36–37)
+### HTML rendering — Jinja2 templates (Session 53, issue #40)
 
-The system HTML builds a `mw_panel` for the mainworld section. This panel renders
-all detail card types when present:
+Both `World.to_html()` and `TravellerSystem.to_html()` now delegate to Jinja2
+templates via `html_render.render(template_name, **context)` in `html_render.py`.
 
-- **`WorldPhysical`** — an "inner-card" with composition, diameter, density, mass,
-  gravity, escape velocity, axial tilt, day length, and tidal status rows.
-- **Atmosphere detail** — an "inner-card" matching the cards in `World.to_html()`:
-  profile, pressure, O₂ ppo, scale height, altitude, unusual subtypes, taints,
-  hazards, gas mix.
-- **Hydrographic detail** — an "inner-card" with surface liquid percentage.
-- **`BeltPhysical`** — unchanged; rendered as a `.mw-grid` block (pre-existing).
+**Templates** (in `templates/`):
 
-The CSS classes `.inner-card`, `.inner-lbl`, `.drow`, `.dlbl` are defined in the
-`<style>` block of `TravellerSystem.to_html()`. The helper `drow(label, value)`
-generates a single detail row. `WorldPhysical`, `TIDAL_STATUS_LABELS`, and
-`format_atmosphere_profile` are imported at module level.
+| Template | Used by |
+|----------|---------|
+| `world_card.html` | `World.to_html()` |
+| `world_list.html` | multi-world CLI `--html` output |
+| `system_card.html` | `TravellerSystem.to_html()` |
+
+**`html_render.py`** — thin module-level `jinja2.Environment` with
+`autoescape=True` and `FileSystemLoader` pointing at `templates/`.
+Single public function `render(template_name, **context) -> str`.
+
+**`_world_html_ctx(world: "World") -> dict`** — module-level helper in
+`traveller_world_gen.py` (between the `World` class and generation functions).
+Pre-computes every display value (zone badge, TL era, starport labels, formatted
+sizes, trade code full labels, belt/world physical flag, tidal label, JSON dump,
+etc.) and returns a single flat dict. Used by both `World.to_html()` and the
+multi-world CLI path.  Has `# pylint: disable=too-many-locals,protected-access`
+(the protected-access is for `World._tl_era` / `World._tl_era_css`, accessed
+within the same module).
+
+**Multi-world CLI fix:** the previous regex-based HTML stitching of multiple
+`to_html()` outputs was replaced with `render("world_list.html", worlds=[...])`.
+
+**`requirements.txt`** gains `Jinja2>=3.1.0`.
+
+The system card still renders the same mainworld detail sections:
+- **`WorldPhysical`** — composition, diameter, density, mass, gravity, escape
+  velocity, axial tilt, day length, mean temperature (K, when hz_deviation available),
+  tidal status.
+- **Atmosphere detail** — profile, pressure, O₂ ppo, scale height, altitude,
+  unusual subtypes, taints, hazards, gas mix.
+- **Hydrographic detail** — surface liquid percentage.
+- **`BeltPhysical`** — belt span, composition, bulk, resource rating, bodies.
 
 ---
 

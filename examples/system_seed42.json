@@ -38,11 +38,7 @@
       "ms_lifespan_gyr": 56.57,
       "orbit_period_yr": 17034.5259,
       "colour": "Orange-Red",
-      "special_notes": "",
-      "orbit_eccentricity": 0.002,
-      "orbit_au_min": 690.217,
-      "orbit_au_max": 692.983,
-      "orbit_inclination": 32.0
+      "special_notes": ""
     },
     {
       "designation": "Aa",
@@ -96,102 +92,7 @@
         "temperature_zone": "frozen",
         "is_mainworld_candidate": false,
         "notes": "",
-        "orbit_period_yr": 0.578,
-        "eccentricity": 0.6,
-        "orbit_au_min": 0.239,
-        "orbit_au_max": 0.957,
-        "inclination": 1.0,
-        "detail": {
-          "sah": "CA6",
-          "population": 0,
-          "government": 0,
-          "law_level": 0,
-          "tech_level": 0,
-          "spaceport": "-",
-          "inhabited": false,
-          "profile": "YCA6000-0",
-          "trade_codes": [
-            "Ba",
-            "Fl",
-            "Lt"
-          ],
-          "moons_str": "R03, S, 6, 8",
-          "moons": [
-            {
-              "size": "R",
-              "is_ring": true,
-              "is_gas_giant_moon": false,
-              "ring_count": 3
-            },
-            {
-              "size": "S",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "S00",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "-",
-                "inhabited": false,
-                "profile": "YS00000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Va"
-                ],
-                "moons_str": "\u2014",
-                "moons": [],
-                "physical": null
-              }
-            },
-            {
-              "size": "6",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "644",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "-",
-                "inhabited": false,
-                "profile": "Y644000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Lt"
-                ],
-                "moons_str": "\u2014",
-                "moons": [],
-                "physical": null
-              }
-            },
-            {
-              "size": "8",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "878",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "-",
-                "inhabited": false,
-                "profile": "Y878000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Lt"
-                ],
-                "moons_str": "\u2014",
-                "moons": [],
-                "physical": null
-              }
-            }
-          ],
-          "physical": null
-        }
+        "orbit_period_yr": 0.578
       },
       {
         "star": "A",
@@ -204,29 +105,7 @@
         "temperature_zone": "frozen",
         "is_mainworld_candidate": false,
         "notes": "",
-        "orbit_period_yr": 1.8528,
-        "eccentricity": 0.08,
-        "orbit_au_min": 1.196,
-        "orbit_au_max": 1.404,
-        "inclination": 6.0,
-        "detail": {
-          "sah": "AA8",
-          "population": 0,
-          "government": 0,
-          "law_level": 0,
-          "tech_level": 0,
-          "spaceport": "-",
-          "inhabited": false,
-          "profile": "YAA8000-0",
-          "trade_codes": [
-            "Ba",
-            "Fl",
-            "Lt"
-          ],
-          "moons_str": "\u2014",
-          "moons": [],
-          "physical": null
-        }
+        "orbit_period_yr": 1.8528
       },
       {
         "star": "A",
@@ -240,76 +119,7 @@
         "is_mainworld_candidate": false,
         "notes": "",
         "gg_sah": "GLE",
-        "orbit_period_yr": 14.4137,
-        "eccentricity": 0.05,
-        "orbit_au_min": 4.849,
-        "orbit_au_max": 5.359,
-        "inclination": 3.0,
-        "detail": {
-          "sah": "GLE",
-          "population": 0,
-          "government": 0,
-          "law_level": 0,
-          "tech_level": 0,
-          "spaceport": "-",
-          "inhabited": false,
-          "profile": "GLE",
-          "trade_codes": [],
-          "moons_str": "R01, S, S",
-          "moons": [
-            {
-              "size": "R",
-              "is_ring": true,
-              "is_gas_giant_moon": false,
-              "ring_count": 1
-            },
-            {
-              "size": "S",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "S00",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "-",
-                "inhabited": false,
-                "profile": "YS00000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Va"
-                ],
-                "moons_str": "\u2014",
-                "moons": [],
-                "physical": null
-              }
-            },
-            {
-              "size": "S",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "S00",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "-",
-                "inhabited": false,
-                "profile": "YS00000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Va"
-                ],
-                "moons_str": "\u2014",
-                "moons": [],
-                "physical": null
-              }
-            }
-          ],
-          "physical": null
-        }
+        "orbit_period_yr": 14.4137
       },
       {
         "star": "B",
@@ -323,71 +133,7 @@
         "is_mainworld_candidate": true,
         "notes": "in HZ, cool side",
         "gg_sah": "GS3",
-        "orbit_period_yr": 0.4499,
-        "eccentricity": 0.06,
-        "orbit_au_min": 0.438,
-        "orbit_au_max": 0.494,
-        "inclination": 10.0,
-        "detail": {
-          "sah": "GS3",
-          "population": 0,
-          "government": 0,
-          "law_level": 0,
-          "tech_level": 0,
-          "spaceport": "-",
-          "inhabited": false,
-          "profile": "GS3",
-          "trade_codes": [],
-          "moons_str": "2",
-          "moons": [
-            {
-              "size": "2",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "200",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "D",
-                "inhabited": false,
-                "profile": "Y200000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Va"
-                ],
-                "moons_str": "S",
-                "moons": [
-                  {
-                    "size": "S",
-                    "is_ring": false,
-                    "is_gas_giant_moon": false,
-                    "detail": {
-                      "sah": "S00",
-                      "population": 0,
-                      "government": 0,
-                      "law_level": 0,
-                      "tech_level": 0,
-                      "spaceport": "-",
-                      "inhabited": false,
-                      "profile": "YS00000-0",
-                      "trade_codes": [
-                        "Ba",
-                        "Va"
-                      ],
-                      "moons_str": "\u2014",
-                      "moons": [],
-                      "physical": null
-                    }
-                  }
-                ],
-                "physical": null
-              }
-            }
-          ],
-          "physical": null
-        }
+        "orbit_period_yr": 0.4499
       },
       {
         "star": "B",
@@ -401,98 +147,7 @@
         "is_mainworld_candidate": false,
         "notes": "",
         "gg_sah": "GS4",
-        "orbit_period_yr": 0.9649,
-        "eccentricity": 0.65,
-        "orbit_au_min": 0.271,
-        "orbit_au_max": 1.279,
-        "inclination": 1.0,
-        "detail": {
-          "sah": "GS4",
-          "population": 0,
-          "government": 0,
-          "law_level": 0,
-          "tech_level": 0,
-          "spaceport": "-",
-          "inhabited": false,
-          "profile": "GS4",
-          "trade_codes": [],
-          "moons_str": "R01, S, S, 3",
-          "moons": [
-            {
-              "size": "R",
-              "is_ring": true,
-              "is_gas_giant_moon": false,
-              "ring_count": 1
-            },
-            {
-              "size": "S",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "S00",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "-",
-                "inhabited": false,
-                "profile": "YS00000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Va"
-                ],
-                "moons_str": "\u2014",
-                "moons": [],
-                "physical": null
-              }
-            },
-            {
-              "size": "S",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "S00",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "-",
-                "inhabited": false,
-                "profile": "YS00000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Va"
-                ],
-                "moons_str": "\u2014",
-                "moons": [],
-                "physical": null
-              }
-            },
-            {
-              "size": "3",
-              "is_ring": false,
-              "is_gas_giant_moon": false,
-              "detail": {
-                "sah": "346",
-                "population": 0,
-                "government": 0,
-                "law_level": 0,
-                "tech_level": 0,
-                "spaceport": "-",
-                "inhabited": false,
-                "profile": "Y346000-0",
-                "trade_codes": [
-                  "Ba",
-                  "Lt"
-                ],
-                "moons_str": "\u2014",
-                "moons": [],
-                "physical": null
-              }
-            }
-          ],
-          "physical": null
-        }
+        "orbit_period_yr": 0.9649
       },
       {
         "star": "B",
@@ -505,30 +160,7 @@
         "temperature_zone": "frozen",
         "is_mainworld_candidate": false,
         "notes": "",
-        "orbit_period_yr": 2.798,
-        "eccentricity": 0.04,
-        "orbit_au_min": 1.513,
-        "orbit_au_max": 1.639,
-        "inclination": 10.0,
-        "detail": {
-          "sah": "320",
-          "population": 0,
-          "government": 0,
-          "law_level": 0,
-          "tech_level": 0,
-          "spaceport": "-",
-          "inhabited": false,
-          "profile": "Y320000-0",
-          "trade_codes": [
-            "Ba",
-            "De",
-            "Lt",
-            "Po"
-          ],
-          "moons_str": "\u2014",
-          "moons": [],
-          "physical": null
-        }
+        "orbit_period_yr": 2.798
       }
     ],
     "mainworld_orbit": {
@@ -543,76 +175,12 @@
       "is_mainworld_candidate": true,
       "notes": "in HZ, cool side",
       "gg_sah": "GS3",
-      "orbit_period_yr": 0.4499,
-      "eccentricity": 0.06,
-      "orbit_au_min": 0.438,
-      "orbit_au_max": 0.494,
-      "inclination": 10.0,
-      "detail": {
-        "sah": "GS3",
-        "population": 0,
-        "government": 0,
-        "law_level": 0,
-        "tech_level": 0,
-        "spaceport": "-",
-        "inhabited": false,
-        "profile": "GS3",
-        "trade_codes": [],
-        "moons_str": "2",
-        "moons": [
-          {
-            "size": "2",
-            "is_ring": false,
-            "is_gas_giant_moon": false,
-            "detail": {
-              "sah": "200",
-              "population": 0,
-              "government": 0,
-              "law_level": 0,
-              "tech_level": 0,
-              "spaceport": "D",
-              "inhabited": false,
-              "profile": "Y200000-0",
-              "trade_codes": [
-                "Ba",
-                "Va"
-              ],
-              "moons_str": "S",
-              "moons": [
-                {
-                  "size": "S",
-                  "is_ring": false,
-                  "is_gas_giant_moon": false,
-                  "detail": {
-                    "sah": "S00",
-                    "population": 0,
-                    "government": 0,
-                    "law_level": 0,
-                    "tech_level": 0,
-                    "spaceport": "-",
-                    "inhabited": false,
-                    "profile": "YS00000-0",
-                    "trade_codes": [
-                      "Ba",
-                      "Va"
-                    ],
-                    "moons_str": "\u2014",
-                    "moons": [],
-                    "physical": null
-                  }
-                }
-              ],
-              "physical": null
-            }
-          }
-        ],
-        "physical": null
-      }
+      "orbit_period_yr": 0.4499
     }
   },
   "mainworld": {
-    "name": "Aramis",
-    "uwp": "D200000-0",
+    "name": "Unknown",
+    "uwp": "D211449-A",
     "starport": {
       "code": "D",
       "description": "Poor (Unrefined fuel, limited repair)"
@@ -623,45 +191,59 @@
       "surface_gravity": "0.15G"
     },
     "atmosphere": {
-      "code": 0,
-      "name": "None",
+      "code": 1,
+      "name": "Trace",
       "survival_gear": "Vacc Suit",
-      "profile": "0"
+      "detail": {
+        "pressure_bar": 0.078,
+        "scale_height_km": 56.67
+      },
+      "profile": "1-0.078"
     },
     "temperature": "Cold",
     "hydrographics": {
-      "code": 0,
-      "description": "Desert world (0-5%)",
+      "code": 1,
+      "description": "Dry world (6-15%)",
       "detail": {
-        "surface_liquid_pct": 0
+        "surface_liquid_pct": 9
       }
     },
     "population": {
-      "code": 0,
-      "range": "None"
+      "code": 4,
+      "range": "Tens of thousands"
     },
     "government": {
-      "code": 0,
-      "name": "None"
+      "code": 4,
+      "name": "Representative Democracy"
     },
-    "law_level": 0,
-    "tech_level": 0,
+    "law_level": 9,
+    "tech_level": 10,
     "has_gas_giant": true,
     "gas_giant_count": 3,
     "belt_count": 0,
-    "population_multiplier": 0,
-    "pbg": "003",
-    "bases": [
-      "S"
-    ],
+    "population_multiplier": 4,
+    "pbg": "403",
+    "bases": [],
     "trade_codes": [
-      "Ba",
-      "Va"
+      "Ic",
+      "Ni"
     ],
     "travel_zone": "Amber",
     "notes": [
       "Mainworld is a satellite of gas giant GS3 at Orbit# 1.22 (0.47 AU)",
-      "Orbits Star B at Orbit# 1.22 (0.466 AU). HZ deviation +0.78 \u2192 base temperature raw roll 4."
-    ]
+      "Orbits Star B at Orbit# 1.22 (0.466 AU). HZ deviation +0.78 → base temperature raw roll 4."
+    ],
+    "size_detail": {
+      "composition": "Dense Core",
+      "diameter_km": 3600,
+      "density_g_cm3": 5.4,
+      "mass_earth": 0.0221,
+      "gravity_g": 0.277,
+      "escape_velocity_km_s": 3.13,
+      "axial_tilt_deg": 114.0,
+      "day_length_hours": 36.0,
+      "tidal_status": "braking",
+      "mean_temperature_k": 288
+    }
   }
 }
