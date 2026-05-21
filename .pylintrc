@@ -1,3 +1,0 @@
-[MASTER]
-ignore=tests,migrations
-ignore-patterns=.*_old\.py
