@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from html_render import render as _render_template
+from tables import TIDAL_STATUS_LABELS, ZONE_CSS_CLASS, BASE_FULL
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,14 +65,6 @@ def _get(d: dict, *keys: str, default: Any = "") -> Any:
     return cur
 
 
-_TIDAL_LABELS = {
-    "braking":    "Tidal braking",
-    "prograde":   "Prograde (tidally slowed)",
-    "retrograde": "Retrograde (tidally induced)",
-    "3:2_lock":   "3:2 resonance lock",
-    "1:1_lock":   "1:1 tidal lock (synchronous)",
-}
-
 _ANOMALY_LABELS = {
     "random":          "Rand",
     "eccentric":       "Ecc",
@@ -79,14 +72,6 @@ _ANOMALY_LABELS = {
     "retrograde":      "Retro",
     "trojan_leading":  "L4",
     "trojan_trailing": "L5",
-}
-
-_BASE_NAMES = {
-    "N": "Naval",
-    "S": "Scout",
-    "M": "Military",
-    "H": "Highport",
-    "C": "Corsair",
 }
 
 
@@ -305,7 +290,7 @@ def _phys_rows(sd: dict) -> tuple[str, list[dict]]:
         tidal = sd.get("tidal_status", "none")
         if tidal and tidal != "none":
             rows.append({"label": "Tidal status",
-                         "value": _TIDAL_LABELS.get(tidal, tidal)})
+                         "value": TIDAL_STATUS_LABELS.get(tidal, tidal)})
         ecc_adj = sd.get("eccentricity_adjusted")
         if ecc_adj is not None:
             rows.append({"label": "Eccentricity adjusted", "value": f"{ecc_adj:.3f}"})
@@ -410,8 +395,7 @@ def _atm_rows(atm: dict) -> list[dict]:  # pylint: disable=too-many-branches,too
 def _mw_ctx(mw: dict) -> dict:  # pylint: disable=too-many-locals
     """Build the mainworld context dict from the JSON mainworld block."""
     zone     = mw.get("travel_zone", "Green")
-    zone_cls = {"Green": "zone-green", "Amber": "zone-amber",
-                "Red": "zone-red"}.get(zone, "zone-green")
+    zone_cls = ZONE_CSS_CLASS.get(zone, "zone-green")
 
     sp      = mw.get("starport", {})
     sp_code = sp.get("code", "?") if isinstance(sp, dict) else str(sp)
@@ -439,7 +423,7 @@ def _mw_ctx(mw: dict) -> dict:  # pylint: disable=too-many-locals
     tl  = mw.get("tech_level", 0)
 
     bases    = mw.get("bases", [])
-    bases_str = ("  ".join(f"{_BASE_NAMES.get(b, b)} ({b})" for b in bases)
+    bases_str = ("  ".join(f"{(BASE_FULL.get(b) or b).split(' — ', 1)[-1]} ({b})" for b in bases)
                  if bases else "None")
 
     sd = mw.get("size_detail")

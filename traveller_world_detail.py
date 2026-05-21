@@ -449,11 +449,12 @@ def _moon_adjacency_context(
     }
 
 
-def _moons_for(detail: WorldDetail, orbit_number: float,
-               orbit_au: float = 0.0,
-               planet_ecc: float = 0.0,
-               star_mass_solar: float = 0.0,
-               adjacency_ctx: dict | None = None) -> list:
+def _moons_for(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        detail: WorldDetail, orbit_number: float,
+        orbit_au: float = 0.0,
+        planet_ecc: float = 0.0,
+        star_mass_solar: float = 0.0,
+        adjacency_ctx: dict | None = None) -> list:
     """Generate moons for a WorldDetail based on its SAH and orbital context."""
     sah = detail.sah
     ctx = adjacency_ctx or {}
@@ -773,8 +774,8 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
             else:
                 mw_size = int(mainworld.uwp()[1], 16) if mainworld.uwp()[1] not in ('S',) else 1
             phys    = mainworld.size_detail if mainworld else None
-            mw_diam = phys.diameter_km if phys and hasattr(phys, "diameter_km") else 0.0
-            mw_mass = phys.mass        if phys and hasattr(phys, "mass")        else 0.0
+            mw_diam = phys.diameter_km if phys and not isinstance(phys, BeltPhysical) else 0.0
+            mw_mass = phys.mass        if phys and not isinstance(phys, BeltPhysical) else 0.0
             mw_ctx = _moon_adjacency_context(
                 orbit.orbit_number, orbit.star_designation,
                 system.system_orbits, system.stellar_system,

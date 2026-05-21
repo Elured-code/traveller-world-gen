@@ -85,8 +85,9 @@ from traveller_world_gen import (  # noqa: E402
     to_hex as _to_hex,
 )
 from traveller_world_physical import (  # noqa: E402
-    generate_world_physical, apply_moon_tidal_effects, TIDAL_STATUS_LABELS,
+    generate_world_physical, apply_moon_tidal_effects,
 )
+from tables import TRADE_CODE_FULL, BASE_FULL, ZONE_CSS_CLASS, TIDAL_STATUS_LABELS  # noqa: E402
 from traveller_belt_physical import BeltPhysical  # noqa: E402
 from traveller_hydro_detail import (  # noqa: E402
     HydrographicDetail,
@@ -125,8 +126,6 @@ QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 """
 
-_ZONE_OBJECT_NAME = {"Green": "zone-green", "Amber": "zone-amber", "Red": "zone-red"}
-
 # Save format definitions: (label, file extension)
 _FORMATS = [
     ("JSON",  "json"),
@@ -139,20 +138,6 @@ _WORLD_TYPE_LABEL = {
     "terrestrial": "Terrestrial",
     "belt":        "Belt",
     "empty":       "Empty",
-}
-
-_TRADE_CODE_FULL = {
-    "Ag": "Agricultural",   "As": "Asteroid",      "Ba": "Barren",
-    "De": "Desert",         "Fl": "Fluid Oceans",   "Ga": "Garden",
-    "Hi": "High Pop.",      "Ht": "High Tech",      "Ic": "Ice-Capped",
-    "In": "Industrial",     "Lo": "Low Pop.",       "Lt": "Low Tech",
-    "Na": "Non-Ag.",        "Ni": "Non-Industrial", "Po": "Poor",
-    "Ri": "Rich",           "Va": "Vacuum",         "Wa": "Waterworld",
-}
-
-_BASE_FULL = {
-    "N": "N — Naval", "S": "S — Scout",   "M": "M — Military",
-    "H": "H — Highport", "C": "C — Corsair",
 }
 
 # ---------------------------------------------------------------------------
@@ -969,7 +954,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
             zone_lbl = QLabel(f"  {mw.travel_zone}  ")
             zone_lbl.setObjectName(
-                _ZONE_OBJECT_NAME.get(mw.travel_zone, "zone-green")
+                ZONE_CSS_CLASS.get(mw.travel_zone, "zone-green")
             )
             layout.addWidget(zone_lbl)
         else:
@@ -1396,7 +1381,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         if w.population > 0:  # type: ignore[attr-defined]
             pop_str += f"  (P={w.population_multiplier})"  # type: ignore[attr-defined]
         bases_str = (
-            "  ".join(_BASE_FULL.get(b, b) for b in w.bases) or "None"  # type: ignore[attr-defined]
+            "  ".join(BASE_FULL.get(b, b) for b in w.bases) or "None"  # type: ignore[attr-defined]
         )
         for lbl_text, val_text in [
             ("Population", pop_str),
@@ -1427,7 +1412,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         if w.trade_codes:  # type: ignore[attr-defined]
             for tc in w.trade_codes:  # type: ignore[attr-defined]
-                badge = QLabel(f"{tc} — {_TRADE_CODE_FULL.get(tc, tc)}")
+                badge = QLabel(TRADE_CODE_FULL.get(tc, tc))
                 badge.setObjectName("tc-badge")
                 hbox.addWidget(badge)
         else:
