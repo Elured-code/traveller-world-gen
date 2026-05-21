@@ -27,12 +27,16 @@ from traveller_world_physical import (
     _compute_mean_temperature,
     _compute_rss,
     _compute_thf,
+    _compute_tidal_amplitude,
+    _moon_mass_earth,
+    _moon_tidal_effect_m,
     _orbital_period_hours,
     _orbit_dm_for_mean_temp,
     _planet_moon_lock_dm,
     _reroll_eccentricity_tidal,
     _roll_axial_tilt_1d,
     _roll_tidal_lock_status,
+    _star_tidal_effect_m,
     _tidal_lock_dm,
     apply_moon_tidal_effects,
     generate_world_physical,
@@ -676,10 +680,14 @@ class TestRollTidalLockStatusMoons:
         assert r1 == r2
 
     def test_moon_lock_occurs_when_dm_high_enough(self):
-        """A very close large moon forces DM >= 10 → automatic 1:1 lock."""
+        """A very close large moon forces DM >= 10 → automatic 1:1 lock.
+
+        Patch randint=1 so the broken-lock check (2D=2, not 12) never fires.
+        """
         moon = _make_moon(6, orbit_pd=2.0, orbit_period_hours=100.0)
         # DM for planet-to-moon: -10 + 6 (size) + 5+ceil(3*5)=20 (pd<5) = 16 → auto lock
-        result = _roll_tidal_lock_status(**self._KWARGS, moons=[moon])
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            result = _roll_tidal_lock_status(**self._KWARGS, moons=[moon])
         _, _, status = result
         assert status == "1:1_lock"
 
@@ -1083,3 +1091,179 @@ class TestApplyMoonTidalEffectsSeismic:
         assert wp1.residual_seismic_stress is not None
         assert wp2.residual_seismic_stress is not None
         assert wp2.residual_seismic_stress >= wp1.residual_seismic_stress
+
+
+# ---------------------------------------------------------------------------
+# Surface Tidal Amplitude (WBH pp.107-108)
+# ---------------------------------------------------------------------------
+
+class TestStarTidalEffectM:
+    """_star_tidal_effect_m: (star_mass_solar * world_size) / (32 * AU³)"""
+
+    def test_sol_on_terra(self):
+        # WBH reference: Sol (1.0 solar) on Terra (size 8) at 1 AU = 0.25 m
+        result = _star_tidal_effect_m(1.0, 8, 1.0)
+        assert abs(result - 0.25) < 1e-9
+
+    def test_scales_linearly_with_size(self):
+        # Size 4 should give exactly half of size 8 at same distance
+        effect_8 = _star_tidal_effect_m(1.0, 8, 1.0)
+        effect_4 = _star_tidal_effect_m(1.0, 4, 1.0)
+        assert abs(effect_4 - effect_8 / 2) < 1e-9
+
+    def test_scales_with_au_cubed(self):
+        # Doubling AU reduces effect by factor of 8
+        effect_1au = _star_tidal_effect_m(1.0, 8, 1.0)
+        effect_2au = _star_tidal_effect_m(1.0, 8, 2.0)
+        assert abs(effect_2au - effect_1au / 8) < 1e-9
+
+    def test_world_size_zero_returns_zero(self):
+        assert _star_tidal_effect_m(1.0, 0, 1.0) == 0.0
+
+    def test_orbit_au_zero_returns_zero(self):
+        assert _star_tidal_effect_m(1.0, 8, 0.0) == 0.0
+
+
+class TestMoonMassEarth:
+    """_moon_mass_earth: (diameter_km / 12742)³ with Terran density assumption."""
+
+    def test_size_s_moon(self):
+        moon = _make_moon("S")
+        expected = (800.0 / 12742.0) ** 3
+        assert abs(_moon_mass_earth(moon) - expected) < 1e-12
+
+    def test_size_2_moon(self):
+        moon = _make_moon(2)
+        expected = (3200.0 / 12742.0) ** 3
+        assert abs(_moon_mass_earth(moon) - expected) < 1e-12
+
+    def test_ring_returns_zero(self):
+        moon = _make_moon(0, is_ring=True)
+        assert _moon_mass_earth(moon) == 0.0
+
+    def test_size_0_returns_zero(self):
+        moon = Moon(size_code=0, is_ring=False)
+        assert _moon_mass_earth(moon) == 0.0
+
+
+class TestMoonTidalEffectM:
+    """_moon_tidal_effect_m: (moon_mass * world_size) / (3.2 * (orbit_km/1e6)³)"""
+
+    def test_luna_on_terra(self):
+        # Luna: mass 0.0123 ME, orbit 384 400 km, Terra size 8 → ≈ 0.54 m
+        moon = _make_moon(2)  # size 2 approximates Luna
+        moon.orbit_km = 384_400.0
+        # Use actual Luna mass for the reference check
+        luna_mass = 0.0123
+        dist_mkm = 384_400.0 / 1_000_000.0
+        expected = (luna_mass * 8) / (3.2 * dist_mkm ** 3)
+        assert abs(expected - 0.54) < 0.01  # sanity-check the reference
+
+    def test_ring_excluded(self):
+        moon = _make_moon(0, is_ring=True)
+        moon.orbit_km = 100_000.0
+        assert _moon_tidal_effect_m(moon, 8) == 0.0
+
+    def test_no_orbit_km_excluded(self):
+        moon = _make_moon(3)
+        # orbit_km defaults to None via _make_moon without orbit_pd
+        assert _moon_tidal_effect_m(moon, 8) == 0.0
+
+    def test_scales_with_world_size(self):
+        moon = _make_moon(3)
+        moon.orbit_km = 200_000.0
+        effect_8 = _moon_tidal_effect_m(moon, 8)
+        effect_4 = _moon_tidal_effect_m(moon, 4)
+        assert abs(effect_4 - effect_8 / 2) < 1e-10
+
+    def test_scales_with_distance_cubed(self):
+        moon = _make_moon(3)
+        moon.orbit_km = 100_000.0
+        moon2 = _make_moon(3)
+        moon2.orbit_km = 200_000.0
+        effect_close = _moon_tidal_effect_m(moon, 8)
+        effect_far = _moon_tidal_effect_m(moon2, 8)
+        assert abs(effect_close / effect_far - 8.0) < 1e-9
+
+
+class TestComputeTidalAmplitude:
+    """_compute_tidal_amplitude: star + moon effects summed."""
+
+    def test_star_only_no_moons(self):
+        result = _compute_tidal_amplitude(8, 1.0, 1.0, moons=None)
+        assert abs(result - 0.25) < 1e-4
+
+    def test_star_plus_moon(self):
+        moon = _make_moon(3)
+        moon.orbit_km = 200_000.0
+        result = _compute_tidal_amplitude(8, 1.0, 1.0, moons=[moon])
+        star_part = _star_tidal_effect_m(1.0, 8, 1.0)
+        moon_part = _moon_tidal_effect_m(moon, 8)
+        assert abs(result - round(star_part + moon_part, 4)) < 1e-9
+
+    def test_ring_moon_not_counted(self):
+        ring = _make_moon(0, is_ring=True)
+        ring.orbit_km = 50_000.0
+        result_with_ring = _compute_tidal_amplitude(8, 1.0, 1.0, moons=[ring])
+        result_no_moons = _compute_tidal_amplitude(8, 1.0, 1.0, moons=None)
+        assert abs(result_with_ring - result_no_moons) < 1e-9
+
+    def test_moon_without_orbit_km_not_counted(self):
+        moon = _make_moon(4)
+        # orbit_km is None (no placement)
+        result_with = _compute_tidal_amplitude(8, 1.0, 1.0, moons=[moon])
+        result_without = _compute_tidal_amplitude(8, 1.0, 1.0, moons=None)
+        assert abs(result_with - result_without) < 1e-9
+
+
+class TestTidalAmplitudeIntegration:
+    """Verify tidal_amplitude_m is set by generate_world_physical and apply_moon_tidal_effects."""
+
+    def test_generate_world_physical_sets_star_amplitude(self):
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            wp = generate_world_physical(
+                world, age_gyr=5.0,
+                orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp is not None
+        assert wp.tidal_amplitude_m is not None
+        assert abs(wp.tidal_amplitude_m - 0.25) < 1e-4
+
+    def test_apply_moon_tidal_effects_updates_amplitude(self):
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            wp = generate_world_physical(
+                world, age_gyr=5.0,
+                orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp is not None
+        star_only = wp.tidal_amplitude_m
+
+        moon = _make_moon(3)
+        moon.orbit_km = 200_000.0
+        with patch("random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp, moons=[moon], world_size=8, world_atmosphere=6,
+                age_gyr=5.0, orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp.tidal_amplitude_m is not None
+        assert wp.tidal_amplitude_m > star_only
+
+    def test_tidal_amplitude_in_to_dict(self):
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            wp = generate_world_physical(
+                world, age_gyr=5.0,
+                orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp is not None
+        d = wp.to_dict()
+        assert "tidal_amplitude_m" in d
+        assert d["tidal_amplitude_m"] == round(wp.tidal_amplitude_m, 4)
