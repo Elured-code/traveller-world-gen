@@ -26,7 +26,7 @@ from traveller_world_physical import (
     _apply_tidal_lock_result,
     _compute_mean_temperature,
     _compute_rss,
-    _compute_thf,
+    _compute_tidal_ss,
     _compute_tidal_amplitude,
     _moon_mass_earth,
     _moon_tidal_effect_m,
@@ -930,36 +930,36 @@ class TestComputeRss:
 
 
 # ---------------------------------------------------------------------------
-# _compute_thf — Tidal Heating Factor
+# _compute_tidal_ss — Tidal Seismic Stress
 # ---------------------------------------------------------------------------
 
-class TestComputeThf:
-    """Tests for _compute_thf() (WBH p.127)."""
+class TestComputeTidalSS:
+    """Tests for _compute_tidal_ss() (WBH p.127)."""
 
     def test_zero_eccentricity_gives_zero(self):
-        """No eccentricity → no tidal heating."""
-        assert _compute_thf(12800, 1.0, 1.0, 1.0, 0.0, 8766.0) == 0
+        """No eccentricity → no tidal seismic stress."""
+        assert _compute_tidal_ss(12800, 1.0, 1.0, 1.0, 0.0, 8766.0) == 0
 
     def test_high_eccentricity_close_orbit_gives_nonzero(self):
-        """Close, eccentric orbit around massive star produces positive THF."""
+        """Close, eccentric orbit around massive star produces positive tidal SS."""
         # 0.1 AU, e=0.5, 1 solar mass star, size 8 world
         period_h = math.sqrt(0.1 ** 3 / 1.0) * 8766.0
-        thf = _compute_thf(12800, 1.0, 1.0, 0.1, 0.5, period_h)
-        assert thf > 0
+        tss = _compute_tidal_ss(12800, 1.0, 1.0, 0.1, 0.5, period_h)
+        assert tss > 0
 
     def test_hz_world_low_eccentricity_near_zero(self):
-        """HZ world (1 AU, e=0.05, 1 M☉) has negligible tidal heating."""
+        """HZ world (1 AU, e=0.05, 1 M☉) has negligible tidal seismic stress."""
         period_h = math.sqrt(1.0 ** 3 / 1.0) * 8766.0
-        thf = _compute_thf(12800, 1.0, 1.0, 1.0, 0.05, period_h)
-        assert thf == 0  # < 1, treated as 0
+        tss = _compute_tidal_ss(12800, 1.0, 1.0, 1.0, 0.05, period_h)
+        assert tss == 0  # < 1, treated as 0
 
     def test_formula_scales_with_eccentricity_squared(self):
-        """Doubling eccentricity quadruples THF (e² dependence)."""
+        """Doubling eccentricity quadruples tidal SS (e² dependence)."""
         period_h = math.sqrt(0.05 ** 3 / 1.0) * 8766.0
-        thf1 = _compute_thf(12800, 1.0, 1.0, 0.05, 0.1, period_h)
-        thf2 = _compute_thf(12800, 1.0, 1.0, 0.05, 0.2, period_h)
-        if thf1 > 0 and thf2 > 0:
-            assert abs(thf2 / thf1 - 4.0) < 0.5  # rough ratio check
+        tss1 = _compute_tidal_ss(12800, 1.0, 1.0, 0.05, 0.1, period_h)
+        tss2 = _compute_tidal_ss(12800, 1.0, 1.0, 0.05, 0.2, period_h)
+        if tss1 > 0 and tss2 > 0:
+            assert abs(tss2 / tss1 - 4.0) < 0.5  # rough ratio check
 
 
 # ---------------------------------------------------------------------------
@@ -991,18 +991,18 @@ class TestApplySeismicStress:
         wp = self._make_wp()
         _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.1, 8766.0)
         assert wp.residual_seismic_stress is not None
-        assert wp.tidal_heating_factor is not None
+        assert wp.tidal_seismic_stress is not None
         assert wp.total_seismic_stress is not None
 
-    def test_total_equals_rss_plus_thf(self):
-        """total_seismic_stress == residual + tidal_heating."""
+    def test_total_equals_rss_plus_tidal_ss(self):
+        """total_seismic_stress == residual + tidal_seismic_stress."""
         wp = self._make_wp()
         _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.1, 8766.0)
         assert wp.total_seismic_stress is not None
         assert wp.residual_seismic_stress is not None
-        assert wp.tidal_heating_factor is not None
+        assert wp.tidal_seismic_stress is not None
         assert wp.total_seismic_stress == (
-            wp.residual_seismic_stress + wp.tidal_heating_factor
+            wp.residual_seismic_stress + wp.tidal_seismic_stress
         )
 
     def test_seismic_temperature_set_when_stress_changes_value(self):
@@ -1030,15 +1030,15 @@ class TestApplySeismicStress:
         _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.0, 8766.0)
         d = wp.to_dict()
         assert "residual_seismic_stress" in d
-        assert "tidal_heating_factor" not in d  # 0 → omitted
+        assert "tidal_seismic_stress" not in d  # 0 → omitted
         assert "total_seismic_stress" in d
 
-    def test_to_dict_omits_tidal_heating_when_zero(self):
-        """tidal_heating_factor omitted from to_dict() when 0."""
+    def test_to_dict_omits_tidal_ss_when_zero(self):
+        """tidal_seismic_stress omitted from to_dict() when 0."""
         wp = self._make_wp()
         _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.0, 8766.0)
-        assert wp.tidal_heating_factor == 0
-        assert "tidal_heating_factor" not in wp.to_dict()
+        assert wp.tidal_seismic_stress == 0
+        assert "tidal_seismic_stress" not in wp.to_dict()
 
 
 # ---------------------------------------------------------------------------

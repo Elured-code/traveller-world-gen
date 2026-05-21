@@ -568,7 +568,7 @@ def _compute_rss(
     return floor_val * floor_val
 
 
-def _compute_thf(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _compute_tidal_ss(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         diameter_km: float,
         world_mass_earth: float,
         star_mass_solar: float,
@@ -576,7 +576,7 @@ def _compute_thf(  # pylint: disable=too-many-arguments,too-many-positional-argu
         orbit_eccentricity: float,
         orbit_period_hours: float,
 ) -> int:
-    """Compute Tidal Heating Factor for a world around its primary (WBH p.127).
+    """Compute Tidal Seismic Stress for a world around its primary (WBH p.127).
 
     Formula: (PrimaryMass⊕)² × (diameter_km/1600)⁵ × e² /
              (3000 × DistanceMkm⁵ × PeriodDays × WorldMass⊕)
@@ -685,18 +685,18 @@ def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positi
 ) -> None:
     """Compute and set all seismic stress fields on WorldPhysical (WBH ~pp. 125-128).
 
-    Sets residual_seismic_stress, tidal_heating_factor, total_seismic_stress,
+    Sets residual_seismic_stress, tidal_seismic_stress, total_seismic_stress,
     and seismic_temperature_k (only when it differs from mean_temperature_k).
     Mutates physical in-place.
     """
     rss = _compute_rss(world_size, physical.density, age_gyr, moons, is_moon)
-    thf = _compute_thf(
+    tidal_ss = _compute_tidal_ss(
         physical.diameter_km, physical.mass, star_mass_solar,
         orbit_au, orbit_eccentricity, orbit_period_hours,
     )
-    tss = rss + thf
+    tss = rss + tidal_ss
     physical.residual_seismic_stress = rss
-    physical.tidal_heating_factor = thf
+    physical.tidal_seismic_stress = tidal_ss
     physical.total_seismic_stress = tss
     if physical.mean_temperature_k is not None and tss > 0:
         old_t = physical.mean_temperature_k
@@ -787,7 +787,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     eccentricity_adjusted: Optional[float] = field(default=None, init=False)
     mean_temperature_k: Optional[int] = field(default=None, init=False)
     residual_seismic_stress: Optional[int] = field(default=None, init=False)
-    tidal_heating_factor: Optional[int] = field(default=None, init=False)
+    tidal_seismic_stress: Optional[int] = field(default=None, init=False)
     total_seismic_stress: Optional[int] = field(default=None, init=False)
     seismic_temperature_k: Optional[int] = field(default=None, init=False)
     tidal_amplitude_m: Optional[float] = field(default=None, init=False)
@@ -811,8 +811,8 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["mean_temperature_k"] = self.mean_temperature_k
         if self.residual_seismic_stress is not None:
             d["residual_seismic_stress"] = self.residual_seismic_stress
-        if self.tidal_heating_factor:
-            d["tidal_heating_factor"] = self.tidal_heating_factor
+        if self.tidal_seismic_stress:
+            d["tidal_seismic_stress"] = self.tidal_seismic_stress
         if self.total_seismic_stress is not None:
             d["total_seismic_stress"] = self.total_seismic_stress
         if self.seismic_temperature_k is not None:
