@@ -624,10 +624,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     # Record orbital context in notes
     world.notes.append(
         f"Orbits Star {orbit.star_designation} at Orbit# {orbit.orbit_number:.2f}"
-        f" ({orbit.orbit_au:.3f} AU). "
-        f"HZ deviation {orbit.hz_deviation:+.2f} → "
-        f"base temperature raw roll "
-        f"{hz_deviation_to_raw_roll(orbit.hz_deviation, hzco, orbit.orbit_number)}."
+        f" ({orbit.orbit_au:.3f} AU). HZ deviation {orbit.hz_deviation:+.2f}."
     )
 
     return world

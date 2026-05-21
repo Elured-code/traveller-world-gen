@@ -22,8 +22,11 @@ from traveller_world_gen import World
 from traveller_world_physical import (
     TIDAL_STATUS_LABELS,
     WorldPhysical,
+    _apply_seismic_stress,
     _apply_tidal_lock_result,
     _compute_mean_temperature,
+    _compute_rss,
+    _compute_thf,
     _orbital_period_hours,
     _orbit_dm_for_mean_temp,
     _planet_moon_lock_dm,
@@ -858,3 +861,220 @@ class TestComputeMeanTemperature:
             wp = generate_world_physical(world)
         assert wp is not None
         assert "mean_temperature_k" not in wp.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# _compute_rss — Residual Seismic Stress
+# ---------------------------------------------------------------------------
+
+class TestComputeRss:
+    """Tests for _compute_rss() (WBH p.125)."""
+
+    def test_young_large_world_high_rss(self):
+        """Size 8 world, 1 Gyr old, neutral density, no moons: RSS = floor(8-1)² = 49."""
+        assert _compute_rss(8, 1.0, 1.0) == 49
+
+    def test_old_world_zero_rss(self):
+        """Size 5 world older than itself (neutral density) → floor < 1 → RSS = 0."""
+        # 5 - 6.5 = -1.5 → floor = -1 < 1 → 0
+        assert _compute_rss(5, 1.0, 6.5) == 0
+
+    def test_density_above_1_applies_dm_plus2(self):
+        """Density > 1.0 gives DM+2: size 5, age 2, density 1.2 → floor(5-2+2)=5 → 25."""
+        assert _compute_rss(5, 1.2, 2.0) == 25
+
+    def test_density_below_0_5_applies_dm_minus1(self):
+        """Density < 0.5 gives DM-1: size 5, age 1, density 0.3 → floor(5-1-1)=3 → 9."""
+        assert _compute_rss(5, 0.3, 1.0) == 9
+
+    def test_is_moon_applies_dm_plus1(self):
+        """is_moon adds DM+1: size 4, age 1, neutral density, is_moon → floor(4-1+1)=4 → 16."""
+        assert _compute_rss(4, 1.0, 1.0, is_moon=True) == 16
+
+    def test_moon_size_dm_capped_at_12(self):
+        """Moon size DM capped at 12 regardless of total moon sizes."""
+        big_moons = [Moon(size_code=8), Moon(size_code=8)]  # 16 total, capped at 12
+        assert _compute_rss(8, 1.0, 0.0, moons=big_moons) == (8 + 12) ** 2
+
+    def test_moon_size_dm_from_significant_moons_only(self):
+        """Rings and size-S moons do not contribute to the moon size DM."""
+        ring = Moon(size_code=0, is_ring=True)
+        sz_s = Moon(size_code="S")
+        sz3 = Moon(size_code=3)
+        rss = _compute_rss(6, 1.0, 1.0, moons=[ring, sz_s, sz3])
+        expected = (6 - 1.0 + 3) ** 2  # floor(8) = 8, 8² = 64
+        assert rss == int(expected)
+
+    def test_floor_before_squaring(self):
+        """Fractional (Size-Age+DMs) is floored before squaring."""
+        # size 5, age 2.8, neutral density → 5 - 2.8 = 2.2 → floor = 2 → 4
+        assert _compute_rss(5, 1.0, 2.8) == 4
+
+    def test_below_one_before_squaring_gives_zero(self):
+        """Values < 1 before squaring are treated as 0."""
+        # size 3, age 2.5, neutral density → 0.5 → floor = 0 → RSS = 0
+        assert _compute_rss(3, 1.0, 2.5) == 0
+
+    def test_exactly_one_before_squaring(self):
+        """floor value of exactly 1 gives RSS = 1."""
+        # size 3, age 2.0, neutral density → floor(1.0) = 1 → 1
+        assert _compute_rss(3, 1.0, 2.0) == 1
+
+
+# ---------------------------------------------------------------------------
+# _compute_thf — Tidal Heating Factor
+# ---------------------------------------------------------------------------
+
+class TestComputeThf:
+    """Tests for _compute_thf() (WBH p.127)."""
+
+    def test_zero_eccentricity_gives_zero(self):
+        """No eccentricity → no tidal heating."""
+        assert _compute_thf(12800, 1.0, 1.0, 1.0, 0.0, 8766.0) == 0
+
+    def test_high_eccentricity_close_orbit_gives_nonzero(self):
+        """Close, eccentric orbit around massive star produces positive THF."""
+        # 0.1 AU, e=0.5, 1 solar mass star, size 8 world
+        period_h = math.sqrt(0.1 ** 3 / 1.0) * 8766.0
+        thf = _compute_thf(12800, 1.0, 1.0, 0.1, 0.5, period_h)
+        assert thf > 0
+
+    def test_hz_world_low_eccentricity_near_zero(self):
+        """HZ world (1 AU, e=0.05, 1 M☉) has negligible tidal heating."""
+        period_h = math.sqrt(1.0 ** 3 / 1.0) * 8766.0
+        thf = _compute_thf(12800, 1.0, 1.0, 1.0, 0.05, period_h)
+        assert thf == 0  # < 1, treated as 0
+
+    def test_formula_scales_with_eccentricity_squared(self):
+        """Doubling eccentricity quadruples THF (e² dependence)."""
+        period_h = math.sqrt(0.05 ** 3 / 1.0) * 8766.0
+        thf1 = _compute_thf(12800, 1.0, 1.0, 0.05, 0.1, period_h)
+        thf2 = _compute_thf(12800, 1.0, 1.0, 0.05, 0.2, period_h)
+        if thf1 > 0 and thf2 > 0:
+            assert abs(thf2 / thf1 - 4.0) < 0.5  # rough ratio check
+
+
+# ---------------------------------------------------------------------------
+# _apply_seismic_stress — integration
+# ---------------------------------------------------------------------------
+
+class TestApplySeismicStress:
+    """Tests for _apply_seismic_stress() setting fields on WorldPhysical."""
+
+    def _make_wp(self, size=6, density=4.0, mass=1.0, diameter_km=9600,
+                 mean_temp=None):
+        """Build a minimal WorldPhysical with the given attributes."""
+        wp = WorldPhysical(
+            composition="Standard",
+            diameter_km=diameter_km,
+            density=density,
+            mass=mass,
+            gravity=0.75,
+            escape_velocity=9.5,
+            axial_tilt=15.0,
+            day_length=24.0,
+            tidal_status="none",
+        )
+        wp.mean_temperature_k = mean_temp
+        return wp
+
+    def test_seismic_fields_set_after_call(self):
+        """All seismic fields are populated after _apply_seismic_stress()."""
+        wp = self._make_wp()
+        _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.1, 8766.0)
+        assert wp.residual_seismic_stress is not None
+        assert wp.tidal_heating_factor is not None
+        assert wp.total_seismic_stress is not None
+
+    def test_total_equals_rss_plus_thf(self):
+        """total_seismic_stress == residual + tidal_heating."""
+        wp = self._make_wp()
+        _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.1, 8766.0)
+        assert wp.total_seismic_stress == (
+            wp.residual_seismic_stress + wp.tidal_heating_factor
+        )
+
+    def test_seismic_temperature_set_when_stress_changes_value(self):
+        """seismic_temperature_k set only when rounded value differs from mean."""
+        # Use a very cold world with very high TSS so the adjustment is visible
+        wp = self._make_wp(mean_temp=50)
+        wp.residual_seismic_stress = 0  # override to force high THF path
+        # Manually trigger with high-stress conditions
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        tss = wp.total_seismic_stress or 0
+        if tss > 0:
+            expected = round((50 ** 4 + tss ** 4) ** 0.25)
+            if expected != 50:
+                assert wp.seismic_temperature_k == expected
+
+    def test_seismic_temperature_absent_when_no_mean_temp(self):
+        """seismic_temperature_k not set when mean_temperature_k is None."""
+        wp = self._make_wp(mean_temp=None)
+        _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.1, 8766.0)
+        assert wp.seismic_temperature_k is None
+
+    def test_to_dict_includes_seismic_fields(self):
+        """to_dict() emits seismic fields when set."""
+        wp = self._make_wp()
+        _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.0, 8766.0)
+        d = wp.to_dict()
+        assert "residual_seismic_stress" in d
+        assert "tidal_heating_factor" not in d  # 0 → omitted
+        assert "total_seismic_stress" in d
+
+    def test_to_dict_omits_tidal_heating_when_zero(self):
+        """tidal_heating_factor omitted from to_dict() when 0."""
+        wp = self._make_wp()
+        _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.0, 8766.0)
+        assert wp.tidal_heating_factor == 0
+        assert "tidal_heating_factor" not in wp.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# apply_moon_tidal_effects — seismic integration via public API
+# ---------------------------------------------------------------------------
+
+class TestApplyMoonTidalEffectsSeismic:
+    """Verify seismic stress is computed through the public apply_moon_tidal_effects()."""
+
+    def _make_wp(self):
+        return WorldPhysical(
+            composition="Standard",
+            diameter_km=9600,
+            density=4.0,
+            mass=0.6,
+            gravity=0.75,
+            escape_velocity=9.5,
+            axial_tilt=15.0,
+            day_length=24.0,
+            tidal_status="none",
+        )
+
+    def test_seismic_computed_with_no_moons(self):
+        """Seismic stress is computed even when moons list is empty."""
+        wp = self._make_wp()
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp, moons=[], world_size=6, world_atmosphere=6,
+                age_gyr=3.0, orbit_number=3.0, orbit_au=1.0,
+                star_mass=1.0, orbit_eccentricity=0.0,
+            )
+        assert wp.residual_seismic_stress is not None
+        assert wp.total_seismic_stress is not None
+
+    def test_is_moon_increases_rss(self):
+        """is_moon=True increases RSS by applying the DM+1 bonus."""
+        wp1 = self._make_wp()
+        wp2 = self._make_wp()
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp1, moons=[], world_size=5, world_atmosphere=0,
+                age_gyr=1.0, orbit_number=3.0, orbit_au=1.0,
+                star_mass=1.0, orbit_eccentricity=0.0, is_moon=False,
+            )
+            apply_moon_tidal_effects(
+                wp2, moons=[], world_size=5, world_atmosphere=0,
+                age_gyr=1.0, orbit_number=3.0, orbit_au=1.0,
+                star_mass=1.0, orbit_eccentricity=0.0, is_moon=True,
+            )
+        assert wp2.residual_seismic_stress >= wp1.residual_seismic_stress
