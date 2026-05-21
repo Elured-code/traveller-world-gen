@@ -309,6 +309,18 @@ def _phys_rows(sd: dict) -> tuple[str, list[dict]]:
         ecc_adj = sd.get("eccentricity_adjusted")
         if ecc_adj is not None:
             rows.append({"label": "Eccentricity adjusted", "value": f"{ecc_adj:.3f}"})
+        rss = sd.get("residual_seismic_stress")
+        if rss is not None:
+            rows.append({"label": "Residual seismic stress", "value": str(rss)})
+        thf = sd.get("tidal_heating_factor")
+        if thf:
+            rows.append({"label": "Tidal heating factor", "value": str(thf)})
+        tss = sd.get("total_seismic_stress")
+        if tss is not None:
+            rows.append({"label": "Total seismic stress", "value": str(tss)})
+        seis_t = sd.get("seismic_temperature_k")
+        if seis_t is not None:
+            rows.append({"label": "Seismic temperature", "value": f"{seis_t} K"})
         return "World body", rows
 
     rows = [

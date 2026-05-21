@@ -730,6 +730,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                             orbit_au=mw_orbit.orbit_au,
                             star_mass=stars[0].mass if stars else 1.0,
                             orbit_eccentricity=mw_orbit.eccentricity,
+                            is_moon=mw_orbit.world_type == "gas_giant",
                         )
         self._detail_attached = attach_detail_flag
         path = self._write_html(
@@ -1478,6 +1479,14 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
               if physical.mean_temperature_k is not None else []),
             *([("Tidal status", TIDAL_STATUS_LABELS[physical.tidal_status])]
               if physical.tidal_status != "none" else []),
+            *([("Residual seismic stress", str(physical.residual_seismic_stress))]
+              if physical.residual_seismic_stress is not None else []),
+            *([("Tidal heating factor", str(physical.tidal_heating_factor))]
+              if physical.tidal_heating_factor else []),
+            *([("Total seismic stress", str(physical.total_seismic_stress))]
+              if physical.total_seismic_stress is not None else []),
+            *([("Seismic temperature", f"{physical.seismic_temperature_k} K")]
+              if physical.seismic_temperature_k is not None else []),
         ]:
             inner.addWidget(_detail_row(lbl_text, val_text))
         return group

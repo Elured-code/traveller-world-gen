@@ -264,11 +264,24 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     # Basic Mean Temperature in Kelvin (WBH p.47). Set when hz_deviation is passed
     # to generate_world_physical(). Computed from orbital DM + atmosphere DM applied
     # to base roll 7; extrapolates below 0 (-5K/step) and above 12 (+50K/step); min 3K.
+    residual_seismic_stress: Optional[int] = field(default=None, init=False)
+    tidal_heating_factor: Optional[int] = field(default=None, init=False)
+    total_seismic_stress: Optional[int] = field(default=None, init=False)
+    seismic_temperature_k: Optional[int] = field(default=None, init=False)
+    # Seismic fields set by apply_moon_tidal_effects() (Session 56, WBH ~pp.125-128).
+    # residual_seismic_stress: floor(Size - Age_Gyr + DMs)² — DMs: is_moon +1;
+    #   density > 1.0 +2; density < 0.5 -1; sum of Size 1+ moon sizes capped at +12.
+    # tidal_heating_factor: PrimaryMass⊕² × (diam/1600)⁵ × e² /
+    #   (3000 × dist_Mkm⁵ × period_days × WorldMass⊕); 0 when < 1; omitted from to_dict() when 0.
+    # total_seismic_stress: RSS + THF (Tidal Stress Factor deferred — issue #67).
+    # seismic_temperature_k: ⁴√(mean_temp⁴ + TSS⁴); only when TSS>0 and value differs.
 
     # method: .to_dict()
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
     #       gravity_g, escape_velocity_km_s, axial_tilt_deg, day_length_hours,
-    #       tidal_status[, eccentricity_adjusted][, mean_temperature_k]  ← only when not None
+    #       tidal_status[, eccentricity_adjusted][, mean_temperature_k]
+    #       [, residual_seismic_stress][, tidal_heating_factor (only when >0)]
+    #       [, total_seismic_stress][, seismic_temperature_k]  ← all only when not None
 ```
 
 ---
