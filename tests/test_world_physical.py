@@ -990,6 +990,9 @@ class TestApplySeismicStress:
         """total_seismic_stress == residual + tidal_heating."""
         wp = self._make_wp()
         _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.1, 8766.0)
+        assert wp.total_seismic_stress is not None
+        assert wp.residual_seismic_stress is not None
+        assert wp.tidal_heating_factor is not None
         assert wp.total_seismic_stress == (
             wp.residual_seismic_stress + wp.tidal_heating_factor
         )
@@ -1077,4 +1080,6 @@ class TestApplyMoonTidalEffectsSeismic:
                 age_gyr=1.0, orbit_number=3.0, orbit_au=1.0,
                 star_mass=1.0, orbit_eccentricity=0.0, is_moon=True,
             )
+        assert wp1.residual_seismic_stress is not None
+        assert wp2.residual_seismic_stress is not None
         assert wp2.residual_seismic_stress >= wp1.residual_seismic_stress
