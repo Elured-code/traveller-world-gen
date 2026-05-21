@@ -1,12 +1,41 @@
 # Release Notes — v1.3.0 (draft)
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 55–
-**Tests:** 1168
+**Sessions:** 55–58
+**Tests:** 1189
 
 ---
 
 ## World Physical Detail
+
+### Surface Tidal Amplitude (issue #68, WBH pp.107–108)
+
+`WorldPhysical` gains `tidal_amplitude_m: Optional[float]` — the combined surface tidal
+amplitude in metres from the primary star and all significant moons.
+
+**Star effect:** `(star_mass_solar × size) / (32 × AU³)`. Sol acting on Terra ≈ 0.25 m.
+
+**Moon effect per moon:** `(moon_mass_earth × size) / (3.2 × (orbit_km / 10⁶)³)`. Moon mass
+estimated from size using Terran density: `(size × 1600 / 12742)³` M⊕ (same method used in
+`WorldPhysical.mass`). Rings and moons without `orbit_km` are excluded.
+
+**Pipeline:** `generate_world_physical()` stores a star-only preliminary value in
+`tidal_amplitude_m`; `apply_moon_tidal_effects()` adds all moon contributions and updates
+the field in-place.
+
+**Display:** "Tidal amplitude: X.XX m" row appears after the Tidal status row in all four
+output surfaces — gen-ui World Body card, `world_card.html` Jinja2 template,
+`render_system_json.py`, and the JSON schema (`tidal_amplitude_m` added to the
+`WorldPhysical` branch).
+
+21 new tests across `TestStarTidalEffectM`, `TestMoonMassEarth`, `TestMoonTidalEffectM`,
+`TestComputeTidalAmplitude`, `TestTidalAmplitudeIntegration`.
+
+Also in this session: the pre-existing `_ZONE_OBJECT_NAME → ZONE_CSS_CLASS` name typo in
+`gen-ui/app.py` was fixed, and `test_moon_lock_occurs_when_dm_high_enough` was patched to
+be fully deterministic (the broken-lock check was a source of intermittent test flap).
+
+---
 
 - **Seismic stress** is now calculated for every mainworld that has physical detail
   generated (i.e., when "World physical" is checked in the app). Three components are
