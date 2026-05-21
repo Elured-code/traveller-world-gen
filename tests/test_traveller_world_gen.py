@@ -398,6 +398,8 @@ class TestAtmosphereDetailPressure:
         for code, (minimum, span) in ATMOSPHERE_PRESSURE_SPAN_BAR.items():
             for _ in range(50):
                 detail = generate_atmosphere_detail(code, 8)
+                assert detail is not None
+                assert detail.pressure_bar is not None
                 assert minimum <= detail.pressure_bar <= minimum + span + 1e-6, (
                     f"Code {code} pressure {detail.pressure_bar} outside span"
                 )
@@ -449,6 +451,10 @@ class TestAtmosphereDetailOxygen:
         # Old-system DM+1 must raise ppo above the no-DM baseline.
         with fixed_roll(3):
             baseline = generate_atmosphere_detail(6, 8, system_age_gyr=None)
+        assert detail is not None
+        assert baseline is not None
+        assert detail.oxygen_partial_pressure is not None
+        assert baseline.oxygen_partial_pressure is not None
         assert detail.oxygen_partial_pressure > baseline.oxygen_partial_pressure
 
     def test_young_system_no_dm(self):
@@ -2582,10 +2588,10 @@ class TestWorldSummary:
 
 
 # ===========================================================================
-# TestWorldToDict
+# TestWorldToDictValues
 # ===========================================================================
 
-class TestWorldToDict:
+class TestWorldToDictValues:
     """Tests for World.to_dict() — structure, types, and values."""
 
     def _make_world(self) -> "World":
@@ -2799,10 +2805,10 @@ class TestWorldToDict:
 
 
 # ===========================================================================
-# TestWorldToJson
+# TestWorldToJsonBasic
 # ===========================================================================
 
-class TestWorldToJson:
+class TestWorldToJsonBasic:
     """Tests for World.to_json() — valid JSON, round-trip, indent options."""
 
     def _make_world(self) -> "World":
@@ -5405,6 +5411,7 @@ class TestCompanionExclusionZone:
             pytest.skip("Seed 39 has no close/near/far secondary — re-seed check")
 
         for comp in companions:
+            assert comp.orbit_number is not None
             outer_excl = comp.orbit_number + 3.0
             primary_desig = next(
                 s.designation for s in stars if s.role == "primary"
@@ -5437,6 +5444,7 @@ class TestCompanionExclusionZone:
                 if s.role in ("close", "near", "far") and s.orbit_number
             ]
             for comp in companions:
+                assert comp.orbit_number is not None
                 lo = comp.orbit_number - 1.0
                 hi = comp.orbit_number + 3.0
                 for orbit in sys.system_orbits.orbits:
@@ -5462,6 +5470,7 @@ class TestPrimaryOuterZone:
             s for s in sys.stellar_system.stars
             if s.role in ("close", "near", "far") and s.orbit_number
         )
+        assert comp.orbit_number is not None
         outer_lo = comp.orbit_number + 3.0
         primary_desig = next(
             s.designation for s in sys.stellar_system.stars if s.role == "primary"
@@ -5483,6 +5492,7 @@ class TestPrimaryOuterZone:
             s for s in sys.stellar_system.stars
             if s.role in ("close", "near", "far") and s.orbit_number
         )
+        assert comp.orbit_number is not None
         lo, hi = comp.orbit_number - 1.0, comp.orbit_number + 3.0
         primary_desig = next(
             s.designation for s in sys.stellar_system.stars if s.role == "primary"
@@ -5531,6 +5541,7 @@ class TestPrimaryOuterZone:
                 if s.role in ("close", "near", "far") and s.orbit_number
             ]
             for comp in companions:
+                assert comp.orbit_number is not None
                 lo = comp.orbit_number - 1.0
                 hi = comp.orbit_number + 3.0
                 for o in sys.system_orbits.orbits:
