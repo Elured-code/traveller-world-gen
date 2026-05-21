@@ -73,6 +73,7 @@ from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from traveller_world_gen import World
+    from traveller_moon_gen import Moon
 
 
 # ---------------------------------------------------------------------------
@@ -254,18 +255,6 @@ def _roll_day_length(age_gyr: float = 0.0) -> float:
     hours = (_roll(2) - 2) * 4 + 2 + random.randint(1, 6) + dm
     return round(float(max(1, hours)), 1)
 
-
-# ---------------------------------------------------------------------------
-# Tidal Lock Status (WBH pp. 105-107)
-# ---------------------------------------------------------------------------
-
-TIDAL_STATUS_LABELS: dict[str, str] = {
-    "braking":   "Tidal braking",
-    "prograde":  "Prograde (tidally slowed)",
-    "retrograde": "Retrograde (tidally induced)",
-    "3:2_lock":  "3:2 resonance lock",
-    "1:1_lock":  "1:1 tidal lock (synchronous)",
-}
 
 
 def _orbital_period_hours(orbit_au: float, star_mass: float) -> float:
@@ -506,7 +495,7 @@ def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-posi
 
     # Build candidate list: (dm, lock_type, moon_or_None)
     # Moon candidates require orbit_pd and Size 1+ (WBH p.107)
-    candidates: list[tuple[str, int, object]] = [("star", star_dm, None)]
+    candidates: list[tuple[str, int, Moon | None]] = [("star", star_dm, None)]
     if moons:
         for moon in moons:
             if (not moon.is_ring and moon.orbit_pd is not None
@@ -520,6 +509,7 @@ def _roll_tidal_lock_status(  # pylint: disable=too-many-arguments,too-many-posi
 
     for lock_type, dm, moon in candidates:
         if lock_type == "moon":
+            assert moon is not None
             moon_period_h = moon.orbit_period_hours or period_h
             day_h, tilt, status = _roll_one_lock_case(
                 dm, basic_day_h, axial_tilt, moon_period_h)

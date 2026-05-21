@@ -19,8 +19,8 @@ import pytest
 from traveller_moon_gen import Moon  # pylint: disable=import-error
 from traveller_world_gen import World
 
+from tables import TIDAL_STATUS_LABELS
 from traveller_world_physical import (
-    TIDAL_STATUS_LABELS,
     WorldPhysical,
     _apply_seismic_stress,
     _apply_tidal_lock_result,

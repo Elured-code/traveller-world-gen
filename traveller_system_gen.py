@@ -62,7 +62,8 @@ from typing import Optional
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
 from traveller_belt_physical import BeltPhysical
-from traveller_world_physical import TIDAL_STATUS_LABELS, WorldPhysical
+from traveller_world_physical import WorldPhysical
+from tables import TIDAL_STATUS_LABELS
 from traveller_hydro_detail import generate_hydrographic_detail
 from html_render import render
 from traveller_world_gen import (

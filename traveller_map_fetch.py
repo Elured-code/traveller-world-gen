@@ -92,6 +92,7 @@ from traveller_world_gen import (
 )
 from traveller_world_detail import attach_detail
 from traveller_hydro_detail import generate_hydrographic_detail
+from world_codes import StarportCode
 
 
 # ---------------------------------------------------------------------------
@@ -329,18 +330,29 @@ def parse_uwp(uwp_str: str) -> dict:
     Parse a UWP string (e.g. 'A788899-C') into a dict of characteristic
     integer values.
 
-    Returns sensible zero-defaults if the string is malformed.
+    Raises:
+        ValueError: if the string is not a valid 9-character UWP.
 
     Keys: starport (str), size, atmosphere, hydrographics, population,
           government, law_level, tech_level (all int).
     """
     s = uwp_str.strip().replace(" ", "")
-    if len(s) < 9 or s[7] != "-":
-        return {
-            "starport": "X", "size": 0, "atmosphere": 0,
-            "hydrographics": 0, "population": 0, "government": 0,
-            "law_level": 0, "tech_level": 0,
-        }
+    if len(s) != 9 or s[7] != "-":
+        raise ValueError(
+            f"Invalid UWP format {uwp_str!r}: expected 9 characters like 'A788899-C'"
+        )
+    try:
+        StarportCode(s[0].upper())
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid UWP starport code {s[0]!r} in {uwp_str!r}: "
+            f"expected one of {', '.join(StarportCode)}"
+        ) from exc
+    for pos in (1, 2, 3, 4, 5, 6, 8):
+        if s[pos].upper() not in _HEX_MAP:
+            raise ValueError(
+                f"Invalid UWP hex digit {s[pos]!r} at position {pos} in {uwp_str!r}"
+            )
     return {
         "starport":      s[0].upper(),
         "size":          _from_hex(s[1]),

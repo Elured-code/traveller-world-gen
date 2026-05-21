@@ -2,7 +2,7 @@
 
 **Branch:** `feature/updates` → `main`
 **Sessions:** 55–
-**Tests:** 1107
+**Tests:** 1168
 
 ---
 
@@ -21,6 +21,57 @@
   - **Seismic Temperature** — the mean temperature adjusted for internal heat:
     ⁴√(T⁴ + TSS⁴). Shown only when the adjustment rounds to a different value than
     the base mean temperature.
+
+---
+
+## Maintenance
+
+### Static typing — enum types (issue #38)
+
+Five `StrEnum` / `IntEnum` types added to a new `world_codes.py` module, compatible with all existing `str` / `int` comparisons and JSON serialisation.
+
+| Enum | Values |
+|---|---|
+| `StarportCode` (`StrEnum`) | `A B C D E X` |
+| `TemperatureCategory` (`StrEnum`) | `Frozen Cold Temperate Hot Boiling` |
+| `TradeCode` (`StrEnum`) | all 18 codes (`Ag As Ba De Fl Ga Hi Ht Ic In Lo Lt Na Ni Po Ri Va Wa`) |
+| `TravelZone` (`StrEnum`) | `Green Amber Red` |
+| `AtmosphereCode` (`IntEnum`) | codes 0–17 |
+
+**`parse_uwp()` validation (`traveller_map_fetch.py`):** The UWP parser now raises `ValueError` (with chained exception context via `from exc`) for any of: wrong length, missing `-` separator at position 7, unrecognised starport letter, or non-hex digit in code positions. Previously it silently substituted defaults for malformed input.
+
+**`World._validate_world_codes()` (`traveller_world_gen.py`):** New static method called at the top of `World.from_dict()`. Validates starport, atmosphere, temperature, trade codes, travel zone, and all integer range fields against the enum types and schema constraints. All validation failures raise `ValueError` with a descriptive message and chained exception context.
+
+**Pyright CI:** `.github/workflows/typecheck.yml` added — runs `pyright` on every push/PR to `main`. `pyrightconfig.json` updated (`typeCheckingMode: "basic"`, explicit `exclude` list re-specifying all default patterns). `requirements-dev.txt` gains `pyright>=1.1.0`. Eight pre-existing Pyright errors in `traveller_world_gen.py`, `traveller_world_physical.py`, and `traveller_world_detail.py` were fixed: stored-boolean narrowing replaced with inline `isinstance()`, `Moon` forward reference resolved via `TYPE_CHECKING` guard, `hasattr()` narrowing replaced with `isinstance()`.
+
+---
+
+### Centralised display tables (issue #39)
+
+Seven display-layer lookup tables previously duplicated across two to three files have been consolidated into a new `tables.py` module — a single definition is now the canonical source for each label set.
+
+| Table | Previously defined in |
+|---|---|
+| Size → diameter label | `traveller_world_gen.py` ×2 |
+| Size → gravity label | `traveller_world_gen.py` ×2 |
+| Population → range label | `traveller_world_gen.py` ×2 |
+| Trade code full names | `traveller_world_gen.py`, `gen-ui/app.py` |
+| Base facility labels | `traveller_world_gen.py`, `gen-ui/app.py`, `render_system_json.py` |
+| Travel zone → CSS class | `traveller_world_gen.py`, `gen-ui/app.py`, `render_system_json.py` |
+| Tidal lock status labels | `traveller_world_physical.py`, `render_system_json.py` |
+
+All five consumer files (`traveller_world_gen.py`, `traveller_system_gen.py`, `render_system_json.py`, `gen-ui/app.py`, `tests/test_world_physical.py`) now import from `tables`. No display output was changed.
+
+---
+
+### Pylint
+
+`.pylintrc` restored after accidental deletion in commit f9f6ca1. The `[MESSAGES CONTROL]` block suppresses two structural false positives with inline documentation:
+
+- `duplicate-code` — identical pipeline boilerplate exists across five entry-point files; several data-table copies are intentional to break circular imports. Tracked for future refactoring.
+- `cyclic-import` — pre-existing `traveller_system_gen` → `traveller_world_detail` cycle resolved at runtime via `TYPE_CHECKING` guard. Tracked for cleanup.
+
+Pylint 10.00/10 maintained across all core generation modules.
 
 ---
 

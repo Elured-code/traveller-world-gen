@@ -1,3 +1,4 @@
 # Development tools — not deployed to Azure
 pytest>=9.0.0
 pylint>=4.0.0
+pyright>=1.1.0
