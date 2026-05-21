@@ -550,6 +550,11 @@
               "type": "integer",
               "minimum": 3,
               "description": "Mean temperature adjusted for seismic stress (WBH ~p.128): fourth_root(T^4 + TSS^4). Only present when total_seismic_stress > 0 and mean_temperature_k is available, and the adjustment changes the rounded value."
+            },
+            "tidal_amplitude_m": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total surface tidal amplitude in metres (WBH pp.107-108): sum of star tidal effect and each qualifying moon's tidal effect on the planet. Star effect = (star_mass_solar × size) / (32 × AU³); moon effect = (moon_mass_earth × size) / (3.2 × (orbit_km / 1e6)³). Present when orbital data is available."
             }
           }
         },

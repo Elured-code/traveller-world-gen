@@ -291,6 +291,9 @@ def _phys_rows(sd: dict) -> tuple[str, list[dict]]:
         if tidal and tidal != "none":
             rows.append({"label": "Tidal status",
                          "value": TIDAL_STATUS_LABELS.get(tidal, tidal)})
+        tidal_amp = sd.get("tidal_amplitude_m")
+        if tidal_amp is not None:
+            rows.append({"label": "Tidal amplitude", "value": f"{tidal_amp:.2f} m"})
         ecc_adj = sd.get("eccentricity_adjusted")
         if ecc_adj is not None:
             rows.append({"label": "Eccentricity adjusted", "value": f"{ecc_adj:.3f}"})

@@ -321,6 +321,9 @@
     {% if ctx.tidal_label %}
     {{ drow("Tidal status", ctx.tidal_label) }}
     {% endif %}
+    {% if p.tidal_amplitude_m is not none %}
+    {{ drow("Tidal amplitude", "%.2f m"|format(p.tidal_amplitude_m)) }}
+    {% endif %}
     {% if p.residual_seismic_stress is not none %}
     {{ drow("Residual seismic stress", p.residual_seismic_stress|string) }}
     {% endif %}

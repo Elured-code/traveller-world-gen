@@ -603,6 +603,75 @@ def _compute_thf(  # pylint: disable=too-many-arguments,too-many-positional-argu
     return max(0, int(thf))
 
 
+# ---------------------------------------------------------------------------
+# Surface Tidal Amplitude (WBH pp.107-108)
+# ---------------------------------------------------------------------------
+
+def _moon_mass_earth(moon: "Moon") -> float:
+    """Estimate moon mass in Earth masses using the same diameter³ method as WorldPhysical.
+
+    Assumes Terran density (density/5.515 = 1.0): mass = (diameter_km / 12742)³.
+    Size S → 800 km base diameter. Rings and size 0 return 0.
+    """
+    if moon.is_ring or moon.size_code == 0:
+        return 0.0
+    if moon.size_code == "S":
+        diam = 800.0
+    else:
+        sz = int(moon.size_code)
+        if sz < 1:
+            return 0.0
+        diam = sz * 1600.0
+    return (diam / _EARTH_DIAMETER_KM) ** 3
+
+
+def _star_tidal_effect_m(star_mass_solar: float, world_size: int, orbit_au: float) -> float:
+    """Star tidal effect on a planet in metres (WBH p.107).
+
+    Formula: (Star Mass [solar] × Planet Size) / (32 × AU³)
+    Sol on Terra (size 8, 1 AU) = 0.25 m.
+    """
+    if world_size <= 0 or orbit_au <= 0.0:
+        return 0.0
+    return (star_mass_solar * world_size) / (32.0 * orbit_au ** 3)
+
+
+def _moon_tidal_effect_m(moon: "Moon", world_size: int) -> float:
+    """Moon tidal effect on its parent planet in metres (WBH p.108).
+
+    Formula: (Moon Mass [Earth] × Planet Size) / (3.2 × (orbit_km / 1,000,000)³)
+    Luna (0.0123 ME, 384 400 km) on Terra (size 8) ≈ 0.54 m.
+    Rings, moons without orbit_km, and moons with zero mass return 0.
+    """
+    if moon.is_ring or moon.orbit_km is None or moon.orbit_km <= 0.0:
+        return 0.0
+    mass = _moon_mass_earth(moon)
+    if mass <= 0.0:
+        return 0.0
+    dist_mkm = moon.orbit_km / 1_000_000.0
+    if dist_mkm <= 0.0:
+        return 0.0
+    return (mass * world_size) / (3.2 * dist_mkm ** 3)
+
+
+def _compute_tidal_amplitude(
+        world_size: int,
+        star_mass_solar: float,
+        orbit_au: float,
+        moons: list | None = None,
+) -> float:
+    """Total surface tidal amplitude in metres (WBH pp.107-108).
+
+    Sum of star tidal effect plus each qualifying moon's tidal effect.
+    Planet-to-moon and moon-to-moon effects are deferred (optional per WBH).
+    """
+    total = _star_tidal_effect_m(star_mass_solar, world_size, orbit_au)
+    if moons:
+        for moon in moons:
+            total += _moon_tidal_effect_m(moon, world_size)
+    return round(total, 4)
+
+
 def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         physical: "WorldPhysical",
         world_size: int,
@@ -721,6 +790,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     tidal_heating_factor: Optional[int] = field(default=None, init=False)
     total_seismic_stress: Optional[int] = field(default=None, init=False)
     seismic_temperature_k: Optional[int] = field(default=None, init=False)
+    tidal_amplitude_m: Optional[float] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
         """Return physical characteristics as a JSON-compatible dict."""
@@ -747,6 +817,8 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["total_seismic_stress"] = self.total_seismic_stress
         if self.seismic_temperature_k is not None:
             d["seismic_temperature_k"] = self.seismic_temperature_k
+        if self.tidal_amplitude_m is not None:
+            d["tidal_amplitude_m"] = round(self.tidal_amplitude_m, 4)
         return d
 
 
@@ -843,6 +915,8 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         wp.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
     if hz_deviation is not None:
         wp.mean_temperature_k = _compute_mean_temperature(hz_deviation, world.atmosphere)
+    if orbit_au is not None and star_mass is not None and world.size > 0:
+        wp.tidal_amplitude_m = _compute_tidal_amplitude(world.size, star_mass, orbit_au)
     return wp
 
 
@@ -898,3 +972,4 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
         moons=moons,
         is_moon=is_moon,
     )
+    physical.tidal_amplitude_m = _compute_tidal_amplitude(world_size, star_mass, orbit_au, moons)

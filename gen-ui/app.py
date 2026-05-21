@@ -1038,7 +1038,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         zone_lbl = QLabel(f"  {world.travel_zone}  ")  # type: ignore[attr-defined]
         zone_lbl.setObjectName(
-            _ZONE_OBJECT_NAME.get(world.travel_zone, "zone-green")  # type: ignore[attr-defined]
+            ZONE_CSS_CLASS.get(world.travel_zone, "zone-green")  # type: ignore[attr-defined]
         )
         layout.addWidget(zone_lbl)
 
@@ -1464,6 +1464,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
               if physical.mean_temperature_k is not None else []),
             *([("Tidal status", TIDAL_STATUS_LABELS[physical.tidal_status])]
               if physical.tidal_status != "none" else []),
+            *([("Tidal amplitude", f"{physical.tidal_amplitude_m:.2f} m")]
+              if physical.tidal_amplitude_m is not None else []),
             *([("Residual seismic stress", str(physical.residual_seismic_stress))]
               if physical.residual_seismic_stress is not None else []),
             *([("Tidal heating factor", str(physical.tidal_heating_factor))]
