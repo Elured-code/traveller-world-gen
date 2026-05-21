@@ -938,7 +938,10 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
     Called after moon generation completes (WBH pp.106-107, ~pp.125-128).
     Mutates physical in-place. Tidal lock re-run is skipped when moons is
     empty, but seismic stress is always computed.
+    Size 0 (belt) worlds are skipped — BeltPhysical has no tidal or seismic fields.
     """
+    if not isinstance(physical, WorldPhysical):
+        return
     if moons:
         day_h, tilt, status = _roll_tidal_lock_status(
             size=world_size,
