@@ -1,7 +1,7 @@
 # Release Notes — v1.3.0 (draft)
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 55–58
+**Sessions:** 55–59
 **Tests:** 1189
 
 ---
@@ -53,7 +53,39 @@ be fully deterministic (the broken-lock check was a source of intermittent test 
 
 ---
 
+## Bug Fixes
+
+### BeltPhysical crash in `apply_moon_tidal_effects()` (Session 59)
+
+`apply_moon_tidal_effects()` was called for belt mainworlds (Size 0), passing a
+`BeltPhysical` object where `WorldPhysical` was expected. Both the tidal lock
+re-run and `_apply_seismic_stress()` access attributes (`density`, `axial_tilt`,
+`tidal_status`, etc.) that exist only on `WorldPhysical`, raising `AttributeError`.
+
+Fix: `apply_moon_tidal_effects()` now returns immediately when `physical` is not
+a `WorldPhysical` instance. Belt worlds have no tidal lock or seismic stress fields,
+so the early return is semantically correct, not just defensive.
+
+---
+
 ## Maintenance
+
+### Rename: `tidal_heating_factor` → `tidal_seismic_stress` (Session 59)
+
+The WBH term for the orbital tidal contribution to seismic stress is "Tidal Seismic
+Stress", not "Tidal Heating Factor". Renamed throughout:
+
+- `WorldPhysical.tidal_heating_factor` field → `tidal_seismic_stress`
+- `_compute_thf()` → `_compute_tidal_ss()`
+- JSON key `"tidal_heating_factor"` → `"tidal_seismic_stress"`
+- JSON schema property and description updated
+- Display label in gen-ui, `world_card.html`, and `render_system_json.py`
+- Tests updated (`TestComputeThf` → `TestComputeTidalSS`)
+
+Formula and logic unchanged. Total Seismic Stress = Residual Seismic Stress +
+Tidal Seismic Stress.
+
+---
 
 ### Static typing — enum types (issue #38)
 
