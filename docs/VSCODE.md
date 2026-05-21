@@ -101,6 +101,11 @@ Without `venvPath` + `venv`, Pylance cannot find third-party packages such as
 `azure.functions` or `PySide6` and shows false "import could not be resolved"
 errors even when the package is correctly installed in `.venv`.
 
+`pyrightconfig.json` in the project root sets `extraPaths: ["."]` for the same
+reason — test files in `tests/` import modules from the project root, and Pylance
+uses `pyrightconfig.json` for analysis when it is present. Both settings work
+together; neither alone is sufficient for all scenarios.
+
 ---
 
 ### Pylint extension — Problems panel linting

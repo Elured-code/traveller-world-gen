@@ -2,7 +2,40 @@
 
 **Branch:** `feature/updates` → `main`
 **Sessions:** 36–54
-**Tests:** 1085
+**Tests:** 1146
+
+---
+
+## Maintenance
+
+### Static type-checking (Pyright / Pylance)
+
+`pyrightconfig.json` added to the project root so Pylance resolves imports from
+the project root (`extraPaths: ["."]`) consistent with the runtime `sys.path` that
+`conftest.py` establishes for pytest.
+
+All six test files made fully Pyright-clean (0 errors, 0 warnings):
+
+| File | Issues fixed |
+|------|-------------|
+| `test_belt_physical.py` | 2 unguarded `system.mainworld` accesses |
+| `test_function_app.py` | Azure stub used direct attribute assignment on `ModuleType` (→ `setattr()`); 4 unguarded `err` accesses |
+| `test_hydro_detail.py` | 4 unguarded `generate_hydrographic_detail()` return accesses |
+| `test_moon_gen.py` | `list[float | None]` not narrowed through intermediate comprehension |
+| `test_traveller_world_gen.py` | Two pairs of shadowed class names; `Optional` attribute guards; `comp.orbit_number` arithmetic guards |
+| `test_world_physical.py` | `_World` stub now inherits from `World`; mixed-type `**kwargs` dicts annotated `dict[str, Any]` |
+
+**Notable bug found:** `TestWorldToDict` and `TestWorldToJson` were each declared
+twice in `test_traveller_world_gen.py`. Python's namespace rules mean the second
+definition silently replaced the first, so the first class's tests **never ran**.
+The first instances are renamed `TestWorldToDictValues` and `TestWorldToJsonBasic`;
+61 previously-invisible tests now execute.
+
+**Source fix:** `World.to_json(indent: int = 2)` signature corrected to
+`indent: Optional[int] = 2`, matching the docstring ("Pass `None` for compact
+single-line output") and the `json.dumps` behaviour already in use.
+
+**1146 tests** pass (1085 previously confirmed + 61 now un-shadowed).
 
 ---
 

@@ -85,21 +85,25 @@ def test_pct_within_range_100_samples(hydro, size):
 def test_hydro0_pct_min(monkeypatch):
     monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: lo)
     r = generate_hydrographic_detail(0, 5)
+    assert r is not None
     assert r.surface_liquid_pct == 0
 
 def test_hydro0_pct_max(monkeypatch):
     monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: hi)
     r = generate_hydrographic_detail(0, 5)
+    assert r is not None
     assert r.surface_liquid_pct == 5
 
 def test_hydro5_pct_midrange(monkeypatch):
     monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: (lo + hi) // 2)
     r = generate_hydrographic_detail(5, 5)
+    assert r is not None
     assert r.surface_liquid_pct == 50  # (46+55)//2
 
 def test_hydro10_size1_uses_range(monkeypatch):
     monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: hi)
     r = generate_hydrographic_detail(10, 1)
+    assert r is not None
     assert r.surface_liquid_pct == 100
 
 

@@ -244,7 +244,7 @@ class TestGenerateMoonsOrbit:
                 orbit_au=2.0, star_mass_solar=1.0,
             )
             sig = [m for m in moons if not m.is_ring and m.orbit_pd is not None]
-            pds = [m.orbit_pd for m in sig]
+            pds = [m.orbit_pd for m in sig if m.orbit_pd is not None]
             assert pds == sorted(pds), f"orbits not ascending: {pds}"
 
 

@@ -11,11 +11,13 @@ fixed value, allowing the downstream logic to be verified.
 """
 
 import math
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 from traveller_moon_gen import Moon  # pylint: disable=import-error
+from traveller_world_gen import World
 
 from traveller_world_physical import (
     TIDAL_STATUS_LABELS,
@@ -38,11 +40,10 @@ from traveller_world_physical import (
 # Minimal World stub
 # ---------------------------------------------------------------------------
 
-class _World:
+class _World(World):
     """Minimal stub matching the fields read by generate_world_physical."""
     def __init__(self, size: int = 6, atmosphere: int = 6):
-        self.size = size
-        self.atmosphere = atmosphere
+        super().__init__(size=size, atmosphere=atmosphere)
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +316,7 @@ class TestApplyTidalLockResult:
 
 class TestRollTidalLockStatus:
     def _call(self, **kwargs):
-        defaults = dict(size=6, axial_tilt=10.0, atmosphere=6, age_gyr=3.0,
+        defaults: dict[str, Any] = dict(size=6, axial_tilt=10.0, atmosphere=6, age_gyr=3.0,
                         orbit_number=2.5, orbit_au=1.6, star_mass=1.0,
                         basic_day_h=24.0)
         defaults.update(kwargs)
@@ -659,7 +660,7 @@ class TestPlanetMoonLockDm:
 class TestRollTidalLockStatusMoons:
     """Moon-aware multi-case tidal lock ordering."""
 
-    _KWARGS = dict(
+    _KWARGS: dict[str, Any] = dict(
         size=6, axial_tilt=10.0, atmosphere=6, age_gyr=5.0,
         orbit_number=2.5, orbit_au=1.5, star_mass=1.0, basic_day_h=24.0,
     )
@@ -697,7 +698,7 @@ class TestRollTidalLockStatusMoons:
 class TestApplyMoonTidalEffects:
     """apply_moon_tidal_effects() mutates WorldPhysical in-place."""
 
-    _KWARGS = dict(
+    _KWARGS: dict[str, Any] = dict(
         world_size=6, world_atmosphere=6, age_gyr=5.0,
         orbit_number=2.5, orbit_au=1.5, star_mass=1.0,
     )
