@@ -61,7 +61,7 @@ except ImportError:
 
     _af = types.ModuleType("azure.functions")
     _azure = types.ModuleType("azure")
-    _azure.functions = _af
+    setattr(_azure, "functions", _af)
 
     class _AuthLevel:
         FUNCTION  = "function"
@@ -105,10 +105,10 @@ except ImportError:
                 return fn
             return decorator
 
-    _af.AuthLevel    = _AuthLevel
-    _af.HttpRequest  = _HttpRequest
-    _af.HttpResponse = _HttpResponse
-    _af.FunctionApp  = _FunctionApp
+    setattr(_af, "AuthLevel",    _AuthLevel)
+    setattr(_af, "HttpRequest",  _HttpRequest)
+    setattr(_af, "HttpResponse", _HttpResponse)
+    setattr(_af, "FunctionApp",  _FunctionApp)
 
     sys.modules["azure"]           = _azure
     sys.modules["azure.functions"] = _af
@@ -380,18 +380,21 @@ class TestParseCountHelper:
         req = make_request(params={"count": "0"})
         count, err = parse_count(req)
         assert count is None
+        assert err is not None
         assert response_json(err)["error"]["code"] == ERR_INVALID_COUNT
 
     def test_negative_count_returns_error(self):
         req = make_request(params={"count": "-1"})
         count, err = parse_count(req)
         assert count is None
+        assert err is not None
         assert response_json(err)["error"]["code"] == ERR_INVALID_COUNT
 
     def test_non_integer_count_returns_error(self):
         req = make_request(params={"count": "lots"})
         count, err = parse_count(req)
         assert count is None
+        assert err is not None
         assert response_json(err)["error"]["code"] == ERR_INVALID_COUNT
 
     def test_count_at_max_is_accepted(self):
@@ -406,6 +409,7 @@ class TestParseCountHelper:
         req = make_request(params={"count": str(limit + 1)})
         count, err = parse_count(req)
         assert count is None
+        assert err is not None
         assert err.status_code == 422
         assert response_json(err)["error"]["code"] == ERR_COUNT_TOO_LARGE
 

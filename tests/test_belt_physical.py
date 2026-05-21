@@ -494,6 +494,7 @@ class TestAttachDetailBeltMainworld:
         """mainworld_orbit.detail.physical is the same object as mainworld.size_detail."""
         system = generate_full_system(seed=735659901)
         attach_detail(system)
+        assert system.mainworld is not None
         assert system.mainworld_orbit is not None
         assert system.mainworld_orbit.detail is not None
         assert system.mainworld_orbit.detail.physical is system.mainworld.size_detail
@@ -502,6 +503,7 @@ class TestAttachDetailBeltMainworld:
         """BeltPhysical values are within expected ranges after attach_detail()."""
         system = generate_full_system(seed=735659901)
         attach_detail(system)
+        assert system.mainworld is not None
         bp = system.mainworld.size_detail
         assert isinstance(bp, BeltPhysical)
         assert bp.inner_au >= 0.0

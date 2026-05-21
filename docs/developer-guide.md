@@ -1130,6 +1130,41 @@ Common inline suppression comments used in this codebase (with `# pylint: disabl
 | `locally-disabled,suppressed-message` | Module-level disable comment to suppress I0011/I0020 noise |
 | `broad-exception-caught` | All endpoint handlers (deliberate) |
 
+### Static type checking (Pyright / Pylance)
+
+`pyrightconfig.json` in the project root configures Pyright (and the Pylance VS Code
+extension) to treat the project root as an extra import path:
+
+```json
+{
+  "pythonVersion": "3.11",
+  "extraPaths": ["."]
+}
+```
+
+This mirrors what `conftest.py` does at pytest runtime via `sys.path.insert(0, ...)`,
+ensuring that `from traveller_belt_physical import ...` resolves in both the IDE and
+under static analysis.
+
+Type checking mode is `"basic"` (set in `.vscode/settings.json`). All six test
+files are fully Pyright-clean. Run a check with:
+
+```bash
+.venv/bin/pyright tests/
+```
+
+Conventions to keep tests clean:
+
+- After filtering an `Optional` return, add `assert result is not None` before
+  accessing attributes — Pyright does not narrow Optional through side-effect-free
+  filters.
+- When spreading a mixed `int`/`float` dict with `**`, annotate it as
+  `dict[str, Any]` so Pyright does not widen every parameter to `int | float`.
+- Use `setattr(module, "attr", value)` rather than `module.attr = value` when
+  dynamically patching `ModuleType` objects in stubs.
+- Test classes must have unique names within a module — a duplicate definition
+  silently shadows the first, and Pyright now catches this with `reportRedeclaration`.
+
 ### CI — dependency vulnerability scan
 
 `.github/workflows/dependency-audit.yml` runs `pip-audit` on every branch push and on pull requests targeting `main`. It audits `requirements.txt` and `gen-ui/requirements.txt` separately (two named steps) and hard-fails the workflow if any vulnerability is found. A JSON report artifact is always uploaded (30-day retention) so findings are readable without re-running locally.

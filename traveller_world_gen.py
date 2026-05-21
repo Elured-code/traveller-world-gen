@@ -1583,7 +1583,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             **({"size_detail": self.size_detail.to_dict()} if self.size_detail else {}),
         }
 
-    def to_json(self, indent: int = 2) -> str:
+    def to_json(self, indent: Optional[int] = 2) -> str:
         """Serialise the world to a JSON string.
 
         Args:
