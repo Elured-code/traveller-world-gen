@@ -300,9 +300,9 @@ def _phys_rows(sd: dict) -> tuple[str, list[dict]]:
         rss = sd.get("residual_seismic_stress")
         if rss is not None:
             rows.append({"label": "Residual seismic stress", "value": str(rss)})
-        thf = sd.get("tidal_heating_factor")
+        thf = sd.get("tidal_seismic_stress")
         if thf:
-            rows.append({"label": "Tidal heating factor", "value": str(thf)})
+            rows.append({"label": "Tidal seismic stress", "value": str(thf)})
         tss = sd.get("total_seismic_stress")
         if tss is not None:
             rows.append({"label": "Total seismic stress", "value": str(tss)})
