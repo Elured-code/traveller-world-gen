@@ -1267,3 +1267,102 @@ class TestTidalAmplitudeIntegration:
         d = wp.to_dict()
         assert "tidal_amplitude_m" in d
         assert d["tidal_amplitude_m"] == round(wp.tidal_amplitude_m, 4)
+
+
+class TestTidalStressFactor:
+    """tidal_stress_factor = floor(tidal_amplitude_m / 10) (WBH p.126)."""
+
+    def test_tsf_zero_when_amplitude_below_10(self):
+        # Sol acting on Terra at 1 AU gives ~0.25 m → TSF = 0
+        amp = _compute_tidal_amplitude(8, 1.0, 1.0, moons=None)
+        assert math.floor(amp / 10) == 0
+
+    def test_tsf_nonzero_when_amplitude_above_10(self):
+        # Close orbit: size-8 world at 0.2 AU around 1 solar-mass star
+        # star tidal effect = (1.0 × 8) / (32 × 0.2³) = 8 / 0.256 = 31.25 m → TSF = 3
+        amp = _compute_tidal_amplitude(8, 1.0, 0.2, moons=None)
+        assert amp > 10.0
+        assert math.floor(amp / 10) == 3
+
+    def test_tsf_set_on_worldphysical_after_apply_moon_tidal_effects(self):
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            wp = generate_world_physical(
+                world, age_gyr=5.0,
+                orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp is not None
+        with patch("random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp, moons=[], world_size=8, world_atmosphere=6,
+                age_gyr=5.0, orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp.tidal_stress_factor is not None
+        assert wp.tidal_stress_factor == math.floor(wp.tidal_amplitude_m / 10)
+
+    def test_tsf_included_in_total_seismic_stress(self):
+        # Close inner-zone orbit so TSF is non-zero
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            wp = generate_world_physical(
+                world, age_gyr=1.0,
+                orbit_number=0.5, orbit_au=0.2, star_mass=1.0,
+            )
+        assert wp is not None
+        with patch("random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp, moons=[], world_size=8, world_atmosphere=6,
+                age_gyr=1.0, orbit_number=0.5, orbit_au=0.2, star_mass=1.0,
+            )
+        assert wp.tidal_stress_factor is not None
+        assert wp.tidal_stress_factor > 0
+        expected_total = (
+            (wp.residual_seismic_stress or 0)
+            + (wp.tidal_seismic_stress or 0)
+            + wp.tidal_stress_factor
+        )
+        assert wp.total_seismic_stress == expected_total
+
+    def test_tsf_in_to_dict_when_nonzero(self):
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            wp = generate_world_physical(
+                world, age_gyr=1.0,
+                orbit_number=0.5, orbit_au=0.2, star_mass=1.0,
+            )
+        assert wp is not None
+        with patch("random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp, moons=[], world_size=8, world_atmosphere=6,
+                age_gyr=1.0, orbit_number=0.5, orbit_au=0.2, star_mass=1.0,
+            )
+        d = wp.to_dict()
+        assert wp.tidal_stress_factor is not None
+        if wp.tidal_stress_factor > 0:
+            assert "tidal_stress_factor" in d
+            assert d["tidal_stress_factor"] == wp.tidal_stress_factor
+
+    def test_tsf_absent_from_to_dict_when_zero(self):
+        # HZ orbit (1 AU) → TSF = 0 → not emitted
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            wp = generate_world_physical(
+                world, age_gyr=5.0,
+                orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp is not None
+        with patch("random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp, moons=[], world_size=8, world_atmosphere=6,
+                age_gyr=5.0, orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp.tidal_stress_factor == 0
+        assert "tidal_stress_factor" not in wp.to_dict()

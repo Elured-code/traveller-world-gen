@@ -327,6 +327,9 @@
     {% if p.tidal_seismic_stress is not none and p.tidal_seismic_stress > 0 %}
     {{ drow("Tidal seismic stress", p.tidal_seismic_stress|string) }}
     {% endif %}
+    {% if p.tidal_stress_factor is not none and p.tidal_stress_factor > 0 %}
+    {{ drow("Tidal stress factor", p.tidal_stress_factor|string) }}
+    {% endif %}
     {% if p.residual_seismic_stress is not none %}
     {{ drow("Residual seismic stress", p.residual_seismic_stress|string) }}
     {% endif %}

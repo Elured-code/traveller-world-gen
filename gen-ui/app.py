@@ -1458,6 +1458,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
               if physical.tidal_amplitude_m is not None else []),
             *([("Tidal seismic stress", str(physical.tidal_seismic_stress))]
               if physical.tidal_seismic_stress else []),
+            *([("Tidal stress factor", str(physical.tidal_stress_factor))]
+              if physical.tidal_stress_factor else []),
             *([("Residual seismic stress", str(physical.residual_seismic_stress))]
               if physical.residual_seismic_stress is not None else []),
             *([("Total seismic stress", str(physical.total_seismic_stress))]
