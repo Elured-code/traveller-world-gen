@@ -70,6 +70,14 @@ so the early return is semantically correct, not just defensive.
 
 ## Maintenance
 
+### gen-ui: eccentricity and inclination always calculated (issue #58)
+
+The "Orbital Eccentricity" and "Orbital Inclination" checkboxes have been removed
+from the desktop UI. Both flags are now always passed as `True` when "System detail"
+is enabled, so the Ecc/Incl column is always populated.
+
+---
+
 ### Rename: `tidal_heating_factor` → `tidal_seismic_stress` (Session 59)
 
 The WBH term for the orbital tidal contribution to seismic stress is "Tidal Seismic

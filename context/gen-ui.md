@@ -39,16 +39,16 @@ Five checkboxes below the Procedural/TravellerMap radio buttons:
 
 | Checkbox | Enabled when | Effect |
 |----------|-------------|--------|
-| "Full system" | Always | Calls `generate_full_system()` instead of `generate_world()` |
-| "Attach detail" | "Full system" checked | Calls `attach_detail()` after system generation |
-| "Physical detail" | "Full system" checked | Calls `generate_world_physical(world, age_gyr)` on the mainworld |
-| "NHZ Atmospheres" | "Full system" checked | Passes `nhz_atmospheres=True` to `generate_full_system()` |
-| "Orbital Eccentricity" | "Full system" checked | Passes `orbital_eccentricity=True` to `generate_full_system()`; populates `OrbitSlot.eccentricity` and shows values in the Ecc/Incl column |
-| "Orbital Inclination" | "Full system" checked | Passes `orbital_inclination=True` to `generate_full_system()`; populates `OrbitSlot.inclination` and shows values in the Ecc/Incl column |
+| "System detail" | Always | Calls `generate_full_system()` instead of `generate_world()` |
+| "Mainworld detail" | "System detail" checked | Calls `generate_world_physical(world, age_gyr)` on the mainworld |
+| "NHZ Atmospheres" | "System detail" checked | Passes `nhz_atmospheres=True` to `generate_full_system()` |
 
-**`_on_system_detail_toggled(checked)`** — enables/disables "Attach detail",
-"Physical detail", "NHZ Atmospheres", "Orbital Eccentricity", and "Orbital Inclination"
-together, and unchecks all five when "Full system" is turned off.
+Orbital eccentricity and inclination are always calculated when "System detail" is
+enabled (`orbital_eccentricity=True`, `orbital_inclination=True` are always passed).
+The Ecc/Incl column is always populated; there are no checkboxes for these options.
+
+**`_on_system_detail_toggled(checked)`** — enables/disables "Mainworld detail" and
+"NHZ Atmospheres" together, and unchecks both when "System detail" is turned off.
 Also calls `_map_btn.setEnabled(checked)` when `_map_btn` is set.
 
 ### "System Map" button lifecycle
