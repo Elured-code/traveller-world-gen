@@ -442,10 +442,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_physical.setEnabled(False)
         self._check_nhz = QCheckBox("NHZ Atmospheres")
         self._check_nhz.setEnabled(False)
-        self._check_ecc = QCheckBox("Orbital Eccentricity")
-        self._check_ecc.setEnabled(False)
-        self._check_incl = QCheckBox("Orbital Inclination")
-        self._check_incl.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
@@ -454,8 +450,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout.addWidget(self._check_system_detail)
         check_layout.addWidget(self._check_physical)
         check_layout.addWidget(self._check_nhz)
-        check_layout.addWidget(self._check_ecc)
-        check_layout.addWidget(self._check_incl)
         left_layout.addWidget(check_row)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
@@ -523,13 +517,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _on_system_detail_toggled(self, checked: bool) -> None:
         self._check_physical.setEnabled(checked)
         self._check_nhz.setEnabled(checked)
-        self._check_ecc.setEnabled(checked)
-        self._check_incl.setEnabled(checked)
         if not checked:
             self._check_physical.setChecked(False)
             self._check_nhz.setChecked(False)
-            self._check_ecc.setChecked(False)
-            self._check_incl.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -573,16 +563,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 return
             self._do_travellermap_generation(
                 sector, search_name, hex_pos, seed, full_system, attach_detail_flag,
-                orbital_eccentricity=self._check_ecc.isChecked(),
-                orbital_inclination=self._check_incl.isChecked(),
+                orbital_eccentricity=True,
+                orbital_inclination=True,
             )
         else:
             if full_system:
                 system = generate_full_system(
                     name, seed=seed,
                     nhz_atmospheres=self._check_nhz.isChecked(),
-                    orbital_eccentricity=self._check_ecc.isChecked(),
-                    orbital_inclination=self._check_incl.isChecked(),
+                    orbital_eccentricity=True,
+                    orbital_inclination=True,
                 )
                 self._finish_system_generation(system, attach_detail_flag)
             else:
@@ -769,8 +759,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             if selected:
                 self._do_travellermap_generation(
                     error.sector, None, selected, seed, full_system, attach_detail_flag,
-                    orbital_eccentricity=self._check_ecc.isChecked(),
-                    orbital_inclination=self._check_incl.isChecked(),
+                    orbital_eccentricity=True,
+                    orbital_inclination=True,
                 )
 
     def _on_map_clicked(self) -> None:
@@ -1466,10 +1456,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
               if physical.tidal_status != "none" else []),
             *([("Tidal amplitude", f"{physical.tidal_amplitude_m:.2f} m")]
               if physical.tidal_amplitude_m is not None else []),
-            *([("Residual seismic stress", str(physical.residual_seismic_stress))]
-              if physical.residual_seismic_stress is not None else []),
             *([("Tidal seismic stress", str(physical.tidal_seismic_stress))]
               if physical.tidal_seismic_stress else []),
+            *([("Residual seismic stress", str(physical.residual_seismic_stress))]
+              if physical.residual_seismic_stress is not None else []),
             *([("Total seismic stress", str(physical.total_seismic_stress))]
               if physical.total_seismic_stress is not None else []),
             *([("Seismic temperature", f"{physical.seismic_temperature_k} K")]
