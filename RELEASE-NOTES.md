@@ -1,8 +1,28 @@
 # Release Notes — v1.3.0 (draft)
 
-**Branch:** `feature/updates` → `main`
-**Sessions:** 55–61
-**Tests:** 1267
+**Branch:** `v1.3.0` → `main`
+**Sessions:** 55–62
+**Tests:** 1276
+
+---
+
+## Moon Orbit Eccentricity and Inclination (Session 62, WBH p.76)
+
+Significant moons with orbital positions now have eccentricity and inclination rolled, reusing the world-orbit tables (WBH pp.27–28).
+
+**Eccentricity:** `roll_eccentricity()` (previously `_roll_eccentricity`, now public) with no world-specific DMs — the base table only. Results in [0.0, 0.999].
+
+**Inclination:** `roll_inclination()` (previously `_roll_inclination`, now public). Same table as world orbits; inclination > 90° implies retrograde. Results in [0.0, 180.0°].
+
+Both are rolled only when orbit data is provided (i.e., `orbit_au` and `star_mass_solar` supplied). Rings are excluded. Fields default to `0.0` when orbit placement is skipped. The old `orbit_retrograde: bool` field is replaced by `orbit_inclination: float` — retrograde is now implicit from the angle.
+
+**Display:** The "Ecc/Incl" column in the system orbit table moon sub-rows now shows `{ecc:.3f}/{incl:.1f}°` in the same format as world orbits.
+
+**JSON:** `orbit_eccentricity` (4 d.p.) and `orbit_inclination` (2 d.p.) emitted inside each moon's dict when > 0.
+
+**Seed impact:** Any system generated with System detail enabled will see shifted results for all dice following a moon eccentricity/inclination roll. The rolls are appended at the end of orbit placement inside `generate_moons()`.
+
+**Tests:** 9 new tests in `TestMoonEccentricityInclination` in `tests/test_moon_gen.py`.
 
 ---
 

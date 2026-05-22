@@ -1004,7 +1004,7 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals
     atmosphere (codes 2-9, D, E) rolls biomass 0 has it raised to 1.
     """
     mainworld = system.mainworld
-    age_gyr   = system.stellar_system.primary.age_gyr
+    age_gyr: float = system.stellar_system.primary.age_gyr or 0.0
 
     def _oxygen_floor(biomass: int, atm: int) -> int:
         if optional_biomass_rule and biomass == 0 and atm in _OXYGEN_ATM_SET:

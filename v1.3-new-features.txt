@@ -1,0 +1,63 @@
+Traveller World & System Generator — What's New in v1.3.0
+==========================================================
+
+MOON ORBITS — ECCENTRICITY AND INCLINATION
+-------------------------------------------
+- Significant moons with orbital positions now have eccentricity and inclination
+  rolled using the same tables as world orbits (WBH pp.27–28). Both values appear
+  in the Ecc/Incl column of the orbit table moon sub-rows, formatted as
+  "0.123/45.6°".
+
+- A moon inclination greater than 90° indicates a retrograde orbit (the moon
+  orbits opposite to the planet's rotation), which is now implicit from the
+  angle rather than a separate yes/no flag.
+
+- Eccentricity and inclination are emitted in JSON output (as orbit_eccentricity
+  and orbit_inclination) when non-zero.
+
+NATIVE LIFE — BIOMASS RATING
+------------------------------
+- Biomass ratings are now generated for all terrestrial worlds and moons in a
+  system when "System detail" is enabled. A "Biomass N" note appears in the
+  Notes column of the orbit table for any world or moon with a positive rating.
+
+- The mainworld's biomass rating is always shown in the World Body detail card
+  when "Mainworld detail" is enabled (regardless of whether life is present).
+
+- New optional rule: enable "Oxygen requires biomass" to ensure that any world
+  with an oxygenated atmosphere (codes 2–9, D, E) has at least biomass 1, even
+  if the dice roll would produce no life. The checkbox appears in the generator
+  controls alongside "System detail" and is off by default.
+
+WORLD PHYSICAL DETAIL
+----------------------
+- Surface tidal amplitude is now calculated and displayed in the World Body
+  detail card (e.g. "Tidal amplitude: 30.84 m"). This is the combined tidal
+  effect from the primary star and all significant moons acting on the world's
+  surface.
+
+- Tidal Stress Factor is now shown in the World Body detail card. This is the
+  seismic stress contribution from surface tidal forces (tidal amplitude in
+  metres ÷ 10, rounded down). It contributes to the Total Seismic Stress.
+
+- Seismic stress is now displayed as three distinct components in the World Body
+  detail card:
+    • Tidal Seismic Stress — contribution from the world's orbital eccentricity
+    • Tidal Stress Factor — contribution from surface tidal forces
+    • Residual Seismic Stress — contribution from the world's age, size, and density
+  Total Seismic Stress is the sum of all three. Where these differ from the base
+  mean temperature, the Seismic Temperature is also shown.
+
+SYSTEM MAP & ORBIT TABLE
+------------------------
+- The mainworld row in the orbit table is now always displayed in bold,
+  including when the mainworld is a satellite of a gas giant.
+
+- The "Orbital Eccentricity" and "Orbital Inclination" checkboxes have been
+  removed. Both values are now always calculated when "System detail" is
+  enabled, so the Ecc/Incl column is always populated when detail is generated.
+
+BUG FIXES
+---------
+- Fixed a crash that occurred when generating physical detail for a belt
+  mainworld in a system that also had moon tidal effects to apply.

@@ -318,3 +318,145 @@ class TestMoonQuantityAdjacencyDMs:
                                     star_mao=3.5,
                                     is_adjacent_outermost_far=True)
         assert result == 2  # only one DM applied: 12-2-8=2, not 12-6-8=-2
+
+
+# ---------------------------------------------------------------------------
+# TestMoonEccentricityInclination — WBH p.76
+# ---------------------------------------------------------------------------
+
+class TestMoonEccentricityInclination:
+    """Eccentricity and inclination are rolled for significant moons when orbit data is provided."""
+
+    def test_ecc_incl_rolled_when_orbit_placed(self):
+        """Significant moons with orbit data get non-default eccentricity and inclination."""
+        # Run many seeds; at least one moon in the batch should have non-zero values.
+        found_ecc = found_incl = False
+        for seed in range(50):
+            import random as _r
+            _r.seed(seed)
+            moons = generate_moons(
+                size_code=8, orbit_number=3.0,
+                orbit_au=1.5, star_mass_solar=1.0,
+            )
+            for m in moons:
+                if not m.is_ring and m.orbit_pd is not None:
+                    if m.orbit_eccentricity > 0:
+                        found_ecc = True
+                    if m.orbit_inclination > 0:
+                        found_incl = True
+        assert found_ecc, "no moon received a non-zero eccentricity over 50 seeds"
+        assert found_incl, "no moon received a non-zero inclination over 50 seeds"
+
+    def test_ecc_incl_zero_without_orbit_data(self):
+        """With no orbit parameters, eccentricity and inclination default to 0.0."""
+        moons = generate_moons(size_code=8, orbit_number=3.0)
+        for m in moons:
+            assert m.orbit_eccentricity == 0.0
+            assert m.orbit_inclination == 0.0
+
+    def test_ecc_in_valid_range(self):
+        """Eccentricity is always in [0.0, 0.999]."""
+        import random as _r
+        for seed in range(30):
+            _r.seed(seed)
+            moons = generate_moons(
+                size_code=10, orbit_number=3.0,
+                orbit_au=2.0, star_mass_solar=1.0,
+            )
+            for m in moons:
+                if not m.is_ring:
+                    assert 0.0 <= m.orbit_eccentricity <= 0.999, (
+                        f"eccentricity {m.orbit_eccentricity} out of range"
+                    )
+
+    def test_incl_in_valid_range(self):
+        """Inclination is always in [0.0, 180.0]."""
+        import random as _r
+        for seed in range(30):
+            _r.seed(seed)
+            moons = generate_moons(
+                size_code=10, orbit_number=3.0,
+                orbit_au=2.0, star_mass_solar=1.0,
+            )
+            for m in moons:
+                if not m.is_ring:
+                    assert 0.0 <= m.orbit_inclination <= 180.0, (
+                        f"inclination {m.orbit_inclination} out of range"
+                    )
+
+    def test_rings_do_not_get_ecc_incl(self):
+        """Ring moons are never given eccentricity or inclination."""
+        import random as _r
+        for seed in range(20):
+            _r.seed(seed)
+            moons = generate_moons(
+                size_code=6, orbit_number=3.0,
+                orbit_au=1.5, star_mass_solar=1.0,
+            )
+            for m in moons:
+                if m.is_ring:
+                    assert m.orbit_eccentricity == 0.0
+                    assert m.orbit_inclination == 0.0
+
+    def test_to_dict_emits_ecc_when_nonzero(self):
+        """Moon.to_dict() includes orbit_eccentricity when > 0."""
+        import random as _r
+        _r.seed(9)  # seed giving at least one sig moon for size-8 at 1.5 AU
+        with (
+            patch("traveller_moon_gen.roll_eccentricity", return_value=0.35),
+            patch("traveller_moon_gen.roll_inclination", return_value=0.0),
+        ):
+            moons = generate_moons(
+                size_code=8, orbit_number=3.0,
+                orbit_au=1.5, star_mass_solar=1.0,
+            )
+        sig = [m for m in moons if not m.is_ring and m.orbit_pd is not None]
+        assert sig, "expected at least one significant moon"
+        for m in sig:
+            d = m.to_dict()
+            assert "orbit_eccentricity" in d
+            assert d["orbit_eccentricity"] == 0.35
+
+    def test_to_dict_emits_incl_when_nonzero(self):
+        """Moon.to_dict() includes orbit_inclination when > 0."""
+        import random as _r
+        _r.seed(9)
+        with (
+            patch("traveller_moon_gen.roll_eccentricity", return_value=0.0),
+            patch("traveller_moon_gen.roll_inclination", return_value=45.0),
+        ):
+            moons = generate_moons(
+                size_code=8, orbit_number=3.0,
+                orbit_au=1.5, star_mass_solar=1.0,
+            )
+        sig = [m for m in moons if not m.is_ring and m.orbit_pd is not None]
+        assert sig, "expected at least one significant moon"
+        for m in sig:
+            d = m.to_dict()
+            assert "orbit_inclination" in d
+            assert d["orbit_inclination"] == 45.0
+
+    def test_to_dict_omits_ecc_incl_when_zero(self):
+        """Moon.to_dict() omits eccentricity and inclination when both are 0.0."""
+        import random as _r
+        _r.seed(9)
+        with (
+            patch("traveller_moon_gen.roll_eccentricity", return_value=0.0),
+            patch("traveller_moon_gen.roll_inclination", return_value=0.0),
+        ):
+            moons = generate_moons(
+                size_code=8, orbit_number=3.0,
+                orbit_au=1.5, star_mass_solar=1.0,
+            )
+        for m in moons:
+            d = m.to_dict()
+            assert "orbit_eccentricity" not in d
+            assert "orbit_inclination" not in d
+
+    def test_to_dict_omits_ecc_incl_without_orbit(self):
+        """Moon.to_dict() never emits eccentricity or inclination when orbit not placed."""
+        moons = generate_moons(size_code=8, orbit_number=3.0)
+        for m in moons:
+            d = m.to_dict()
+            assert "orbit_eccentricity" not in d
+            assert "orbit_inclination" not in d
