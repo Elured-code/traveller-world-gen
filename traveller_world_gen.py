@@ -1474,6 +1474,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
     size_detail:    Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
+    biomass_rating: Optional[int] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1571,6 +1572,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             "travel_zone": self.travel_zone,
             "notes": self.notes,
             **({"size_detail": self.size_detail.to_dict()} if self.size_detail else {}),
+            **({"biomass_rating": self.biomass_rating} if self.biomass_rating is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:

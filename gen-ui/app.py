@@ -442,6 +442,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_physical.setEnabled(False)
         self._check_nhz = QCheckBox("NHZ Atmospheres")
         self._check_nhz.setEnabled(False)
+        self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
+        self._check_oxygen_biomass.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
@@ -450,6 +452,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout.addWidget(self._check_system_detail)
         check_layout.addWidget(self._check_physical)
         check_layout.addWidget(self._check_nhz)
+        check_layout.addWidget(self._check_oxygen_biomass)
         left_layout.addWidget(check_row)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
@@ -517,9 +520,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _on_system_detail_toggled(self, checked: bool) -> None:
         self._check_physical.setEnabled(checked)
         self._check_nhz.setEnabled(checked)
+        self._check_oxygen_biomass.setEnabled(checked)
         if not checked:
             self._check_physical.setChecked(False)
             self._check_nhz.setChecked(False)
+            self._check_oxygen_biomass.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -681,7 +686,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         world.hydrographics, world.size
                     )
         if attach_detail_flag:
-            _attach_detail(system)  # type: ignore[arg-type]
+            _attach_detail(  # type: ignore[arg-type]
+                system,
+                optional_biomass_rule=self._check_oxygen_biomass.isChecked(),
+            )
             # Apply moon tidal DMs now that moons have orbital positions
             if self._check_physical.isChecked():
                 world = system.mainworld  # type: ignore[attr-defined]
@@ -1139,6 +1147,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             p_yr = getattr(orbit, "orbit_period_yr", None)
             period_str = _fmt_period(p_yr) if (p_yr is not None and not is_empty) else "—"
             notes_str = str(orbit.notes) if orbit.notes else ""
+            if detail_attached and orbit.world_type == "terrestrial":
+                _br = getattr(getattr(orbit, "detail", None), "biomass_rating", None)
+                if _br is not None and _br > 0:
+                    _bn = f"Biomass {_br}"
+                    notes_str = f"{notes_str}, {_bn}" if notes_str else _bn
 
             ecc_part = f"{orbit.eccentricity:.3f}" if orbit.eccentricity > 0 else "—"
             incl_part = f"{orbit.inclination:.1f}°" if orbit.inclination > 0 else "—"
@@ -1218,22 +1231,31 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         moon.orbit_range.capitalize()
                         if moon.orbit_range else ""
                     )
+                    _moon_br = getattr(getattr(moon, "detail", None), "biomass_rating", None)
+                    moon_biomass_note = (
+                        f"Biomass {_moon_br}" if (_moon_br is not None and _moon_br > 0) else ""
+                    )
                     moon_cells = [
-                        ("",               Qt.AlignmentFlag.AlignLeft),   # Star
-                        (f"↳ m{mi}",      Qt.AlignmentFlag.AlignRight),  # Orbit#
-                        (moon_pd_str,      Qt.AlignmentFlag.AlignRight),  # AU col → PD
-                        ("",               Qt.AlignmentFlag.AlignRight),  # Ecc/Incl
-                        (moon_type,        Qt.AlignmentFlag.AlignLeft),   # Type
-                        (moon_profile,     Qt.AlignmentFlag.AlignLeft),   # Profile
-                        (moon_codes,       Qt.AlignmentFlag.AlignLeft),   # Codes
-                        ("",               Qt.AlignmentFlag.AlignLeft),   # HZ
-                        (moon_range_str,   Qt.AlignmentFlag.AlignLeft),   # Zone → range
-                        (moon_period_str,  Qt.AlignmentFlag.AlignRight),  # Period
-                        ("",               Qt.AlignmentFlag.AlignLeft),   # Notes
+                        ("",                  Qt.AlignmentFlag.AlignLeft),   # Star
+                        (f"↳ m{mi}",         Qt.AlignmentFlag.AlignRight),  # Orbit#
+                        (moon_pd_str,         Qt.AlignmentFlag.AlignRight),  # AU col → PD
+                        ("",                  Qt.AlignmentFlag.AlignRight),  # Ecc/Incl
+                        (moon_type,           Qt.AlignmentFlag.AlignLeft),   # Type
+                        (moon_profile,        Qt.AlignmentFlag.AlignLeft),   # Profile
+                        (moon_codes,          Qt.AlignmentFlag.AlignLeft),   # Codes
+                        ("",                  Qt.AlignmentFlag.AlignLeft),   # HZ
+                        (moon_range_str,      Qt.AlignmentFlag.AlignLeft),   # Zone → range
+                        (moon_period_str,     Qt.AlignmentFlag.AlignRight),  # Period
+                        (moon_biomass_note,   Qt.AlignmentFlag.AlignLeft),   # Notes
                     ]
+                    moon_css = (
+                        "table-mw"
+                        if is_mw and mi == 1 and orbit.world_type == "gas_giant"
+                        else "table-moon"
+                    )
                     for col, (text, align) in enumerate(moon_cells):
                         lbl = QLabel(text)
-                        lbl.setObjectName("table-moon")
+                        lbl.setObjectName(moon_css)
                         lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
                         grid.addWidget(lbl, grid_row, col)
                     grid_row += 1
@@ -1468,6 +1490,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
               if physical.seismic_temperature_k is not None else []),
         ]:
             inner.addWidget(_detail_row(lbl_text, val_text))
+        br = getattr(w, "biomass_rating", None)
+        if br is not None:
+            inner.addWidget(_detail_row("Biomass rating", str(br)))
         return group
 
     def _build_atmosphere_card(self, w: object) -> "QGroupBox | None":  # pylint: disable=too-many-branches
