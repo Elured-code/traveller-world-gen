@@ -211,7 +211,7 @@ _ANOM_ECC_DM: dict = {
 }
 
 
-def _roll_eccentricity(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def roll_eccentricity(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         orbit_number: float, system_age_gyr: float,
         extra_stars: int = 0,
         is_belt: bool = False,
@@ -233,7 +233,7 @@ def _roll_eccentricity(  # pylint: disable=too-many-arguments,too-many-positiona
     return 0.0  # unreachable; satisfies type checker
 
 
-def _roll_inclination() -> float:  # pylint: disable=too-many-return-statements
+def roll_inclination() -> float:  # pylint: disable=too-many-return-statements
     """Roll orbital inclination per WBH p.28 Inclination table."""
     first = roll(2)
     if first <= 6:
@@ -248,7 +248,7 @@ def _roll_inclination() -> float:  # pylint: disable=too-many-return-statements
         return float((random.randint(1, 6) + 1) * 5 + random.randint(1, 6))  # Very High: 11–41°
     if first == 11:
         return float(roll(3) * 5 - random.randint(1, 6))                  # Extreme: 9–89°
-    return max(0.0, 180.0 - _roll_inclination())                          # Retrograde: 12
+    return max(0.0, 180.0 - roll_inclination())                           # Retrograde: 12
 
 
 @dataclass
@@ -871,7 +871,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                 and o.star_designation == primary_desig
                 and s.orbit_number < o.orbit_number
             )
-            o.eccentricity = _roll_eccentricity(
+            o.eccentricity = roll_eccentricity(
                 o.orbit_number, age,
                 extra_stars=extra,
                 is_belt=(o.world_type == "belt"),
@@ -880,7 +880,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
 
         for s in system.stars:
             if s.role in ("close", "near", "far") and s.orbit_number is not None:
-                s.orbit_eccentricity = _roll_eccentricity(
+                s.orbit_eccentricity = roll_eccentricity(
                     s.orbit_number, age, is_star=True
                 )
 
@@ -891,11 +891,11 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                 continue
             if o.anomaly_type == "inclined":
                 continue  # angle already stored in notes
-            o.inclination = _roll_inclination()
+            o.inclination = roll_inclination()
 
         for s in system.stars:
             if s.role in ("close", "near", "far") and s.orbit_number is not None:
-                s.orbit_inclination = _roll_inclination()
+                s.orbit_inclination = roll_inclination()
 
     return result
 

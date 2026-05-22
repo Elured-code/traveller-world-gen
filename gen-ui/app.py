@@ -1235,11 +1235,19 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     moon_biomass_note = (
                         f"Biomass {_moon_br}" if (_moon_br is not None and _moon_br > 0) else ""
                     )
+                    _mecc  = moon.orbit_eccentricity
+                    _mincl = moon.orbit_inclination
+                    _mecc_part  = f"{_mecc:.3f}" if _mecc > 0 else "—"
+                    _mincl_part = f"{_mincl:.1f}°" if _mincl > 0 else "—"
+                    moon_ecc_incl = (
+                        f"{_mecc_part}/{_mincl_part}"
+                        if (_mecc > 0 or _mincl > 0) else ""
+                    )
                     moon_cells = [
                         ("",                  Qt.AlignmentFlag.AlignLeft),   # Star
                         (f"↳ m{mi}",         Qt.AlignmentFlag.AlignRight),  # Orbit#
                         (moon_pd_str,         Qt.AlignmentFlag.AlignRight),  # AU col → PD
-                        ("",                  Qt.AlignmentFlag.AlignRight),  # Ecc/Incl
+                        (moon_ecc_incl,       Qt.AlignmentFlag.AlignRight),  # Ecc/Incl
                         (moon_type,           Qt.AlignmentFlag.AlignLeft),   # Type
                         (moon_profile,        Qt.AlignmentFlag.AlignLeft),   # Profile
                         (moon_codes,          Qt.AlignmentFlag.AlignLeft),   # Codes

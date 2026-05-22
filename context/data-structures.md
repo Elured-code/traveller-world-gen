@@ -362,8 +362,8 @@ class Moon:  # pylint: disable=too-many-instance-attributes
     orbit_period_hours: Optional[float] # √(orbit_km³ / mass_earth) / 361730
     ring_centre_pd: Optional[float]     # rings only: 0.4 + roll(2)/8
     ring_span_pd: Optional[float]       # rings only: roll(3)/100 + 0.07
-    orbit_eccentricity: float           # default 0.0 (deferred — not yet rolled)
-    orbit_retrograde: bool              # default False (deferred — not yet rolled)
+    orbit_eccentricity: float           # default 0.0; rolled via roll_eccentricity() when orbit placed
+    orbit_inclination: float            # default 0.0; rolled via roll_inclination(); >90° = retrograde
 
     # properties: .size_str
 ```

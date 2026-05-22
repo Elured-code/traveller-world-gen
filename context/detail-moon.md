@@ -208,8 +208,11 @@ Inner edge clamped: if `centre − span/2 < 0.55`, centre is shifted outward.
 For the mainworld, `WorldPhysical.diameter_km` and `WorldPhysical.mass` are used
 directly (accessed via `mainworld.size_detail`).
 
-**Optional eccentricity/direction** (WBH p.76) — deferred; fields are present
-on `Moon` but left at defaults (`orbit_eccentricity=0.0`, `orbit_retrograde=False`).
+**Eccentricity and inclination** (WBH p.76) — rolled for each significant moon
+when orbit data is provided. `roll_eccentricity(orbit_number=2.0, system_age_gyr=0.0)`
+(no world-specific DMs) and `roll_inclination()` are called from `traveller_orbit_gen`.
+Inclination > 90° implies retrograde. Emitted to JSON as `orbit_eccentricity` (4 d.p.)
+and `orbit_inclination` (2 d.p.) when > 0.
 
 ### Belt physical detail (WBH pp.131-133)
 
