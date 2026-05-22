@@ -23,10 +23,15 @@ AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
 import pathlib
+import sys
 
 import jinja2
 
-_TEMPLATE_DIR = pathlib.Path(__file__).parent / "templates"
+if getattr(sys, "frozen", False):
+    # Running inside a PyInstaller bundle; sys._MEIPASS is the bundle root.
+    _TEMPLATE_DIR = pathlib.Path(sys._MEIPASS) / "templates"  # type: ignore[attr-defined]
+else:
+    _TEMPLATE_DIR = pathlib.Path(__file__).parent / "templates"
 _ENV = jinja2.Environment(
     loader=jinja2.FileSystemLoader(str(_TEMPLATE_DIR)),
     autoescape=True,
