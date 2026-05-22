@@ -541,10 +541,15 @@
               "minimum": 0,
               "description": "Tidal Seismic Stress (WBH ~p.127). Derived from primary mass, world size, eccentricity, orbital distance, and period. Present after apply_moon_tidal_effects() is called. Only emitted when > 0."
             },
+            "tidal_stress_factor": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Tidal Stress Factor (WBH p.126): floor(tidal_amplitude_m / 10). Represents the seismic stress contribution from surface tidal amplitude (star + moons). Present after apply_moon_tidal_effects() is called. Only emitted when > 0."
+            },
             "total_seismic_stress": {
               "type": "integer",
               "minimum": 0,
-              "description": "Total Seismic Stress = Residual Seismic Stress + Tidal Seismic Stress. Present after apply_moon_tidal_effects() is called."
+              "description": "Total Seismic Stress = Residual Seismic Stress + Tidal Seismic Stress + Tidal Stress Factor. Present after apply_moon_tidal_effects() is called."
             },
             "seismic_temperature_k": {
               "type": "integer",

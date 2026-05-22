@@ -1,12 +1,36 @@
 # Release Notes — v1.3.0 (draft)
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 55–59
-**Tests:** 1189
+**Sessions:** 55–60
+**Tests:** 1195
 
 ---
 
 ## World Physical Detail
+
+### Tidal Stress Factor (issue #67, WBH p.126)
+
+`WorldPhysical` gains `tidal_stress_factor: Optional[int]` — the seismic stress
+contribution from surface tidal forces.
+
+**Formula:** `floor(tidal_amplitude_m / 10)` where `tidal_amplitude_m` is the
+combined surface tidal amplitude already computed by Session 58 (star + moons).
+
+**Example:** A world with 30.6 m of moon tidal effect + 0.24 m star effect gives
+tidal_amplitude_m = 30.84 → TSF = 3.
+
+**Integration:** `total_seismic_stress` is now the sum of all three components:
+Residual Seismic Stress + Tidal Seismic Stress + Tidal Stress Factor. Both
+`tidal_amplitude_m` and `tidal_stress_factor` are set together inside
+`_apply_seismic_stress()` via `_compute_tidal_amplitude()`.
+
+Displayed in gen-ui World Body card, `world_card.html`, and `render_system_json.py`
+in the order: Tidal Seismic Stress → Tidal Stress Factor → Residual → Total.
+`tidal_stress_factor` is emitted to JSON and schema only when > 0.
+
+6 new tests in `TestTidalStressFactor`.
+
+---
 
 ### Surface Tidal Amplitude (issue #68, WBH pp.107–108)
 

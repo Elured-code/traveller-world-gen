@@ -672,7 +672,7 @@ def _compute_tidal_amplitude(
     return round(total, 4)
 
 
-def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         physical: "WorldPhysical",
         world_size: int,
         age_gyr: float,
@@ -694,9 +694,13 @@ def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positi
         physical.diameter_km, physical.mass, star_mass_solar,
         orbit_au, orbit_eccentricity, orbit_period_hours,
     )
-    tss = rss + tidal_ss
+    tidal_amp = _compute_tidal_amplitude(world_size, star_mass_solar, orbit_au, moons)
+    tsf = math.floor(tidal_amp / 10)
+    tss = rss + tidal_ss + tsf
     physical.residual_seismic_stress = rss
     physical.tidal_seismic_stress = tidal_ss
+    physical.tidal_stress_factor = tsf
+    physical.tidal_amplitude_m = tidal_amp
     physical.total_seismic_stress = tss
     if physical.mean_temperature_k is not None and tss > 0:
         old_t = physical.mean_temperature_k
@@ -788,6 +792,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     mean_temperature_k: Optional[int] = field(default=None, init=False)
     residual_seismic_stress: Optional[int] = field(default=None, init=False)
     tidal_seismic_stress: Optional[int] = field(default=None, init=False)
+    tidal_stress_factor: Optional[int] = field(default=None, init=False)
     total_seismic_stress: Optional[int] = field(default=None, init=False)
     seismic_temperature_k: Optional[int] = field(default=None, init=False)
     tidal_amplitude_m: Optional[float] = field(default=None, init=False)
@@ -813,6 +818,8 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["residual_seismic_stress"] = self.residual_seismic_stress
         if self.tidal_seismic_stress:
             d["tidal_seismic_stress"] = self.tidal_seismic_stress
+        if self.tidal_stress_factor:
+            d["tidal_stress_factor"] = self.tidal_stress_factor
         if self.total_seismic_stress is not None:
             d["total_seismic_stress"] = self.total_seismic_stress
         if self.seismic_temperature_k is not None:
@@ -975,4 +982,3 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
         moons=moons,
         is_moon=is_moon,
     )
-    physical.tidal_amplitude_m = _compute_tidal_amplitude(world_size, star_mass, orbit_au, moons)
