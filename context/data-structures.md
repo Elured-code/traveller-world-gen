@@ -130,6 +130,10 @@ class World:
     physical: Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
                                     # set by attach_detail() for belt mainworlds (BeltPhysical),
                                     # or by generate_world_physical() for terrestrial mainworlds
+    biomass_rating: Optional[int] = field(default=None, init=False)
+                                    # set by _apply_biomass() at end of attach_detail();
+                                    # only when WorldPhysical is set (Mainworld Detail required);
+                                    # 0 = no native life; positive = life present
 
     # methods: .uwp(), .to_dict(), .to_json(), .to_html(), .summary()
     # classmethod: .from_dict(d) — reconstruct from to_dict() output
@@ -324,6 +328,9 @@ class WorldDetail:
     moons: list         # List[Moon], populated by attach_detail()
     trade_codes: list   # List[str]; empty for gas giants and rings
     physical: Optional[BeltPhysical]  # set by generate_system_detail() for belt slots; None otherwise
+    biomass_rating: Optional[int]     # set by _apply_biomass() at end of attach_detail();
+                                      # None for gas giants, belts, and empty slots;
+                                      # 0 = no native life; positive = life present
 
     # computed properties:
     # .inhabited -> bool
@@ -331,6 +338,7 @@ class WorldDetail:
     # .profile -> str        (see Profile string formats below)
 
     # method: .to_dict()  — includes "physical": belt_physical.to_dict() or None
+    #                        includes "biomass_rating": int when not None
 ```
 
 ---

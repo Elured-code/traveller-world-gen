@@ -21,6 +21,18 @@ attach_detail(system: TravellerSystem) -> None
     # system.mainworld.physical and system.mainworld_orbit.detail.physical.
     # Reads system.nhz_atmospheres and threads it through all secondary and
     # moon atmosphere generation (Session 38 cont.).
+    # Calls _apply_biomass(system) as its final step (Session 61).
+
+generate_biomass_rating(
+    atm: int, hydro: int, age_gyr: float, temperature_zone: str,
+    mean_temp_k: Optional[int] = None, has_biologic_taint: bool = False,
+) -> int
+    # Roll and return biomass rating (WBH pp.127-131). Roll 2D + DMs;
+    # clamp combined DM to [-12, +4]. Returns 0 for no life.
+    # Special Case 1: biologic taint + rolled ≤ 0 → returns 1 (currently dormant).
+    # Special Case 2: inhospitable atm + biomass ≥ 1 → adds adjustment.
+    # DM tables: _ATM_BIOMASS_DM, _HYDRO_BIOMASS_DM, _TEMP_ZONE_BIOMASS_DM,
+    #            _SC2_ATM_SET, _SC2_ADJUSTMENT (all module-level).
 
 table: str = system_body_table(system: TravellerSystem) -> str
     # Formatted text table of all orbits and their moon sub-rows.

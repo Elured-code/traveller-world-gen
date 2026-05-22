@@ -639,6 +639,11 @@
           }
         }
       ]
+    },
+    "biomass_rating": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Native life biomass rating (WBH pp.127-131). 0 means no native life. Absent when not yet generated."
     }
   },
   "$defs": {

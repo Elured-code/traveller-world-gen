@@ -1,8 +1,33 @@
 # Release Notes — v1.3.0 (draft)
 
 **Branch:** `feature/updates` → `main`
-**Sessions:** 55–60
-**Tests:** 1195
+**Sessions:** 55–61
+**Tests:** 1267
+
+---
+
+## Native Life — Biomass Rating (Session 61, WBH pp.127–131)
+
+Biomass ratings are now generated for all terrestrial worlds and moons in a system.
+
+**Generation:** `generate_biomass_rating()` rolls 2D with DMs from atmosphere, hydrographics, system age, and temperature (simplified zone or mean K when available). Combined DM is clamped to [−12, +4]. Roll ≤ 0 → no native life. Special Case 1 (biologic taint + rolled 0 → biomass 1) is implemented but dormant pending biologic taint generation. Special Case 2 (inhospitable atmospheres 0, 1, A, B, C, F+ → biomass adjusted upward) is active. The optional rule (oxygenated atmospheres minimum biomass 1) is implemented off by default — see **Optional rule** below.
+
+**RNG placement:** All biomass rolls are appended at the end of `attach_detail()` via `_apply_biomass()`, preserving all existing seed outputs for other fields.
+
+**Mainworld requirement:** Mainworld biomass is only computed when Mainworld Detail is enabled (`WorldPhysical` set). Secondary worlds and their moons always receive biomass ratings when System Detail is enabled.
+
+**Data structures:**
+- `World.biomass_rating: Optional[int]` — mainworld biomass (set by `_apply_biomass()`)
+- `WorldDetail.biomass_rating: Optional[int]` — secondary world and moon biomass
+
+**Display:**
+- System card orbit table Notes column: "Biomass N" for any terrestrial world or moon with biomass > 0
+- Mainworld physical card (World Body): always shows biomass rating when Mainworld Detail is enabled
+- JSON output: `biomass_rating` field added to World schema (optional integer, min 0)
+
+**Optional rule — "Oxygen requires biomass":** When enabled (`optional_biomass_rule=True` in `attach_detail()`), any world with an oxygenated atmosphere (codes 2–9, D, E) that rolls biomass 0 is raised to 1. In gen-ui, controlled by the **"Oxygen requires biomass"** checkbox (enabled only when System detail is active; cleared when System detail is disabled). No seed disruption when disabled. Rare earth variant remains deferred.
+
+**Tests:** 72 new tests in `tests/test_biomass.py` covering all DM table entries, DM clamping, Special Cases 1 and 2, temperature paths, age DM cumulative application, and the optional oxygen rule.
 
 ---
 
@@ -78,6 +103,12 @@ be fully deterministic (the broken-lock check was a source of intermittent test 
 ---
 
 ## Bug Fixes
+
+### Mainworld-as-moon row not bold in orbit table (Session 61)
+
+When the mainworld is a satellite of a gas giant it appears as a moon sub-row in the system orbit table. It was rendered with the `table-moon` CSS class instead of `table-mw`, so the row was not displayed in bold like other mainworld rows. Fixed: `moon_css` is now `"table-mw"` when `is_mw and mi == 1 and orbit.world_type == "gas_giant"`.
+
+---
 
 ### BeltPhysical crash in `apply_moon_tidal_effects()` (Session 59)
 
@@ -165,14 +196,6 @@ All five consumer files (`traveller_world_gen.py`, `traveller_system_gen.py`, `r
 - `cyclic-import` — pre-existing `traveller_system_gen` → `traveller_world_detail` cycle resolved at runtime via `TYPE_CHECKING` guard. Tracked for cleanup.
 
 Pylint 10.00/10 maintained across all core generation modules.
-
----
-
-## Known Gaps / Deferred
-
-- **Tidal Stress Factor** (WBH p.126) — the contribution to total seismic stress from
-  tidal effects in metres, divided by 10. Deferred pending availability of the p.126
-  formula text. Tracked as issue #67.
 
 ---
 
