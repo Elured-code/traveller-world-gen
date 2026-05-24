@@ -34,6 +34,22 @@ generate_biomass_rating(
     # DM tables: _ATM_BIOMASS_DM, _HYDRO_BIOMASS_DM, _TEMP_ZONE_BIOMASS_DM,
     #            _SC2_ATM_SET, _SC2_ADJUSTMENT (all module-level).
 
+generate_biocomplexity_rating(
+    biomass: int, atm: int, age_gyr: float,
+    has_low_oxygen_taint: bool = False,
+) -> int
+    # Roll biocomplexity rating (WBH pp.127-131). 2D − 7 + min(biomass, 9) + DMs.
+    # DMs: atm not 4–9 → DM−2; low-O taint → DM−2;
+    #      age ≤ 1 Gyr → DM−10; ≤ 2 Gyr → DM−8; ≤ 3 Gyr → DM−4; ≤ 4 Gyr → DM−2.
+    # Worst DM used at exact age boundaries. Minimum result 1.
+
+generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, bool]
+    # Check for native/extinct sophonts (WBH p.131).
+    # Only call when biocomplexity >= 8. Biocomplexity > 9 capped at 9.
+    # Current sophont: 2D + min(bio,9) − 7 ≥ 13 (no DMs).
+    # Extinct: same + DM+1 if age > 5 Gyr; only rolled when current fails.
+    # Returns (native_sophont, extinct_sophont).
+
 table: str = system_body_table(system: TravellerSystem) -> str
     # Formatted text table of all orbits and their moon sub-rows.
 

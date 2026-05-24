@@ -1366,3 +1366,74 @@ class TestTidalStressFactor:
             )
         assert wp.tidal_stress_factor == 0
         assert "tidal_stress_factor" not in wp.to_dict()
+
+
+class TestGGSatelliteTidal:
+    """Gas giant primary tidal contribution for mainworld-as-GG-satellite (issue #74)."""
+
+    _ORBIT_AU  = 5.2    # Jupiter-like GG orbit around star
+    _STAR_MASS = 1.0
+    _AGE       = 1.0
+    _ORBIT_NUM = 6.0
+
+    def _make_wp(self):
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            return generate_world_physical(
+                world, age_gyr=self._AGE,
+                orbit_number=self._ORBIT_NUM, orbit_au=self._ORBIT_AU,
+                star_mass=self._STAR_MASS,
+            )
+
+    def _apply(self, wp, gg_mass_earth=0.0, gg_satellite_moon=None):
+        with patch("random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp, moons=[], world_size=8, world_atmosphere=6,
+                age_gyr=self._AGE, orbit_number=self._ORBIT_NUM,
+                orbit_au=self._ORBIT_AU, star_mass=self._STAR_MASS,
+                gg_mass_earth=gg_mass_earth,
+                gg_satellite_moon=gg_satellite_moon,
+            )
+
+    def _sat_moon(self, orbit_km, ecc=0.0, period_h=100.0):
+        sat = Moon(size_code=5)
+        sat.orbit_km = orbit_km
+        sat.orbit_eccentricity = ecc
+        sat.orbit_period_hours = period_h
+        return sat
+
+    def test_gg_tidal_amplitude_increases(self):
+        """GG tidal pull raises tidal_amplitude_m even when satellite eccentricity is zero."""
+        wp_base = self._make_wp()
+        wp_gg   = self._make_wp()
+        assert wp_base is not None and wp_gg is not None
+        self._apply(wp_base)
+        self._apply(wp_gg, gg_mass_earth=81.0,
+                    gg_satellite_moon=self._sat_moon(orbit_km=500_000.0, ecc=0.0))
+        assert wp_gg.tidal_amplitude_m > wp_base.tidal_amplitude_m
+        assert (wp_gg.tidal_stress_factor or 0) >= (wp_base.tidal_stress_factor or 0)
+
+    def test_gg_tidal_ss_increases_with_eccentricity(self):
+        """Non-zero satellite eccentricity around GG adds to tidal seismic stress."""
+        wp_base = self._make_wp()
+        wp_gg   = self._make_wp()
+        assert wp_base is not None and wp_gg is not None
+        self._apply(wp_base)
+        self._apply(wp_gg, gg_mass_earth=81.0,
+                    gg_satellite_moon=self._sat_moon(orbit_km=500_000.0, ecc=0.3, period_h=48.0))
+        assert (wp_gg.tidal_seismic_stress or 0) > (wp_base.tidal_seismic_stress or 0)
+        assert (wp_gg.total_seismic_stress or 0) > (wp_base.total_seismic_stress or 0)
+
+    def test_gg_zero_mass_is_backward_compatible(self):
+        """gg_mass_earth=0 (default) produces identical results to omitting GG params."""
+        wp1 = self._make_wp()
+        wp2 = self._make_wp()
+        assert wp1 is not None and wp2 is not None
+        self._apply(wp1)
+        self._apply(wp2, gg_mass_earth=0.0, gg_satellite_moon=None)
+        assert wp1.tidal_amplitude_m   == wp2.tidal_amplitude_m
+        assert wp1.tidal_stress_factor == wp2.tidal_stress_factor
+        assert wp1.tidal_seismic_stress == wp2.tidal_seismic_stress
+        assert wp1.total_seismic_stress == wp2.total_seismic_stress

@@ -299,9 +299,12 @@ apply_moon_tidal_effects(
     orbit_eccentricity: float = 0.0,
     num_stars_orbited: int = 1,
     is_moon: bool = False,             # True when mainworld is a satellite of a gas giant
+    gg_mass_earth: float = 0.0,        # parent gas giant mass (M⊕); used for seismic stress
+    gg_satellite_moon: Optional["Moon"] = None,  # the satellite Moon object when is_moon=True
 ) -> None
-# Re-runs the tidal lock check with moon data (only when moons is non-empty).
-# Always computes seismic stress (RSS + THF) and sets fields on physical.
+# Re-runs tidal lock check with moon data (skipped when moons is empty).
+# Always computes seismic stress (RSS + Tidal SS + TSF) and tidal amplitude.
+# Returns immediately (no-op) when physical is not a WorldPhysical instance (BeltPhysical guard).
 # Mutates physical in-place. Must be called AFTER generate_moons() completes.
 # Call sites: function_app._apply_mainworld_moon_tidal(), gen-ui _finish_system_generation().
 ```

@@ -1,8 +1,115 @@
 # Release Notes — v1.3.0 (draft)
 
 **Branch:** `v1.3.0` → `main`
-**Sessions:** 55–62
-**Tests:** 1276
+**Sessions:** 55–64
+**Tests:** 1320
+
+---
+
+## Native Sophont Generation (Session 64, WBH p.131)
+
+Worlds and moons with biocomplexity ≥ 8 now roll for the presence of a native sophont species.
+
+**Generation:** `generate_sophont_checks(biocomplexity, age_gyr) -> tuple[bool, bool]` in `traveller_world_detail.py`. Called from `_apply_biomass()` when `biocomplexity_rating >= 8`.
+
+- **Current sophont:** 2D + min(biocomplexity, 9) − 7 ≥ 13. No DMs.
+- **Extinct sophont:** Same roll + DM+1 if system age > 5 Gyr. Only rolled when current sophont check fails.
+- Biocomplexity above 9 is capped at 9 for both rolls.
+
+**Data structures:** `World.native_sophont: bool` and `World.extinct_sophont: bool` — both default `False`; set by `_apply_biomass()`. Emitted to JSON only when `True` (omitted when false).
+
+**Display:** World card biological detail section shows a "Native sophont" row: "Extant" when `native_sophont`, "Extinct (evidence present)" when `extinct_sophont`.
+
+**Tests:** 11 new tests in `TestSophontChecks` (`tests/test_biomass.py`).
+
+---
+
+## gen-ui: Radio Toggle and Tab Display (Session 64)
+
+### Detail mode radio buttons
+
+The "System detail" + "Mainworld detail" checkboxes have been replaced with a `QRadioButton` pair backed by a `QButtonGroup`:
+- **Mainworld only** — generates a single world (same behaviour as the old unchecked System detail state). Default.
+- **Full detail** — calls `generate_full_system()` + `attach_detail()` + `apply_moon_tidal_effects()` together.
+
+"NHZ Atmospheres" and "Oxygen requires biomass" checkboxes remain; they are enabled only when "Full detail" is selected and cleared when switching to "Mainworld only". The "System Map" button likewise enables/disables with Full detail.
+
+`_on_system_detail_toggled()` renamed to `_on_detail_toggled()`. No functional change to the generation logic.
+
+### Two-tab system result area
+
+`_show_system_summary()` now builds a `QTabWidget` instead of a flat vertical layout:
+- **Tab 1 — System:** stellar card + orbits card in a `QScrollArea` (scrolls independently of the main window).
+- **Tab 2 — Mainworld:** `QWebEngineView` rendering `mw.to_html()` (the full world card HTML). Default tab when a mainworld exists.
+
+The former "Stellar && Orbits" toggle checkbox has been removed; tab switching replaces it. `_build_system_summary_header()` return type simplified from `tuple[QWidget, QCheckBox]` to `QWidget`.
+
+---
+
+## Biocomplexity Rating Test Coverage and Schema Fix (Session 64)
+
+### Test coverage added
+
+41 new tests in `tests/test_biomass.py` verify every DM condition for `generate_biocomplexity_rating()`:
+
+| Class | Tests | Coverage |
+|---|---|---|
+| `TestBiocomplexityAtmosphereDM` | 9 | Atmospheres 0,3,4,6,9,10,12,13,15 |
+| `TestBiocomplexityLowOxygenDM` | 3 | No taint / taint only / taint + atm DM stack |
+| `TestBiocomplexityAgeDM` | 9 | All 5 age brackets at boundary and midpoints |
+| `TestBiocomplexitySpecialCases` | 6 | Floor ≥ 1, biomass cap, cap invariance, DM stack, high-bio max, 50-seed sweep |
+
+### JSON schema fix
+
+`biocomplexity_rating` was missing from `traveller_world_schema.json` since Session 63 despite being emitted by `World.to_dict()`. Added alongside the new `native_sophont` and `extinct_sophont` fields:
+
+```json
+"biocomplexity_rating": { "type": "integer", "minimum": 1 }
+"native_sophont":       { "type": "boolean" }
+"extinct_sophont":      { "type": "boolean" }
+```
+
+---
+
+## Bug Fix — Biomass Temperature DMs (Session 64, WBH p.127)
+
+### Missing "High temperature" DM rows
+
+`generate_biomass_rating()` was only applying three of the five WBH temperature DM rows. The table has two independent sections:
+
+| Row | Condition | DM | Was applied |
+|---|---|---|---|
+| 1 | High temperature > 353K | −2 | **No** |
+| 2 | High temperature < 273K | −4 | **No** |
+| 3 | Mean temperature > 353K | −4 | Yes |
+| 4 | Mean temperature < 273K | −2 | Yes |
+| 5 | Mean temperature 279–303K | +2 | Yes |
+
+Rows 1 and 2 apply in addition to rows 3–5. Using `mean_temperature_k` as the proxy for both measures (accurate for non-tidal-locked worlds):
+
+- `mean_temp_k > 353` → DM−2 (row 1) + DM−4 (row 3) = **DM−6** (was DM−4)
+- `mean_temp_k < 273` → DM−4 (row 2) + DM−2 (row 4) = **DM−6** (was DM−2)
+
+The combined DM now matches the footnote simplified values: boiling/frozen worlds receive the expected −6 temperature penalty regardless of which path is used. The simplified zone path (when `mean_temp_k` is not available) was already correct and is unchanged.
+
+7 existing `TestTemperatureKPath` tests updated; 3 new boundary/equivalence tests added.
+
+---
+
+## Biocomplexity Rating (Session 63, WBH pp.127–131)
+
+Worlds and moons with non-zero biomass now receive a biocomplexity rating describing the most advanced organisms possible.
+
+**Formula:** 2D − 7 + min(biomass, 9) + DMs. DMs: atmosphere not 4–9 → DM−2; low-oxygen taint → DM−2; age ≤ 1 Gyr → DM−10; ≤ 2 Gyr → DM−8; ≤ 3 Gyr → DM−4; ≤ 4 Gyr → DM−2. Worst DM used at exact age boundaries. Minimum result 1.
+
+**Data structures:** `World.biocomplexity_rating: Optional[int]` and `WorldDetail.biocomplexity_rating: Optional[int]` — set by `_apply_biomass()` (after biomass is determined); `None` when biomass = 0 or not computed. `BIOCOMPLEXITY_DESC` added to `tables.py`.
+
+**Display:**
+- System card orbit table: new **Biosphere** column shows `B, C` (biomass eHex, biocomplexity eHex) for any terrestrial world or moon with biomass > 0.
+- System card mainworld section: new **Native life** inner-card shows Biomass and Biocomplexity rows when biomass > 0.
+- World card Physical characteristics: Biomass and Biocomplexity rows appear when biomass > 0.
+
+**Rare Earth Variant** (WBH p.130): deferred — see `context/deferred-features.md`.
 
 ---
 

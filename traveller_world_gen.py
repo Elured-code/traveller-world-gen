@@ -48,6 +48,7 @@ from world_codes import AtmosphereCode, StarportCode, TemperatureCategory, Trade
 from tables import (
     SIZE_DIAMETER_LABEL, SIZE_GRAVITY_LABEL, POPULATION_RANGE,
     TRADE_CODE_FULL, BASE_FULL, ZONE_CSS_CLASS, TIDAL_STATUS_LABELS,
+    BIOCOMPLEXITY_DESC,
 )
 
 if TYPE_CHECKING:
@@ -1474,7 +1475,10 @@ class World:  # pylint: disable=too-many-instance-attributes
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
     size_detail:    Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
-    biomass_rating: Optional[int] = field(default=None, init=False)
+    biomass_rating:        Optional[int] = field(default=None, init=False)
+    biocomplexity_rating:  Optional[int] = field(default=None, init=False)
+    native_sophont:  bool = field(default=False, init=False)
+    extinct_sophont: bool = field(default=False, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1573,6 +1577,10 @@ class World:  # pylint: disable=too-many-instance-attributes
             "notes": self.notes,
             **({"size_detail": self.size_detail.to_dict()} if self.size_detail else {}),
             **({"biomass_rating": self.biomass_rating} if self.biomass_rating is not None else {}),
+            **({"biocomplexity_rating": self.biocomplexity_rating}
+               if self.biocomplexity_rating is not None else {}),
+            **({"native_sophont": True}  if self.native_sophont  else {}),
+            **({"extinct_sophont": True} if self.extinct_sophont else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1960,6 +1968,18 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "atm_profile": atm_profile,
         "gas_parts": gas_parts,
         "tidal_label": tidal_label,
+        "biomass_rating": world.biomass_rating,
+        "biomass_str": (to_hex(world.biomass_rating)
+                        if world.biomass_rating is not None else None),
+        "biocomplexity_rating": world.biocomplexity_rating,
+        "biocomplexity_str": (
+            f"{to_hex(world.biocomplexity_rating)} — "
+            + BIOCOMPLEXITY_DESC.get(
+                world.biocomplexity_rating, "Ecosystem-wide superorganisms")
+            if world.biocomplexity_rating is not None else None
+        ),
+        "native_sophont":  world.native_sophont,
+        "extinct_sophont": world.extinct_sophont,
         "json_str": world.to_json(),
     }
 

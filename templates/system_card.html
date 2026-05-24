@@ -107,7 +107,7 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
   <div class="section-title">Orbital survey{% if detail_attached %}  ·  detail included{% endif %}</div>
   <table>
     <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th><th>Ecc/Incl</th>
-    <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th></th></tr></thead>
+    <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th>Biosphere</th><th></th></tr></thead>
     <tbody>
     {% for o in orbit_rows %}
     <tr class="{{ o.row_cls }}">
@@ -120,6 +120,7 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
       <td class="mono profile">{{ o.profile }}</td>
       <td class="codes-cell">{% for tc in o.codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}</td>
       <td class="zone-{{ o.temp_zone }}">{{ o.temp_zone }}</td>
+      <td class="mono" style="font-size:11px;color:var(--txt2)">{{ o.biosphere_str }}</td>
       <td class="mw-note">{{ o.mw_mark }}</td>
     </tr>
     {% for moon in o.moons %}
@@ -133,6 +134,7 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
       <td class="mono profile">{{ moon.profile }}</td>
       <td class="codes-cell">{% for tc in moon.codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}</td>
       <td>{{ moon.range_str }}</td>
+      <td class="mono" style="font-size:11px;color:var(--txt2)">{{ moon.biosphere_str }}</td>
       <td></td>
     </tr>
     {% endfor %}
@@ -282,6 +284,16 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
     {{ drow("Surface liquid", mw.hydro_detail.surface_liquid_pct|string ~ "%") }}
   </div>
   {% endif %}
+  {% if mw.biomass_rating is not none and mw.biomass_rating > 0 %}
+  <div class="inner-card">
+    <p class="inner-lbl">Native life</p>
+    {{ drow("Biomass", mw.biomass_str) }}
+    {% if mw.biocomplexity_str is not none %}
+    {{ drow("Biocomplexity", mw.biocomplexity_str) }}
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if mw.notes %}
   <div class="inner-card">
     <p class="inner-lbl">Notes</p>

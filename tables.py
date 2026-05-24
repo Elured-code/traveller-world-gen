@@ -1,8 +1,12 @@
-# Display-layer lookup tables — single source of truth for all label/mapping data
-# used across to_dict(), summary(), to_html_context(), gen-ui, and JSON rendering.
-#
-# Physics constants (e.g. _DIAMETER_BASE_KM, SIZE_GRAVITY_G) live beside the code
-# that uses them for calculations and are NOT duplicated here.
+"""
+tables.py — Display-layer lookup tables.
+
+Single source of truth for all label/mapping data used across
+to_dict(), summary(), to_html_context(), gen-ui, and JSON rendering.
+
+Physics constants (e.g. _DIAMETER_BASE_KM, SIZE_GRAVITY_G) live beside
+the code that uses them for calculations and are NOT duplicated here.
+"""
 
 # Size → diameter display label (no " km" suffix — callers append when needed)
 SIZE_DIAMETER_LABEL: dict[int, str] = {
@@ -59,4 +63,17 @@ TIDAL_STATUS_LABELS: dict[str, str] = {
     "retrograde": "Retrograde (tidally induced)",
     "3:2_lock":   "3:2 resonance lock",
     "1:1_lock":   "1:1 tidal lock (synchronous)",
+}
+
+# Biocomplexity rating → descriptive label (WBH pp.127-131)
+BIOCOMPLEXITY_DESC: dict[int, str] = {
+    1: "Primitive single-cell organisms",
+    2: "Advanced cellular organisms",
+    3: "Primitive multicellular organisms",
+    4: "Differentiated multicellular organisms",
+    5: "Complex multicellular organisms",
+    6: "Advanced multicellular organisms",
+    7: "Socially advanced organisms",
+    8: "Mentally advanced organisms",
+    9: "Extant or extinct sophonts",
 }
