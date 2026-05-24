@@ -219,8 +219,41 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
     {% if p.mean_temperature_k is not none %}
     {{ drow("Mean temperature", p.mean_temperature_k|string ~ " K") }}
     {% endif %}
+    {% if p.advanced_mean_temperature_k is not none %}
+    {{ drow("Adv. mean temperature", p.advanced_mean_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.high_temperature_k is not none %}
+    {{ drow("High temperature", p.high_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.low_temperature_k is not none %}
+    {{ drow("Low temperature", p.low_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.albedo is not none %}
+    {{ drow("Albedo", "%.4f"|format(p.albedo)) }}
+    {% endif %}
+    {% if p.greenhouse_factor is not none %}
+    {{ drow("Greenhouse factor", "%.4f"|format(p.greenhouse_factor)) }}
+    {% endif %}
     {% if mw.phys_data.tidal_label %}
     {{ drow("Tidal status", mw.phys_data.tidal_label) }}
+    {% endif %}
+    {% if p.tidal_amplitude_m is not none %}
+    {{ drow("Tidal amplitude", "%.2f m"|format(p.tidal_amplitude_m)) }}
+    {% endif %}
+    {% if p.tidal_seismic_stress is not none and p.tidal_seismic_stress > 0 %}
+    {{ drow("Tidal seismic stress", p.tidal_seismic_stress|string) }}
+    {% endif %}
+    {% if p.tidal_stress_factor is not none and p.tidal_stress_factor > 0 %}
+    {{ drow("Tidal stress factor", p.tidal_stress_factor|string) }}
+    {% endif %}
+    {% if p.residual_seismic_stress is not none %}
+    {{ drow("Residual seismic stress", p.residual_seismic_stress|string) }}
+    {% endif %}
+    {% if p.total_seismic_stress is not none %}
+    {{ drow("Total seismic stress", p.total_seismic_stress|string) }}
+    {% endif %}
+    {% if p.seismic_temperature_k is not none %}
+    {{ drow("Seismic temperature", p.seismic_temperature_k|string ~ " K") }}
     {% endif %}
   </div>
   {% endif %}
