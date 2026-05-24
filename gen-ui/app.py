@@ -85,6 +85,7 @@ from traveller_world_gen import (  # noqa: E402
 )
 from traveller_world_physical import (  # noqa: E402
     generate_world_physical, apply_moon_tidal_effects,
+    generate_advanced_mean_temperature,
 )
 from tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
@@ -409,6 +410,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_nhz.setEnabled(False)
         self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
         self._check_oxygen_biomass.setEnabled(False)
+        self._check_advanced_temp = QCheckBox("Advanced temperature")
+        self._check_advanced_temp.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
@@ -418,6 +421,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout.addWidget(self._radio_full_detail)
         check_layout.addWidget(self._check_nhz)
         check_layout.addWidget(self._check_oxygen_biomass)
+        check_layout.addWidget(self._check_advanced_temp)
         left_layout.addWidget(check_row)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
@@ -485,9 +489,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _on_detail_toggled(self, checked: bool) -> None:
         self._check_nhz.setEnabled(checked)
         self._check_oxygen_biomass.setEnabled(checked)
+        self._check_advanced_temp.setEnabled(checked)
         if not checked:
             self._check_nhz.setChecked(False)
             self._check_oxygen_biomass.setChecked(False)
+            self._check_advanced_temp.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -645,6 +651,29 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 if world.hydrographic_detail is None:
                     world.hydrographic_detail = generate_hydrographic_detail(
                         world.hydrographics, world.size
+                    )
+                # Advanced temperature computed before attach_detail so that
+                # high_temp_k and advanced_mean_temperature_k are available to
+                # the biomass DM calculation inside _apply_biomass().
+                if (self._check_advanced_temp.isChecked()
+                        and world.size_detail is not None
+                        and mw_orbit is not None):
+                    mw_au = mw_orbit.orbit_au
+                    interior_lum = sum(
+                        s.luminosity for s in stars
+                        if s.orbit_au <= 0.0 or s.orbit_au < mw_au
+                    )
+                    pb = world.atmosphere_detail.pressure_bar if world.atmosphere_detail else None
+                    generate_advanced_mean_temperature(
+                        world.size_detail,
+                        atmosphere=world.atmosphere,
+                        hydrographics=world.hydrographics,
+                        pressure_bar=pb,
+                        luminosity=interior_lum,
+                        orbit_au=mw_au,
+                        hz_deviation=mw_orbit.hz_deviation,
+                        orbit_eccentricity=mw_orbit.eccentricity,
+                        star_mass=stars[0].mass if stars else 1.0,
                     )
             _attach_detail(  # type: ignore[arg-type]
                 system,

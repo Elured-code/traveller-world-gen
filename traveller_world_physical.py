@@ -730,6 +730,94 @@ def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positi
 
 
 # ---------------------------------------------------------------------------
+# Advanced Mean Temperature — Albedo (WBH pp.47-48)
+# ---------------------------------------------------------------------------
+
+# Atmosphere groupings for albedo modifier rolls.
+_ATM_THIN   = {1, 2, 3, 14}          # Trace / Very Thin / Low
+_ATM_MID    = {4, 5, 6, 7, 8, 9}     # Thin through Dense
+_ATM_VDENSE = {13}                    # Very Dense
+_ATM_HEAVY  = {10, 11, 12, 15, 16, 17}  # Exotic, Corrosive, Insidious, Unusual+
+
+# Atmosphere groupings for greenhouse modifier rolls.
+_ATM_GH_STANDARD = {1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14}
+_ATM_GH_EXOTIC   = {10, 15}
+_ATM_GH_EXTREME  = {11, 12, 16, 17}
+
+
+def _roll_albedo(  # pylint: disable=too-many-branches
+        atmosphere: int,
+        hydrographics: int,
+        density: float,
+        hz_deviation: float,
+) -> float:
+    """Roll surface albedo (WBH pp.47-48).
+
+    World type (rocky/icy/icy-far) sets the base; atmosphere and hydrographic
+    modifiers are added; result clamped to [0.02, 0.98].
+    """
+    # Base albedo by world type
+    if density > 0.5:
+        # Rocky world
+        albedo = 0.04 + (_roll(2) - 2) * 0.02
+    elif hz_deviation <= 2.0:
+        # Icy world (within HZCO+2)
+        albedo = 0.20 + (_roll(2) - 3) * 0.05
+    else:
+        # Icy-far world (beyond HZCO+2)
+        albedo = 0.25 + (_roll(2) - 2) * 0.07
+        if albedo <= 0.40:
+            albedo -= max(0, random.randint(1, 6) - 1) * 0.05
+
+    # Atmosphere modifier
+    if atmosphere in _ATM_THIN:
+        albedo += (_roll(2) - 3) * 0.01
+    elif atmosphere in _ATM_MID:
+        albedo += _roll(2) * 0.01
+    elif atmosphere in _ATM_VDENSE:
+        albedo += _roll(2) * 0.03
+    elif atmosphere in _ATM_HEAVY:
+        albedo += (_roll(2) - 2) * 0.05
+    # atmosphere 0 → no modifier
+
+    # Hydrographics modifier
+    if 2 <= hydrographics <= 5:
+        albedo += (_roll(2) - 2) * 0.02
+    elif hydrographics >= 6:
+        albedo += (_roll(2) - 4) * 0.03
+
+    return max(0.02, min(0.98, round(albedo, 4)))
+
+
+# ---------------------------------------------------------------------------
+# Advanced Mean Temperature — Greenhouse Factor (WBH p.48)
+# ---------------------------------------------------------------------------
+
+
+def _roll_greenhouse_factor(atmosphere: int, pressure_bar: float) -> float:
+    """Roll greenhouse factor G (WBH p.48).
+
+    Initial = 0.5 × √bar; then atmosphere-type modifier applied.
+    Standard atmospheres add a positive roll; exotic atmospheres multiply;
+    extreme atmospheres multiply by a wider range (can be very high).
+    Returns 0.0 for vacuum (atmosphere 0).
+    """
+    if atmosphere == 0:
+        return 0.0
+    initial = 0.5 * math.sqrt(pressure_bar)
+    if atmosphere in _ATM_GH_STANDARD:
+        return round(initial + _roll(3) * 0.01, 4)
+    if atmosphere in _ATM_GH_EXOTIC:
+        return round(initial * max(0.5, random.randint(1, 6) - 1), 4)
+    if atmosphere in _ATM_GH_EXTREME:
+        die = random.randint(1, 6)
+        multiplier = float(die) if die <= 5 else float(_roll(3))
+        return round(initial * multiplier, 4)
+    # Unknown atmosphere code — treat as standard
+    return round(initial + _roll(3) * 0.01, 4)
+
+
+# ---------------------------------------------------------------------------
 # Basic Mean Temperature Table (WBH p.47)
 # ---------------------------------------------------------------------------
 
@@ -816,8 +904,13 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     total_seismic_stress: Optional[int] = field(default=None, init=False)
     seismic_temperature_k: Optional[int] = field(default=None, init=False)
     tidal_amplitude_m: Optional[float] = field(default=None, init=False)
+    albedo: Optional[float] = field(default=None, init=False)
+    greenhouse_factor: Optional[float] = field(default=None, init=False)
+    advanced_mean_temperature_k: Optional[int] = field(default=None, init=False)
+    high_temperature_k: Optional[int] = field(default=None, init=False)
+    low_temperature_k: Optional[int] = field(default=None, init=False)
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict:  # pylint: disable=too-many-branches
         """Return physical characteristics as a JSON-compatible dict."""
         d = {
             "composition":          self.composition,
@@ -846,6 +939,16 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["seismic_temperature_k"] = self.seismic_temperature_k
         if self.tidal_amplitude_m is not None:
             d["tidal_amplitude_m"] = round(self.tidal_amplitude_m, 4)
+        if self.albedo is not None:
+            d["albedo"] = round(self.albedo, 4)
+        if self.greenhouse_factor is not None:
+            d["greenhouse_factor"] = round(self.greenhouse_factor, 4)
+        if self.advanced_mean_temperature_k is not None:
+            d["advanced_mean_temperature_k"] = self.advanced_mean_temperature_k
+        if self.high_temperature_k is not None:
+            d["high_temperature_k"] = self.high_temperature_k
+        if self.low_temperature_k is not None:
+            d["low_temperature_k"] = self.low_temperature_k
         return d
 
 
@@ -1008,3 +1111,112 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
         gg_mass_earth=gg_mass_earth,
         gg_satellite_moon=gg_satellite_moon,
     )
+
+
+# ---------------------------------------------------------------------------
+# Advanced Mean Temperature — High/Low variance factors (WBH pp.48-50)
+# ---------------------------------------------------------------------------
+
+def _axial_tilt_factor(axial_tilt: float, orbital_period_hours: float) -> float:
+    """Axial Tilt Factor (WBH p.48, Step 1).
+
+    sin(effective_tilt), where effective tilt is clamped to [0, 90°] by
+    reflecting values above 90° back from 180°. Halved for very short years
+    (< 0.1 standard years); increased by 0.01×yr for long years (> 2.0
+    standard years), capped at min(factor + 0.25, 1.0).
+    """
+    tilt = axial_tilt if axial_tilt <= 90.0 else 180.0 - axial_tilt
+    factor = math.sin(math.radians(tilt))
+    orbital_years = orbital_period_hours / 8766.0
+    if orbital_years < 0.1:
+        factor *= 0.5
+    elif orbital_years > 2.0:
+        factor = min(1.0, factor + min(0.25, 0.01 * orbital_years))
+    return factor
+
+
+def _rotation_factor(day_length: float, tidal_status: str) -> float:
+    """Rotation Factor (WBH p.49, Step 2).
+
+    √(|day_hours|) / 50, capped at 1.0.
+    Worlds in 1:1 solar tidal lock always return 1.0.
+    """
+    if tidal_status == "1:1_lock":
+        return 1.0
+    return min(1.0, math.sqrt(abs(day_length)) / 50.0)
+
+
+def _geographic_factor(hydrographics: int) -> float:
+    """Geographic Factor (WBH p.49, Step 3).
+
+    (10 - HYD) / 20. Surface Distribution modifier (WBH p.100) is not yet
+    implemented; the factor is used without it.
+    """
+    return (10 - hydrographics) / 20.0
+
+
+def generate_advanced_mean_temperature(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+        physical: "WorldPhysical",
+        atmosphere: int,
+        hydrographics: int,
+        pressure_bar: Optional[float],
+        luminosity: float,
+        orbit_au: float,
+        hz_deviation: float,
+        orbit_eccentricity: float = 0.0,
+        star_mass: float = 1.0,
+) -> None:
+    """Compute advanced mean temperature plus high/low bounds (WBH pp.47-50).
+
+    Mean formula: T(K) = 279 × ⁴√(L × (1-A) × (1+G) / AU²)
+    High/Low use the same formula with luminosity adjusted by the variance
+    factor and AU adjusted by orbital eccentricity (Steps 1-9, WBH pp.48-50).
+
+    Mutates physical in-place, setting albedo, greenhouse_factor,
+    advanced_mean_temperature_k, high_temperature_k, and low_temperature_k.
+    All temperatures are clamped to a minimum of 3K.
+    When pressure_bar is None (unbound-pressure subtypes), 10.0 bar is used
+    as a minimum estimate for the greenhouse factor roll.
+    """
+    if not isinstance(physical, WorldPhysical):
+        return
+    eff_pressure = pressure_bar if pressure_bar is not None else 10.0
+    albedo = _roll_albedo(atmosphere, hydrographics, physical.density, hz_deviation)
+    greenhouse = _roll_greenhouse_factor(atmosphere, eff_pressure)
+
+    # Mean temperature
+    temp_k = 3
+    if orbit_au > 0.0 and luminosity > 0.0:
+        interior = luminosity * (1.0 - albedo) * (1.0 + greenhouse)
+        if interior > 0.0:
+            temp_k = max(3, round(279.0 * (interior / orbit_au ** 2) ** 0.25))
+
+    physical.albedo = albedo
+    physical.greenhouse_factor = greenhouse
+    physical.advanced_mean_temperature_k = temp_k
+
+    # High/low temperature (Steps 1-9, WBH pp.48-50)
+    orbital_period_h = (
+        _orbital_period_hours(orbit_au, star_mass)
+        if orbit_au > 0.0 and star_mass > 0.0 else 0.0
+    )
+    variance = max(0.0, min(1.0,
+        _axial_tilt_factor(physical.axial_tilt, orbital_period_h)
+        + _rotation_factor(physical.day_length, physical.tidal_status)
+        + _geographic_factor(hydrographics)
+    ))
+    lum_modifier = variance / (1.0 + eff_pressure)   # atmospheric factor = 1 + bar
+
+    high_lum = luminosity * (1.0 + lum_modifier)
+    low_lum  = luminosity * (1.0 - lum_modifier)
+    near_au  = max(1e-9, orbit_au * (1.0 - orbit_eccentricity))
+    far_au   = max(1e-9, orbit_au * (1.0 + orbit_eccentricity))
+    common   = (1.0 - albedo) * (1.0 + greenhouse)
+
+    def _temp(lum: float, au: float) -> int:
+        if lum <= 0.0 or common <= 0.0 or au <= 0.0:
+            return 3
+        return max(3, round(279.0 * (lum * common / au ** 2) ** 0.25))
+
+    physical.high_temperature_k = _temp(high_lum, near_au)
+    physical.low_temperature_k  = _temp(low_lum,  far_au)

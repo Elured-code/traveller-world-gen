@@ -259,6 +259,21 @@
     {% if p.mean_temperature_k is not none %}
     {{ drow("Mean temperature", p.mean_temperature_k|string ~ " K") }}
     {% endif %}
+    {% if p.advanced_mean_temperature_k is not none %}
+    {{ drow("Adv. mean temperature", p.advanced_mean_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.high_temperature_k is not none %}
+    {{ drow("High temperature", p.high_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.low_temperature_k is not none %}
+    {{ drow("Low temperature", p.low_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.albedo is not none %}
+    {{ drow("Albedo", "%.4f"|format(p.albedo)) }}
+    {% endif %}
+    {% if p.greenhouse_factor is not none %}
+    {{ drow("Greenhouse factor", "%.4f"|format(p.greenhouse_factor)) }}
+    {% endif %}
     {% if ctx.tidal_label %}
     {{ drow("Tidal status", ctx.tidal_label) }}
     {% endif %}
