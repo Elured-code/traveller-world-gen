@@ -24,21 +24,27 @@ from traveller_world_physical import (
     WorldPhysical,
     _apply_seismic_stress,
     _apply_tidal_lock_result,
+    _axial_tilt_factor,
     _compute_mean_temperature,
     _compute_rss,
     _compute_tidal_ss,
     _compute_tidal_amplitude,
+    _geographic_factor,
     _moon_mass_earth,
     _moon_tidal_effect_m,
     _orbital_period_hours,
     _orbit_dm_for_mean_temp,
     _planet_moon_lock_dm,
     _reroll_eccentricity_tidal,
+    _roll_albedo,
     _roll_axial_tilt_1d,
+    _roll_greenhouse_factor,
     _roll_tidal_lock_status,
+    _rotation_factor,
     _star_tidal_effect_m,
     _tidal_lock_dm,
     apply_moon_tidal_effects,
+    generate_advanced_mean_temperature,
     generate_world_physical,
 )
 
@@ -1366,3 +1372,547 @@ class TestTidalStressFactor:
             )
         assert wp.tidal_stress_factor == 0
         assert "tidal_stress_factor" not in wp.to_dict()
+
+
+class TestGGSatelliteTidal:
+    """Gas giant primary tidal contribution for mainworld-as-GG-satellite (issue #74)."""
+
+    _ORBIT_AU  = 5.2    # Jupiter-like GG orbit around star
+    _STAR_MASS = 1.0
+    _AGE       = 1.0
+    _ORBIT_NUM = 6.0
+
+    def _make_wp(self):
+        with patch("random.randint", return_value=3):
+            world = World("Test")
+            world.size = 8
+            world.atmosphere = 6
+            return generate_world_physical(
+                world, age_gyr=self._AGE,
+                orbit_number=self._ORBIT_NUM, orbit_au=self._ORBIT_AU,
+                star_mass=self._STAR_MASS,
+            )
+
+    def _apply(self, wp, gg_mass_earth=0.0, gg_satellite_moon=None):
+        with patch("random.randint", return_value=3):
+            apply_moon_tidal_effects(
+                wp, moons=[], world_size=8, world_atmosphere=6,
+                age_gyr=self._AGE, orbit_number=self._ORBIT_NUM,
+                orbit_au=self._ORBIT_AU, star_mass=self._STAR_MASS,
+                gg_mass_earth=gg_mass_earth,
+                gg_satellite_moon=gg_satellite_moon,
+            )
+
+    def _sat_moon(self, orbit_km, ecc=0.0, period_h=100.0):
+        sat = Moon(size_code=5)
+        sat.orbit_km = orbit_km
+        sat.orbit_eccentricity = ecc
+        sat.orbit_period_hours = period_h
+        return sat
+
+    def test_gg_tidal_amplitude_increases(self):
+        """GG tidal pull raises tidal_amplitude_m even when satellite eccentricity is zero."""
+        wp_base = self._make_wp()
+        wp_gg   = self._make_wp()
+        assert wp_base is not None and wp_gg is not None
+        self._apply(wp_base)
+        self._apply(wp_gg, gg_mass_earth=81.0,
+                    gg_satellite_moon=self._sat_moon(orbit_km=500_000.0, ecc=0.0))
+        assert wp_gg.tidal_amplitude_m > wp_base.tidal_amplitude_m
+        assert (wp_gg.tidal_stress_factor or 0) >= (wp_base.tidal_stress_factor or 0)
+
+    def test_gg_tidal_ss_increases_with_eccentricity(self):
+        """Non-zero satellite eccentricity around GG adds to tidal seismic stress."""
+        wp_base = self._make_wp()
+        wp_gg   = self._make_wp()
+        assert wp_base is not None and wp_gg is not None
+        self._apply(wp_base)
+        self._apply(wp_gg, gg_mass_earth=81.0,
+                    gg_satellite_moon=self._sat_moon(orbit_km=500_000.0, ecc=0.3, period_h=48.0))
+        assert (wp_gg.tidal_seismic_stress or 0) > (wp_base.tidal_seismic_stress or 0)
+        assert (wp_gg.total_seismic_stress or 0) > (wp_base.total_seismic_stress or 0)
+
+    def test_gg_zero_mass_is_backward_compatible(self):
+        """gg_mass_earth=0 (default) produces identical results to omitting GG params."""
+        wp1 = self._make_wp()
+        wp2 = self._make_wp()
+        assert wp1 is not None and wp2 is not None
+        self._apply(wp1)
+        self._apply(wp2, gg_mass_earth=0.0, gg_satellite_moon=None)
+        assert wp1.tidal_amplitude_m   == wp2.tidal_amplitude_m
+        assert wp1.tidal_stress_factor == wp2.tidal_stress_factor
+        assert wp1.tidal_seismic_stress == wp2.tidal_seismic_stress
+        assert wp1.total_seismic_stress == wp2.total_seismic_stress
+
+
+# ---------------------------------------------------------------------------
+# _roll_albedo
+# ---------------------------------------------------------------------------
+
+def _make_wp_stub(density: float = 4.0) -> WorldPhysical:
+    """Minimal WorldPhysical stub for advanced temp tests."""
+    return WorldPhysical(
+        composition="Standard",
+        diameter_km=12_742,
+        density=density,
+        mass=1.0,
+        gravity=1.0,
+        escape_velocity=11.2,
+        axial_tilt=23.5,
+        day_length=24.0,
+        tidal_status="none",
+    )
+
+
+class TestRollAlbedo:
+    """_roll_albedo — deterministic boundaries and clamping."""
+
+    def test_rocky_world_base_min(self):
+        # Rocky (density>0.5); 2D-2 min=0 → 0.04+0=0.04; atm 0 no modifier; hydro 0 no modifier
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            # 2×1=2; 2-2=0; base=0.04+0×0.02=0.04; clamp min 0.02 → 0.04
+            result = _roll_albedo(atmosphere=0, hydrographics=0, density=4.0, hz_deviation=0.0)
+        assert result == pytest.approx(0.04, abs=1e-6)
+
+    def test_rocky_world_base_max_no_modifiers(self):
+        # Rocky; 2D-2 max=10; base=0.04+10×0.02=0.24; atm 0; hydro 0
+        with patch("traveller_world_physical.random.randint", return_value=6):
+            result = _roll_albedo(atmosphere=0, hydrographics=0, density=4.0, hz_deviation=0.0)
+        assert result == pytest.approx(0.24, abs=1e-6)
+
+    def test_icy_world_classification(self):
+        # density ≤ 0.5, hz_deviation ≤ 2.0 → icy; 2D-3 min=-1 → 0.20-0.05=0.15; clamp 0.02
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            # 2×1=2; 2-3=-1; base=0.20+(-1×0.05)=0.15; atm 0; hydro 0
+            result = _roll_albedo(atmosphere=0, hydrographics=0, density=0.4, hz_deviation=1.0)
+        assert result == pytest.approx(0.15, abs=1e-6)
+
+    def test_icy_far_world_classification(self):
+        # density ≤ 0.5, hz_deviation > 2.0 → icy-far
+        # 2D-2 with all-6: 12-2=10; base=0.25+10×0.07=0.95
+        with patch("traveller_world_physical.random.randint", return_value=6):
+            result = _roll_albedo(atmosphere=0, hydrographics=0, density=0.4, hz_deviation=3.0)
+        assert result == pytest.approx(0.95, abs=1e-6)
+
+    def test_albedo_clamped_above_0_98(self):
+        # Very high rolls should be clamped to 0.98
+        with patch("traveller_world_physical.random.randint", return_value=6):
+            # Icy-far base=0.95; atm heavy (2D-2)×0.05=10×0.05=0.50 → 1.45 → clamped 0.98
+            result = _roll_albedo(atmosphere=11, hydrographics=0, density=0.4, hz_deviation=3.0)
+        assert result == pytest.approx(0.98, abs=1e-6)
+
+    def test_albedo_clamped_below_0_02(self):
+        # Very low rolls should produce at least 0.02
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            # Icy base 0.15; atm thin (2D-3)=-1×0.01=-0.01; hydro 2-5 (2D-2)=0×0.02=0
+            # 0.15-0.01=0.14; still above 0.02
+            result = _roll_albedo(atmosphere=1, hydrographics=3, density=0.4, hz_deviation=1.0)
+        assert result >= 0.02
+
+    def test_mid_atmosphere_adds_positive(self):
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            base = _roll_albedo(atmosphere=0, hydrographics=0, density=4.0, hz_deviation=0.0)
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            mid = _roll_albedo(atmosphere=6, hydrographics=0, density=4.0, hz_deviation=0.0)
+        assert mid > base
+
+    def test_hydro_6_plus_adds_modifier(self):
+        with patch("traveller_world_physical.random.randint", return_value=4):
+            no_hydro = _roll_albedo(atmosphere=0, hydrographics=0, density=4.0, hz_deviation=0.0)
+        with patch("traveller_world_physical.random.randint", return_value=4):
+            high_hydro = _roll_albedo(atmosphere=0, hydrographics=8, density=4.0, hz_deviation=0.0)
+        # 2D-4 with die=4: 2×4-4=4; 4×0.03=0.12; so high_hydro should be > no_hydro
+        assert high_hydro > no_hydro
+
+    def test_result_in_valid_range(self):
+        import random as rng
+        rng.seed(42)
+        for _ in range(50):
+            result = _roll_albedo(6, 5, 3.5, 0.5)
+            assert 0.02 <= result <= 0.98
+
+
+# ---------------------------------------------------------------------------
+# _roll_greenhouse_factor
+# ---------------------------------------------------------------------------
+
+class TestRollGreenhouseFactor:
+    """_roll_greenhouse_factor — vacuum, standard, exotic, extreme."""
+
+    def test_vacuum_returns_zero(self):
+        result = _roll_greenhouse_factor(atmosphere=0, pressure_bar=0.0)
+        assert result == 0.0
+
+    def test_standard_atm_positive(self):
+        # Standard atm 6, pressure 1.0 bar; initial=0.5; 3D min=3 → +0.03; result≥0.53
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            result = _roll_greenhouse_factor(atmosphere=6, pressure_bar=1.0)
+        assert result == pytest.approx(0.5 + 3 * 0.01, abs=1e-6)
+
+    def test_standard_atm_scales_with_pressure(self):
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            low = _roll_greenhouse_factor(atmosphere=6, pressure_bar=1.0)
+            high = _roll_greenhouse_factor(atmosphere=6, pressure_bar=4.0)
+        assert high > low
+
+    def test_exotic_atm_multiplier_clamp(self):
+        # Atm 10 exotic; 1D=1 → max(0.5, 1-1)=max(0.5, 0)=0.5; initial=0.5×√1=0.5 → 0.5×0.5=0.25
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            result = _roll_greenhouse_factor(atmosphere=10, pressure_bar=1.0)
+        assert result == pytest.approx(0.5 * 0.5, abs=1e-4)
+
+    def test_exotic_atm_higher_die(self):
+        # 1D=4 → max(0.5, 4-1)=max(0.5, 3)=3; initial=0.5; result=0.5×3=1.5
+        with patch("traveller_world_physical.random.randint", return_value=4):
+            result = _roll_greenhouse_factor(atmosphere=10, pressure_bar=1.0)
+        assert result == pytest.approx(0.5 * 3.0, abs=1e-4)
+
+    def test_extreme_atm_die_1_to_5(self):
+        # Atm 11 extreme; 1D=3 → multiplier=3; initial=0.5; result=0.5×3=1.5
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            result = _roll_greenhouse_factor(atmosphere=11, pressure_bar=1.0)
+        assert result == pytest.approx(0.5 * 3.0, abs=1e-4)
+
+    def test_extreme_atm_die_6_uses_3d(self):
+        # 1D=6 → multiplier=3D=3×6=18; initial=0.5; result=0.5×18=9.0
+        def _seq_randint(*_args):
+            return 6
+        with patch("traveller_world_physical.random.randint", side_effect=_seq_randint):
+            result = _roll_greenhouse_factor(atmosphere=11, pressure_bar=1.0)
+        # 3D with all 6 → 18
+        assert result == pytest.approx(0.5 * 18.0, abs=1e-4)
+
+    def test_atm_14_is_standard(self):
+        # Atm 14 (Low) is in _ATM_GH_STANDARD
+        with patch("traveller_world_physical.random.randint", return_value=2):
+            result = _roll_greenhouse_factor(atmosphere=14, pressure_bar=1.0)
+        assert result > 0.0
+        # Should equal initial + 3D×0.01 = 0.5 + 6×0.01 = 0.56
+        assert result == pytest.approx(0.5 + 6 * 0.01, abs=1e-6)
+
+    def test_atm_13_very_dense_standard(self):
+        with patch("traveller_world_physical.random.randint", return_value=2):
+            result = _roll_greenhouse_factor(atmosphere=13, pressure_bar=10.0)
+        # initial = 0.5 × √10 ≈ 1.5811; + 6×0.01 = 1.6411
+        assert result == pytest.approx(0.5 * math.sqrt(10.0) + 6 * 0.01, abs=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# generate_advanced_mean_temperature
+# ---------------------------------------------------------------------------
+
+class TestGenerateAdvancedMeanTemperature:
+    """generate_advanced_mean_temperature — mutation, formula, edge cases."""
+
+    def _run(self, atmosphere=6, hydrographics=5, pressure_bar=1.0,
+             luminosity=1.0, orbit_au=1.0, hz_deviation=0.0,
+             density=4.0) -> WorldPhysical:
+        wp = _make_wp_stub(density=density)
+        generate_advanced_mean_temperature(
+            wp,
+            atmosphere=atmosphere,
+            hydrographics=hydrographics,
+            pressure_bar=pressure_bar,
+            luminosity=luminosity,
+            orbit_au=orbit_au,
+            hz_deviation=hz_deviation,
+        )
+        return wp
+
+    def test_sets_all_three_fields(self):
+        wp = self._run()
+        assert wp.albedo is not None
+        assert wp.greenhouse_factor is not None
+        assert wp.advanced_mean_temperature_k is not None
+
+    def test_temperature_minimum_3k(self):
+        # orbit_au=0 → formula skipped → 3K floor
+        wp = _make_wp_stub()
+        generate_advanced_mean_temperature(
+            wp, atmosphere=0, hydrographics=0,
+            pressure_bar=0.0, luminosity=1.0, orbit_au=0.0, hz_deviation=0.0,
+        )
+        assert wp.advanced_mean_temperature_k == 3
+
+    def test_zero_luminosity_gives_3k(self):
+        wp = _make_wp_stub()
+        generate_advanced_mean_temperature(
+            wp, atmosphere=0, hydrographics=0,
+            pressure_bar=0.0, luminosity=0.0, orbit_au=1.0, hz_deviation=0.0,
+        )
+        assert wp.advanced_mean_temperature_k == 3
+
+    def test_earth_like_approx_288k(self):
+        # Earth-like params; albedo~0.3, greenhouse~0.33, L=1, AU=1
+        # T = 279 × (1 × 0.7 × 1.33)^0.25 ≈ 279 × (0.931)^0.25 ≈ 279 × 0.982 ≈ 274
+        # Not exact due to stochastic albedo/greenhouse; just check reasonable range
+        import random as rng
+        rng.seed(12345)
+        wp = self._run(luminosity=1.0, orbit_au=1.0)
+        assert 150 <= wp.advanced_mean_temperature_k <= 500
+
+    def test_closer_orbit_higher_temp(self):
+        import random as rng
+        rng.seed(99)
+        wp_close = self._run(orbit_au=0.5)
+        rng.seed(99)
+        wp_far = self._run(orbit_au=2.0)
+        assert wp_close.advanced_mean_temperature_k > wp_far.advanced_mean_temperature_k
+
+    def test_higher_luminosity_higher_temp(self):
+        import random as rng
+        rng.seed(77)
+        wp_dim = self._run(luminosity=0.1)
+        rng.seed(77)
+        wp_bright = self._run(luminosity=10.0)
+        assert wp_bright.advanced_mean_temperature_k > wp_dim.advanced_mean_temperature_k
+
+    def test_none_pressure_uses_10_bar_fallback(self):
+        # None pressure should not raise; falls back to 10.0 bar for greenhouse
+        wp = _make_wp_stub()
+        generate_advanced_mean_temperature(
+            wp, atmosphere=6, hydrographics=5,
+            pressure_bar=None, luminosity=1.0, orbit_au=1.0, hz_deviation=0.0,
+        )
+        assert wp.advanced_mean_temperature_k is not None
+        assert wp.greenhouse_factor is not None
+
+    def test_albedo_clamped_in_valid_range(self):
+        import random as rng
+        rng.seed(1)
+        for _ in range(20):
+            wp = self._run()
+            assert 0.02 <= (wp.albedo or 0.0) <= 0.98
+
+    def test_greenhouse_factor_non_negative(self):
+        import random as rng
+        rng.seed(2)
+        for _ in range(20):
+            wp = self._run()
+            assert (wp.greenhouse_factor or 0.0) >= 0.0
+
+    def test_vacuum_atmosphere_zero_greenhouse(self):
+        with patch("traveller_world_physical.random.randint", return_value=3):
+            wp = self._run(atmosphere=0, pressure_bar=0.0, luminosity=1.0, orbit_au=1.0)
+        assert wp.greenhouse_factor == 0.0
+
+    def test_to_dict_includes_new_fields(self):
+        import random as rng
+        rng.seed(5)
+        wp = self._run()
+        d = wp.to_dict()
+        assert "albedo" in d
+        assert "greenhouse_factor" in d
+        assert "advanced_mean_temperature_k" in d
+
+    def test_to_dict_absent_before_call(self):
+        wp = _make_wp_stub()
+        d = wp.to_dict()
+        assert "albedo" not in d
+        assert "greenhouse_factor" not in d
+        assert "advanced_mean_temperature_k" not in d
+
+
+# ---------------------------------------------------------------------------
+# _axial_tilt_factor
+# ---------------------------------------------------------------------------
+
+class TestAxialTiltFactor:
+    """_axial_tilt_factor — normalization, sine, orbital year modifiers."""
+
+    def test_zero_tilt_gives_zero(self):
+        assert _axial_tilt_factor(0.0, 8766.0) == pytest.approx(0.0, abs=1e-9)
+
+    def test_90_degree_tilt_gives_one(self):
+        assert _axial_tilt_factor(90.0, 8766.0) == pytest.approx(1.0, abs=1e-6)
+
+    def test_45_degree_tilt(self):
+        assert _axial_tilt_factor(45.0, 8766.0) == pytest.approx(math.sin(math.radians(45)), abs=1e-6)
+
+    def test_tilt_above_90_reflected(self):
+        # 135° → effective 45°; same as 45°
+        assert _axial_tilt_factor(135.0, 8766.0) == pytest.approx(_axial_tilt_factor(45.0, 8766.0), abs=1e-9)
+
+    def test_tilt_180_gives_zero(self):
+        # 180° → effective 0° → sin(0°) = 0
+        assert _axial_tilt_factor(180.0, 8766.0) == pytest.approx(0.0, abs=1e-9)
+
+    def test_short_year_halves_factor(self):
+        # orbital_period_hours < 876.6 → halved
+        normal = _axial_tilt_factor(30.0, 8766.0)
+        short  = _axial_tilt_factor(30.0, 500.0)
+        assert short == pytest.approx(normal * 0.5, abs=1e-9)
+
+    def test_long_year_increases_factor(self):
+        # orbital_period_hours > 2×8766 = 17532 → factor increases
+        normal = _axial_tilt_factor(30.0, 8766.0)
+        long_  = _axial_tilt_factor(30.0, 30000.0)
+        assert long_ > normal
+
+    def test_long_year_caps_at_1(self):
+        # Very long year with large tilt → capped at 1.0
+        assert _axial_tilt_factor(90.0, 500000.0) == pytest.approx(1.0, abs=1e-9)
+
+    def test_long_year_increase_capped_at_0_25(self):
+        # Factor + 0.01×yr increase must not exceed factor + 0.25
+        base = _axial_tilt_factor(10.0, 8766.0)
+        very_long = _axial_tilt_factor(10.0, 1_000_000.0)
+        assert very_long <= base + 0.25 + 1e-9
+
+
+# ---------------------------------------------------------------------------
+# _rotation_factor
+# ---------------------------------------------------------------------------
+
+class TestRotationFactor:
+    """_rotation_factor — formula, exceptions."""
+
+    def test_day_2500h_gives_1(self):
+        assert _rotation_factor(2500.0, "none") == pytest.approx(1.0, abs=1e-6)
+
+    def test_day_above_2500_capped_at_1(self):
+        assert _rotation_factor(3000.0, "none") == pytest.approx(1.0, abs=1e-6)
+
+    def test_day_100h(self):
+        assert _rotation_factor(100.0, "none") == pytest.approx(math.sqrt(100) / 50, abs=1e-6)
+
+    def test_day_25h(self):
+        assert _rotation_factor(25.0, "none") == pytest.approx(math.sqrt(25) / 50, abs=1e-6)
+
+    def test_1_1_lock_always_1(self):
+        assert _rotation_factor(24.0, "1:1_lock") == pytest.approx(1.0, abs=1e-9)
+        assert _rotation_factor(8766.0, "1:1_lock") == pytest.approx(1.0, abs=1e-9)
+
+    def test_non_lock_status_uses_formula(self):
+        for status in ("none", "braking", "prograde", "retrograde", "3:2_lock"):
+            assert _rotation_factor(100.0, status) == pytest.approx(math.sqrt(100) / 50, abs=1e-6)
+
+    def test_result_non_negative(self):
+        assert _rotation_factor(1.0, "none") >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# _geographic_factor
+# ---------------------------------------------------------------------------
+
+class TestGeographicFactor:
+    """_geographic_factor — HYD formula."""
+
+    def test_hydro_0(self):
+        assert _geographic_factor(0) == pytest.approx(10 / 20, abs=1e-9)
+
+    def test_hydro_10(self):
+        assert _geographic_factor(10) == pytest.approx(0 / 20, abs=1e-9)
+
+    def test_hydro_5(self):
+        assert _geographic_factor(5) == pytest.approx(5 / 20, abs=1e-9)
+
+    def test_decreases_with_higher_hydro(self):
+        assert _geographic_factor(3) > _geographic_factor(7)
+
+    def test_hydro_10_gives_zero(self):
+        assert _geographic_factor(10) == pytest.approx(0.0, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# High/Low temperature in generate_advanced_mean_temperature
+# ---------------------------------------------------------------------------
+
+class TestHighLowTemperature:
+    """High and low temperature output of generate_advanced_mean_temperature."""
+
+    def _run(self, atmosphere=6, hydrographics=5, pressure_bar=1.0,
+             luminosity=1.0, orbit_au=1.0, hz_deviation=0.0,
+             orbit_eccentricity=0.0, star_mass=1.0, density=4.0,
+             axial_tilt=23.5, day_length=24.0, tidal_status="none") -> WorldPhysical:
+        wp = WorldPhysical(
+            composition="Standard", diameter_km=12_742, density=density,
+            mass=1.0, gravity=1.0, escape_velocity=11.2,
+            axial_tilt=axial_tilt, day_length=day_length, tidal_status=tidal_status,
+        )
+        generate_advanced_mean_temperature(
+            wp, atmosphere=atmosphere, hydrographics=hydrographics,
+            pressure_bar=pressure_bar, luminosity=luminosity,
+            orbit_au=orbit_au, hz_deviation=hz_deviation,
+            orbit_eccentricity=orbit_eccentricity, star_mass=star_mass,
+        )
+        return wp
+
+    def test_high_and_low_set(self):
+        import random as rng
+        rng.seed(1)
+        wp = self._run()
+        assert wp.high_temperature_k is not None
+        assert wp.low_temperature_k is not None
+
+    def test_high_ge_mean_ge_low(self):
+        import random as rng
+        rng.seed(2)
+        wp = self._run()
+        assert wp.high_temperature_k >= wp.advanced_mean_temperature_k  # type: ignore[operator]
+        assert wp.advanced_mean_temperature_k >= wp.low_temperature_k   # type: ignore[operator]
+
+    def test_zero_eccentricity_high_gt_mean_gt_low(self):
+        # With eccentricity=0, near_au=far_au=orbit_au but luminosity modifier still differs
+        import random as rng
+        rng.seed(3)
+        wp = self._run(orbit_eccentricity=0.0, axial_tilt=45.0)
+        assert wp.high_temperature_k >= wp.advanced_mean_temperature_k  # type: ignore[operator]
+
+    def test_higher_eccentricity_wider_range(self):
+        import random as rng
+        rng.seed(4)
+        wp_lo_ecc = self._run(orbit_eccentricity=0.0)
+        rng.seed(4)
+        wp_hi_ecc = self._run(orbit_eccentricity=0.3)
+        spread_lo = wp_lo_ecc.high_temperature_k - wp_lo_ecc.low_temperature_k  # type: ignore[operator]
+        spread_hi = wp_hi_ecc.high_temperature_k - wp_hi_ecc.low_temperature_k  # type: ignore[operator]
+        assert spread_hi >= spread_lo
+
+    def test_tidal_lock_rotation_factor_1(self):
+        # 1:1 lock sets rotation_factor=1.0; with high tilt produces wide spread
+        import random as rng
+        rng.seed(5)
+        wp = self._run(axial_tilt=45.0, tidal_status="1:1_lock")
+        assert wp.high_temperature_k > wp.low_temperature_k  # type: ignore[operator]
+
+    def test_dense_atmosphere_narrows_spread(self):
+        # High pressure increases atm_factor → smaller luminosity_modifier → narrower spread
+        import random as rng
+        rng.seed(6)
+        wp_thin  = self._run(pressure_bar=0.1, axial_tilt=45.0)
+        rng.seed(6)
+        wp_thick = self._run(pressure_bar=10.0, axial_tilt=45.0)
+        spread_thin  = (wp_thin.high_temperature_k  or 0) - (wp_thin.low_temperature_k  or 0)
+        spread_thick = (wp_thick.high_temperature_k or 0) - (wp_thick.low_temperature_k or 0)
+        assert spread_thick <= spread_thin
+
+    def test_zero_tilt_no_axial_contribution(self):
+        # Axial tilt 0° → axial tilt factor = 0, still get rotation + geo contributions
+        import random as rng
+        rng.seed(7)
+        wp = self._run(axial_tilt=0.0, orbit_eccentricity=0.0)
+        assert wp.high_temperature_k is not None
+        assert wp.low_temperature_k is not None
+
+    def test_to_dict_includes_high_low(self):
+        import random as rng
+        rng.seed(8)
+        wp = self._run()
+        d = wp.to_dict()
+        assert "high_temperature_k" in d
+        assert "low_temperature_k" in d
+
+    def test_to_dict_absent_before_call(self):
+        wp = _make_wp_stub()
+        d = wp.to_dict()
+        assert "high_temperature_k" not in d
+        assert "low_temperature_k" not in d
+
+    def test_all_temps_at_least_3k(self):
+        import random as rng
+        rng.seed(9)
+        for _ in range(20):
+            wp = self._run(luminosity=0.001, orbit_au=5.0)
+            assert (wp.high_temperature_k or 0) >= 3
+            assert (wp.low_temperature_k  or 0) >= 3

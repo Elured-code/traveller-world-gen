@@ -233,6 +233,72 @@
   </div>
   {% endif %}
 
+  {% if ctx.world.size_detail is not none %}
+  {% if ctx.is_belt_phys %}
+  {% set bp = ctx.world.size_detail %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Belt body</p>
+    {{ drow("Belt span", bp.inner_au|string ~ " – " ~ bp.outer_au|string ~ " AU") }}
+    {{ drow("Composition", "M: " ~ bp.m_type_pct|string ~ "% / S: " ~ bp.s_type_pct|string ~ "% / C: " ~ bp.c_type_pct|string ~ "% / Other: " ~ bp.other_pct|string ~ "%") }}
+    {{ drow("Bulk", bp.bulk|string) }}
+    {{ drow("Resource rating", bp.resource_rating|string) }}
+    {{ drow("Significant bodies", bp.size_1_bodies|string ~ " × Size 1, " ~ bp.size_s_bodies|string ~ " × Size S") }}
+  </div>
+  {% else %}
+  {% set p = ctx.world.size_detail %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">World orbit and size detail</p>
+    {{ drow("Composition", p.composition) }}
+    {{ drow("Diameter", "{:,} km".format(p.diameter_km)) }}
+    {{ drow("Density", "%.2f g/cm³"|format(p.density)) }}
+    {{ drow("Mass", "%.4f M⊕"|format(p.mass)) }}
+    {{ drow("Surface gravity", "%.3f G"|format(p.gravity)) }}
+    {{ drow("Escape velocity", "%.2f km/s"|format(p.escape_velocity)) }}
+    {{ drow("Axial tilt", p.axial_tilt|string ~ "°") }}
+    {{ drow("Day length", "%.1f h"|format(p.day_length)) }}
+    {% if p.mean_temperature_k is not none %}
+    {{ drow("Mean temperature", p.mean_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.advanced_mean_temperature_k is not none %}
+    {{ drow("Adv. mean temperature", p.advanced_mean_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.high_temperature_k is not none %}
+    {{ drow("High temperature", p.high_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.low_temperature_k is not none %}
+    {{ drow("Low temperature", p.low_temperature_k|string ~ " K") }}
+    {% endif %}
+    {% if p.albedo is not none %}
+    {{ drow("Albedo", "%.4f"|format(p.albedo)) }}
+    {% endif %}
+    {% if p.greenhouse_factor is not none %}
+    {{ drow("Greenhouse factor", "%.4f"|format(p.greenhouse_factor)) }}
+    {% endif %}
+    {% if ctx.tidal_label %}
+    {{ drow("Tidal status", ctx.tidal_label) }}
+    {% endif %}
+    {% if p.tidal_amplitude_m is not none %}
+    {{ drow("Tidal amplitude", "%.2f m"|format(p.tidal_amplitude_m)) }}
+    {% endif %}
+    {% if p.tidal_seismic_stress is not none and p.tidal_seismic_stress > 0 %}
+    {{ drow("Tidal seismic stress", p.tidal_seismic_stress|string) }}
+    {% endif %}
+    {% if p.tidal_stress_factor is not none and p.tidal_stress_factor > 0 %}
+    {{ drow("Tidal stress factor", p.tidal_stress_factor|string) }}
+    {% endif %}
+    {% if p.residual_seismic_stress is not none %}
+    {{ drow("Residual seismic stress", p.residual_seismic_stress|string) }}
+    {% endif %}
+    {% if p.total_seismic_stress is not none %}
+    {{ drow("Total seismic stress", p.total_seismic_stress|string) }}
+    {% endif %}
+    {% if p.seismic_temperature_k is not none %}
+    {{ drow("Seismic temperature", p.seismic_temperature_k|string ~ " K") }}
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+
   {% if ctx.world.atmosphere_detail is not none %}
   {% set ad = ctx.world.atmosphere_detail %}
   <div class="inner-card" style="margin-top:12px">
@@ -292,55 +358,19 @@
   </div>
   {% endif %}
 
-  {% if ctx.world.size_detail is not none %}
-  {% if ctx.is_belt_phys %}
-  {% set bp = ctx.world.size_detail %}
+  {% if ctx.biomass_rating is not none and ctx.biomass_rating > 0 %}
   <div class="inner-card" style="margin-top:12px">
-    <p class="inner-label">Belt body</p>
-    {{ drow("Belt span", bp.inner_au|string ~ " – " ~ bp.outer_au|string ~ " AU") }}
-    {{ drow("Composition", "M: " ~ bp.m_type_pct|string ~ "% / S: " ~ bp.s_type_pct|string ~ "% / C: " ~ bp.c_type_pct|string ~ "% / Other: " ~ bp.other_pct|string ~ "%") }}
-    {{ drow("Bulk", bp.bulk|string) }}
-    {{ drow("Resource rating", bp.resource_rating|string) }}
-    {{ drow("Significant bodies", bp.size_1_bodies|string ~ " × Size 1, " ~ bp.size_s_bodies|string ~ " × Size S") }}
-  </div>
-  {% else %}
-  {% set p = ctx.world.size_detail %}
-  <div class="inner-card" style="margin-top:12px">
-    <p class="inner-label">World body</p>
-    {{ drow("Composition", p.composition) }}
-    {{ drow("Diameter", "{:,} km".format(p.diameter_km)) }}
-    {{ drow("Density", "%.2f g/cm³"|format(p.density)) }}
-    {{ drow("Mass", "%.4f M⊕"|format(p.mass)) }}
-    {{ drow("Surface gravity", "%.3f G"|format(p.gravity)) }}
-    {{ drow("Escape velocity", "%.2f km/s"|format(p.escape_velocity)) }}
-    {{ drow("Axial tilt", p.axial_tilt|string ~ "°") }}
-    {{ drow("Day length", "%.1f h"|format(p.day_length)) }}
-    {% if p.mean_temperature_k is not none %}
-    {{ drow("Mean temperature", p.mean_temperature_k|string ~ " K") }}
+    <p class="inner-label">Biological detail</p>
+    {{ drow("Biomass", ctx.biomass_str) }}
+    {% if ctx.biocomplexity_str is not none %}
+    {{ drow("Biocomplexity", ctx.biocomplexity_str) }}
     {% endif %}
-    {% if ctx.tidal_label %}
-    {{ drow("Tidal status", ctx.tidal_label) }}
-    {% endif %}
-    {% if p.tidal_amplitude_m is not none %}
-    {{ drow("Tidal amplitude", "%.2f m"|format(p.tidal_amplitude_m)) }}
-    {% endif %}
-    {% if p.tidal_seismic_stress is not none and p.tidal_seismic_stress > 0 %}
-    {{ drow("Tidal seismic stress", p.tidal_seismic_stress|string) }}
-    {% endif %}
-    {% if p.tidal_stress_factor is not none and p.tidal_stress_factor > 0 %}
-    {{ drow("Tidal stress factor", p.tidal_stress_factor|string) }}
-    {% endif %}
-    {% if p.residual_seismic_stress is not none %}
-    {{ drow("Residual seismic stress", p.residual_seismic_stress|string) }}
-    {% endif %}
-    {% if p.total_seismic_stress is not none %}
-    {{ drow("Total seismic stress", p.total_seismic_stress|string) }}
-    {% endif %}
-    {% if p.seismic_temperature_k is not none %}
-    {{ drow("Seismic temperature", p.seismic_temperature_k|string ~ " K") }}
+    {% if ctx.native_sophont %}
+    {{ drow("Native sophont", "Extant") }}
+    {% elif ctx.extinct_sophont %}
+    {{ drow("Native sophont", "Extinct (evidence present)") }}
     {% endif %}
   </div>
-  {% endif %}
   {% endif %}
 
   <details>

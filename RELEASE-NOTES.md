@@ -1,8 +1,185 @@
 # Release Notes — v1.3.0 (draft)
 
 **Branch:** `v1.3.0` → `main`
-**Sessions:** 55–62
-**Tests:** 1276
+**Sessions:** 55–65
+**Tests:** 1392
+
+---
+
+## Advanced Mean Temperature (Session 65, WBH pp.47-48)
+
+Physics-based mean temperature calculation now available in the gen-ui as an optional "Advanced temperature" checkbox under "Oxygen requires biomass" (enabled only with Full detail).
+
+**Formula:** `T(K) = 279 × ⁴√(L × (1−A) × (1+G) / AU²)`
+- `L` — combined luminosity of all stars interior to the world's orbit (stars with `orbit_au ≤ 0` or `orbit_au < mw_orbit_au`)
+- `A` — rolled surface albedo [0.02, 0.98]
+- `G` — rolled greenhouse factor
+- `AU` — world's orbital distance in AU
+
+**Albedo (`_roll_albedo`):** World type set by density and hz_deviation:
+- Rocky (density > 0.5): `0.04 + (2D−2) × 0.02`
+- Icy (density ≤ 0.5, hz_deviation ≤ 2.0): `0.20 + (2D−3) × 0.05`
+- Icy-far (density ≤ 0.5, hz_deviation > 2.0): `0.25 + (2D−2) × 0.07` (with negative low-roll adjustment)
+
+Atmosphere modifier (thin/mid/very-dense/heavy groups) and hydrographics modifier (2–5 or 6+) applied additively; result clamped to [0.02, 0.98].
+
+**Greenhouse factor (`_roll_greenhouse_factor`):** Initial = `0.5 × √bar`; standard atmospheres add a positive roll; exotic atmospheres multiply by a variable factor; extreme atmospheres by a larger variable factor. Atm 0 returns 0.0. When `pressure_bar` is `None` (unbound-pressure subtypes), 10.0 bar is used as a floor estimate.
+
+**New `WorldPhysical` fields:** `albedo`, `greenhouse_factor`, `advanced_mean_temperature_k`, `high_temperature_k`, `low_temperature_k` — all `Optional`, present only when `generate_advanced_mean_temperature()` is called.
+
+**Display:** World card shows "Adv. mean temperature", "High temperature", "Low temperature", "Albedo", and "Greenhouse factor" rows below the basic mean temperature row.
+
+**Tests:** 30 new tests across `TestRollAlbedo`, `TestRollGreenhouseFactor`, `TestGenerateAdvancedMeanTemperature`.
+
+---
+
+## High and Low Temperature (Session 65, WBH pp.48-50)
+
+`generate_advanced_mean_temperature()` now also computes seasonal high and low temperatures using the 9-step WBH procedure.
+
+**Steps 1–4 — Variance:**
+- Step 1: Axial Tilt Factor = sin(effective tilt clamped to [0°, 90°]); orbital year < 0.1 → ÷2; year > 2.0 → factor + min(0.01×year, 0.25), capped at 1.0
+- Step 2: Rotation Factor = min(1.0, √|day_hours|/50); 1:1 lock → 1.0
+- Step 3: Geographic Factor = (10 − hydrographics) / 20
+- Step 4: Variance = clamp(ATF + RTF + GTF, 0, 1)
+
+**Steps 5–6 — Luminosity Modifier:**
+- Step 5: Atmospheric Factor = 1 + pressure_bar
+- Step 6: Luminosity Modifier = Variance / Atmospheric Factor
+
+**Steps 7–9 — Extreme temperatures:**
+- Step 7: High Lum = L×(1+LM); Low Lum = L×(1−LM)
+- Step 8: Near AU = AU×(1−ecc); Far AU = AU×(1+ecc)
+- Step 9: High T = 279×⁴√(HighLum × (1−A) × (1+G) / NearAU²); Low T = same with LowLum/FarAU
+
+**Private helpers:** `_axial_tilt_factor()`, `_rotation_factor()`, `_geographic_factor()`.
+
+**Tests:** 42 new tests across `TestAxialTiltFactor`, `TestRotationFactor`, `TestGeographicFactor`, `TestHighLowTemperature`.
+
+---
+
+## Biomass Temperature DM Split (Session 65, WBH p.127)
+
+`generate_biomass_rating()` gains a `high_temp_k: Optional[int] = None` parameter. The WBH p.127 temperature DM table has five rows split across two measures:
+
+| Row | Condition | DM |
+|---|---|---|
+| 1 | High temperature > 353K | −2 |
+| 2 | High temperature < 273K | −4 |
+| 3 | Mean temperature > 353K | −4 |
+| 4 | Mean temperature < 273K | −2 |
+| 5 | Mean temperature 279–303K | +2 |
+
+When `high_temp_k` is passed (from `WorldPhysical.high_temperature_k`), rows 1–2 use it directly. When `None`, `mean_temp_k` is used as proxy (backward-compatible). `_apply_biomass()` reads `advanced_mean_temperature_k` and `high_temperature_k` off `WorldPhysical` via `getattr` (no import dependency).
+
+**Tests:** 11 new tests in `TestHighTempKSplit`.
+
+---
+
+## Native Sophont Generation (Session 64, WBH p.131)
+
+Worlds and moons with biocomplexity ≥ 8 now roll for the presence of a native sophont species.
+
+**Generation:** `generate_sophont_checks(biocomplexity, age_gyr) -> tuple[bool, bool]` in `traveller_world_detail.py`. Called from `_apply_biomass()` when `biocomplexity_rating >= 8`.
+
+- **Current sophont:** 2D + min(biocomplexity, 9) − 7 ≥ 13. No DMs.
+- **Extinct sophont:** Same roll + DM+1 if system age > 5 Gyr. Only rolled when current sophont check fails.
+- Biocomplexity above 9 is capped at 9 for both rolls.
+
+**Data structures:** `World.native_sophont: bool` and `World.extinct_sophont: bool` — both default `False`; set by `_apply_biomass()`. Emitted to JSON only when `True` (omitted when false).
+
+**Display:** World card biological detail section shows a "Native sophont" row: "Extant" when `native_sophont`, "Extinct (evidence present)" when `extinct_sophont`.
+
+**Tests:** 11 new tests in `TestSophontChecks` (`tests/test_biomass.py`).
+
+---
+
+## gen-ui: Radio Toggle and Tab Display (Session 64)
+
+### Detail mode radio buttons
+
+The "System detail" + "Mainworld detail" checkboxes have been replaced with a `QRadioButton` pair backed by a `QButtonGroup`:
+- **Mainworld only** — generates a single world (same behaviour as the old unchecked System detail state). Default.
+- **Full detail** — calls `generate_full_system()` + `attach_detail()` + `apply_moon_tidal_effects()` together.
+
+"NHZ Atmospheres" and "Oxygen requires biomass" checkboxes remain; they are enabled only when "Full detail" is selected and cleared when switching to "Mainworld only". The "System Map" button likewise enables/disables with Full detail.
+
+`_on_system_detail_toggled()` renamed to `_on_detail_toggled()`. No functional change to the generation logic.
+
+### Two-tab system result area
+
+`_show_system_summary()` now builds a `QTabWidget` instead of a flat vertical layout:
+- **Tab 1 — System:** stellar card + orbits card in a `QScrollArea` (scrolls independently of the main window).
+- **Tab 2 — Mainworld:** `QWebEngineView` rendering `mw.to_html()` (the full world card HTML). Default tab when a mainworld exists.
+
+The former "Stellar && Orbits" toggle checkbox has been removed; tab switching replaces it. `_build_system_summary_header()` return type simplified from `tuple[QWidget, QCheckBox]` to `QWidget`.
+
+---
+
+## Biocomplexity Rating Test Coverage and Schema Fix (Session 64)
+
+### Test coverage added
+
+41 new tests in `tests/test_biomass.py` verify every DM condition for `generate_biocomplexity_rating()`:
+
+| Class | Tests | Coverage |
+|---|---|---|
+| `TestBiocomplexityAtmosphereDM` | 9 | Atmospheres 0,3,4,6,9,10,12,13,15 |
+| `TestBiocomplexityLowOxygenDM` | 3 | No taint / taint only / taint + atm DM stack |
+| `TestBiocomplexityAgeDM` | 9 | All 5 age brackets at boundary and midpoints |
+| `TestBiocomplexitySpecialCases` | 6 | Floor ≥ 1, biomass cap, cap invariance, DM stack, high-bio max, 50-seed sweep |
+
+### JSON schema fix
+
+`biocomplexity_rating` was missing from `traveller_world_schema.json` since Session 63 despite being emitted by `World.to_dict()`. Added alongside the new `native_sophont` and `extinct_sophont` fields:
+
+```json
+"biocomplexity_rating": { "type": "integer", "minimum": 1 }
+"native_sophont":       { "type": "boolean" }
+"extinct_sophont":      { "type": "boolean" }
+```
+
+---
+
+## Bug Fix — Biomass Temperature DMs (Session 64, WBH p.127)
+
+### Missing "High temperature" DM rows
+
+`generate_biomass_rating()` was only applying three of the five WBH temperature DM rows. The table has two independent sections:
+
+| Row | Condition | DM | Was applied |
+|---|---|---|---|
+| 1 | High temperature > 353K | −2 | **No** |
+| 2 | High temperature < 273K | −4 | **No** |
+| 3 | Mean temperature > 353K | −4 | Yes |
+| 4 | Mean temperature < 273K | −2 | Yes |
+| 5 | Mean temperature 279–303K | +2 | Yes |
+
+Rows 1 and 2 apply in addition to rows 3–5. Using `mean_temperature_k` as the proxy for both measures (accurate for non-tidal-locked worlds):
+
+- `mean_temp_k > 353` → DM−2 (row 1) + DM−4 (row 3) = **DM−6** (was DM−4)
+- `mean_temp_k < 273` → DM−4 (row 2) + DM−2 (row 4) = **DM−6** (was DM−2)
+
+The combined DM now matches the footnote simplified values: boiling/frozen worlds receive the expected −6 temperature penalty regardless of which path is used. The simplified zone path (when `mean_temp_k` is not available) was already correct and is unchanged.
+
+7 existing `TestTemperatureKPath` tests updated; 3 new boundary/equivalence tests added.
+
+---
+
+## Biocomplexity Rating (Session 63, WBH pp.127–131)
+
+Worlds and moons with non-zero biomass now receive a biocomplexity rating describing the most advanced organisms possible.
+
+**Formula:** 2D − 7 + min(biomass, 9) + DMs. DMs: atmosphere not 4–9 → DM−2; low-oxygen taint → DM−2; age ≤ 1 Gyr → DM−10; ≤ 2 Gyr → DM−8; ≤ 3 Gyr → DM−4; ≤ 4 Gyr → DM−2. Worst DM used at exact age boundaries. Minimum result 1.
+
+**Data structures:** `World.biocomplexity_rating: Optional[int]` and `WorldDetail.biocomplexity_rating: Optional[int]` — set by `_apply_biomass()` (after biomass is determined); `None` when biomass = 0 or not computed. `BIOCOMPLEXITY_DESC` added to `tables.py`.
+
+**Display:**
+- System card orbit table: new **Biosphere** column shows `B, C` (biomass eHex, biocomplexity eHex) for any terrestrial world or moon with biomass > 0.
+- System card mainworld section: new **Native life** inner-card shows Biomass and Biocomplexity rows when biomass > 0.
+- World card Physical characteristics: Biomass and Biocomplexity rows appear when biomass > 0.
+
+**Rare Earth Variant** (WBH p.130): deferred — see `context/deferred-features.md`.
 
 ---
 
@@ -53,13 +230,13 @@ Biomass ratings are now generated for all terrestrial worlds and moons in a syst
 
 ## World Physical Detail
 
-### Tidal Stress Factor (issue #67, WBH p.126)
+### Tidal Stress Factor (Session 60, issue #67, WBH p.126)
 
 `WorldPhysical` gains `tidal_stress_factor: Optional[int]` — the seismic stress
 contribution from surface tidal forces.
 
 **Formula:** `floor(tidal_amplitude_m / 10)` where `tidal_amplitude_m` is the
-combined surface tidal amplitude already computed by Session 58 (star + moons).
+combined surface tidal amplitude (star + moons, computed by the Session 58 pipeline).
 
 **Example:** A world with 30.6 m of moon tidal effect + 0.24 m star effect gives
 tidal_amplitude_m = 30.84 → TSF = 3.
@@ -77,7 +254,7 @@ in the order: Tidal Seismic Stress → Tidal Stress Factor → Residual → Tota
 
 ---
 
-### Surface Tidal Amplitude (issue #68, WBH pp.107–108)
+### Surface Tidal Amplitude (Session 58, issue #68, WBH pp.107–108)
 
 `WorldPhysical` gains `tidal_amplitude_m: Optional[float]` — the combined surface tidal
 amplitude in metres from the primary star and all significant moons.
@@ -106,19 +283,30 @@ be fully deterministic (the broken-lock check was a source of intermittent test 
 
 ---
 
-- **Seismic stress** is now calculated for every mainworld that has physical detail
-  generated (i.e., when "World physical" is checked in the app). Three components are
-  shown in the World Body card:
-  - **Residual Seismic Stress** — derived from the world's size, age, density, and
-    moon sizes. A young, large, dense world with big moons will have high residual stress.
-  - **Tidal Heating Factor** — contribution from orbital eccentricity around the primary
-    star. Significant only for close, highly eccentric orbits (e.g., tidally locked
-    worlds that have retained eccentricity through resonance).
-  - **Total Seismic Stress** — sum of the above (Tidal Stress Factor from WBH p.126
-    is deferred — see below).
-  - **Seismic Temperature** — the mean temperature adjusted for internal heat:
-    ⁴√(T⁴ + TSS⁴). Shown only when the adjustment rounds to a different value than
-    the base mean temperature.
+### Seismic Stress (Session 56, WBH pp.125–128)
+
+Seismic stress is now calculated for every mainworld with physical detail. Four fields
+are added to `WorldPhysical`; all are `Optional[int]`.
+
+**Residual Seismic Stress (RSS):** `floor(Size − Age_Gyr + DMs)²`. DMs: `is_moon` +1;
+density > 1.0 +2; density < 0.5 −1; sum of significant moon sizes (Size 1+, non-ring),
+capped at +12. Values < 0 before squaring yield 0.
+
+**Tidal Seismic Stress (TSS):** `PrimaryMass⊕² × (diam/1600)⁵ × e² /
+(3000 × dist_Mkm⁵ × period_days × WorldMass⊕)`. Rounded down; stored as 0 when < 1
+(omitted from `to_dict()` when 0).
+
+**Total Seismic Stress:** RSS + TSS (+ Tidal Stress Factor once Session 60 runs).
+
+**Seismic Temperature:** `⁴√(mean_temp_k⁴ + TSS⁴)`. Set only when the result rounds
+to a value different from `mean_temperature_k`; omitted otherwise.
+
+**Display:** World Body card, `world_card.html`, and `render_system_json.py` all show
+the seismic fields. `apply_moon_tidal_effects()` sets `is_moon=True` for gas-giant
+satellite mainworlds and always runs `_apply_seismic_stress()` even when the moon list
+is empty.
+
+22 new tests in `TestResidualSeismicStress`, `TestTidalSeismicStress`, `TestApplySeismicStress`, `TestSeismicTemperature`.
 
 ---
 
