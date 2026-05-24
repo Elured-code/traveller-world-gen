@@ -1,8 +1,78 @@
 # Release Notes — v1.3.0 (draft)
 
 **Branch:** `v1.3.0` → `main`
-**Sessions:** 55–64
-**Tests:** 1320
+**Sessions:** 55–65
+**Tests:** 1392
+
+---
+
+## Advanced Mean Temperature (Session 65, WBH pp.47-48)
+
+Physics-based mean temperature calculation now available in the gen-ui as an optional "Advanced temperature" checkbox under "Oxygen requires biomass" (enabled only with Full detail).
+
+**Formula:** `T(K) = 279 × ⁴√(L × (1−A) × (1+G) / AU²)`
+- `L` — combined luminosity of all stars interior to the world's orbit (stars with `orbit_au ≤ 0` or `orbit_au < mw_orbit_au`)
+- `A` — rolled surface albedo [0.02, 0.98]
+- `G` — rolled greenhouse factor
+- `AU` — world's orbital distance in AU
+
+**Albedo (`_roll_albedo`):** World type set by density and hz_deviation:
+- Rocky (density > 0.5): `0.04 + (2D−2) × 0.02`
+- Icy (density ≤ 0.5, hz_deviation ≤ 2.0): `0.20 + (2D−3) × 0.05`
+- Icy-far (density ≤ 0.5, hz_deviation > 2.0): `0.25 + (2D−2) × 0.07` (with negative low-roll adjustment)
+
+Atmosphere modifier (thin/mid/very-dense/heavy groups) and hydrographics modifier (2–5 or 6+) applied additively; result clamped to [0.02, 0.98].
+
+**Greenhouse factor (`_roll_greenhouse_factor`):** Initial = `0.5 × √bar`; standard atmospheres add a positive roll; exotic atmospheres multiply by a variable factor; extreme atmospheres by a larger variable factor. Atm 0 returns 0.0. When `pressure_bar` is `None` (unbound-pressure subtypes), 10.0 bar is used as a floor estimate.
+
+**New `WorldPhysical` fields:** `albedo`, `greenhouse_factor`, `advanced_mean_temperature_k`, `high_temperature_k`, `low_temperature_k` — all `Optional`, present only when `generate_advanced_mean_temperature()` is called.
+
+**Display:** World card shows "Adv. mean temperature", "High temperature", "Low temperature", "Albedo", and "Greenhouse factor" rows below the basic mean temperature row.
+
+**Tests:** 30 new tests across `TestRollAlbedo`, `TestRollGreenhouseFactor`, `TestGenerateAdvancedMeanTemperature`.
+
+---
+
+## High and Low Temperature (Session 65, WBH pp.48-50)
+
+`generate_advanced_mean_temperature()` now also computes seasonal high and low temperatures using the 9-step WBH procedure.
+
+**Steps 1–4 — Variance:**
+- Step 1: Axial Tilt Factor = sin(effective tilt clamped to [0°, 90°]); orbital year < 0.1 → ÷2; year > 2.0 → factor + min(0.01×year, 0.25), capped at 1.0
+- Step 2: Rotation Factor = min(1.0, √|day_hours|/50); 1:1 lock → 1.0
+- Step 3: Geographic Factor = (10 − hydrographics) / 20
+- Step 4: Variance = clamp(ATF + RTF + GTF, 0, 1)
+
+**Steps 5–6 — Luminosity Modifier:**
+- Step 5: Atmospheric Factor = 1 + pressure_bar
+- Step 6: Luminosity Modifier = Variance / Atmospheric Factor
+
+**Steps 7–9 — Extreme temperatures:**
+- Step 7: High Lum = L×(1+LM); Low Lum = L×(1−LM)
+- Step 8: Near AU = AU×(1−ecc); Far AU = AU×(1+ecc)
+- Step 9: High T = 279×⁴√(HighLum × (1−A) × (1+G) / NearAU²); Low T = same with LowLum/FarAU
+
+**Private helpers:** `_axial_tilt_factor()`, `_rotation_factor()`, `_geographic_factor()`.
+
+**Tests:** 42 new tests across `TestAxialTiltFactor`, `TestRotationFactor`, `TestGeographicFactor`, `TestHighLowTemperature`.
+
+---
+
+## Biomass Temperature DM Split (Session 65, WBH p.127)
+
+`generate_biomass_rating()` gains a `high_temp_k: Optional[int] = None` parameter. The WBH p.127 temperature DM table has five rows split across two measures:
+
+| Row | Condition | DM |
+|---|---|---|
+| 1 | High temperature > 353K | −2 |
+| 2 | High temperature < 273K | −4 |
+| 3 | Mean temperature > 353K | −4 |
+| 4 | Mean temperature < 273K | −2 |
+| 5 | Mean temperature 279–303K | +2 |
+
+When `high_temp_k` is passed (from `WorldPhysical.high_temperature_k`), rows 1–2 use it directly. When `None`, `mean_temp_k` is used as proxy (backward-compatible). `_apply_biomass()` reads `advanced_mean_temperature_k` and `high_temperature_k` off `WorldPhysical` via `getattr` (no import dependency).
+
+**Tests:** 11 new tests in `TestHighTempKSplit`.
 
 ---
 

@@ -43,19 +43,27 @@ A `QRadioButton` pair backed by a `QButtonGroup` replaces the old "System detail
 | `_radio_mainworld_only` ("Mainworld only") | **checked** | Calls `generate_world()` only |
 | `_radio_full_detail` ("Full detail") | unchecked | Calls `generate_full_system()` + full attach pipeline |
 
-Two additional checkboxes below the radio buttons:
+Three additional checkboxes below the radio buttons:
 
 | Checkbox | Enabled when | Effect |
 |----------|-------------|--------|
 | "NHZ Atmospheres" (`_check_nhz`) | Full detail selected | Passes `nhz_atmospheres=True` |
 | "Oxygen requires biomass" (`_check_oxygen_biomass`) | Full detail selected | Passes `optional_biomass_rule=True` |
+| "Advanced temperature" (`_check_advanced_temp`) | Full detail selected | Calls `generate_advanced_mean_temperature()` before `_attach_detail()` |
 
 Orbital eccentricity and inclination are always `True` when Full detail is selected.
 The Ecc/Incl column is always populated; there are no separate checkboxes for these.
 
 **`_on_detail_toggled(checked)`** (renamed from `_on_system_detail_toggled`) —
-enables/disables the two checkboxes when Full detail is toggled; unchecks both when
+enables/disables the three checkboxes when Full detail is toggled; unchecks all three when
 switching to Mainworld only. Also calls `_map_btn.setEnabled(checked)` when set.
+
+**Advanced temperature call ordering (critical):** `generate_advanced_mean_temperature()` is
+called inside `if world is not None:` block, **before** `_attach_detail()`. This is required
+because `_attach_detail()` calls `_apply_biomass()` as its final step, and `_apply_biomass()`
+reads `high_temperature_k` and `advanced_mean_temperature_k` off the `WorldPhysical` object.
+If `generate_advanced_mean_temperature()` ran after `_attach_detail()`, the biomass DMs for
+the "High temperature" rows and the advanced mean temperature would not be applied.
 
 ### `_show_system_summary(system)` — two-tab display (Session 64)
 

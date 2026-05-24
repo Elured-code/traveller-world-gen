@@ -292,6 +292,21 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     # total_seismic_stress: RSS + Tidal Seismic Stress + TSF.
     # seismic_temperature_k: ⁴√(mean_temp⁴ + TSS⁴); only when TSS>0 and value differs.
     # tidal_amplitude_m: combined surface tidal amplitude in metres (star + moons).
+    albedo: Optional[float] = field(default=None, init=False)
+    greenhouse_factor: Optional[float] = field(default=None, init=False)
+    advanced_mean_temperature_k: Optional[int] = field(default=None, init=False)
+    high_temperature_k: Optional[int] = field(default=None, init=False)
+    low_temperature_k: Optional[int] = field(default=None, init=False)
+    # Advanced mean temperature fields set by generate_advanced_mean_temperature() (Session 65).
+    # albedo: rolled surface albedo [0.02, 0.98], world-type-dependent (rocky/icy/icy-far)
+    #   + atmosphere and hydrographics modifiers (WBH pp.47-48).
+    # greenhouse_factor: 0.5×√bar × atmosphere-type multiplier (WBH p.48).
+    # advanced_mean_temperature_k: 279 × ⁴√(L × (1-A) × (1+G) / AU²); min 3K.
+    #   L = luminosity of all stars interior to world's orbit.
+    # high_temperature_k / low_temperature_k: seasonal extremes (WBH pp.48-50).
+    #   Steps 1-4: axial tilt factor + rotation factor + geographic factor → variance.
+    #   Steps 5-6: atmospheric factor = 1+bar; luminosity modifier = variance / atm_factor.
+    #   Steps 7-9: high/low luminosity → high/low AU (near/far periastron) → T = 279×⁴√(...)
 
     # method: .to_dict()
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
@@ -299,7 +314,9 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     #       tidal_status[, eccentricity_adjusted][, mean_temperature_k]
     #       [, tidal_amplitude_m][, residual_seismic_stress]
     #       [, tidal_seismic_stress (only when >0)][, tidal_stress_factor (only when >0)]
-    #       [, total_seismic_stress][, seismic_temperature_k]  ← all only when not None
+    #       [, total_seismic_stress][, seismic_temperature_k]
+    #       [, albedo][, greenhouse_factor][, advanced_mean_temperature_k]
+    #       [, high_temperature_k][, low_temperature_k]  ← all only when not None
 ```
 
 ---

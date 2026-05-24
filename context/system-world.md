@@ -307,6 +307,38 @@ apply_moon_tidal_effects(
 # Returns immediately (no-op) when physical is not a WorldPhysical instance (BeltPhysical guard).
 # Mutates physical in-place. Must be called AFTER generate_moons() completes.
 # Call sites: function_app._apply_mainworld_moon_tidal(), gen-ui _finish_system_generation().
+
+generate_advanced_mean_temperature(
+    physical: WorldPhysical,
+    atmosphere: int,
+    hydrographics: int,
+    pressure_bar: Optional[float],     # None → 10.0 bar fallback (unbound-pressure subtypes)
+    luminosity: float,                 # combined luminosity of stars interior to world's orbit (L☉)
+    orbit_au: float,
+    hz_deviation: float,
+    orbit_eccentricity: float = 0.0,   # used for near/far AU in high/low temperature steps
+    star_mass: float = 1.0,            # solar masses; used for orbital-period step 1 year test
+) -> None
+# Physics-based mean temperature: T = 279 × ⁴√(L × (1−A) × (1+G) / AU²) (WBH pp.47-48).
+# Also computes high and low temperature via Steps 1-9 (WBH pp.48-50):
+#   Step 1: axial_tilt_factor = sin(eff_tilt ∈ [0°,90°]); year<0.1 → ÷2; year>2.0 → +0.01×yr, cap 1.0
+#   Step 2: rotation_factor = min(1.0, √|day_hours|/50); 1:1 lock → 1.0
+#   Step 3: geographic_factor = (10−HYD)/20
+#   Step 4: variance = clamp(atilt+rot+geo, 0, 1)
+#   Step 5: atmospheric_factor = 1 + pressure_bar
+#   Step 6: luminosity_modifier = variance / atmospheric_factor
+#   Step 7: high_lum = L×(1+LM); low_lum = L×(1−LM)
+#   Step 8: near_au = AU×(1−ecc); far_au = AU×(1+ecc)
+#   Step 9: high_T / low_T = 279×⁴√(lum × common / au²)
+# Rolls albedo and greenhouse factor, then computes all three temperatures.
+# Sets physical.albedo, physical.greenhouse_factor, physical.advanced_mean_temperature_k,
+#   physical.high_temperature_k, physical.low_temperature_k in-place.
+# "Interior luminosity" = sum of luminosity for stars with orbit_au≤0 or orbit_au < mw_orbit_au.
+# Temperature clamped to minimum 3K (CMB floor); 3K returned when orbit_au=0 or luminosity=0.
+# BeltPhysical guard: returns immediately when physical is not a WorldPhysical instance.
+# Call site: gen-ui _finish_system_generation() BEFORE _attach_detail() (inside if world is not None:
+#   block) when _check_advanced_temp is checked. Must precede _attach_detail() so that
+#   high_temperature_k and advanced_mean_temperature_k are set before _apply_biomass() reads them.
 ```
 
 ### Generation tables summary
@@ -319,6 +351,43 @@ apply_moon_tidal_effects(
 | Derived | p.76–77 | D* = diameter/12742; ρ* = density/5.515; mass = D*³×ρ*; gravity = D*×ρ*; v_e = 11.186×√(gravity×D*) |
 | Axial tilt | p.77 | 2D selects band (6 bands); 1D within band gives degrees; ≥10 triggers extreme sub-table (retrograde up to 180°) |
 | Day length | p.103 | (2D−2)×4 + 2 + 1D + DMs; DM+1 per 2 full Gyrs of system age |
+
+### Advanced temperature private helpers (Session 65, WBH pp.47-50)
+
+```python
+_roll_albedo(atmosphere, hydrographics, density, hz_deviation) -> float
+# World type: rocky (density>0.5), icy (density≤0.5 & hz_deviation≤2.0),
+#   icy-far (density≤0.5 & hz_deviation>2.0).
+# Base roll per type + atmosphere-group modifier + hydrographics modifier.
+# Clamped to [0.02, 0.98]. pylint: disable=too-many-branches.
+
+_roll_greenhouse_factor(atmosphere, pressure_bar) -> float
+# atm 0 → 0.0; initial = 0.5×√bar.
+# _ATM_GH_STANDARD: +3D×0.01; _ATM_GH_EXOTIC: ×max(0.5,1D-1);
+# _ATM_GH_EXTREME: ×1D (or ×3D on 6).
+
+_axial_tilt_factor(axial_tilt, orbital_period_hours) -> float
+# sin(eff_tilt) where eff_tilt = min(axial_tilt, 180-axial_tilt) capped at 90°.
+# year = orbital_period_hours/8766; year<0.1 → factor÷2;
+# year>2.0 → factor + min(0.01×year, 0.25), cap 1.0.
+
+_rotation_factor(day_length, tidal_status) -> float
+# 1:1_lock → 1.0; otherwise min(1.0, √|day_length|/50).
+
+_geographic_factor(hydrographics) -> float
+# (10 − hydrographics) / 20; result in [0.0, 0.5].
+```
+
+Atmosphere constant sets used in albedo and greenhouse calculations:
+```python
+_ATM_THIN   = {1, 2, 3, 14}
+_ATM_MID    = {4, 5, 6, 7, 8, 9}
+_ATM_VDENSE = {13}
+_ATM_HEAVY  = {10, 11, 12, 15, 16, 17}
+_ATM_GH_STANDARD = {1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 14}
+_ATM_GH_EXOTIC   = {10, 15}
+_ATM_GH_EXTREME  = {11, 12, 16, 17}
+```
 
 ### Axial tilt — extreme sub-table (implemented Session 25)
 

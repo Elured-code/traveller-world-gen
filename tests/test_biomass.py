@@ -33,8 +33,8 @@ from traveller_world_detail import (  # pylint: disable=import-error
 # ---------------------------------------------------------------------------
 
 def _roll_biomass(atm, hydro, age_gyr, temperature_zone,
-                  mean_temp_k=None, has_biologic_taint=False,
-                  dice_total=7):
+                  mean_temp_k=None, high_temp_k=None,
+                  has_biologic_taint=False, dice_total=7):
     """Call generate_biomass_rating with a fixed 2D total."""
     # Each call uses two randint(1,6) calls; we fix them both to half
     half = dice_total // 2
@@ -44,6 +44,7 @@ def _roll_biomass(atm, hydro, age_gyr, temperature_zone,
             atm=atm, hydro=hydro, age_gyr=age_gyr,
             temperature_zone=temperature_zone,
             mean_temp_k=mean_temp_k,
+            high_temp_k=high_temp_k,
             has_biologic_taint=has_biologic_taint,
         )
 
@@ -268,6 +269,71 @@ class TestTemperatureKPath:
         # Footnote zone path for boiling: DM-6; 7-6=1 → same answer ✓
         assert _roll_biomass(6, 5, 3.0, "boiling") == 1  # zone path
         assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=400) == 1  # K path
+
+
+# ---------------------------------------------------------------------------
+# Split high_temp_k / mean_temp_k DMs
+# ---------------------------------------------------------------------------
+
+class TestHighTempKSplit:
+    """When high_temp_k is provided separately, it drives the 'High temperature'
+    rows while mean_temp_k drives the 'Mean temperature' rows independently."""
+
+    def test_high_above_353_only_applies_high_row_dm(self):
+        # mean_temp=280 (sweet spot +2), high_temp=360 (>353: high DM-2)
+        # Net temp DMs: -2 + 2 = 0; base 7+0+0+0 = 7
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=280, high_temp_k=360) == 7
+
+    def test_mean_above_353_still_applies_mean_row_dm(self):
+        # mean=400, high=None → proxy path: high DM-2 + mean DM-4 = -6; 7-6=1
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=400) == 1
+
+    def test_high_above_353_mean_above_353_both_apply(self):
+        # high=400, mean=400: high DM-2 + mean DM-4 = -6; 7-6=1
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=400, high_temp_k=400) == 1
+
+    def test_high_above_353_mean_normal_net_minus2(self):
+        # high=360, mean=310 (not in any range): high DM-2; 7-2=5
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=310, high_temp_k=360) == 5
+
+    def test_high_below_273_applies_high_dm_minus4(self):
+        # high=200, mean=280 (sweet spot +2): high DM-4 + mean DM+2 = -2; 7-2=5
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=280, high_temp_k=200) == 5
+
+    def test_mean_below_273_applies_mean_dm_minus2(self):
+        # high=280, mean=200 (<273: mean DM-2); high row: 280 not extreme → 0; net -2; 7-2=5
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=200, high_temp_k=280) == 5
+
+    def test_both_below_273_applies_both_dms(self):
+        # high=200, mean=200: high DM-4 + mean DM-2 = -6; 7-6=1
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=200, high_temp_k=200) == 1
+
+    def test_sweet_spot_mean_high_above_threshold(self):
+        # mean=290 (sweet spot +2), high=360 (>353: -2): net 0; 7+0=7
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=290, high_temp_k=360) == 7
+
+    def test_high_temp_k_none_falls_back_to_mean_proxy(self):
+        # Original proxy behaviour preserved when high_temp_k not given
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=400) == 1
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=200) == 1
+
+    def test_only_high_temp_k_no_mean(self):
+        # high=400, mean=None: only high row applies (DM-2); mean rows skipped;
+        # simplified zone path also skipped since high_temp_k is not None; 7-2=5
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=None, high_temp_k=400) == 5
+
+    def test_only_high_below_273_no_mean(self):
+        # high=200, mean=None: high DM-4; 7-4=3
+        assert _roll_biomass(6, 5, 3.0, "temperate",
+                              mean_temp_k=None, high_temp_k=200) == 3
 
 
 # ---------------------------------------------------------------------------

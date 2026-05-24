@@ -25,7 +25,9 @@ attach_detail(system: TravellerSystem) -> None
 
 generate_biomass_rating(
     atm: int, hydro: int, age_gyr: float, temperature_zone: str,
-    mean_temp_k: Optional[int] = None, has_biologic_taint: bool = False,
+    mean_temp_k: Optional[int] = None,
+    high_temp_k: Optional[int] = None,
+    has_biologic_taint: bool = False,
 ) -> int
     # Roll and return biomass rating (WBH pp.127-131). Roll 2D + DMs;
     # clamp combined DM to [-12, +4]. Returns 0 for no life.
@@ -33,6 +35,12 @@ generate_biomass_rating(
     # Special Case 2: inhospitable atm + biomass ≥ 1 → adds adjustment.
     # DM tables: _ATM_BIOMASS_DM, _HYDRO_BIOMASS_DM, _TEMP_ZONE_BIOMASS_DM,
     #            _SC2_ATM_SET, _SC2_ADJUSTMENT (all module-level).
+    # Temperature DM split (Session 65, WBH p.127):
+    #   high_temp_k (or mean_temp_k as proxy): >353K → DM−2; <273K → DM−4.
+    #   mean_temp_k: >353K → DM−4; <273K → DM−2; 279–303K → DM+2.
+    #   Falls back to _TEMP_ZONE_BIOMASS_DM when both are None.
+    # _apply_biomass() reads advanced_mean_temperature_k and high_temperature_k off
+    #   WorldPhysical via getattr to pass as eff_mean_k and high_temp_k.
 
 generate_biocomplexity_rating(
     biomass: int, atm: int, age_gyr: float,

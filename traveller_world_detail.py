@@ -446,12 +446,13 @@ def generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, b
     return False, extinct_roll >= 13
 
 
-def generate_biomass_rating(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def generate_biomass_rating(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
     atm: int,
     hydro: int,
     age_gyr: float,
     temperature_zone: str,
     mean_temp_k: Optional[int] = None,
+    high_temp_k: Optional[int] = None,
     has_biologic_taint: bool = False,
 ) -> int:
     """
@@ -476,16 +477,23 @@ def generate_biomass_rating(  # pylint: disable=too-many-arguments,too-many-posi
     if age_gyr > 4.0:
         dm += 1
 
-    # Temperature DMs — both "High temperature" and "Mean temperature" rows apply (WBH p.127)
-    if mean_temp_k is not None:
-        if mean_temp_k > 353:
-            dm -= 2  # High temperature above 353K
-            dm -= 4  # Mean temperature above 353K
-        elif mean_temp_k < 273:
-            dm -= 4  # High temperature below 273K
-            dm -= 2  # Mean temperature below 273K
-        if 279 <= mean_temp_k <= 303:
-            dm += 2  # Mean temperature between 279 and 303K
+    # Temperature DMs (WBH p.127) — "High temperature" rows use high_temp_k;
+    # "Mean temperature" rows use mean_temp_k. When high_temp_k is absent,
+    # mean_temp_k is used as a proxy for both (original single-value path).
+    if mean_temp_k is not None or high_temp_k is not None:
+        eff_high = high_temp_k if high_temp_k is not None else mean_temp_k
+        if eff_high is not None:
+            if eff_high > 353:
+                dm -= 2  # High temperature above 353K
+            elif eff_high < 273:
+                dm -= 4  # High temperature below 273K
+        if mean_temp_k is not None:
+            if mean_temp_k > 353:
+                dm -= 4  # Mean temperature above 353K
+            elif mean_temp_k < 273:
+                dm -= 2  # Mean temperature below 273K
+            if 279 <= mean_temp_k <= 303:
+                dm += 2  # Mean temperature between 279 and 303K
     else:
         # Simplified category path (WBH footnote †)
         dm += _TEMP_ZONE_BIOMASS_DM.get(temperature_zone.lower(), 0)
@@ -1170,9 +1178,12 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
     if mw_orbit is None:
         return
 
-    temp_zone   = mw_orbit.temperature_zone
-    mean_temp_k = phys.mean_temperature_k  # type: ignore[attr-defined]
-    biologic    = any(
+    temp_zone    = mw_orbit.temperature_zone
+    mean_temp_k  = phys.mean_temperature_k  # type: ignore[attr-defined]
+    adv_mean_k   = getattr(phys, "advanced_mean_temperature_k", None)
+    high_temp_k  = getattr(phys, "high_temperature_k", None)
+    eff_mean_k   = adv_mean_k if adv_mean_k is not None else mean_temp_k
+    biologic     = any(
         getattr(t, "subtype", "") == "Biologic"
         for t in (mainworld.atmosphere_detail.taints
                   if mainworld.atmosphere_detail else [])
@@ -1182,7 +1193,8 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
         hydro=mainworld.hydrographics,
         age_gyr=age_gyr,
         temperature_zone=temp_zone,
-        mean_temp_k=mean_temp_k,
+        mean_temp_k=eff_mean_k,
+        high_temp_k=high_temp_k,
         has_biologic_taint=biologic,
     ), mainworld.atmosphere)
     if mainworld.biomass_rating and mainworld.biomass_rating > 0:
