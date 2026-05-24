@@ -33,29 +33,63 @@ Key instance state:
 | `_map_btn` | `QPushButton \| None` | Active "System Map" button; `None` when no system result |
 | `_map_windows` | `list[object]` | Open `SystemMapWindow` instances — list keeps them alive against GC |
 
-### Source row checkboxes
+### Source row — detail mode radio buttons (Session 64)
 
-Five checkboxes below the Procedural/TravellerMap radio buttons:
+A `QRadioButton` pair backed by a `QButtonGroup` replaces the old "System detail" +
+"Mainworld detail" checkboxes:
+
+| Button | Default | Effect |
+|--------|---------|--------|
+| `_radio_mainworld_only` ("Mainworld only") | **checked** | Calls `generate_world()` only |
+| `_radio_full_detail` ("Full detail") | unchecked | Calls `generate_full_system()` + full attach pipeline |
+
+Three additional checkboxes below the radio buttons:
 
 | Checkbox | Enabled when | Effect |
 |----------|-------------|--------|
-| "System detail" | Always | Calls `generate_full_system()` instead of `generate_world()` |
-| "Mainworld detail" | "System detail" checked | Calls `generate_world_physical(world, age_gyr)` on the mainworld |
-| "NHZ Atmospheres" | "System detail" checked | Passes `nhz_atmospheres=True` to `generate_full_system()` |
+| "NHZ Atmospheres" (`_check_nhz`) | Full detail selected | Passes `nhz_atmospheres=True` |
+| "Oxygen requires biomass" (`_check_oxygen_biomass`) | Full detail selected | Passes `optional_biomass_rule=True` |
+| "Advanced temperature" (`_check_advanced_temp`) | Full detail selected | Calls `generate_advanced_mean_temperature()` before `_attach_detail()` |
 
-Orbital eccentricity and inclination are always calculated when "System detail" is
-enabled (`orbital_eccentricity=True`, `orbital_inclination=True` are always passed).
-The Ecc/Incl column is always populated; there are no checkboxes for these options.
+Orbital eccentricity and inclination are always `True` when Full detail is selected.
+The Ecc/Incl column is always populated; there are no separate checkboxes for these.
 
-**`_on_system_detail_toggled(checked)`** — enables/disables "Mainworld detail" and
-"NHZ Atmospheres" together, and unchecks both when "System detail" is turned off.
-Also calls `_map_btn.setEnabled(checked)` when `_map_btn` is set.
+**`_on_detail_toggled(checked)`** (renamed from `_on_system_detail_toggled`) —
+enables/disables the three checkboxes when Full detail is toggled; unchecks all three when
+switching to Mainworld only. Also calls `_map_btn.setEnabled(checked)` when set.
+
+**Advanced temperature call ordering (critical):** `generate_advanced_mean_temperature()` is
+called inside `if world is not None:` block, **before** `_attach_detail()`. This is required
+because `_attach_detail()` calls `_apply_biomass()` as its final step, and `_apply_biomass()`
+reads `high_temperature_k` and `advanced_mean_temperature_k` off the `WorldPhysical` object.
+If `generate_advanced_mean_temperature()` ran after `_attach_detail()`, the biomass DMs for
+the "High temperature" rows and the advanced mean temperature would not be applied.
+
+### `_show_system_summary(system)` — two-tab display (Session 64)
+
+Builds a `QTabWidget` instead of a flat vertical layout:
+
+```python
+tabs = QTabWidget()
+# Tab 1 — System
+system_widget = QWidget()  # stellar card + orbits card
+system_scroll = QScrollArea()
+system_scroll.setWidget(system_widget)
+tabs.addTab(system_scroll, "System")
+# Tab 2 — Mainworld (default when mw is not None)
+mw_view = QWebEngineView()
+mw_view.setHtml(mw.to_html())
+tabs.addTab(mw_view, "Mainworld")
+tabs.setCurrentIndex(1)
+```
+
+The former "Stellar && Orbits" toggle checkbox is removed; tab switching replaces it.
 
 ### "System Map" button lifecycle
 
 The "System Map" button lives in `_build_system_summary_header()` (system results
 only; not shown in world-only mode). `_clear_status()` nulls `_map_btn` whenever
-the result panel is replaced. `_on_full_system_toggled()` calls
+the result panel is replaced. `_on_detail_toggled()` calls
 `_map_btn.setEnabled(checked)` when the reference is set.
 
 ### `_build_physical_card(w)`

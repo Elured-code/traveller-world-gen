@@ -1,6 +1,61 @@
 Traveller World & System Generator — What's New in v1.3.0
 ==========================================================
 
+ADVANCED TEMPERATURE (NEW IN GEN-UI)
+--------------------------------------
+- A new "Advanced temperature" checkbox under "Full detail" enables physics-based
+  temperature calculations for the mainworld.
+
+- Advanced Mean Temperature uses the formula T = 279 × ⁴√(L × (1-A) × (1+G) / AU²),
+  where L is the combined luminosity of stars interior to the world's orbit, A is the
+  rolled surface albedo, and G is the rolled greenhouse factor.
+
+  Albedo is determined by world type (rocky, icy, or icy-far, based on density and
+  orbital distance), then modified by atmosphere type and hydrographics.
+
+  Greenhouse factor is based on atmospheric pressure, scaled by whether the atmosphere
+  is standard, exotic, or extreme.
+
+- High Temperature and Low Temperature are also computed from the same albedo and
+  greenhouse values, using a 9-step seasonal variance procedure (WBH pp.48-50):
+    • Axial Tilt Factor — how much the axial tilt varies temperature across seasons
+    • Rotation Factor — how day length affects temperature distribution
+    • Geographic Factor — how land/ocean ratio affects temperature swing
+    • Luminosity Modifier — variance modulated by atmospheric buffering
+  High temperature uses the near-periastron distance; low temperature uses the
+  far-apastron distance, with eccentricity from the world's orbit.
+
+- Albedo, greenhouse factor, advanced mean, high, and low temperatures all appear
+  in the world card below the basic mean temperature row.
+
+NATIVE LIFE — BIOCOMPLEXITY AND SOPHONTS
+------------------------------------------
+- Every world or moon with a positive biomass rating now also receives a
+  Biocomplexity Rating (minimum 1) that describes the most advanced organisms
+  possible. This is based on biomass, atmosphere type, system age, and whether
+  any low-oxygen taint is present. The orbit table shows both ratings in a new
+  "Biosphere" column (e.g. "B4, C3" for Biomass 4, Biocomplexity 3).
+
+- Worlds with biocomplexity 8 or higher now roll to determine whether a native
+  sophont species exists. A "Native sophont" row appears in the world card:
+    • "Extant" — a currently living sophont species is present.
+    • "Extinct (evidence present)" — a past sophont species left traces behind.
+  The extinct roll also gets a bonus for old systems (age > 5 Gyr), reflecting
+  the longer window for a civilisation to have risen and fallen.
+
+NATIVE LIFE — BIOMASS RATING
+------------------------------
+- Biomass ratings are now generated for all terrestrial worlds and moons in a
+  system when "Full detail" is enabled. A "Biomass N" note appears in the
+  Notes column of the orbit table for any world or moon with a positive rating.
+
+- The mainworld's biomass rating is always shown in the World Body detail card
+  when "Full detail" is enabled (regardless of whether life is present).
+
+- New optional rule: enable "Oxygen requires biomass" to ensure that any world
+  with an oxygenated atmosphere (codes 2–9, D, E) has at least biomass 1, even
+  if the dice roll would produce no life.
+
 MOON ORBITS — ECCENTRICITY AND INCLINATION
 -------------------------------------------
 - Significant moons with orbital positions now have eccentricity and inclination
@@ -15,20 +70,6 @@ MOON ORBITS — ECCENTRICITY AND INCLINATION
 - Eccentricity and inclination are emitted in JSON output (as orbit_eccentricity
   and orbit_inclination) when non-zero.
 
-NATIVE LIFE — BIOMASS RATING
-------------------------------
-- Biomass ratings are now generated for all terrestrial worlds and moons in a
-  system when "System detail" is enabled. A "Biomass N" note appears in the
-  Notes column of the orbit table for any world or moon with a positive rating.
-
-- The mainworld's biomass rating is always shown in the World Body detail card
-  when "Mainworld detail" is enabled (regardless of whether life is present).
-
-- New optional rule: enable "Oxygen requires biomass" to ensure that any world
-  with an oxygenated atmosphere (codes 2–9, D, E) has at least biomass 1, even
-  if the dice roll would produce no life. The checkbox appears in the generator
-  controls alongside "System detail" and is off by default.
-
 WORLD PHYSICAL DETAIL
 ----------------------
 - Surface tidal amplitude is now calculated and displayed in the World Body
@@ -40,24 +81,47 @@ WORLD PHYSICAL DETAIL
   seismic stress contribution from surface tidal forces (tidal amplitude in
   metres ÷ 10, rounded down). It contributes to the Total Seismic Stress.
 
-- Seismic stress is now displayed as three distinct components in the World Body
+- Seismic stress is displayed as three distinct components in the World Body
   detail card:
     • Tidal Seismic Stress — contribution from the world's orbital eccentricity
     • Tidal Stress Factor — contribution from surface tidal forces
     • Residual Seismic Stress — contribution from the world's age, size, and density
-  Total Seismic Stress is the sum of all three. Where these differ from the base
-  mean temperature, the Seismic Temperature is also shown.
+  Total Seismic Stress is the sum of all three. Where internal heating raises the
+  effective temperature, the Seismic Temperature is also shown.
+
+GEN-UI CONTROLS
+----------------
+- The "System detail" and "Mainworld detail" checkboxes have been replaced with
+  a pair of radio buttons:
+    • "Mainworld only" (default) — generates a single world with full atmosphere,
+      hydrographic, and physical detail.
+    • "Full detail" — generates a complete star system with secondary worlds,
+      moons, biomass, biocomplexity, sophont checks, and the system map.
+
+- System generation results now use a two-tab layout:
+    • "System" tab — stellar data and the full orbit table.
+    • "Mainworld" tab — the mainworld HTML card (default tab).
+
+- The "NHZ Atmospheres", "Oxygen requires biomass", and "Advanced temperature"
+  checkboxes are only available under Full detail, and are cleared automatically
+  when switching back to Mainworld only.
+
+- The "Orbital Eccentricity" and "Orbital Inclination" checkboxes have been
+  removed. Both values are now always calculated when Full detail is enabled,
+  so the Ecc/Incl column is always populated.
 
 SYSTEM MAP & ORBIT TABLE
 ------------------------
 - The mainworld row in the orbit table is now always displayed in bold,
   including when the mainworld is a satellite of a gas giant.
 
-- The "Orbital Eccentricity" and "Orbital Inclination" checkboxes have been
-  removed. Both values are now always calculated when "System detail" is
-  enabled, so the Ecc/Incl column is always populated when detail is generated.
-
 BUG FIXES
 ---------
-- Fixed a crash that occurred when generating physical detail for a belt
+- Fixed: biomass temperature penalty for boiling and frozen worlds was too low.
+  The WBH p.127 table has five temperature rows (two for High temperature, three
+  for Mean temperature); only the Mean temperature rows were being applied. Both
+  sections now fire independently, so a boiling or frozen world correctly
+  receives DM-6 instead of DM-4 or DM-2.
+
+- Fixed: a crash that occurred when generating physical detail for a belt
   mainworld in a system that also had moon tidal effects to apply.

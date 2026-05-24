@@ -560,6 +560,32 @@
               "type": "number",
               "minimum": 0,
               "description": "Total surface tidal amplitude in metres (WBH pp.107-108): sum of star tidal effect and each qualifying moon's tidal effect on the planet. Star effect = (star_mass_solar × size) / (32 × AU³); moon effect = (moon_mass_earth × size) / (3.2 × (orbit_km / 1e6)³). Present when orbital data is available."
+            },
+            "albedo": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 0.98,
+              "description": "Rolled surface albedo (WBH pp.47-48). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "greenhouse_factor": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Rolled greenhouse factor G (WBH p.48). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "advanced_mean_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Physics-based mean temperature in Kelvin (WBH pp.47-48): 279 × ⁴√(L × (1−A) × (1+G) / AU²). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "high_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Physics-based high temperature bound in Kelvin (WBH pp.48-50, Steps 1-9): uses high luminosity (L × (1 + luminosity_modifier)) and near AU (AU × (1 − eccentricity)). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "low_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Physics-based low temperature bound in Kelvin (WBH pp.48-50, Steps 1-9): uses low luminosity (L × (1 − luminosity_modifier)) and far AU (AU × (1 + eccentricity)). Present only when generate_advanced_mean_temperature() has been called."
             }
           }
         },
@@ -644,6 +670,19 @@
       "type": "integer",
       "minimum": 0,
       "description": "Native life biomass rating (WBH pp.127-131). 0 means no native life. Absent when not yet generated."
+    },
+    "biocomplexity_rating": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Biocomplexity rating (WBH pp.127-131). Absent when biomass is 0 or not yet generated."
+    },
+    "native_sophont": {
+      "type": "boolean",
+      "description": "True when a native sophont currently exists (WBH p.131). Absent when false."
+    },
+    "extinct_sophont": {
+      "type": "boolean",
+      "description": "True when evidence of an extinct native sophont exists (WBH p.131). Absent when false."
     }
   },
   "$defs": {
