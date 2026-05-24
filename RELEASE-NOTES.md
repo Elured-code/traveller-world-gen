@@ -230,13 +230,13 @@ Biomass ratings are now generated for all terrestrial worlds and moons in a syst
 
 ## World Physical Detail
 
-### Tidal Stress Factor (issue #67, WBH p.126)
+### Tidal Stress Factor (Session 60, issue #67, WBH p.126)
 
 `WorldPhysical` gains `tidal_stress_factor: Optional[int]` — the seismic stress
 contribution from surface tidal forces.
 
 **Formula:** `floor(tidal_amplitude_m / 10)` where `tidal_amplitude_m` is the
-combined surface tidal amplitude already computed by Session 58 (star + moons).
+combined surface tidal amplitude (star + moons, computed by the Session 58 pipeline).
 
 **Example:** A world with 30.6 m of moon tidal effect + 0.24 m star effect gives
 tidal_amplitude_m = 30.84 → TSF = 3.
@@ -254,7 +254,7 @@ in the order: Tidal Seismic Stress → Tidal Stress Factor → Residual → Tota
 
 ---
 
-### Surface Tidal Amplitude (issue #68, WBH pp.107–108)
+### Surface Tidal Amplitude (Session 58, issue #68, WBH pp.107–108)
 
 `WorldPhysical` gains `tidal_amplitude_m: Optional[float]` — the combined surface tidal
 amplitude in metres from the primary star and all significant moons.
@@ -283,19 +283,30 @@ be fully deterministic (the broken-lock check was a source of intermittent test 
 
 ---
 
-- **Seismic stress** is now calculated for every mainworld that has physical detail
-  generated (i.e., when "World physical" is checked in the app). Three components are
-  shown in the World Body card:
-  - **Residual Seismic Stress** — derived from the world's size, age, density, and
-    moon sizes. A young, large, dense world with big moons will have high residual stress.
-  - **Tidal Heating Factor** — contribution from orbital eccentricity around the primary
-    star. Significant only for close, highly eccentric orbits (e.g., tidally locked
-    worlds that have retained eccentricity through resonance).
-  - **Total Seismic Stress** — sum of the above (Tidal Stress Factor from WBH p.126
-    is deferred — see below).
-  - **Seismic Temperature** — the mean temperature adjusted for internal heat:
-    ⁴√(T⁴ + TSS⁴). Shown only when the adjustment rounds to a different value than
-    the base mean temperature.
+### Seismic Stress (Session 56, WBH pp.125–128)
+
+Seismic stress is now calculated for every mainworld with physical detail. Four fields
+are added to `WorldPhysical`; all are `Optional[int]`.
+
+**Residual Seismic Stress (RSS):** `floor(Size − Age_Gyr + DMs)²`. DMs: `is_moon` +1;
+density > 1.0 +2; density < 0.5 −1; sum of significant moon sizes (Size 1+, non-ring),
+capped at +12. Values < 0 before squaring yield 0.
+
+**Tidal Seismic Stress (TSS):** `PrimaryMass⊕² × (diam/1600)⁵ × e² /
+(3000 × dist_Mkm⁵ × period_days × WorldMass⊕)`. Rounded down; stored as 0 when < 1
+(omitted from `to_dict()` when 0).
+
+**Total Seismic Stress:** RSS + TSS (+ Tidal Stress Factor once Session 60 runs).
+
+**Seismic Temperature:** `⁴√(mean_temp_k⁴ + TSS⁴)`. Set only when the result rounds
+to a value different from `mean_temperature_k`; omitted otherwise.
+
+**Display:** World Body card, `world_card.html`, and `render_system_json.py` all show
+the seismic fields. `apply_moon_tidal_effects()` sets `is_moon=True` for gas-giant
+satellite mainworlds and always runs `_apply_seismic_stress()` even when the moon list
+is empty.
+
+22 new tests in `TestResidualSeismicStress`, `TestTidalSeismicStress`, `TestApplySeismicStress`, `TestSeismicTemperature`.
 
 ---
 
