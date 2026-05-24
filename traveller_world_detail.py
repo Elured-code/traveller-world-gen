@@ -120,7 +120,7 @@ from traveller_world_gen import (
     generate_hydrographics,
     to_hex,
 )
-from traveller_moon_gen import generate_moons, moons_str, Moon
+from traveller_moon_gen import generate_moons, moons_str, Moon, place_moon_orbit
 from traveller_belt_physical import generate_belt_physical, BeltPhysical
 
 
@@ -145,6 +145,18 @@ def _ehex_to_int(ch: str) -> int:
     """Decode a single eHex character to int; unknown chars return 0."""
     idx = _EHEX.find(ch.upper())
     return idx if idx >= 0 else 0
+
+
+def gg_diameter_from_sah(gg_sah: str) -> int:
+    """Return the numeric diameter (Terran diameters) from a gas giant SAH string.
+
+    E.g. 'GM9' → 9, 'GLE' → 14.  Returns 8 (mid-range default) on parse failure.
+    """
+    if len(gg_sah) >= 3:
+        idx = _EHEX.find(gg_sah[2].upper())
+        if idx >= 0:
+            return idx
+    return 8
 
 
 # ---------------------------------------------------------------------------
@@ -351,6 +363,88 @@ _SC2_ADJUSTMENT: dict[int, int] = {0: 5, 1: 3, 10: 2, 11: 4, 12: 6, 15: 4}
 # Optional rule: atmospheres containing oxygen (WBH p.131)
 _OXYGEN_ATM_SET: frozenset[int] = frozenset({2, 3, 4, 5, 6, 7, 8, 9, 13, 14})
 
+# ---------------------------------------------------------------------------
+# Biocomplexity Rating (WBH pp.127-131)
+# ---------------------------------------------------------------------------
+
+_BIOCOMPLEXITY_DESC: dict[int, str] = {
+    1: "Primitive single-cell organisms",
+    2: "Advanced cellular organisms",
+    3: "Primitive multicellular organisms",
+    4: "Differentiated multicellular organisms",
+    5: "Complex multicellular organisms",
+    6: "Advanced multicellular organisms",
+    7: "Socially advanced organisms",
+    8: "Mentally advanced organisms",
+    9: "Extant or extinct sophonts",
+}
+
+
+def biocomplexity_description(rating: int) -> str:
+    """Return the descriptive label for a biocomplexity rating."""
+    if rating >= 10:
+        return "Ecosystem-wide superorganisms"
+    return _BIOCOMPLEXITY_DESC.get(rating, "")
+
+
+def generate_biocomplexity_rating(
+    biomass: int,
+    atm: int,
+    age_gyr: float,
+    has_low_oxygen_taint: bool = False,
+) -> int:
+    """
+    Roll and return the biocomplexity rating (WBH pp.127-131).
+
+    Only call when biomass > 0.  Biomass above 9 is capped at 9 for the roll.
+    Result of less than 1 becomes 1.
+
+    DMs:
+      Atmosphere not 4-9         : DM-2
+      Low oxygen taint           : DM-2
+      Age <= 1 Gyr               : DM-10 (worst DM at boundary)
+      1 < Age <= 2 Gyr           : DM-8
+      2 < Age <= 3 Gyr           : DM-4
+      3 < Age <= 4 Gyr           : DM-2
+      Age > 4 Gyr                : no DM
+    """
+    base = random.randint(1, 6) + random.randint(1, 6) - 7 + min(biomass, 9)
+    dm = 0
+    if atm < 4 or atm > 9:
+        dm -= 2
+    if has_low_oxygen_taint:
+        dm -= 2
+    if age_gyr <= 1.0:
+        dm -= 10
+    elif age_gyr <= 2.0:
+        dm -= 8
+    elif age_gyr <= 3.0:
+        dm -= 4
+    elif age_gyr <= 4.0:
+        dm -= 2
+    return max(1, base + dm)
+
+
+def generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, bool]:
+    """Check for native and extinct sophonts (WBH p.131).
+
+    Only call when biocomplexity >= 8.  Biocomplexity above 9 is capped at 9.
+
+    Returns (native_sophont, extinct_sophont).
+
+    Current sophont: 2D + min(biocomplexity, 9) − 7 ≥ 13 (no DMs).
+    Extinct sophont: 2D + min(biocomplexity, 9) − 7 + DMs ≥ 13.
+      DM+1 if age > 5 Gyrs (extinct check only).
+    If current sophont found, extinct check is skipped (returns False).
+    """
+    bio_eff = min(biocomplexity, 9)
+    current_roll = random.randint(1, 6) + random.randint(1, 6) + bio_eff - 7
+    if current_roll >= 13:
+        return True, False
+    dm = 1 if age_gyr > 5.0 else 0
+    extinct_roll = random.randint(1, 6) + random.randint(1, 6) + bio_eff - 7 + dm
+    return False, extinct_roll >= 13
+
 
 def generate_biomass_rating(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     atm: int,
@@ -382,15 +476,16 @@ def generate_biomass_rating(  # pylint: disable=too-many-arguments,too-many-posi
     if age_gyr > 4.0:
         dm += 1
 
-    # Temperature DMs
+    # Temperature DMs — both "High temperature" and "Mean temperature" rows apply (WBH p.127)
     if mean_temp_k is not None:
-        # Detailed K path (WBH table rows marked †)
         if mean_temp_k > 353:
-            dm -= 4
+            dm -= 2  # High temperature above 353K
+            dm -= 4  # Mean temperature above 353K
         elif mean_temp_k < 273:
-            dm -= 2
+            dm -= 4  # High temperature below 273K
+            dm -= 2  # Mean temperature below 273K
         if 279 <= mean_temp_k <= 303:
-            dm += 2
+            dm += 2  # Mean temperature between 279 and 303K
     else:
         # Simplified category path (WBH footnote †)
         dm += _TEMP_ZONE_BIOMASS_DM.get(temperature_zone.lower(), 0)
@@ -422,7 +517,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
 
     __slots__ = ("sah", "population", "government", "law_level",
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
-                 "biomass_rating")
+                 "biomass_rating", "biocomplexity_rating")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -437,6 +532,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.moons      = moons if moons is not None else []
         self.physical: BeltPhysical | None = None
         self.biomass_rating: Optional[int] = None
+        self.biocomplexity_rating: Optional[int] = None
         # Gas giants and rings carry no trade codes
         if (len(sah) == 3 and sah[0] == "G" and sah[1] in ("S", "M", "L")) \
                 or (len(sah) >= 1 and sah[0] == "R"):
@@ -503,6 +599,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         }
         if self.biomass_rating is not None:
             d["biomass_rating"] = self.biomass_rating
+        if self.biocomplexity_rating is not None:
+            d["biocomplexity_rating"] = self.biocomplexity_rating
         return d
 
 
@@ -854,7 +952,7 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
     return result
 
 
-def attach_detail(  # pylint: disable=too-many-locals,too-many-branches
+def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         system: TravellerSystem,
         optional_biomass_rule: bool = False,
 ) -> None:
@@ -930,6 +1028,19 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches
                 # satellite.  Represent the satellite as the first moon sub-row
                 # so the orbit table shows its UWP beneath the gas giant profile.
                 satellite_moon = Moon(size_code=mw_size)
+                # Place the mainworld satellite's orbit around the GG so that
+                # its tidal contribution to seismic stress can be computed.
+                _gg_diam    = gg_diameter_from_sah(orbit.gg_sah)
+                _gg_mass    = float(_gg_diam ** 2)          # Earth masses
+                _gg_diam_km = float(_gg_diam * 12742)       # km
+                place_moon_orbit(
+                    satellite_moon,
+                    parent_diameter_km=_gg_diam_km,
+                    parent_mass_earth=_gg_mass,
+                    parent_orbit_au=orbit.orbit_au,
+                    star_mass_solar=system.stellar_system.primary.mass,
+                    parent_ecc=orbit.eccentricity,
+                )
                 satellite_moon.detail = satellite_detail
                 orbit.detail = WorldDetail(
                     sah=orbit.gg_sah,
@@ -991,7 +1102,17 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches
     _apply_biomass(system, optional_biomass_rule=optional_biomass_rule)
 
 
-def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals
+def _set_biocomplexity(
+        detail: "WorldDetail", atm: int, age_gyr: float, has_lo: bool = False,
+) -> None:
+    """Compute and attach biocomplexity to a WorldDetail when biomass > 0."""
+    if detail.biomass_rating and detail.biomass_rating > 0:
+        detail.biocomplexity_rating = generate_biocomplexity_rating(
+            detail.biomass_rating, atm, age_gyr, has_lo,
+        )
+
+
+def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         system: TravellerSystem,
         optional_biomass_rule: bool = False,
 ) -> None:
@@ -1026,6 +1147,7 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals
             atm=atm, hydro=hydro, age_gyr=age_gyr,
             temperature_zone=orbit.temperature_zone,
         ), atm)
+        _set_biocomplexity(detail, atm, age_gyr)
         for moon in detail.moons:
             if moon.is_ring or moon.detail is None:
                 continue
@@ -1035,6 +1157,7 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals
                 atm=m_atm, hydro=m_hydro, age_gyr=age_gyr,
                 temperature_zone=orbit.temperature_zone,
             ), m_atm)
+            _set_biocomplexity(moon.detail, m_atm, age_gyr)
 
     # — Mainworld: only when WorldPhysical is available (Mainworld Detail required) —
     if mainworld is None:
@@ -1062,8 +1185,21 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals
         mean_temp_k=mean_temp_k,
         has_biologic_taint=biologic,
     ), mainworld.atmosphere)
+    if mainworld.biomass_rating and mainworld.biomass_rating > 0:
+        has_low_o = any(
+            getattr(t, "subtype_code", "") == "L"
+            for t in (mainworld.atmosphere_detail.taints
+                      if mainworld.atmosphere_detail else [])
+        )
+        mainworld.biocomplexity_rating = generate_biocomplexity_rating(
+            mainworld.biomass_rating, mainworld.atmosphere, age_gyr, has_low_o,
+        )
+        if mainworld.biocomplexity_rating >= 8:
+            mainworld.native_sophont, mainworld.extinct_sophont = (
+                generate_sophont_checks(mainworld.biocomplexity_rating, age_gyr)
+            )
 
-    # Propagate to orbit.detail so the orbit table Notes column works uniformly.
+    # Propagate to orbit.detail so the orbit table works uniformly.
     if mw_orbit.world_type == "gas_giant":
         # Mainworld is a satellite sub-row; propagate to that moon's detail.
         mw_actual_moons: list = []
@@ -1071,13 +1207,15 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals
             sat = mw_orbit.detail.moons[0]
             if sat.detail is not None:
                 sat.detail.biomass_rating = mainworld.biomass_rating
+                sat.detail.biocomplexity_rating = mainworld.biocomplexity_rating
                 mw_actual_moons = sat.detail.moons
     else:
         if mw_orbit.detail is not None:
             mw_orbit.detail.biomass_rating = mainworld.biomass_rating
+            mw_orbit.detail.biocomplexity_rating = mainworld.biocomplexity_rating
         mw_actual_moons = mw_orbit.detail.moons if mw_orbit.detail else []
 
-    # Apply biomass to mainworld's own moons
+    # Apply biomass and biocomplexity to mainworld's own moons
     for moon in mw_actual_moons:
         if moon.is_ring or moon.detail is None:
             continue
@@ -1087,6 +1225,7 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals
             atm=m_atm, hydro=m_hydro, age_gyr=age_gyr,
             temperature_zone=temp_zone,
         ), m_atm)
+        _set_biocomplexity(moon.detail, m_atm, age_gyr)
 
 
 def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-many-locals

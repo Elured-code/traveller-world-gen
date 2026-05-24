@@ -644,6 +644,19 @@
       "type": "integer",
       "minimum": 0,
       "description": "Native life biomass rating (WBH pp.127-131). 0 means no native life. Absent when not yet generated."
+    },
+    "biocomplexity_rating": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Biocomplexity rating (WBH pp.127-131). Absent when biomass is 0 or not yet generated."
+    },
+    "native_sophont": {
+      "type": "boolean",
+      "description": "True when a native sophont currently exists (WBH p.131). Absent when false."
+    },
+    "extinct_sophont": {
+      "type": "boolean",
+      "description": "True when evidence of an extinct native sophont exists (WBH p.131). Absent when false."
     }
   },
   "$defs": {

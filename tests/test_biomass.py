@@ -1,7 +1,8 @@
 """
 test_biomass.py
 ===============
-pytest unit tests for generate_biomass_rating() (WBH pp.127-131).
+pytest unit tests for generate_biomass_rating() and
+generate_biocomplexity_rating() (WBH pp.127-131).
 
 Test strategy
 -------------
@@ -17,6 +18,8 @@ import pytest  # pylint: disable=import-error
 
 from traveller_world_detail import (  # pylint: disable=import-error
     generate_biomass_rating,
+    generate_biocomplexity_rating,
+    generate_sophont_checks,
     _ATM_BIOMASS_DM,
     _HYDRO_BIOMASS_DM,
     _SC2_ATM_SET,
@@ -219,25 +222,25 @@ class TestTemperatureSimplified:
 # ---------------------------------------------------------------------------
 
 class TestTemperatureKPath:
-    def test_mean_temp_above_353_dm_minus4(self):
-        # mean_temp_k=400 → DM-4; 7+0+0-4=3
-        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=400) == 3
+    def test_above_353_applies_both_high_and_mean_dm(self):
+        # mean_temp_k=400 → High DM-2 + Mean DM-4 = DM-6; 7+0+0-6=1
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=400) == 1
 
-    def test_mean_temp_below_273_dm_minus2(self):
-        # mean_temp_k=200 → DM-2; 7+0+0-2=5
-        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=200) == 5
+    def test_below_273_applies_both_high_and_mean_dm(self):
+        # mean_temp_k=200 → High DM-4 + Mean DM-2 = DM-6; 7+0+0-6=1
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=200) == 1
 
     def test_mean_temp_in_279_303_range_dm_plus2(self):
-        # mean_temp_k=290 → DM+2; 7+0+0+2=9
+        # mean_temp_k=290 → DM+2 (no High/Mean extreme); 7+0+0+2=9
         assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=290) == 9
 
-    def test_mean_temp_hot_and_in_sweet_spot_does_not_apply_sweet_spot(self):
-        # mean_temp_k=360 → above 353, so DM-4; 279-303 check fails
-        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=360) == 3
+    def test_above_353_does_not_also_apply_sweet_spot(self):
+        # mean_temp_k=360 → DM-6; 279-303 check fails (360 not in range); 7-6=1
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=360) == 1
 
-    def test_mean_temp_below_273_also_in_sweet_spot_range_impossible(self):
-        # 200 is below 273 → DM-2; not in 279-303 → 7+0+0-2=5
-        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=200) == 5
+    def test_below_273_does_not_also_apply_sweet_spot(self):
+        # mean_temp_k=200 → DM-6; 200 not in 279-303; 7-6=1
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=200) == 1
 
     def test_mean_temp_neutral_zone_no_dm(self):
         # mean_temp_k=310 → not above 353, not below 273, not in 279-303 → DM 0
@@ -247,8 +250,24 @@ class TestTemperatureKPath:
         # Even though temperature_zone="temperate" (+2), mean_temp_k takes precedence
         # mean_temp_k=290 → DM+2 (same result, but via K path)
         assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=290) == 9
-        # mean_temp_k=400 → DM-4; simplified would be +2 but K path wins
-        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=400) == 3
+        # mean_temp_k=400 → DM-6; simplified would be +2 but K path wins
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=400) == 1
+
+    def test_boundary_exactly_353_no_extreme_dm(self):
+        # mean_temp_k=353 → not strictly above 353, not below 273 → DM 0; 7+0=7
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=353) == 7
+
+    def test_boundary_exactly_273_no_extreme_dm(self):
+        # mean_temp_k=273 → not above 353, not strictly below 273 → DM 0; 7+0=7
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=273) == 7
+
+    def test_combined_dm_matches_footnote_boiling(self):
+        # Verify that the K-path gives equivalent result to footnote for hot worlds.
+        # mean_temp_k=400 on atm 6, hydro 5, age 3.0:
+        # DM = 0+0+0 + (-2 high) + (-4 mean) = -6; 7-6=1
+        # Footnote zone path for boiling: DM-6; 7-6=1 → same answer ✓
+        assert _roll_biomass(6, 5, 3.0, "boiling") == 1  # zone path
+        assert _roll_biomass(6, 5, 3.0, "temperate", mean_temp_k=400) == 1  # K path
 
 
 # ---------------------------------------------------------------------------
@@ -411,3 +430,250 @@ class TestOptionalOxygenRule:
 
     def test_floor_raises_only_to_one_not_higher(self):
         assert _oxygen_floor(0, 8) == 1  # not 2 or more
+
+
+# ---------------------------------------------------------------------------
+# Biocomplexity Rating (WBH pp.127-131)
+#
+# Roll: 2D - 7 + min(biomass, 9), then apply DMs:
+#   Atmosphere not 4-9 : DM-2
+#   Low-oxygen taint   : DM-2
+#   Age DMs (exclusive ranges, worst-at-boundary):
+#     ≤ 1 Gyr   → DM-10
+#     ≤ 2 Gyr   → DM-8
+#     ≤ 3 Gyr   → DM-4
+#     ≤ 4 Gyr   → DM-2
+#     > 4 Gyr   → no DM
+#   Minimum result: 1
+# ---------------------------------------------------------------------------
+
+def _roll_biocomplexity(biomass, atm, age_gyr, has_low_o=False, dice_total=7):
+    """Call generate_biocomplexity_rating with a fixed 2D total.
+
+    dice_total=7 → 2D-7 = 0, so base = 0 + min(biomass,9) = min(biomass,9).
+    """
+    half = dice_total // 2
+    rem  = dice_total - half
+    with patch("traveller_world_detail.random.randint", side_effect=[half, rem]):
+        return generate_biocomplexity_rating(biomass, atm, age_gyr, has_low_o)
+
+
+class TestBiocomplexityAtmosphereDM:
+    """Atmosphere not 4-9 applies DM-2 (WBH pp.127-131)."""
+
+    # Baseline: biomass=5, dice=7 → base=5; age=5.0 (no age DM); no low-O taint.
+
+    def test_atm_in_range_4_no_dm(self):
+        # atm 4 is in [4,9] → no atmosphere DM; 5 + 0 = 5
+        assert _roll_biocomplexity(5, 4, 5.0) == 5
+
+    def test_atm_in_range_9_no_dm(self):
+        # atm 9 is in [4,9] → no atmosphere DM; 5 + 0 = 5
+        assert _roll_biocomplexity(5, 9, 5.0) == 5
+
+    def test_atm_in_range_6_no_dm(self):
+        assert _roll_biocomplexity(5, 6, 5.0) == 5
+
+    def test_atm_0_dm_minus2(self):
+        # atm 0 not in [4,9] → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 0, 5.0) == 3
+
+    def test_atm_3_dm_minus2(self):
+        # atm 3 not in [4,9] → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 3, 5.0) == 3
+
+    def test_atm_10_dm_minus2(self):
+        # atm 10 (A, exotic) not in [4,9] → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 10, 5.0) == 3
+
+    def test_atm_12_dm_minus2(self):
+        # atm 12 (C, insidious) not in [4,9] → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 12, 5.0) == 3
+
+    def test_atm_13_dm_minus2(self):
+        # atm 13 (D, dense high-O₂) not in [4,9] → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 13, 5.0) == 3
+
+    def test_atm_15_dm_minus2(self):
+        # atm 15 (F, unusual) not in [4,9] → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 15, 5.0) == 3
+
+
+class TestBiocomplexityLowOxygenDM:
+    """Low-oxygen taint applies DM-2 (WBH pp.127-131)."""
+
+    def test_no_low_o_taint_no_dm(self):
+        # has_low_o=False, atm 6, age 5 → no extra DM; 5 + 0 = 5
+        assert _roll_biocomplexity(5, 6, 5.0, has_low_o=False) == 5
+
+    def test_low_o_taint_dm_minus2(self):
+        # has_low_o=True, atm 6, age 5 → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 6, 5.0, has_low_o=True) == 3
+
+    def test_low_o_taint_stacks_with_atm_dm(self):
+        # has_low_o=True, atm 0 (DM-2), age 5 → DM-4; 5 - 4 = 1
+        assert _roll_biocomplexity(5, 0, 5.0, has_low_o=True) == 1
+
+
+class TestBiocomplexityAgeDM:
+    """Age DMs — exclusive ranges, worst-at-boundary (WBH pp.127-131)."""
+
+    # Baseline: biomass=5, atm=6 (no atmosphere DM), no low-O taint.
+    # With dice=7: base = 5.
+
+    def test_age_above_4_no_dm(self):
+        # age=5.0 → no age DM; 5 + 0 = 5
+        assert _roll_biocomplexity(5, 6, 5.0) == 5
+
+    def test_age_exactly_4_dm_minus2(self):
+        # age=4.0 (boundary ≤4 Gyr) → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 6, 4.0) == 3
+
+    def test_age_3_5_dm_minus2(self):
+        # 3 < age=3.5 ≤ 4 → DM-2; 5 - 2 = 3
+        assert _roll_biocomplexity(5, 6, 3.5) == 3
+
+    def test_age_exactly_3_dm_minus4(self):
+        # age=3.0 (boundary ≤3 Gyr) → DM-4; 5 - 4 = 1
+        assert _roll_biocomplexity(5, 6, 3.0) == 1
+
+    def test_age_2_5_dm_minus4(self):
+        # 2 < age=2.5 ≤ 3 → DM-4; 5 - 4 = 1
+        assert _roll_biocomplexity(5, 6, 2.5) == 1
+
+    def test_age_exactly_2_dm_minus8(self):
+        # age=2.0 (boundary ≤2 Gyr) → DM-8; max(1, 5-8) = 1
+        assert _roll_biocomplexity(5, 6, 2.0) == 1
+
+    def test_age_1_5_dm_minus8(self):
+        # 1 < age=1.5 ≤ 2 → DM-8; max(1, 5-8) = 1
+        assert _roll_biocomplexity(5, 6, 1.5) == 1
+
+    def test_age_exactly_1_dm_minus10(self):
+        # age=1.0 (boundary ≤1 Gyr, worst case) → DM-10; max(1, 5-10) = 1
+        assert _roll_biocomplexity(5, 6, 1.0) == 1
+
+    def test_age_0_5_dm_minus10(self):
+        # age=0.5 ≤ 1 → DM-10; max(1, 5-10) = 1
+        assert _roll_biocomplexity(5, 6, 0.5) == 1
+
+
+class TestBiocomplexitySpecialCases:
+    """Floor, biomass cap, and DM stacking (WBH pp.127-131)."""
+
+    def test_result_minimum_is_1(self):
+        # Worst possible conditions still return at least 1
+        # biomass=1, dice=2, atm=0 (DM-2), age=0.5 (DM-10):
+        # base = 2-7+1 = -4; dm = -12; result = max(1, -4-12) = 1
+        half, rem = 1, 1
+        with patch("traveller_world_detail.random.randint", side_effect=[half, rem]):
+            result = generate_biocomplexity_rating(1, 0, 0.5)
+        assert result >= 1
+
+    def test_biomass_capped_at_9_for_roll(self):
+        # biomass=15 and biomass=9 with dice=7 should give identical results
+        assert _roll_biocomplexity(15, 6, 5.0) == _roll_biocomplexity(9, 6, 5.0)
+
+    def test_biomass_12_equals_biomass_9(self):
+        # biomass=12 → capped to 9; base = 7-7+9 = 9; no DMs; result = 9
+        assert _roll_biocomplexity(12, 6, 5.0) == 9
+
+    def test_all_dms_stack(self):
+        # atm=0 (DM-2), has_low_o=True (DM-2), age=1.0 (DM-10) → total DM-14
+        # biomass=5, dice=7: base=5; 5-14=-9 → max(1,-9) = 1
+        assert _roll_biocomplexity(5, 0, 1.0, has_low_o=True) == 1
+
+    def test_high_biomass_high_age_good_atm(self):
+        # biomass=9, atm=6, age=5.0 → no DMs; base = 7-7+9 = 9
+        assert _roll_biocomplexity(9, 6, 5.0) == 9
+
+    def test_result_never_below_1_across_seeds(self):
+        for seed in range(50):
+            random.seed(seed)
+            result = generate_biocomplexity_rating(1, 0, 0.1, has_low_oxygen_taint=True)
+            assert result >= 1
+
+
+# ---------------------------------------------------------------------------
+# Sophont checks (WBH p.131)
+#
+# Current sophont:  2D + min(bio, 9) - 7 >= 13 → 2D >= 20 - min(bio, 9)
+# Extinct sophont:  2D + min(bio, 9) - 7 + DMs >= 13 (DM+1 if age > 5 Gyrs)
+# Biocomplexity >= 8 required for either check to fire.
+# If current sophont found, extinct check is skipped.
+# ---------------------------------------------------------------------------
+
+def _roll_sophont(biocomplexity, age_gyr, dice_rolls):
+    """Call generate_sophont_checks with a fixed sequence of 2D rolls."""
+    with patch("traveller_world_detail.random.randint", side_effect=dice_rolls):
+        return generate_sophont_checks(biocomplexity, age_gyr)
+
+
+class TestSophontChecks:
+    """Native and extinct sophont rolls (WBH p.131)."""
+
+    def test_current_sophont_on_high_roll(self):
+        # bio=9, age=3.0: threshold = 20 - 9 = 11; roll 6+6=12 → 12+9-7=14 >= 13 → current
+        native, extinct = _roll_sophont(9, 3.0, [6, 6])
+        assert native is True
+        assert extinct is False
+
+    def test_current_sophont_exact_threshold_bio9(self):
+        # bio=9: need 2D >= 11; roll 5+6=11 → 11+9-7=13 >= 13 → current
+        native, extinct = _roll_sophont(9, 3.0, [5, 6])
+        assert native is True
+        assert extinct is False
+
+    def test_no_current_sophont_below_threshold_bio9(self):
+        # bio=9: need 2D >= 11; roll 5+5=10 → 10+9-7=12 < 13 → no current
+        native, extinct = _roll_sophont(9, 3.0, [5, 5, 5, 5])
+        assert native is False
+
+    def test_current_sophont_exact_threshold_bio8(self):
+        # bio=8: need 2D >= 12; roll 6+6=12 → 12+8-7=13 >= 13 → current
+        native, extinct = _roll_sophont(8, 3.0, [6, 6])
+        assert native is True
+        assert extinct is False
+
+    def test_no_current_sophont_bio8_roll11(self):
+        # bio=8: need 2D >= 12; roll 5+6=11 → 11+8-7=12 < 13 → no current
+        native, extinct = _roll_sophont(8, 3.0, [5, 6, 5, 5])
+        assert native is False
+
+    def test_biocomplexity_above_9_capped_at_9(self):
+        # bio=12 behaves as bio=9; need 2D >= 11; roll 5+6=11 → current
+        native, extinct = _roll_sophont(12, 3.0, [5, 6])
+        assert native is True
+
+    def test_extinct_sophont_when_current_fails(self):
+        # bio=9, age=3.0 (no age DM): current fails (roll 5+5=10 < 11);
+        # extinct: same threshold, roll 6+6=12 → 12+9-7=14 >= 13 → extinct
+        native, extinct = _roll_sophont(9, 3.0, [5, 5, 6, 6])
+        assert native is False
+        assert extinct is True
+
+    def test_extinct_check_skipped_when_current_found(self):
+        # current succeeds on first 2 rolls; only 2 randint calls consumed
+        native, extinct = _roll_sophont(9, 3.0, [6, 6])
+        assert native is True
+        assert extinct is False
+
+    def test_extinct_age_dm_plus1_when_age_above_5(self):
+        # bio=8, age=6.0 (DM+1): current fails (roll 5+6=11, need 12);
+        # extinct: threshold = 20 - 8 - 1 = 11; roll 5+6=11 → 11+8-7+1=13 >= 13 → extinct
+        native, extinct = _roll_sophont(8, 6.0, [5, 6, 5, 6])
+        assert native is False
+        assert extinct is True
+
+    def test_extinct_no_age_dm_when_age_exactly_5(self):
+        # age=5.0 is NOT > 5 → no DM; bio=8: current fails, extinct needs 2D >= 12
+        # roll 5+6=11 for extinct → 11+8-7=12 < 13 → no extinct
+        native, extinct = _roll_sophont(8, 5.0, [5, 6, 5, 6])
+        assert native is False
+        assert extinct is False
+
+    def test_no_sophont_both_rolls_fail(self):
+        # bio=9, age=3: current roll 5+5=10 → 12 < 13; extinct roll 4+5=9 → 11 < 13
+        native, extinct = _roll_sophont(9, 3.0, [5, 5, 4, 5])
+        assert native is False
+        assert extinct is False

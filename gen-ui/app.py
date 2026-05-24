@@ -38,6 +38,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtCore import Qt, QUrl  # noqa: E402
 from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut  # noqa: E402
+from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QButtonGroup,
@@ -58,6 +59,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QRadioButton,
     QScrollArea,
     QSizePolicy,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -72,27 +74,20 @@ except ImportError:
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
 from traveller_system_gen import generate_full_system  # noqa: E402
-from traveller_world_detail import attach_detail as _attach_detail  # noqa: E402
+from traveller_world_detail import (  # noqa: E402
+    attach_detail as _attach_detail, gg_diameter_from_sah,
+)
 from traveller_world_gen import (  # noqa: E402
-    AtmosphereDetail,
-    format_atmosphere_profile,
     generate_atmosphere_detail,
     generate_gas_mix,
     generate_unusual_subtype,
-    STARPORT_FACILITY_DETAIL,
-    STARPORT_QUALITY_LABEL,
     generate_world,
-    to_hex as _to_hex,
 )
 from traveller_world_physical import (  # noqa: E402
     generate_world_physical, apply_moon_tidal_effects,
 )
-from tables import TRADE_CODE_FULL, BASE_FULL, ZONE_CSS_CLASS, TIDAL_STATUS_LABELS  # noqa: E402
-from traveller_belt_physical import BeltPhysical  # noqa: E402
-from traveller_hydro_detail import (  # noqa: E402
-    HydrographicDetail,
-    generate_hydrographic_detail,
-)
+from tables import ZONE_CSS_CLASS  # noqa: E402
+from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -177,20 +172,6 @@ def _orbit_profile(orbit: object) -> str:
     return detail.profile  # type: ignore[attr-defined]
 
 
-def _tl_era(tl: int) -> str:
-    if tl <= 3:
-        return "Primitive"
-    if tl <= 6:
-        return "Industrial"
-    if tl <= 9:
-        return "Pre-Stellar"
-    if tl <= 11:
-        return "Early Stellar"
-    if tl <= 14:
-        return "Average Stellar"
-    return "High Stellar"
-
-
 def _fmt_period(period_yr: float) -> str:
     """Format an orbital period: hours, days, or years."""
     days = period_yr * 365.25
@@ -199,25 +180,6 @@ def _fmt_period(period_yr: float) -> str:
     if days < 365.25:
         return f"{days:.1f}d"
     return f"{period_yr:.2f}y"
-
-
-def _detail_row(label_text: str, value_text: str, danger: bool = False) -> QWidget:
-    """One label/value row for the Physical and Society detail cards."""
-    row = QWidget()
-    layout = QHBoxLayout(row)
-    layout.setContentsMargins(0, 2, 0, 2)
-    layout.setSpacing(8)
-    lbl = QLabel(label_text)
-    lbl.setObjectName("row-label")
-    lbl.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
-    val = QLabel(value_text)
-    val.setObjectName("danger-value" if danger else "row-value")
-    val.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-    val.setWordWrap(True)
-    val.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-    layout.addWidget(lbl)
-    layout.addWidget(val)
-    return row
 
 
 # ---------------------------------------------------------------------------
@@ -436,10 +398,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         radio_layout.addWidget(self._radio_travellermap)
         left_layout.addWidget(radio_row)
 
-        self._check_system_detail = QCheckBox("System detail")
-        self._check_system_detail.toggled.connect(self._on_system_detail_toggled)
-        self._check_physical = QCheckBox("Mainworld detail")
-        self._check_physical.setEnabled(False)
+        self._radio_mainworld_only = QRadioButton("Mainworld only")
+        self._radio_full_detail = QRadioButton("Full detail")
+        self._detail_group = QButtonGroup(self)
+        self._detail_group.addButton(self._radio_mainworld_only)
+        self._detail_group.addButton(self._radio_full_detail)
+        self._radio_mainworld_only.setChecked(True)
+        self._radio_full_detail.toggled.connect(self._on_detail_toggled)
         self._check_nhz = QCheckBox("NHZ Atmospheres")
         self._check_nhz.setEnabled(False)
         self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
@@ -449,8 +414,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout = QHBoxLayout(check_row)
         check_layout.setSpacing(12)
         check_layout.setContentsMargins(0, 0, 0, 0)
-        check_layout.addWidget(self._check_system_detail)
-        check_layout.addWidget(self._check_physical)
+        check_layout.addWidget(self._radio_mainworld_only)
+        check_layout.addWidget(self._radio_full_detail)
         check_layout.addWidget(self._check_nhz)
         check_layout.addWidget(self._check_oxygen_biomass)
         left_layout.addWidget(check_row)
@@ -517,12 +482,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             return
         self._seed_auto = False
 
-    def _on_system_detail_toggled(self, checked: bool) -> None:
-        self._check_physical.setEnabled(checked)
+    def _on_detail_toggled(self, checked: bool) -> None:
         self._check_nhz.setEnabled(checked)
         self._check_oxygen_biomass.setEnabled(checked)
         if not checked:
-            self._check_physical.setChecked(False)
             self._check_nhz.setChecked(False)
             self._check_oxygen_biomass.setChecked(False)
         if self._map_btn is not None:
@@ -553,7 +516,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_entry.blockSignals(False)
         self._seed_auto = True
 
-        full_system = self._check_system_detail.isChecked()
+        full_system = self._radio_full_detail.isChecked()
         attach_detail_flag = full_system
 
         if self._radio_travellermap.isChecked():
@@ -641,24 +604,22 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             world.hydrographic_detail = generate_hydrographic_detail(  # type: ignore[attr-defined]
                 world.hydrographics, world.size  # type: ignore[attr-defined]
             )
-        if self._check_physical.isChecked():
-            world.size_detail = generate_world_physical(world)  # type: ignore[attr-defined]
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
         if path is not None:
             self._html_path = path
         self._show_summary(world)
 
-    def _finish_system_generation(
+    def _finish_system_generation(  # pylint: disable=too-many-locals
         self, system: object, attach_detail_flag: bool = False
     ) -> None:
         self._current_system = system
         self._current_world = system.mainworld  # type: ignore[attr-defined]
-        if self._check_physical.isChecked():
+        if attach_detail_flag:
             world = system.mainworld  # type: ignore[attr-defined]
+            mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
             if world is not None:
                 stars = system.stellar_system.stars  # type: ignore[attr-defined]
                 age = stars[0].age_gyr if stars else 0.0
-                mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
                 orbit_number = mw_orbit.orbit_number if mw_orbit is not None else None
                 orbit_au = mw_orbit.orbit_au if mw_orbit is not None else None
                 star_mass = stars[0].mass if stars else None
@@ -685,36 +646,42 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     world.hydrographic_detail = generate_hydrographic_detail(
                         world.hydrographics, world.size
                     )
-        if attach_detail_flag:
             _attach_detail(  # type: ignore[arg-type]
                 system,
                 optional_biomass_rule=self._check_oxygen_biomass.isChecked(),
             )
-            # Apply moon tidal DMs now that moons have orbital positions
-            if self._check_physical.isChecked():
-                world = system.mainworld  # type: ignore[attr-defined]
-                mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
-                if world is not None and world.size_detail is not None and mw_orbit is not None:
-                    det = mw_orbit.detail
-                    if det is not None:
-                        if mw_orbit.world_type == "gas_giant":
-                            first = det.moons[0] if det.moons else None
-                            moons = first.detail.moons if first and first.detail else []
-                        else:
-                            moons = det.moons or []
-                        stars = system.stellar_system.stars  # type: ignore[attr-defined]
-                        apply_moon_tidal_effects(
-                            world.size_detail,
-                            moons=moons,
-                            world_size=world.size,
-                            world_atmosphere=world.atmosphere,
-                            age_gyr=stars[0].age_gyr if stars else 0.0,
-                            orbit_number=mw_orbit.orbit_number,
-                            orbit_au=mw_orbit.orbit_au,
-                            star_mass=stars[0].mass if stars else 1.0,
-                            orbit_eccentricity=mw_orbit.eccentricity,
-                            is_moon=mw_orbit.world_type == "gas_giant",
-                        )
+            if world is not None and world.size_detail is not None and mw_orbit is not None:
+                det = mw_orbit.detail
+                if det is not None:
+                    _is_moon = mw_orbit.world_type == "gas_giant"
+                    if _is_moon:
+                        first = det.moons[0] if det.moons else None
+                        moons = first.detail.moons if first and first.detail else []
+                        _gg_sat = det.moons[0] if det.moons else None
+                        _gg_m_e = float(
+                            gg_diameter_from_sah(  # type: ignore[attr-defined]
+                                getattr(mw_orbit, "gg_sah", "")
+                            ) ** 2
+                        ) if getattr(mw_orbit, "gg_sah", "") else 0.0
+                    else:
+                        moons = det.moons or []
+                        _gg_sat = None
+                        _gg_m_e = 0.0
+                    stars = system.stellar_system.stars  # type: ignore[attr-defined]
+                    apply_moon_tidal_effects(
+                        world.size_detail,
+                        moons=moons,
+                        world_size=world.size,
+                        world_atmosphere=world.atmosphere,
+                        age_gyr=stars[0].age_gyr if stars else 0.0,
+                        orbit_number=mw_orbit.orbit_number,
+                        orbit_au=mw_orbit.orbit_au,
+                        star_mass=stars[0].mass if stars else 1.0,
+                        orbit_eccentricity=mw_orbit.eccentricity,
+                        is_moon=_is_moon,
+                        gg_mass_earth=_gg_m_e,
+                        gg_satellite_moon=_gg_sat,
+                    )
         self._detail_attached = attach_detail_flag
         path = self._write_html(
             system.to_html(detail_attached=attach_detail_flag)  # type: ignore[attr-defined]
@@ -876,65 +843,58 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._clear_status()
         self._status_layout.addWidget(self._build_summary_header(world))
         self._status_layout.addWidget(_make_hsep(margin_v=6))
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        scroll.setSizePolicy(
+        view = QWebEngineView()
+        view.setHtml(world.to_html())  # type: ignore[attr-defined]
+        view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        scroll.setWidget(self._build_world_card(world))
-        self._status_layout.addWidget(scroll, stretch=1)
+        self._status_layout.addWidget(view, stretch=1)
 
     def _show_system_summary(self, system: object) -> None:
         self._clear_status()
         mw = system.mainworld  # type: ignore[attr-defined]
 
-        header, orbit_toggle = self._build_system_summary_header(system)
+        header = self._build_system_summary_header(system)
         self._status_layout.addWidget(header)
         self._status_layout.addWidget(_make_hsep(margin_v=6))
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        scroll.setSizePolicy(
+        tabs = QTabWidget()
+        tabs.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
 
-        card = QWidget()
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(10)
-        card_layout.setContentsMargins(4, 4, 4, 4)
-
-        stellar_card = self._build_stellar_card(system)
-        orbits_card = self._build_orbits_card(
-            system, detail_attached=self._detail_attached
+        # Tab 1 — System: stellar + orbits cards in a scroll area
+        system_widget = QWidget()
+        system_layout = QVBoxLayout(system_widget)
+        system_layout.setSpacing(10)
+        system_layout.setContentsMargins(4, 4, 4, 4)
+        system_layout.addWidget(self._build_stellar_card(system))
+        system_layout.addWidget(
+            self._build_orbits_card(system, detail_attached=self._detail_attached)
         )
-        card_layout.addWidget(stellar_card)
-        card_layout.addWidget(orbits_card)
+        system_layout.addStretch()
 
+        system_scroll = QScrollArea()
+        system_scroll.setWidgetResizable(True)
+        system_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        system_scroll.setWidget(system_widget)
+        tabs.addTab(system_scroll, "System")
+
+        # Tab 2 — Mainworld: world card HTML view
         if mw is not None:
-            mw_group = QGroupBox("Mainworld")
-            mw_inner = QVBoxLayout(mw_group)
-            mw_inner.addWidget(self._build_world_card(mw))
-            card_layout.addWidget(mw_group)
+            mw_view = QWebEngineView()
+            mw_view.setHtml(mw.to_html())  # type: ignore[attr-defined]
+            mw_view.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+            )
+            tabs.addTab(mw_view, "Mainworld")
+            tabs.setCurrentIndex(1)
 
-        card_layout.addStretch()
-        scroll.setWidget(card)
-        self._status_layout.addWidget(scroll, stretch=1)
+        self._status_layout.addWidget(tabs, stretch=1)
 
-        def _on_orbit_toggle(checked: bool) -> None:
-            stellar_card.setVisible(checked)
-            orbits_card.setVisible(checked)
-
-        orbit_toggle.toggled.connect(_on_orbit_toggle)
-
-    def _build_system_summary_header(
-        self, system: object
-    ) -> "tuple[QWidget, QCheckBox]":
+    def _build_system_summary_header(self, system: object) -> QWidget:
         mw = system.mainworld  # type: ignore[attr-defined]
         header = QWidget()
         layout = QHBoxLayout(header)
@@ -969,24 +929,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         map_btn = QPushButton("System Map")
         map_btn.clicked.connect(self._on_map_clicked)
-        map_btn.setEnabled(self._check_system_detail.isChecked())
+        map_btn.setEnabled(self._radio_full_detail.isChecked())
         self._map_btn = map_btn
         layout.addWidget(map_btn)
-
-        vsep0 = _make_vsep()
-        vsep0.setContentsMargins(6, 0, 6, 0)
-        layout.addWidget(vsep0)
-
-        orbit_toggle = QCheckBox("Stellar && Orbits")
-        orbit_toggle.setChecked(True)
-        layout.addWidget(orbit_toggle)
 
         vsep = _make_vsep()
         vsep.setContentsMargins(6, 0, 6, 0)
         layout.addWidget(vsep)
 
         layout.addWidget(self._build_action_buttons())
-        return header, orbit_toggle
+        return header
 
     def _build_action_buttons(self) -> QWidget:
         # pylint: disable=attribute-defined-outside-init
@@ -1148,9 +1100,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             period_str = _fmt_period(p_yr) if (p_yr is not None and not is_empty) else "—"
             notes_str = str(orbit.notes) if orbit.notes else ""
             if detail_attached and orbit.world_type == "terrestrial":
-                _br = getattr(getattr(orbit, "detail", None), "biomass_rating", None)
+                _od = getattr(orbit, "detail", None)
+                _br = getattr(_od, "biomass_rating", None)
+                _bc = getattr(_od, "biocomplexity_rating", None)
                 if _br is not None and _br > 0:
                     _bn = f"Biomass {_br}"
+                    if _bc is not None:
+                        _bn += f", Complexity {_bc}"
                     notes_str = f"{notes_str}, {_bn}" if notes_str else _bn
 
             ecc_part = f"{orbit.eccentricity:.3f}" if orbit.eccentricity > 0 else "—"
@@ -1231,10 +1187,15 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         moon.orbit_range.capitalize()
                         if moon.orbit_range else ""
                     )
-                    _moon_br = getattr(getattr(moon, "detail", None), "biomass_rating", None)
-                    moon_biomass_note = (
-                        f"Biomass {_moon_br}" if (_moon_br is not None and _moon_br > 0) else ""
-                    )
+                    _moon_det = getattr(moon, "detail", None)
+                    _moon_br = getattr(_moon_det, "biomass_rating", None)
+                    _moon_bc = getattr(_moon_det, "biocomplexity_rating", None)
+                    if _moon_br is not None and _moon_br > 0:
+                        moon_biomass_note = f"Biomass {_moon_br}"
+                        if _moon_bc is not None:
+                            moon_biomass_note += f", Complexity {_moon_bc}"
+                    else:
+                        moon_biomass_note = ""
                     _mecc  = moon.orbit_eccentricity
                     _mincl = moon.orbit_inclination
                     _mecc_part  = f"{_mecc:.3f}" if _mecc > 0 else "—"
@@ -1268,325 +1229,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         grid.addWidget(lbl, grid_row, col)
                     grid_row += 1
 
-        return group
-
-    def _build_world_card(self, world: object) -> QWidget:
-        w = world
-        d = w.to_dict()  # type: ignore[attr-defined]
-
-        card = QWidget()
-        layout = QVBoxLayout(card)
-        layout.setSpacing(10)
-        layout.setContentsMargins(4, 4, 4, 4)
-
-        layout.addWidget(self._build_stat_row(w, d))
-        layout.addWidget(self._build_detail_cards(w, d))
-        physical_card = self._build_physical_card(w)
-        if physical_card is not None:
-            layout.addWidget(physical_card)
-        atm_card = self._build_atmosphere_card(w)
-        if atm_card is not None:
-            layout.addWidget(atm_card)
-        hydro_card = self._build_hydrographic_card(w)
-        if hydro_card is not None:
-            layout.addWidget(hydro_card)
-        layout.addWidget(self._build_trade_codes(w))
-        notes = self._build_notes(w)
-        if notes:
-            layout.addWidget(notes)
-        layout.addStretch()
-        return card
-
-    def _build_stat_row(self, w: object, d: dict) -> QWidget:
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        def stat_group(title: str, value: str, subtitle: str) -> QGroupBox:
-            group = QGroupBox(title)
-            inner = QVBoxLayout(group)
-            inner.setSpacing(2)
-            inner.setContentsMargins(8, 4, 8, 6)
-            v = QLabel(value)
-            v.setObjectName("stat-value")
-            v.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            v.setWordWrap(True)
-            s = QLabel(subtitle)
-            s.setObjectName("stat-sub")
-            s.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            s.setWordWrap(True)
-            inner.addWidget(v)
-            inner.addWidget(s)
-            return group
-
-        sp = w.starport  # type: ignore[attr-defined]
-        layout.addWidget(
-            stat_group(
-                "Starport",
-                f"{sp} — {STARPORT_QUALITY_LABEL.get(sp, '?')}",
-                STARPORT_FACILITY_DETAIL.get(sp, ""),
-            ),
-            stretch=1,
-        )
-        physical = getattr(w, "size_detail", None)
-        sz_hex = _to_hex(w.size)  # type: ignore[attr-defined]
-        if physical is not None and not isinstance(physical, BeltPhysical):
-            size_value = f"{sz_hex} — {physical.diameter_km:,} km"
-            size_sub = f"Gravity: {physical.gravity:.3f} G"
-        else:
-            size_value = f"{sz_hex} — {d['size']['diameter_km']} km"
-            size_sub = f"Gravity: {d['size']['surface_gravity']}"
-        layout.addWidget(
-            stat_group("Size", size_value, size_sub),
-            stretch=1,
-        )
-        layout.addWidget(
-            stat_group(
-                "Tech Level",
-                _to_hex(w.tech_level),  # type: ignore[attr-defined]
-                _tl_era(w.tech_level),  # type: ignore[attr-defined]
-            ),
-            stretch=1,
-        )
-        return row
-
-    def _build_detail_cards(self, w: object, d: dict) -> QWidget:  # pylint: disable=too-many-locals
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        phys = QGroupBox("Physical")
-        phys.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-        pb = QVBoxLayout(phys)
-        pb.setSpacing(0)
-        pb.setContentsMargins(8, 4, 8, 6)
-        gear = d["atmosphere"]["survival_gear"]
-        gear_danger = gear not in ("None", "Varies")
-        hydro_desc = d['hydrographics']['description'].split(' (')[0]
-        for lbl_text, val_text, danger in [
-            ("Atmosphere",
-             f"{_to_hex(w.atmosphere)} — {d['atmosphere']['name']}",  # type: ignore[attr-defined]
-             False),
-            ("Survival gear",   gear, gear_danger),
-            ("Temperature",     w.temperature, False),  # type: ignore[attr-defined]
-            ("Hydrographics",
-             f"{_to_hex(w.hydrographics)} — {hydro_desc}",  # type: ignore[attr-defined]
-             False),
-            ("Gas giants",
-             str(w.gas_giant_count) if w.has_gas_giant else "None",  # type: ignore[attr-defined]
-             False),
-            ("Planetoid belts", str(w.belt_count), False),  # type: ignore[attr-defined]
-            ("PBG",
-             f"{w.population_multiplier}"  # type: ignore[attr-defined]
-             f"{w.belt_count}{w.gas_giant_count}",  # type: ignore[attr-defined]
-             False),
-        ]:
-            pb.addWidget(_detail_row(lbl_text, val_text, danger))
-        layout.addWidget(phys)
-
-        soc = QGroupBox("Society")
-        soc.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-        sb = QVBoxLayout(soc)
-        sb.setSpacing(0)
-        sb.setContentsMargins(8, 4, 8, 6)
-        pop_str = (
-            f"{_to_hex(w.population)} — {d['population']['range']}"  # type: ignore[attr-defined]
-        )
-        if w.population > 0:  # type: ignore[attr-defined]
-            pop_str += f"  (P={w.population_multiplier})"  # type: ignore[attr-defined]
-        bases_str = (
-            "  ".join(BASE_FULL.get(b, b) for b in w.bases) or "None"  # type: ignore[attr-defined]
-        )
-        for lbl_text, val_text in [
-            ("Population", pop_str),
-            ("Government",
-             f"{_to_hex(w.government)} — {d['government']['name']}"),  # type: ignore[attr-defined]
-            ("Law level",  _to_hex(w.law_level)),  # type: ignore[attr-defined]
-            ("Bases",      bases_str),
-        ]:
-            sb.addWidget(_detail_row(lbl_text, val_text))
-        layout.addWidget(soc)
-
-        return row
-
-    def _build_trade_codes(self, w: object) -> QWidget:
-        box = QWidget()
-        vbox = QVBoxLayout(box)
-        vbox.setSpacing(4)
-        vbox.setContentsMargins(0, 0, 0, 0)
-
-        hdr = QLabel("Trade codes")
-        hdr.setObjectName("section-label")
-        vbox.addWidget(hdr)
-
-        badge_row = QWidget()
-        hbox = QHBoxLayout(badge_row)
-        hbox.setSpacing(4)
-        hbox.setContentsMargins(0, 0, 0, 0)
-
-        if w.trade_codes:  # type: ignore[attr-defined]
-            for tc in w.trade_codes:  # type: ignore[attr-defined]
-                badge = QLabel(TRADE_CODE_FULL.get(tc, tc))
-                badge.setObjectName("tc-badge")
-                hbox.addWidget(badge)
-        else:
-            none_lbl = QLabel("None")
-            none_lbl.setObjectName("dim-label")
-            hbox.addWidget(none_lbl)
-        hbox.addStretch()
-
-        vbox.addWidget(badge_row)
-        return box
-
-    def _build_physical_card(self, w: object) -> "QGroupBox | None":
-        physical = getattr(w, "size_detail", None)
-        if physical is None:
-            return None
-        if isinstance(physical, BeltPhysical):
-            group = QGroupBox("Belt Body")
-            inner = QVBoxLayout(group)
-            inner.setSpacing(0)
-            inner.setContentsMargins(8, 4, 8, 6)
-            for lbl_text, val_text in [
-                ("Belt span",
-                 f"{physical.inner_au} – {physical.outer_au} AU"),
-                ("Composition",
-                 f"M: {physical.m_type_pct}% / S: {physical.s_type_pct}% / "
-                 f"C: {physical.c_type_pct}% / Other: {physical.other_pct}%"),
-                ("Bulk",            str(physical.bulk)),
-                ("Resource rating", str(physical.resource_rating)),
-                ("Significant bodies",
-                 f"{physical.size_1_bodies} × Size 1, "
-                 f"{physical.size_s_bodies} × Size S"),
-            ]:
-                inner.addWidget(_detail_row(lbl_text, val_text))
-            return group
-        group = QGroupBox("World Body")
-        inner = QVBoxLayout(group)
-        inner.setSpacing(0)
-        inner.setContentsMargins(8, 4, 8, 6)
-        for lbl_text, val_text in [
-            ("Composition",     physical.composition),
-            ("Diameter",        f"{physical.diameter_km:,} km"),
-            ("Density",         f"{physical.density:.2f} g/cm³"),
-            ("Mass",            f"{physical.mass:.4f} M⊕"),
-            ("Surface gravity", f"{physical.gravity:.3f} G"),
-            ("Escape velocity", f"{physical.escape_velocity:.2f} km/s"),
-            ("Axial tilt",      f"{physical.axial_tilt}°"),
-            ("Day length",      f"{physical.day_length:.1f} h"),
-            *([("Mean temperature", f"{physical.mean_temperature_k} K")]
-              if physical.mean_temperature_k is not None else []),
-            *([("Tidal status", TIDAL_STATUS_LABELS[physical.tidal_status])]
-              if physical.tidal_status != "none" else []),
-            *([("Tidal amplitude", f"{physical.tidal_amplitude_m:.2f} m")]
-              if physical.tidal_amplitude_m is not None else []),
-            *([("Tidal seismic stress", str(physical.tidal_seismic_stress))]
-              if physical.tidal_seismic_stress else []),
-            *([("Tidal stress factor", str(physical.tidal_stress_factor))]
-              if physical.tidal_stress_factor else []),
-            *([("Residual seismic stress", str(physical.residual_seismic_stress))]
-              if physical.residual_seismic_stress is not None else []),
-            *([("Total seismic stress", str(physical.total_seismic_stress))]
-              if physical.total_seismic_stress is not None else []),
-            *([("Seismic temperature", f"{physical.seismic_temperature_k} K")]
-              if physical.seismic_temperature_k is not None else []),
-        ]:
-            inner.addWidget(_detail_row(lbl_text, val_text))
-        br = getattr(w, "biomass_rating", None)
-        if br is not None:
-            inner.addWidget(_detail_row("Biomass rating", str(br)))
-        return group
-
-    def _build_atmosphere_card(self, w: object) -> "QGroupBox | None":  # pylint: disable=too-many-branches
-        detail = getattr(w, "atmosphere_detail", None)
-        if not isinstance(detail, AtmosphereDetail):
-            return None
-        group = QGroupBox("Atmosphere Detail")
-        inner = QVBoxLayout(group)
-        inner.setSpacing(0)
-        inner.setContentsMargins(8, 4, 8, 6)
-        inner.addWidget(_detail_row(
-            "Profile",
-            format_atmosphere_profile(w.atmosphere, detail),  # type: ignore[attr-defined]
-        ))
-        if detail.subtype_name is not None:
-            inner.addWidget(_detail_row("Subtype", detail.subtype_name))
-        if detail.pressure_bar is not None:
-            inner.addWidget(_detail_row("Pressure", f"{detail.pressure_bar:.3f} bar"))
-        elif detail.subtype_code in ("C", "D", "E"):
-            inner.addWidget(_detail_row("Pressure", "> 10.0 bar (extremely dense)"))
-        if detail.oxygen_partial_pressure is not None:
-            inner.addWidget(_detail_row(
-                "O₂ partial pressure", f"{detail.oxygen_partial_pressure:.3f} bar"
-            ))
-        if detail.scale_height_km is not None:
-            inner.addWidget(_detail_row("Scale height", f"{detail.scale_height_km:.1f} km"))
-        if detail.no_safe_altitude:
-            inner.addWidget(_detail_row("Safe altitude", "None (no breathable level)"))
-        elif detail.min_safe_altitude_km is not None:
-            if detail.min_safe_altitude_km >= 0:
-                inner.addWidget(_detail_row(
-                    "Min safe altitude",
-                    f"{detail.min_safe_altitude_km:.1f} km above baseline",
-                ))
-            else:
-                inner.addWidget(_detail_row(
-                    "Max safe depth",
-                    f"{abs(detail.min_safe_altitude_km):.1f} km below baseline",
-                ))
-        for sub in detail.unusual_subtypes:
-            inner.addWidget(_detail_row(
-                "Unusual subtype", f"{sub.subtype_name} ({sub.subtype_code})"
-            ))
-        for i, taint in enumerate(detail.taints):
-            prefix = f"Taint {i + 1}" if len(detail.taints) > 1 else "Taint"
-            for lbl, val in [
-                (prefix,          taint.subtype),
-                ("  Severity",    taint.severity),
-                ("  Persistence", taint.persistence),
-            ]:
-                inner.addWidget(_detail_row(lbl, val))
-        for hazard in detail.hazards:
-            inner.addWidget(_detail_row("Hazard", hazard.hazard))
-            if hazard.gases:
-                inner.addWidget(_detail_row("  Gas mix", ", ".join(hazard.gases)))
-        for i, comp in enumerate(detail.gas_mix):
-            label = "Gas mix" if i == 0 else "  +"
-            val = f"{comp.gas_name} ({comp.gas_code})"
-            if comp.percentage is not None:
-                val += f" {comp.percentage}%"
-            inner.addWidget(_detail_row(label, val))
-        return group
-
-    def _build_hydrographic_card(self, w: object) -> "QGroupBox | None":
-        detail = getattr(w, "hydrographic_detail", None)
-        if not isinstance(detail, HydrographicDetail):
-            return None
-        group = QGroupBox("Hydrographic Detail")
-        inner = QVBoxLayout(group)
-        inner.setSpacing(0)
-        inner.setContentsMargins(8, 4, 8, 6)
-        inner.addWidget(_detail_row("Surface liquid", f"{detail.surface_liquid_pct}%"))
-        return group
-
-    def _build_notes(self, w: object) -> "QGroupBox | None":
-        if not w.notes:  # type: ignore[attr-defined]
-            return None
-        group = QGroupBox("Notes")
-        inner = QVBoxLayout(group)
-        inner.setSpacing(2)
-        inner.setContentsMargins(8, 4, 8, 6)
-        for note in w.notes:  # type: ignore[attr-defined]
-            lbl = QLabel(f"• {note}")
-            lbl.setObjectName("stat-sub")
-            lbl.setWordWrap(True)
-            inner.addWidget(lbl)
         return group
 
 

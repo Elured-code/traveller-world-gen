@@ -62,7 +62,7 @@ This is an unofficial fan work, not affiliated with Mongoose Publishing.
 AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
-# pylint: disable=locally-disabled,suppressed-message
+# pylint: disable=locally-disabled,suppressed-message,too-many-lines
 
 from __future__ import annotations
 
@@ -682,11 +682,15 @@ def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positi
         orbit_period_hours: float,
         moons: list | None = None,
         is_moon: bool = False,
+        gg_mass_earth: float = 0.0,
+        gg_satellite_moon: Optional["Moon"] = None,
 ) -> None:
     """Compute and set all seismic stress fields on WorldPhysical (WBH ~pp. 125-128).
 
     Sets residual_seismic_stress, tidal_seismic_stress, total_seismic_stress,
     and seismic_temperature_k (only when it differs from mean_temperature_k).
+    When gg_mass_earth > 0 and gg_satellite_moon has orbit data, also adds the
+    gas giant primary's tidal contribution (for GG satellite mainworlds).
     Mutates physical in-place.
     """
     rss = _compute_rss(world_size, physical.density, age_gyr, moons, is_moon)
@@ -695,6 +699,22 @@ def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positi
         orbit_au, orbit_eccentricity, orbit_period_hours,
     )
     tidal_amp = _compute_tidal_amplitude(world_size, star_mass_solar, orbit_au, moons)
+
+    # Gas giant primary contribution (for mainworld-as-GG-satellite, WBH p.127)
+    if gg_mass_earth > 0.0 and gg_satellite_moon is not None and gg_satellite_moon.orbit_km:
+        gg_orbit_au   = gg_satellite_moon.orbit_km / 1_000_000.0 / _AU_TO_MKM
+        gg_mass_solar = gg_mass_earth / _SOLAR_TO_EARTH_MASS
+        gg_period_h   = gg_satellite_moon.orbit_period_hours or 0.0
+        tidal_ss += _compute_tidal_ss(
+            physical.diameter_km, physical.mass,
+            gg_mass_solar, gg_orbit_au,
+            gg_satellite_moon.orbit_eccentricity,
+            gg_period_h,
+        )
+        dist_mkm = gg_satellite_moon.orbit_km / 1_000_000.0
+        if dist_mkm > 0.0:
+            tidal_amp += (gg_mass_earth * world_size) / (3.2 * dist_mkm ** 3)
+
     tsf = math.floor(tidal_amp / 10)
     tss = rss + tidal_ss + tsf
     physical.residual_seismic_stress = rss
@@ -939,6 +959,8 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
         orbit_eccentricity: float = 0.0,
         num_stars_orbited: int = 1,
         is_moon: bool = False,
+        gg_mass_earth: float = 0.0,
+        gg_satellite_moon: Optional["Moon"] = None,
 ) -> None:
     """Re-run the tidal lock check with moon data and compute seismic stress.
 
@@ -946,6 +968,8 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
     Mutates physical in-place. Tidal lock re-run is skipped when moons is
     empty, but seismic stress is always computed.
     Size 0 (belt) worlds are skipped — BeltPhysical has no tidal or seismic fields.
+    When gg_mass_earth > 0 and gg_satellite_moon has orbit data, the gas giant
+    primary's tidal contribution is included in the seismic stress calculation.
     """
     if not isinstance(physical, WorldPhysical):
         return
@@ -981,4 +1005,6 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
         orbit_period_hours=period_h,
         moons=moons,
         is_moon=is_moon,
+        gg_mass_earth=gg_mass_earth,
+        gg_satellite_moon=gg_satellite_moon,
     )
