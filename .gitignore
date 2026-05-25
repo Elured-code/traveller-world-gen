@@ -55,6 +55,9 @@ run-mapfetch.bat
 # Regenerate with: python traveller_world_gen.py --name <name> --html
 examples/*.html
 
+# ── Scratch / working notes ─────────────────────────────────────────────────
+v13.md
+
 # ── Claude Code context ─────────────────────────────────────────────────────
 # Project context and session history — internal development notes not
 # intended for the public repository.
