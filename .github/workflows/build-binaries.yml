@@ -4,17 +4,6 @@ on:
   workflow_dispatch:
   release:
     types: [created]
-  push:
-    branches: [main]
-    paths:
-      - 'gen-ui/**'
-      - 'traveller_*.py'
-      - 'templates/**'
-      - 'traveller_gen_ui.spec'
-      - 'html_render.py'
-      - 'system_map.py'
-      - 'tables.py'
-      - 'world_codes.py'
 
 # Build jobs need read only; write is scoped to the release job.
 permissions:
@@ -37,10 +26,6 @@ jobs:
           - os: macos-latest
             platform: macos-arm64
             target_arch: arm64
-            archive_ext: zip
-          - os: macos-13
-            platform: macos-x86_64
-            target_arch: x86_64
             archive_ext: zip
           - os: windows-latest
             platform: windows
@@ -203,7 +188,6 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           FILES="artifacts/TravellerWorldGen-macos-arm64/TravellerWorldGen-macos-arm64.zip \
-                 artifacts/TravellerWorldGen-macos-x86_64/TravellerWorldGen-macos-x86_64.zip \
                  artifacts/TravellerWorldGen-windows/TravellerWorldGen-windows.zip \
                  artifacts/TravellerWorldGen-ubuntu/TravellerWorldGen-ubuntu.tar.gz \
                  artifacts/TravellerWorldGen-fedora/TravellerWorldGen-fedora.tar.gz"
