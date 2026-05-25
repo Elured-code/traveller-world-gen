@@ -141,6 +141,26 @@ The former "Stellar && Orbits" toggle checkbox has been removed; tab switching r
 
 ---
 
+## Bug Fix — Tidal Seismic Stress for GG Satellite Mainworlds (Session 64, issue #74)
+
+When the mainworld is a moon of a gas giant, the tidal seismic stress formula
+previously used the host star's mass and the world's stellar orbit — missing the
+dominant tidal driver (the gas giant itself).
+
+`_apply_seismic_stress()` gains two new optional parameters:
+- `gg_mass_earth: float = 0.0` — gas giant mass in Earth masses
+- `gg_satellite_moon: Optional[Moon] = None` — the `Moon` record for the mainworld's
+  orbit around the gas giant (provides `orbit_km`, `orbit_period_hours`,
+  `orbit_eccentricity`)
+
+When both are present and `gg_satellite_moon.orbit_km` is set, a second
+`_compute_tidal_ss()` call adds the gas giant's tidal contribution to the running
+total; the gas giant's tidal amplitude contribution is also added to
+`tidal_amplitude_m`. Both call sites (`gen-ui/app.py` and `function_app.py`) were
+updated to supply these parameters.
+
+---
+
 ## Bug Fix — Biomass Temperature DMs (Session 64, WBH p.127)
 
 ### Missing "High temperature" DM rows
