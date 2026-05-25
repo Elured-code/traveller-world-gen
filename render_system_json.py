@@ -440,9 +440,11 @@ def _mw_ctx(mw: dict) -> dict:  # pylint: disable=too-many-locals
 
     atm_rows = _atm_rows(atm_d) if isinstance(atm_d, dict) else []
 
-    hyd_detail = _get(mw, "hydrographics", "detail")
-    hyd_pct    = (hyd_detail.get("surface_liquid_pct")
-                  if isinstance(hyd_detail, dict) else None)
+    hyd_detail     = _get(mw, "hydrographics", "detail")
+    hyd_pct        = (hyd_detail.get("surface_liquid_pct")
+                      if isinstance(hyd_detail, dict) else None)
+    hyd_fluid_type = (hyd_detail.get("fluid_type")
+                      if isinstance(hyd_detail, dict) else None)
 
     return {
         "name":       mw.get("name", "Unknown"),
@@ -472,7 +474,8 @@ def _mw_ctx(mw: dict) -> dict:  # pylint: disable=too-many-locals
         "phys_title": phys_title,
         "phys_rows":  phys_rows,
         "atm_rows":   atm_rows,
-        "hyd_pct":    hyd_pct,
+        "hyd_pct":        hyd_pct,
+        "hyd_fluid_type": hyd_fluid_type,
         "notes":      mw.get("notes", []),
     }
 

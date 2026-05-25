@@ -608,7 +608,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             )
         if world.hydrographic_detail is None:  # type: ignore[attr-defined]
             world.hydrographic_detail = generate_hydrographic_detail(  # type: ignore[attr-defined]
-                world.hydrographics, world.size  # type: ignore[attr-defined]
+                world.hydrographics, world.size,  # type: ignore[attr-defined]
+                atmosphere=world.atmosphere,  # type: ignore[attr-defined]
+                temperature=world.temperature,  # type: ignore[attr-defined]
             )
         path = self._write_html(world.to_html())  # type: ignore[attr-defined]
         if path is not None:
@@ -650,7 +652,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     )
                 if world.hydrographic_detail is None:
                     world.hydrographic_detail = generate_hydrographic_detail(
-                        world.hydrographics, world.size
+                        world.hydrographics, world.size,
+                        atmosphere=world.atmosphere,
+                        temperature=world.temperature,
                     )
                 # Advanced temperature computed before attach_detail so that
                 # high_temp_k and advanced_mean_temperature_k are available to

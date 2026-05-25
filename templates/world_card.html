@@ -358,6 +358,9 @@
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Hydrographic detail</p>
     {{ drow("Surface liquid", ctx.world.hydrographic_detail.surface_liquid_pct|string ~ "%") }}
+    {% if ctx.world.hydrographic_detail.fluid_type is not none %}
+    {{ drow("Fluid type", ctx.world.hydrographic_detail.fluid_type) }}
+    {% endif %}
   </div>
   {% endif %}
 

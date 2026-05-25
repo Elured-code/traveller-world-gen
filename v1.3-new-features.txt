@@ -70,6 +70,19 @@ MOON ORBITS — ECCENTRICITY AND INCLINATION
 - Eccentricity and inclination are emitted in JSON output (as orbit_eccentricity
   and orbit_inclination) when non-zero.
 
+HYDROGRAPHIC DETAIL
+--------------------
+- The Hydrographic detail card now shows a Fluid type row alongside Surface
+  liquid percentage. The fluid type is determined by the world's temperature
+  zone (WBH pp.91–92):
+    • Boiling worlds: Sulfuric Acid
+    • Hot and Temperate worlds: Water
+    • Cold worlds: Ammonia
+    • Frozen worlds: Liquid Hydrocarbons
+  Desert worlds (Hydrographics 0) and gas/hydrogen atmosphere worlds show no
+  fluid type. Fluid type is emitted in JSON output as "fluid_type" within the
+  hydrographics.detail object when present.
+
 WORLD PHYSICAL DETAIL
 ----------------------
 - Surface tidal amplitude is now calculated and displayed in the World Body

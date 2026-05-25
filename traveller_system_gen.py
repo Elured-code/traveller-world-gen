@@ -595,9 +595,11 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
                 world.size, world.hydrographics,
             )
 
-    # Hydrographic detail — precise surface-liquid percentage (WBH p.93)
+    # Hydrographic detail — surface-liquid percentage and fluid type (WBH pp.91-95)
     world.hydrographic_detail = generate_hydrographic_detail(
-        world.hydrographics, world.size
+        world.hydrographics, world.size,
+        atmosphere=world.atmosphere,
+        temperature=world.temperature,
     )
 
     # Steps 5-7: Population, Government, Law Level

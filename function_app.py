@@ -269,7 +269,9 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
             world.size, world.hydrographics,
         )
         world.hydrographic_detail = generate_hydrographic_detail(
-            world.hydrographics, world.size
+            world.hydrographics, world.size,
+            atmosphere=world.atmosphere,
+            temperature=world.temperature,
         )
         world.size_detail = generate_world_physical(world)
     except Exception as exc:
@@ -316,7 +318,9 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
             world.size, world.hydrographics,
         )
         world.hydrographic_detail = generate_hydrographic_detail(
-            world.hydrographics, world.size
+            world.hydrographics, world.size,
+            atmosphere=world.atmosphere,
+            temperature=world.temperature,
         )
         world.size_detail = generate_world_physical(world)
     except Exception as exc:
@@ -434,7 +438,9 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
             world.size, world.hydrographics,
         )
         world.hydrographic_detail = generate_hydrographic_detail(
-            world.hydrographics, world.size
+            world.hydrographics, world.size,
+            atmosphere=world.atmosphere,
+            temperature=world.temperature,
         )
         world.size_detail = generate_world_physical(world)
         html = world.to_html()

@@ -318,6 +318,9 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
   <div class="inner-card">
     <p class="inner-lbl">Hydrographic detail</p>
     {{ drow("Surface liquid", mw.hydro_detail.surface_liquid_pct|string ~ "%") }}
+    {% if mw.hydro_detail.fluid_type is not none %}
+    {{ drow("Fluid type", mw.hydro_detail.fluid_type) }}
+    {% endif %}
   </div>
   {% endif %}
   {% if mw.biomass_rating is not none and mw.biomass_rating > 0 %}

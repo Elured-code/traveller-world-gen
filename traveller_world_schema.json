@@ -277,6 +277,10 @@
               "minimum": 0,
               "maximum": 100,
               "description": "Precise surface liquid coverage to the nearest 1%, drawn from a flat random distribution over the code's defined range (WBH p.93)."
+            },
+            "fluid_type": {
+              "type": "string",
+              "description": "Primary fluid type covering the surface, determined by temperature zone (WBH pp.91-92). Absent for desert worlds (hydrographics 0) and gas-atmosphere worlds."
             }
           }
         }
