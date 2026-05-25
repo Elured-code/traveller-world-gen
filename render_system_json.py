@@ -284,6 +284,9 @@ def _phys_rows(sd: dict) -> tuple[str, list[dict]]:
             {"label": "Axial tilt",      "value": f"{sd.get('axial_tilt_deg', 0)}°"},
             {"label": "Day length",      "value": f"{sd.get('day_length_hours', 0):.1f} h"},
         ]
+        stellar = sd.get("stellar_day_hours")
+        if stellar is not None:
+            rows.append({"label": "Stellar day", "value": f"{stellar:.1f} h"})
         mean_temp = sd.get("mean_temperature_k")
         if mean_temp is not None:
             rows.append({"label": "Mean temperature", "value": f"{mean_temp} K"})

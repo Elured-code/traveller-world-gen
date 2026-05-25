@@ -216,6 +216,9 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
     {{ drow("Escape velocity", "%.2f km/s"|format(p.escape_velocity)) }}
     {{ drow("Axial tilt", p.axial_tilt|string ~ "°") }}
     {{ drow("Day length", "%.1f h"|format(p.day_length)) }}
+    {% if p.stellar_day_hours is not none %}
+    {{ drow("Stellar day", "%.1f h"|format(p.stellar_day_hours)) }}
+    {% endif %}
     {% if p.mean_temperature_k is not none %}
     {{ drow("Mean temperature", p.mean_temperature_k|string ~ " K") }}
     {% endif %}
