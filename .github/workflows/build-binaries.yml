@@ -4,17 +4,6 @@ on:
   workflow_dispatch:
   release:
     types: [created]
-  push:
-    branches: [main]
-    paths:
-      - 'gen-ui/**'
-      - 'traveller_*.py'
-      - 'templates/**'
-      - 'traveller_gen_ui.spec'
-      - 'html_render.py'
-      - 'system_map.py'
-      - 'tables.py'
-      - 'world_codes.py'
 
 # Build jobs need read only; write is scoped to the release job.
 permissions:
