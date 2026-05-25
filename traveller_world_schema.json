@@ -611,7 +611,8 @@
             "bulk",
             "resource_rating",
             "size_1_bodies",
-            "size_s_bodies"
+            "size_s_bodies",
+            "mean_temperature_k"
           ],
           "additionalProperties": false,
           "properties": {
@@ -669,6 +670,11 @@
               "type": "integer",
               "minimum": 0,
               "description": "Count of Size S significant planetoids."
+            },
+            "mean_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Basic Mean Temperature in K (WBH p.47). Computed with atmosphere DM 0."
             }
           }
         }

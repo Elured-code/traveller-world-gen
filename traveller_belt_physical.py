@@ -63,6 +63,8 @@ import math
 import random
 from dataclasses import dataclass
 
+from traveller_world_physical import _compute_mean_temperature
+
 
 # ---------------------------------------------------------------------------
 # Dice helpers
@@ -251,6 +253,7 @@ class BeltPhysical:  # pylint: disable=too-many-instance-attributes
     resource_rating: int # resource rating (2-12)
     size_1_bodies: int   # count of Size 1 significant planetoids
     size_s_bodies: int   # count of Size S significant planetoids
+    mean_temperature_k: int  # Basic Mean Temperature (WBH p.47); atmosphere DM = 0 for belts
 
     def to_dict(self) -> dict:
         """Return belt physical characteristics as a JSON-compatible dict."""
@@ -262,9 +265,10 @@ class BeltPhysical:  # pylint: disable=too-many-instance-attributes
             "c_type_pct":     self.c_type_pct,
             "other_pct":      self.other_pct,
             "bulk":           self.bulk,
-            "resource_rating": self.resource_rating,
-            "size_1_bodies":  self.size_1_bodies,
-            "size_s_bodies":  self.size_s_bodies,
+            "resource_rating":   self.resource_rating,
+            "size_1_bodies":     self.size_1_bodies,
+            "size_s_bodies":     self.size_s_bodies,
+            "mean_temperature_k": self.mean_temperature_k,
         }
 
 
@@ -311,6 +315,7 @@ def generate_belt_physical(  # pylint: disable=too-many-arguments,too-many-posit
     resource = _roll_resource_rating(bulk, m_pct, c_pct, is_exploited)
     size_1 = _roll_size_1_bodies(bulk, hz_deviation, span_au)
     size_s = _roll_size_s_bodies(bulk, hz_deviation, span_au, is_outermost)
+    mean_temp = _compute_mean_temperature(hz_deviation, 0)
 
     return BeltPhysical(
         inner_au=inner_au,
@@ -323,4 +328,5 @@ def generate_belt_physical(  # pylint: disable=too-many-arguments,too-many-posit
         resource_rating=resource,
         size_1_bodies=size_1,
         size_s_bodies=size_s,
+        mean_temperature_k=mean_temp,
     )

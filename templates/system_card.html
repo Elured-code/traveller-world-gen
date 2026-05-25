@@ -204,6 +204,7 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
     <div class="stat"><p class="sl">Resource rating</p><p class="sv">{{ bp.resource_rating }}</p></div>
     <div class="stat"><p class="sl">Composition</p><p class="sv">M {{ bp.m_type_pct }}% / S {{ bp.s_type_pct }}% / C {{ bp.c_type_pct }}%</p></div>
     <div class="stat"><p class="sl">Significant bodies</p><p class="sv">{{ bp.size_1_bodies }} × Sz 1, {{ bp.size_s_bodies }} × Sz S</p></div>
+    {% if bp.mean_temperature_k is defined %}<div class="stat"><p class="sl">Mean temperature</p><p class="sv">{{ bp.mean_temperature_k }} K</p></div>{% endif %}
   </div>
   {% elif mw.phys_data.type == "world" %}
   {% set p = mw.phys_data.data %}
