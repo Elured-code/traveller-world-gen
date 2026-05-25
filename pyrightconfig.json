@@ -1,4 +1,6 @@
 {
   "pythonVersion": "3.11",
-  "extraPaths": ["."]
+  "extraPaths": ["."],
+  "typeCheckingMode": "basic",
+  "exclude": [".venv", "tests", "gen-ui", "**/node_modules", "**/__pycache__", "**/.*"]
 }

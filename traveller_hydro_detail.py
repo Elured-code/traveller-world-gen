@@ -2,11 +2,14 @@
 traveller_hydro_detail.py
 =========================
 Hydrographic detail for Traveller mainworlds, following the World Builder's
-Handbook (WBH pp. 93-96).
+Handbook (WBH pp. 91-95).
 
-Phase 1 (this module): surface liquid percentage to the nearest 1%, derived
+Phase 1 (Session 37): surface liquid percentage to the nearest 1%, derived
 from the integer Hydrographics code using a flat random distribution over each
 code's defined percentage range (WBH Hydrographics Ranges table, p.93).
+
+Phase 2 (Session 67): fluid type — the primary liquid covering the world
+surface, determined by temperature zone (WBH pp.91-92).
 
 Licence
 -------
@@ -24,7 +27,7 @@ The human author reviewed, directed, and is responsible for the code.
 """
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -43,21 +46,47 @@ _HYDRO_PCT_RANGE: dict[int, tuple[int, int]] = {
     10: (96, 100),
 }
 
+# WBH pp.91-92 — primary fluid type by temperature zone.
+_FLUID_TYPE_BY_TEMP: dict[str, str] = {
+    "Boiling":   "Sulfuric Acid",
+    "Hot":       "Water",
+    "Temperate": "Water",
+    "Cold":      "Ammonia",
+    "Frozen":    "Liquid Hydrocarbons",
+}
+
+# Atmosphere codes with no surface liquid (gas giant / hydrogen atmospheres).
+_NO_SURFACE_LIQUID_ATMS: frozenset[int] = frozenset({16, 17})
+
+
+def _fluid_type(atmosphere: int, temperature: str) -> Optional[str]:
+    """Return the primary fluid type (WBH pp.91-92) or None for dry/gas worlds."""
+    if atmosphere in _NO_SURFACE_LIQUID_ATMS:
+        return None
+    return _FLUID_TYPE_BY_TEMP.get(temperature)
+
 
 @dataclass
 class HydrographicDetail:
     """Detailed hydrographic characteristics for a mainworld."""
 
-    surface_liquid_pct: int  # 0-100 %, to nearest 1 %
+    surface_liquid_pct: int            # 0-100 %, to nearest 1 % (Phase 1)
+    fluid_type: Optional[str] = field(default=None)  # primary surface fluid (Phase 2)
 
     def to_dict(self) -> dict:
         """Serialise to a plain dictionary."""
-        return {"surface_liquid_pct": self.surface_liquid_pct}
+        d: dict = {"surface_liquid_pct": self.surface_liquid_pct}
+        if self.fluid_type is not None:
+            d["fluid_type"] = self.fluid_type
+        return d
 
 
 def generate_hydrographic_detail(
     hydrographics: int,
     size: int,
+    *,
+    atmosphere: int = 0,
+    temperature: str = "Temperate",
 ) -> Optional[HydrographicDetail]:
     """Return hydrographic detail for a mainworld.
 
@@ -70,9 +99,16 @@ def generate_hydrographic_detail(
     For all other cases the surface liquid percentage is drawn from a flat
     uniform distribution over the code's defined range (WBH p.93 table).
 
+    Fluid type (WBH pp.91-92) is determined by temperature zone; desert worlds
+    (hydrographics 0) and gas-atmosphere worlds (codes 16-17) produce no fluid
+    type.
+
     Args:
         hydrographics: integer hydro code 0-10.
         size: integer UWP size code.
+        atmosphere: integer atmosphere code (keyword-only).
+        temperature: temperature category string — "Boiling", "Hot",
+            "Temperate", "Cold", or "Frozen" (keyword-only).
 
     Returns:
         HydrographicDetail or None.
@@ -83,7 +119,11 @@ def generate_hydrographic_detail(
         return None
 
     if hydrographics == 10 and size > 9:
-        return HydrographicDetail(surface_liquid_pct=100)
+        pct = 100
+    else:
+        low, high = _HYDRO_PCT_RANGE[hydrographics]
+        pct = random.randint(low, high)
 
-    low, high = _HYDRO_PCT_RANGE[hydrographics]
-    return HydrographicDetail(surface_liquid_pct=random.randint(low, high))
+    fluid = _fluid_type(atmosphere, temperature) if hydrographics > 0 else None
+
+    return HydrographicDetail(surface_liquid_pct=pct, fluid_type=fluid)

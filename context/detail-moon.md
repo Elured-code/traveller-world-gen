@@ -21,6 +21,42 @@ attach_detail(system: TravellerSystem) -> None
     # system.mainworld.physical and system.mainworld_orbit.detail.physical.
     # Reads system.nhz_atmospheres and threads it through all secondary and
     # moon atmosphere generation (Session 38 cont.).
+    # Calls _apply_biomass(system) as its final step (Session 61).
+
+generate_biomass_rating(
+    atm: int, hydro: int, age_gyr: float, temperature_zone: str,
+    mean_temp_k: Optional[int] = None,
+    high_temp_k: Optional[int] = None,
+    has_biologic_taint: bool = False,
+) -> int
+    # Roll and return biomass rating (WBH pp.127-131). Roll 2D + DMs;
+    # clamp combined DM to [-12, +4]. Returns 0 for no life.
+    # Special Case 1: biologic taint + rolled ≤ 0 → returns 1 (currently dormant).
+    # Special Case 2: inhospitable atm + biomass ≥ 1 → adds adjustment.
+    # DM tables: _ATM_BIOMASS_DM, _HYDRO_BIOMASS_DM, _TEMP_ZONE_BIOMASS_DM,
+    #            _SC2_ATM_SET, _SC2_ADJUSTMENT (all module-level).
+    # Temperature DM split (Session 65, WBH p.127):
+    #   high_temp_k (or mean_temp_k as proxy): >353K → DM−2; <273K → DM−4.
+    #   mean_temp_k: >353K → DM−4; <273K → DM−2; 279–303K → DM+2.
+    #   Falls back to _TEMP_ZONE_BIOMASS_DM when both are None.
+    # _apply_biomass() reads advanced_mean_temperature_k and high_temperature_k off
+    #   WorldPhysical via getattr to pass as eff_mean_k and high_temp_k.
+
+generate_biocomplexity_rating(
+    biomass: int, atm: int, age_gyr: float,
+    has_low_oxygen_taint: bool = False,
+) -> int
+    # Roll biocomplexity rating (WBH pp.127-131). 2D − 7 + min(biomass, 9) + DMs.
+    # DMs: atm not 4–9 → DM−2; low-O taint → DM−2;
+    #      age ≤ 1 Gyr → DM−10; ≤ 2 Gyr → DM−8; ≤ 3 Gyr → DM−4; ≤ 4 Gyr → DM−2.
+    # Worst DM used at exact age boundaries. Minimum result 1.
+
+generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, bool]
+    # Check for native/extinct sophonts (WBH p.131).
+    # Only call when biocomplexity >= 8. Biocomplexity > 9 capped at 9.
+    # Current sophont: 2D + min(bio,9) − 7 ≥ 13 (no DMs).
+    # Extinct: same + DM+1 if age > 5 Gyr; only rolled when current fails.
+    # Returns (native_sophont, extinct_sophont).
 
 table: str = system_body_table(system: TravellerSystem) -> str
     # Formatted text table of all orbits and their moon sub-rows.
@@ -196,8 +232,11 @@ Inner edge clamped: if `centre − span/2 < 0.55`, centre is shifted outward.
 For the mainworld, `WorldPhysical.diameter_km` and `WorldPhysical.mass` are used
 directly (accessed via `mainworld.size_detail`).
 
-**Optional eccentricity/direction** (WBH p.76) — deferred; fields are present
-on `Moon` but left at defaults (`orbit_eccentricity=0.0`, `orbit_retrograde=False`).
+**Eccentricity and inclination** (WBH p.76) — rolled for each significant moon
+when orbit data is provided. `roll_eccentricity(orbit_number=2.0, system_age_gyr=0.0)`
+(no world-specific DMs) and `roll_inclination()` are called from `traveller_orbit_gen`.
+Inclination > 90° implies retrograde. Emitted to JSON as `orbit_eccentricity` (4 d.p.)
+and `orbit_inclination` (2 d.p.) when > 0.
 
 ### Belt physical detail (WBH pp.131-133)
 

@@ -1,0 +1,16 @@
+[MASTER]
+ignore=tests,migrations
+ignore-patterns=.*_old\.py
+
+[MESSAGES CONTROL]
+disable=
+    # R0801: Identical pipeline boilerplate blocks exist across traveller_map_fetch,
+    # traveller_system_gen, traveller_world_gen, function_app, and system_map because
+    # each entry-point duplicates the same post-generation orchestration steps.
+    # Several data-table copies (TEMPERATURE_DM, eccentricity table) exist intentionally
+    # to break circular imports. Tracked for future refactoring.
+    duplicate-code,
+
+    # R0401: traveller_system_gen → traveller_world_detail is a pre-existing circular
+    # import resolved at runtime via TYPE_CHECKING guards. Tracked for future cleanup.
+    cyclic-import,

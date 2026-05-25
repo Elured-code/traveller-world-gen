@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from html_render import render as _render_template
+from tables import TIDAL_STATUS_LABELS, ZONE_CSS_CLASS, BASE_FULL
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,14 +65,6 @@ def _get(d: dict, *keys: str, default: Any = "") -> Any:
     return cur
 
 
-_TIDAL_LABELS = {
-    "braking":    "Tidal braking",
-    "prograde":   "Prograde (tidally slowed)",
-    "retrograde": "Retrograde (tidally induced)",
-    "3:2_lock":   "3:2 resonance lock",
-    "1:1_lock":   "1:1 tidal lock (synchronous)",
-}
-
 _ANOMALY_LABELS = {
     "random":          "Rand",
     "eccentric":       "Ecc",
@@ -79,14 +72,6 @@ _ANOMALY_LABELS = {
     "retrograde":      "Retro",
     "trojan_leading":  "L4",
     "trojan_trailing": "L5",
-}
-
-_BASE_NAMES = {
-    "N": "Naval",
-    "S": "Scout",
-    "M": "Military",
-    "H": "Highport",
-    "C": "Corsair",
 }
 
 
@@ -299,22 +284,31 @@ def _phys_rows(sd: dict) -> tuple[str, list[dict]]:
             {"label": "Axial tilt",      "value": f"{sd.get('axial_tilt_deg', 0)}°"},
             {"label": "Day length",      "value": f"{sd.get('day_length_hours', 0):.1f} h"},
         ]
+        stellar = sd.get("stellar_day_hours")
+        if stellar is not None:
+            rows.append({"label": "Stellar day", "value": f"{stellar:.1f} h"})
         mean_temp = sd.get("mean_temperature_k")
         if mean_temp is not None:
             rows.append({"label": "Mean temperature", "value": f"{mean_temp} K"})
         tidal = sd.get("tidal_status", "none")
         if tidal and tidal != "none":
             rows.append({"label": "Tidal status",
-                         "value": _TIDAL_LABELS.get(tidal, tidal)})
+                         "value": TIDAL_STATUS_LABELS.get(tidal, tidal)})
+        tidal_amp = sd.get("tidal_amplitude_m")
+        if tidal_amp is not None:
+            rows.append({"label": "Tidal amplitude", "value": f"{tidal_amp:.2f} m"})
         ecc_adj = sd.get("eccentricity_adjusted")
         if ecc_adj is not None:
             rows.append({"label": "Eccentricity adjusted", "value": f"{ecc_adj:.3f}"})
+        thf = sd.get("tidal_seismic_stress")
+        if thf:
+            rows.append({"label": "Tidal seismic stress", "value": str(thf)})
+        tsf = sd.get("tidal_stress_factor")
+        if tsf:
+            rows.append({"label": "Tidal stress factor", "value": str(tsf)})
         rss = sd.get("residual_seismic_stress")
         if rss is not None:
             rows.append({"label": "Residual seismic stress", "value": str(rss)})
-        thf = sd.get("tidal_heating_factor")
-        if thf:
-            rows.append({"label": "Tidal heating factor", "value": str(thf)})
         tss = sd.get("total_seismic_stress")
         if tss is not None:
             rows.append({"label": "Total seismic stress", "value": str(tss)})
@@ -410,8 +404,7 @@ def _atm_rows(atm: dict) -> list[dict]:  # pylint: disable=too-many-branches,too
 def _mw_ctx(mw: dict) -> dict:  # pylint: disable=too-many-locals
     """Build the mainworld context dict from the JSON mainworld block."""
     zone     = mw.get("travel_zone", "Green")
-    zone_cls = {"Green": "zone-green", "Amber": "zone-amber",
-                "Red": "zone-red"}.get(zone, "zone-green")
+    zone_cls = ZONE_CSS_CLASS.get(zone, "zone-green")
 
     sp      = mw.get("starport", {})
     sp_code = sp.get("code", "?") if isinstance(sp, dict) else str(sp)
@@ -439,7 +432,7 @@ def _mw_ctx(mw: dict) -> dict:  # pylint: disable=too-many-locals
     tl  = mw.get("tech_level", 0)
 
     bases    = mw.get("bases", [])
-    bases_str = ("  ".join(f"{_BASE_NAMES.get(b, b)} ({b})" for b in bases)
+    bases_str = ("  ".join(f"{(BASE_FULL.get(b) or b).split(' — ', 1)[-1]} ({b})" for b in bases)
                  if bases else "None")
 
     sd = mw.get("size_detail")
@@ -447,9 +440,11 @@ def _mw_ctx(mw: dict) -> dict:  # pylint: disable=too-many-locals
 
     atm_rows = _atm_rows(atm_d) if isinstance(atm_d, dict) else []
 
-    hyd_detail = _get(mw, "hydrographics", "detail")
-    hyd_pct    = (hyd_detail.get("surface_liquid_pct")
-                  if isinstance(hyd_detail, dict) else None)
+    hyd_detail     = _get(mw, "hydrographics", "detail")
+    hyd_pct        = (hyd_detail.get("surface_liquid_pct")
+                      if isinstance(hyd_detail, dict) else None)
+    hyd_fluid_type = (hyd_detail.get("fluid_type")
+                      if isinstance(hyd_detail, dict) else None)
 
     return {
         "name":       mw.get("name", "Unknown"),
@@ -479,7 +474,8 @@ def _mw_ctx(mw: dict) -> dict:  # pylint: disable=too-many-locals
         "phys_title": phys_title,
         "phys_rows":  phys_rows,
         "atm_rows":   atm_rows,
-        "hyd_pct":    hyd_pct,
+        "hyd_pct":        hyd_pct,
+        "hyd_fluid_type": hyd_fluid_type,
         "notes":      mw.get("notes", []),
     }
 

@@ -1,10 +1,12 @@
-"""Tests for traveller_hydro_detail.py — hydrographic percentage (Phase 1)."""
+"""Tests for traveller_hydro_detail.py — hydrographic detail (Phases 1 and 2)."""
 
 import pytest
 from traveller_hydro_detail import (
     HydrographicDetail,
     generate_hydrographic_detail,
     _HYDRO_PCT_RANGE,
+    _FLUID_TYPE_BY_TEMP,
+    _fluid_type,
 )
 
 
@@ -161,3 +163,105 @@ def test_exports():
     import traveller_hydro_detail as m
     assert hasattr(m, "HydrographicDetail")
     assert hasattr(m, "generate_hydrographic_detail")
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — _fluid_type() helper (WBH pp.91-92)
+# ---------------------------------------------------------------------------
+
+class TestFluidTypeHelper:
+    """Unit tests for the _fluid_type() pure function."""
+
+    def test_temperate_is_water(self):
+        assert _fluid_type(0, "Temperate") == "Water"
+
+    def test_hot_is_water(self):
+        assert _fluid_type(0, "Hot") == "Water"
+
+    def test_boiling_is_sulfuric_acid(self):
+        assert _fluid_type(0, "Boiling") == "Sulfuric Acid"
+
+    def test_cold_is_ammonia(self):
+        assert _fluid_type(0, "Cold") == "Ammonia"
+
+    def test_frozen_is_liquid_hydrocarbons(self):
+        assert _fluid_type(0, "Frozen") == "Liquid Hydrocarbons"
+
+    def test_gas_atmosphere_16_returns_none(self):
+        assert _fluid_type(16, "Temperate") is None
+
+    def test_gas_atmosphere_17_returns_none(self):
+        assert _fluid_type(17, "Cold") is None
+
+    def test_normal_atmosphere_not_overridden(self):
+        assert _fluid_type(6, "Temperate") == "Water"
+
+    def test_fluid_table_covers_all_temperature_zones(self):
+        zones = {"Boiling", "Hot", "Temperate", "Cold", "Frozen"}
+        assert set(_FLUID_TYPE_BY_TEMP.keys()) == zones
+
+    def test_unknown_temperature_returns_none(self):
+        assert _fluid_type(0, "Unknown") is None
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — generate_hydrographic_detail() with atmosphere/temperature
+# ---------------------------------------------------------------------------
+
+class TestFluidTypeIntegration:
+    """Integration tests for fluid type via generate_hydrographic_detail()."""
+
+    def test_fluid_type_absent_for_desert_world(self):
+        result = generate_hydrographic_detail(0, 5, temperature="Temperate")
+        assert result is not None
+        assert result.fluid_type is None
+
+    def test_fluid_type_water_for_temperate(self):
+        result = generate_hydrographic_detail(5, 5, temperature="Temperate")
+        assert result is not None
+        assert result.fluid_type == "Water"
+
+    def test_fluid_type_ammonia_for_cold(self):
+        result = generate_hydrographic_detail(5, 5, temperature="Cold")
+        assert result is not None
+        assert result.fluid_type == "Ammonia"
+
+    def test_fluid_type_liquid_hydrocarbons_for_frozen(self):
+        result = generate_hydrographic_detail(5, 5, temperature="Frozen")
+        assert result is not None
+        assert result.fluid_type == "Liquid Hydrocarbons"
+
+    def test_fluid_type_none_for_gas_atmosphere(self):
+        result = generate_hydrographic_detail(5, 5, atmosphere=16, temperature="Temperate")
+        assert result is not None
+        assert result.fluid_type is None
+
+    def test_fluid_type_absent_for_size_0(self):
+        result = generate_hydrographic_detail(5, 0, temperature="Temperate")
+        assert result is None
+
+    def test_backward_compat_no_kwargs(self):
+        result = generate_hydrographic_detail(5, 5)
+        assert result is not None
+        assert result.surface_liquid_pct >= 0
+        assert result.fluid_type == "Water"  # default temperature="Temperate"
+
+    def test_to_dict_includes_fluid_type_when_set(self):
+        result = generate_hydrographic_detail(5, 5, temperature="Cold")
+        assert result is not None
+        d = result.to_dict()
+        assert "fluid_type" in d
+        assert d["fluid_type"] == "Ammonia"
+
+    def test_to_dict_omits_fluid_type_for_desert_world(self):
+        result = generate_hydrographic_detail(0, 5, temperature="Temperate")
+        assert result is not None
+        d = result.to_dict()
+        assert "fluid_type" not in d
+
+    def test_surface_liquid_pct_unchanged_by_new_params(self):
+        import random
+        random.seed(99)
+        result = generate_hydrographic_detail(5, 5, atmosphere=6, temperature="Temperate")
+        assert result is not None
+        assert 46 <= result.surface_liquid_pct <= 55

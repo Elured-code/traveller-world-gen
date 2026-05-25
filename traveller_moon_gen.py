@@ -62,6 +62,7 @@ import math
 import random
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
+from traveller_orbit_gen import roll_eccentricity, roll_inclination
 if TYPE_CHECKING:
     from traveller_world_detail import WorldDetail
 
@@ -211,9 +212,9 @@ class Moon:  # pylint: disable=too-many-instance-attributes
     orbit_period_hours: Optional[float] = field(default=None, init=False)
     ring_centre_pd: Optional[float] = field(default=None, init=False)
     ring_span_pd: Optional[float] = field(default=None, init=False)
-    # Eccentricity/direction deferred (WBH p.76); fields present but not yet rolled
+    # Eccentricity and inclination (WBH p.76); set by generate_moons() when orbit data provided
     orbit_eccentricity: float = field(default=0.0, init=False)
-    orbit_retrograde: bool = field(default=False, init=False)
+    orbit_inclination: float = field(default=0.0, init=False)  # >90° implies retrograde
 
     @property
     def size_str(self) -> str:
@@ -245,6 +246,10 @@ class Moon:  # pylint: disable=too-many-instance-attributes
             d["orbit_km"]           = self.orbit_km
             d["orbit_range"]        = self.orbit_range
             d["orbit_period_hours"] = self.orbit_period_hours
+            if self.orbit_eccentricity > 0:
+                d["orbit_eccentricity"] = round(self.orbit_eccentricity, 4)
+            if self.orbit_inclination > 0:
+                d["orbit_inclination"] = round(self.orbit_inclination, 2)
         if self.is_ring and self.ring_centre_pd is not None:
             d["ring_centre_pd"] = self.ring_centre_pd
             d["ring_span_pd"]   = self.ring_span_pd
@@ -411,6 +416,40 @@ def _consolidate(moons: List[Moon]) -> List[Moon]:
 # Public API
 # ---------------------------------------------------------------------------
 
+def place_moon_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    moon: Moon,
+    parent_diameter_km: float,
+    parent_mass_earth: float,
+    parent_orbit_au: float,
+    star_mass_solar: float,
+    parent_ecc: float = 0.0,
+) -> None:
+    """Place a single moon's orbit around a parent body (mutates moon in-place).
+
+    Sets orbit_pd, orbit_km, orbit_range, orbit_period_hours, orbit_eccentricity,
+    and orbit_inclination using the same Hill sphere / MOR / PD-roll procedure as
+    generate_moons().  No-op when parent data is zero or Moon Limit < 2 (no stable
+    significant-moon orbit possible).
+    """
+    if parent_orbit_au <= 0.0 or star_mass_solar <= 0.0 or parent_diameter_km <= 0.0:
+        return
+    hill_au = _hill_sphere_au(parent_orbit_au, parent_ecc, parent_mass_earth, star_mass_solar)
+    hill_pd = _hill_sphere_pd(hill_au, parent_diameter_km)
+    ml      = _hill_moon_limit(hill_pd)
+    if ml < 2:
+        return
+    mor = _moon_orbit_range(ml, 1)
+    if mor <= 0:
+        return
+    pd, rng = _roll_moon_pd(mor)
+    moon.orbit_pd           = pd
+    moon.orbit_km           = round(pd * parent_diameter_km, 1)
+    moon.orbit_range        = "excess" if pd > mor + 2 else rng
+    moon.orbit_period_hours = _moon_period_hours(moon.orbit_km, parent_mass_earth)
+    moon.orbit_eccentricity = roll_eccentricity(orbit_number=2.0, system_age_gyr=0.0)
+    moon.orbit_inclination  = roll_inclination()
+
+
 def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches,too-many-statements
     size_code: int | str,
     orbit_number: float,
@@ -525,6 +564,13 @@ def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-ar
             # Ring placement (WBH p.77)
             for ring in rings:
                 ring.ring_centre_pd, ring.ring_span_pd = _place_ring(diam_km)
+
+            # Eccentricity and inclination (WBH p.76)
+            for m in sig_moons:
+                m.orbit_eccentricity = roll_eccentricity(
+                    orbit_number=2.0, system_age_gyr=0.0,
+                )
+                m.orbit_inclination = roll_inclination()
 
             moons = sorted(moons, key=sort_key)
 

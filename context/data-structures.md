@@ -130,6 +130,19 @@ class World:
     physical: Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
                                     # set by attach_detail() for belt mainworlds (BeltPhysical),
                                     # or by generate_world_physical() for terrestrial mainworlds
+    biomass_rating: Optional[int] = field(default=None, init=False)
+                                    # set by _apply_biomass() at end of attach_detail();
+                                    # only when WorldPhysical is set (Mainworld Detail required);
+                                    # 0 = no native life; positive = life present
+    biocomplexity_rating: Optional[int] = field(default=None, init=False)
+                                    # set by _apply_biomass(); None when biomass 0 or not computed;
+                                    # min 1 when set
+    native_sophont: bool = field(default=False, init=False)
+                                    # True when current sophont confirmed (WBH p.131);
+                                    # only set when biocomplexity_rating >= 8
+    extinct_sophont: bool = field(default=False, init=False)
+                                    # True when evidence of extinct sophont (WBH p.131);
+                                    # only checked when current sophont roll fails
 
     # methods: .uwp(), .to_dict(), .to_json(), .to_html(), .summary()
     # classmethod: .from_dict(d) — reconstruct from to_dict() output
@@ -265,23 +278,53 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     # to generate_world_physical(). Computed from orbital DM + atmosphere DM applied
     # to base roll 7; extrapolates below 0 (-5K/step) and above 12 (+50K/step); min 3K.
     residual_seismic_stress: Optional[int] = field(default=None, init=False)
-    tidal_heating_factor: Optional[int] = field(default=None, init=False)
+    tidal_seismic_stress: Optional[int] = field(default=None, init=False)
+    tidal_stress_factor: Optional[int] = field(default=None, init=False)
     total_seismic_stress: Optional[int] = field(default=None, init=False)
     seismic_temperature_k: Optional[int] = field(default=None, init=False)
-    # Seismic fields set by apply_moon_tidal_effects() (Session 56, WBH ~pp.125-128).
+    tidal_amplitude_m: Optional[float] = field(default=None, init=False)
+    # Seismic and tidal fields set by apply_moon_tidal_effects() (Sessions 56–60).
     # residual_seismic_stress: floor(Size - Age_Gyr + DMs)² — DMs: is_moon +1;
     #   density > 1.0 +2; density < 0.5 -1; sum of Size 1+ moon sizes capped at +12.
-    # tidal_heating_factor: PrimaryMass⊕² × (diam/1600)⁵ × e² /
+    # tidal_seismic_stress: PrimaryMass⊕² × (diam/1600)⁵ × e² /
     #   (3000 × dist_Mkm⁵ × period_days × WorldMass⊕); 0 when < 1; omitted from to_dict() when 0.
-    # total_seismic_stress: RSS + THF (Tidal Stress Factor deferred — issue #67).
+    # tidal_stress_factor: floor(tidal_amplitude_m / 10); omitted from to_dict() when 0.
+    # total_seismic_stress: RSS + Tidal Seismic Stress + TSF.
     # seismic_temperature_k: ⁴√(mean_temp⁴ + TSS⁴); only when TSS>0 and value differs.
+    # tidal_amplitude_m: combined surface tidal amplitude in metres (star + moons).
+    albedo: Optional[float] = field(default=None, init=False)
+    greenhouse_factor: Optional[float] = field(default=None, init=False)
+    advanced_mean_temperature_k: Optional[int] = field(default=None, init=False)
+    high_temperature_k: Optional[int] = field(default=None, init=False)
+    low_temperature_k: Optional[int] = field(default=None, init=False)
+    # Advanced mean temperature fields set by generate_advanced_mean_temperature() (Session 65).
+    # albedo: rolled surface albedo [0.02, 0.98], world-type-dependent (rocky/icy/icy-far)
+    #   + atmosphere and hydrographics modifiers (WBH pp.47-48).
+    # greenhouse_factor: 0.5×√bar × atmosphere-type multiplier (WBH p.48).
+    # advanced_mean_temperature_k: 279 × ⁴√(L × (1-A) × (1+G) / AU²); min 3K.
+    #   L = luminosity of all stars interior to world's orbit.
+    # high_temperature_k / low_temperature_k: seasonal extremes (WBH pp.48-50).
+    #   Steps 1-4: axial tilt factor + rotation factor + geographic factor → variance.
+    #   Steps 5-6: atmospheric factor = 1+bar; luminosity modifier = variance / atm_factor.
+    #   Steps 7-9: high/low luminosity → high/low AU (near/far periastron) → T = 279×⁴√(...)
+    stellar_day_hours: Optional[float] = field(default=None, init=False)
+    # Stellar (solar) day in hours — time between successive sunrises (WBH p.106, Session 66).
+    # Derived from day_length (sidereal) and orbital period:
+    #   prograde:  (T_sid × T_orb) / (T_orb − T_sid)
+    #   retrograde: (T_sid × T_orb) / (T_orb + T_sid)
+    # None for 1:1_lock (star is stationary in sky) and when orbital data absent.
+    # Set in generate_world_physical() and recomputed in apply_moon_tidal_effects().
 
     # method: .to_dict()
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
     #       gravity_g, escape_velocity_km_s, axial_tilt_deg, day_length_hours,
     #       tidal_status[, eccentricity_adjusted][, mean_temperature_k]
-    #       [, residual_seismic_stress][, tidal_heating_factor (only when >0)]
-    #       [, total_seismic_stress][, seismic_temperature_k]  ← all only when not None
+    #       [, tidal_amplitude_m][, residual_seismic_stress]
+    #       [, tidal_seismic_stress (only when >0)][, tidal_stress_factor (only when >0)]
+    #       [, total_seismic_stress][, seismic_temperature_k]
+    #       [, albedo][, greenhouse_factor][, advanced_mean_temperature_k]
+    #       [, high_temperature_k][, low_temperature_k]
+    #       [, stellar_day_hours]  ← all only when not None
 ```
 
 ---
@@ -324,6 +367,9 @@ class WorldDetail:
     moons: list         # List[Moon], populated by attach_detail()
     trade_codes: list   # List[str]; empty for gas giants and rings
     physical: Optional[BeltPhysical]  # set by generate_system_detail() for belt slots; None otherwise
+    biomass_rating: Optional[int]     # set by _apply_biomass() at end of attach_detail();
+                                      # None for gas giants, belts, and empty slots;
+                                      # 0 = no native life; positive = life present
 
     # computed properties:
     # .inhabited -> bool
@@ -331,6 +377,7 @@ class WorldDetail:
     # .profile -> str        (see Profile string formats below)
 
     # method: .to_dict()  — includes "physical": belt_physical.to_dict() or None
+    #                        includes "biomass_rating": int when not None
 ```
 
 ---
@@ -354,8 +401,8 @@ class Moon:  # pylint: disable=too-many-instance-attributes
     orbit_period_hours: Optional[float] # √(orbit_km³ / mass_earth) / 361730
     ring_centre_pd: Optional[float]     # rings only: 0.4 + roll(2)/8
     ring_span_pd: Optional[float]       # rings only: roll(3)/100 + 0.07
-    orbit_eccentricity: float           # default 0.0 (deferred — not yet rolled)
-    orbit_retrograde: bool              # default False (deferred — not yet rolled)
+    orbit_eccentricity: float           # default 0.0; rolled via roll_eccentricity() when orbit placed
+    orbit_inclination: float            # default 0.0; rolled via roll_inclination(); >90° = retrograde
 
     # properties: .size_str
 ```

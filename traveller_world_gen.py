@@ -41,10 +41,15 @@ import argparse
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, TYPE_CHECKING
 
-from traveller_world_physical import TIDAL_STATUS_LABELS
 from traveller_belt_physical import BeltPhysical
 from traveller_hydro_detail import HydrographicDetail
 from html_render import render
+from world_codes import AtmosphereCode, StarportCode, TemperatureCategory, TradeCode, TravelZone
+from tables import (
+    SIZE_DIAMETER_LABEL, SIZE_GRAVITY_LABEL, POPULATION_RANGE,
+    TRADE_CODE_FULL, BASE_FULL, ZONE_CSS_CLASS, TIDAL_STATUS_LABELS,
+    BIOCOMPLEXITY_DESC,
+)
 
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
@@ -1470,6 +1475,10 @@ class World:  # pylint: disable=too-many-instance-attributes
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
     size_detail:    Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
+    biomass_rating:        Optional[int] = field(default=None, init=False)
+    biocomplexity_rating:  Optional[int] = field(default=None, init=False)
+    native_sophont:  bool = field(default=False, init=False)
+    extinct_sophont: bool = field(default=False, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1530,16 +1539,8 @@ class World:  # pylint: disable=too-many-instance-attributes
             },
             "size": {
                 "code": self.size,
-                "diameter_km": {
-                    0: "<1,000", 1: "1,600", 2: "3,200", 3: "4,800",
-                    4: "6,400", 5: "8,000", 6: "9,600", 7: "11,200",
-                    8: "12,800", 9: "14,400", 10: "16,000",
-                }.get(self.size, "Unknown"),
-                "surface_gravity": {
-                    0: "negligible", 1: "0.05G", 2: "0.15G", 3: "0.25G",
-                    4: "0.35G", 5: "0.45G", 6: "0.70G", 7: "0.90G",
-                    8: "1.00G", 9: "1.25G", 10: "1.40G",
-                }.get(self.size, "Unknown"),
+                "diameter_km": SIZE_DIAMETER_LABEL.get(self.size, "Unknown"),
+                "surface_gravity": SIZE_GRAVITY_LABEL.get(self.size, "Unknown"),
             },
             "atmosphere": self._atmosphere_dict(),
             "temperature": self.temperature,
@@ -1553,13 +1554,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             },
             "population": {
                 "code": self.population,
-                "range": {
-                    0: "None", 1: "Few (1+)", 2: "Hundreds", 3: "Thousands",
-                    4: "Tens of thousands", 5: "Hundreds of thousands",
-                    6: "Millions", 7: "Tens of millions",
-                    8: "Hundreds of millions", 9: "Billions",
-                    10: "Tens of billions",
-                }.get(self.population, "Hundreds of billions+"),
+                "range": POPULATION_RANGE.get(self.population, "Hundreds of billions+"),
             },
             "government": {
                 "code": self.government,
@@ -1581,6 +1576,11 @@ class World:  # pylint: disable=too-many-instance-attributes
             "travel_zone": self.travel_zone,
             "notes": self.notes,
             **({"size_detail": self.size_detail.to_dict()} if self.size_detail else {}),
+            **({"biomass_rating": self.biomass_rating} if self.biomass_rating is not None else {}),
+            **({"biocomplexity_rating": self.biocomplexity_rating}
+               if self.biocomplexity_rating is not None else {}),
+            **({"native_sophont": True}  if self.native_sophont  else {}),
+            **({"extinct_sophont": True} if self.extinct_sophont else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1596,6 +1596,81 @@ class World:  # pylint: disable=too-many-instance-attributes
         """
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
+    @staticmethod
+    def _validate_world_codes(d: dict) -> None:  # pylint: disable=too-many-branches
+        """Validate magic-code fields in a raw dict before constructing a World.
+
+        Raises ValueError with a descriptive message on the first invalid value.
+        Only validates fields that are present; missing fields receive defaults
+        in from_dict() and are not checked here.
+        """
+        def _unwrap(val: object) -> object:
+            return val.get("code") if isinstance(val, dict) else val  # type: ignore[union-attr]
+
+        if "starport" in d:
+            raw = str(_unwrap(d["starport"]) or "X")
+            try:
+                StarportCode(raw)
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid starport code {raw!r}: expected one of {', '.join(StarportCode)}"
+                ) from exc
+
+        if "atmosphere" in d:
+            try:
+                AtmosphereCode(int(_unwrap(d["atmosphere"]) or 0))  # type: ignore[arg-type]
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid atmosphere code {_unwrap(d['atmosphere'])!r}: expected 0–17"
+                ) from exc
+
+        if "temperature" in d:
+            temp = str(d["temperature"])
+            try:
+                TemperatureCategory(temp)
+            except ValueError as exc:
+                valid = ", ".join(t.value for t in TemperatureCategory)
+                raise ValueError(f"Invalid temperature {temp!r}: expected one of {valid}") from exc
+
+        if "trade_codes" in d:
+            for code in d["trade_codes"]:
+                try:
+                    TradeCode(str(code))
+                except ValueError as exc:
+                    valid = ", ".join(t.value for t in TradeCode)
+                    raise ValueError(
+                        f"Unknown trade code {code!r}: expected one of {valid}"
+                    ) from exc
+
+        if "travel_zone" in d:
+            zone = str(d["travel_zone"])
+            try:
+                TravelZone(zone)
+            except ValueError as exc:
+                valid = ", ".join(z.value for z in TravelZone)
+                raise ValueError(
+                    f"Invalid travel zone {zone!r}: expected one of {valid}"
+                ) from exc
+
+        for fname, lo, hi in (
+            ("size",          0, 10),
+            ("hydrographics", 0, 10),
+            ("population",    0, 12),
+            ("government",    0, 15),
+            ("law_level",     0, 18),
+        ):
+            if fname in d:
+                try:
+                    val = int(_unwrap(d[fname]) or 0)  # type: ignore[arg-type]
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"Field {fname!r} must be an integer, got {d[fname]!r}"
+                    ) from exc
+                if val < lo or val > hi:
+                    raise ValueError(
+                        f"Field {fname!r} value {val} is out of range [{lo}, {hi}]"
+                    )
+
     @classmethod
     def from_dict(cls, d: dict) -> "World":
         """Reconstruct a World from a dict produced by to_dict().
@@ -1604,7 +1679,12 @@ class World:  # pylint: disable=too-many-instance-attributes
         'size', 'atmosphere', 'hydrographics', 'population', and 'government'
         are sub-objects with a 'code' key) and flat forms where the value is
         the code directly.  Missing fields receive safe defaults.
+
+        Raises ValueError if any present field contains an invalid code or is
+        out of range.
         """
+        cls._validate_world_codes(d)
+
         def _int(val: object, default: int = 0) -> int:
             try:
                 return int(val)  # type: ignore[arg-type]
@@ -1699,22 +1779,9 @@ class World:  # pylint: disable=too-many-instance-attributes
     # ------------------------------------------------------------------
     def summary(self) -> str:  # pylint: disable=too-many-branches,too-many-statements,too-many-locals
         """Return a human-readable summary of this world's characteristics."""
-        pop_range = {
-            0: "None", 1: "Few (1+)", 2: "Hundreds", 3: "Thousands",
-            4: "Tens of thousands", 5: "Hundreds of thousands",
-            6: "Millions", 7: "Tens of millions", 8: "Hundreds of millions",
-            9: "Billions", 10: "Tens of billions",
-        }
-        size_km = {
-            0: "<1,000 km", 1: "1,600 km", 2: "3,200 km", 3: "4,800 km",
-            4: "6,400 km", 5: "8,000 km", 6: "9,600 km", 7: "11,200 km",
-            8: "12,800 km", 9: "14,400 km", 10: "16,000 km",
-        }
-        gravity = {
-            0: "negligible", 1: "0.05G", 2: "0.15G", 3: "0.25G",
-            4: "0.35G", 5: "0.45G", 6: "0.70G", 7: "0.90G",
-            8: "1.00G", 9: "1.25G", 10: "1.40G",
-        }
+        pop_range = POPULATION_RANGE
+        size_km   = {k: f"{v} km" for k, v in SIZE_DIAMETER_LABEL.items()}
+        gravity   = SIZE_GRAVITY_LABEL
 
         lines = [
             f"{'='*56}",
@@ -1798,6 +1865,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                 f"  {'Surface liq.':<12}: "
                 f"{self.hydrographic_detail.surface_liquid_pct}%"
             )
+            if self.hydrographic_detail.fluid_type is not None:
+                lines.append(
+                    f"  {'Fluid type':<12}: {self.hydrographic_detail.fluid_type}"
+                )
 
         if self.size_detail:
             p = self.size_detail
@@ -1825,6 +1896,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                 lines.append(f"  Esc. vel.   : {p.escape_velocity:.2f} km/s")
                 lines.append(f"  Axial tilt  : {p.axial_tilt}°")
                 lines.append(f"  Day length  : {p.day_length:.1f} h")
+                if p.stellar_day_hours is not None:
+                    lines.append(f"  Stellar day : {p.stellar_day_hours:.1f} h")
                 if p.tidal_status != "none":
                     lines.append(f"  Tidal status: {TIDAL_STATUS_LABELS[p.tidal_status]}")
 
@@ -1847,8 +1920,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
     d = world.to_dict()
     gear = d["atmosphere"]["survival_gear"]
 
-    is_belt_phys = isinstance(world.size_detail, BeltPhysical)
-    if world.size_detail and not is_belt_phys:
+    if world.size_detail and not isinstance(world.size_detail, BeltPhysical):
         size_km = f"{world.size_detail.diameter_km:,}"
         size_gravity = f"{world.size_detail.gravity:.2f}G"
     else:
@@ -1867,32 +1939,14 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
             )
 
     tidal_label = ""
-    if (world.size_detail is not None and not is_belt_phys
+    if (world.size_detail is not None and not isinstance(world.size_detail, BeltPhysical)
             and world.size_detail.tidal_status != "none"):
         tidal_label = TIDAL_STATUS_LABELS[world.size_detail.tidal_status]
-
-    _trade_lookup = {
-        "Ag": "Ag — Agricultural", "As": "As — Asteroid",
-        "Ba": "Ba — Barren",       "De": "De — Desert",
-        "Fl": "Fl — Fluid Oceans", "Ga": "Ga — Garden",
-        "Hi": "Hi — High Population", "Ht": "Ht — High Tech",
-        "Ic": "Ic — Ice-Capped",   "In": "In — Industrial",
-        "Lo": "Lo — Low Population", "Lt": "Lt — Low Tech",
-        "Na": "Na — Non-Agricultural", "Ni": "Ni — Non-Industrial",
-        "Po": "Po — Poor",         "Ri": "Ri — Rich",
-        "Va": "Va — Vacuum",       "Wa": "Wa — Waterworld",
-    }
-    _base_full = {
-        "N": "N (Naval)", "S": "S (Scout)", "M": "M (Military)",
-        "H": "H (Highport)", "C": "C (Corsair)",
-    }
 
     return {
         "world": world,
         "uwp": world.uwp(),
-        "zone_class": {
-            "Green": "zone-green", "Amber": "zone-amber", "Red": "zone-red",
-        }.get(world.travel_zone, "zone-green"),
+        "zone_class": ZONE_CSS_CLASS.get(world.travel_zone, "zone-green"),
         "tl_era": world._tl_era(world.tech_level),  # pylint: disable=protected-access
         "tl_era_css": world._tl_era_css(world.tech_level),  # pylint: disable=protected-access
         "starport_label": STARPORT_QUALITY_LABEL.get(world.starport, "?"),
@@ -1912,14 +1966,26 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "gov_name": d["government"]["name"],
         "law_hex": to_hex(world.law_level),
         "tl_hex": to_hex(world.tech_level),
-        "bases_str": "  ".join(_base_full.get(b, b) for b in world.bases) or "None",
-        "trade_codes": [_trade_lookup.get(tc, tc) for tc in world.trade_codes],
+        "bases_str": "  ".join(BASE_FULL.get(b, b) for b in world.bases) or "None",
+        "trade_codes": [TRADE_CODE_FULL.get(tc, tc) for tc in world.trade_codes],
         "pbg": (f"{world.population_multiplier}"
                 f"{world.belt_count}{world.gas_giant_count}"),
-        "is_belt_phys": is_belt_phys,
+        "is_belt_phys": isinstance(world.size_detail, BeltPhysical),
         "atm_profile": atm_profile,
         "gas_parts": gas_parts,
         "tidal_label": tidal_label,
+        "biomass_rating": world.biomass_rating,
+        "biomass_str": (to_hex(world.biomass_rating)
+                        if world.biomass_rating is not None else None),
+        "biocomplexity_rating": world.biocomplexity_rating,
+        "biocomplexity_str": (
+            f"{to_hex(world.biocomplexity_rating)} — "
+            + BIOCOMPLEXITY_DESC.get(
+                world.biocomplexity_rating, "Ecosystem-wide superorganisms")
+            if world.biocomplexity_rating is not None else None
+        ),
+        "native_sophont":  world.native_sophont,
+        "extinct_sophont": world.extinct_sophont,
         "json_str": world.to_json(),
     }
 
