@@ -1,8 +1,102 @@
-# Release Notes — v1.3.0 (draft)
+# Release Notes — v1.4.0 (draft)
 
-**Branch:** `v1.3.0` → `main`
-**Sessions:** 55–68
+**Branch:** `v1.4.0` → `main`
+**Sessions:** 55–70
 **Tests:** 1449
+
+---
+
+## gen-ui UX + Build improvements (Session 70)
+
+### Belt temperature for asteroid belt worlds (size 0)
+
+`BeltPhysical` now carries a `mean_temperature_k` field computed via the same
+WBH p.47 Basic Mean Temperature formula used by `WorldPhysical`, with
+atmosphere DM fixed at 0 (belts have no atmosphere).
+
+- `traveller_belt_physical.py`: imports `_compute_mean_temperature` from
+  `traveller_world_physical`; `BeltPhysical` dataclass gains `mean_temperature_k: int`;
+  `to_dict()` emits it; `generate_belt_physical()` computes and passes it.
+- Display: "Mean temperature" row added to the Belt body card in
+  `templates/world_card.html`, `templates/world_list.html`, and
+  `templates/system_card.html`; `render_system_json.py` belt branch gains the
+  same row.
+- JSON schema: `mean_temperature_k` added to `BeltPhysical` `required` and
+  `properties`.
+- Test updated: `test_to_dict_keys` in `tests/test_belt_physical.py` extended
+  to include `"mean_temperature_k"`.
+
+### TravellerMap loading feedback — async worker (issue #77)
+
+TravellerMap lookups now run on a `QThread` so the UI stays responsive during
+network calls.
+
+- New `_TravMapWorker(QThread)` class with `result`, `failed`, and `ambiguous`
+  signals; `run()` calls `generate_system_from_map()`.
+- `_show_loading(message)` replaces the status panel with a centred dim label
+  the moment Generate is clicked.
+- `_start_travellermap_worker()` shows the loading label, disables the
+  Generate button, and starts the worker.
+- `_on_worker_result / _error / _ambiguous` re-enable Generate and dispatch
+  to the correct finish handler.
+- Disambiguation retry also goes through the async path.
+- Old blocking `_do_travellermap_generation()` removed.
+
+### Checkbox dependency hierarchy — QGroupBox (issue #79)
+
+The flat `[Mainworld only] [Full detail] [NHZ] [Oxygen] [Advanced] [Runaway]`
+row is replaced by a `QGroupBox("System detail")` with `setCheckable(True)`.
+When unchecked (default), Qt automatically grays out all four child checkboxes
+— the dependency relationship is now visually self-documenting.
+
+- `_radio_mainworld_only`, `_radio_full_detail`, and `_detail_group` removed.
+- `self._system_group = QGroupBox(...)` stores the new checkable group.
+- `_on_detail_toggled()` reduced to uncheck-on-collapse and `_map_btn` enable.
+- `_on_generate()` and `_build_system_summary_header()` use
+  `self._system_group.isChecked()`.
+
+### PyInstaller binary size reduction (issue #91)
+
+- **37 unused Qt modules** added to `excludes` (estimated 100–150 MB saving).
+- **`optimize=2`** replaces `optimize=0` — strips docstrings and assertions.
+- **`strip=True`** replaces `strip=False` in `EXE` and `COLLECT` (~10–20 MB
+  on Linux/macOS).
+- **Translation file filter** on `a.datas` strips Qt `.qm` files (~30–50 MB
+  on macOS).
+- **Image format plugin filter** on `a.binaries` keeps only `qsvg`, `qjpeg`,
+  `qgif`, `qicns`, `qico` (~10–15 MB on macOS).
+- **macOS CI split**: single `macos` matrix row replaced by `macos-arm64`
+  (macos-latest) and `macos-x86_64` (macos-13); `TARGET_ARCH` env var passed
+  to PyInstaller; `target_arch` in the spec reads from the env. Each build is
+  ~half the size of a universal binary.
+- **UPX installed in CI**: `apt-get install upx` (Ubuntu), `brew install upx`
+  (macOS), `choco install upx` (Windows), `dnf install upx` (Fedora).
+- Release job updated to publish five artifacts: `macos-arm64`, `macos-x86_64`,
+  `windows`, `ubuntu`, `fedora`.
+- `BUNDLE version` updated to `1.4.0`.
+
+---
+
+## gen-ui UX Improvements (Session 69)
+
+### Orbit table horizontal scroll (issue #76)
+
+`templates/system_card.html` orbit survey table (11 columns) now scrolls horizontally when content overflows the panel width.
+
+- Added `.table-scroll{overflow-x:auto}` CSS class.
+- Added `white-space:nowrap` to `th` to prevent header line-wrapping under scroll.
+- Wrapped the orbit `<table>` in `<div class="table-scroll">`.
+- Shortened `Ecc/Incl` header to `e/i` in both `system_card.html` and `system_detail.html`.
+
+No Python or gen-ui changes — pure HTML/CSS template fix. The native Qt orbit table had previously been replaced by `QWebEngineView` (sessions 66–68), which handles browser-native scrolling once the HTML container has `overflow-x:auto`.
+
+### TravellerMap panel show/hide (issue #78)
+
+The TravellerMap input fields (Sector, Name, Hex) and their vertical separator are now hidden entirely when Procedural is selected, rather than shown grayed out.
+
+- `self._tm_panel` (grid widget) and `self._tm_vsep` (separator) stored as instance attributes in `_build_source_row()`.
+- `_on_source_toggled()` calls `setVisible()` on both instead of `setEnabled()` on individual fields.
+- Default startup state: panel and separator hidden (Procedural is default).
 
 ---
 
@@ -138,6 +232,26 @@ The former "Stellar && Orbits" toggle checkbox has been removed; tab switching r
 "native_sophont":       { "type": "boolean" }
 "extinct_sophont":      { "type": "boolean" }
 ```
+
+---
+
+## Bug Fix — Tidal Seismic Stress for GG Satellite Mainworlds (Session 64, issue #74)
+
+When the mainworld is a moon of a gas giant, the tidal seismic stress formula
+previously used the host star's mass and the world's stellar orbit — missing the
+dominant tidal driver (the gas giant itself).
+
+`_apply_seismic_stress()` gains two new optional parameters:
+- `gg_mass_earth: float = 0.0` — gas giant mass in Earth masses
+- `gg_satellite_moon: Optional[Moon] = None` — the `Moon` record for the mainworld's
+  orbit around the gas giant (provides `orbit_km`, `orbit_period_hours`,
+  `orbit_eccentricity`)
+
+When both are present and `gg_satellite_moon.orbit_km` is set, a second
+`_compute_tidal_ss()` call adds the gas giant's tidal contribution to the running
+total; the gas giant's tidal amplitude contribution is also added to
+`tidal_amplitude_m`. Both call sites (`gen-ui/app.py` and `function_app.py`) were
+updated to supply these parameters.
 
 ---
 

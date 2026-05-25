@@ -35,7 +35,12 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            platform: macos
+            platform: macos-arm64
+            target_arch: arm64
+            archive_ext: zip
+          - os: macos-13
+            platform: macos-x86_64
+            target_arch: x86_64
             archive_ext: zip
           - os: windows-latest
             platform: windows
@@ -53,13 +58,22 @@ jobs:
 
       # PySide6's XCB platform plugin requires these shared libraries at
       # PyInstaller analysis time so they are discovered and bundled.
-      - name: Install XCB libraries (Ubuntu)
+      - name: Install XCB libraries and UPX (Ubuntu)
         if: matrix.platform == 'ubuntu'
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
             libxcb-xinerama0 libxcb-icccm4 libxcb-image0 \
-            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 \
+            upx
+
+      - name: Install UPX (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        run: brew install upx
+
+      - name: Install UPX (Windows)
+        if: matrix.platform == 'windows'
+        run: choco install upx --no-progress
 
       - uses: actions/cache@v4
         with:
@@ -77,11 +91,13 @@ jobs:
       # The spec uses pathex=["."] and datas=[("templates", "templates")]
       # relative to the project root, so this must run from the repo root.
       - name: Build with PyInstaller
+        env:
+          TARGET_ARCH: ${{ matrix.target_arch }}
         run: pyinstaller traveller_gen_ui.spec
 
       # Fail now rather than silently upload an empty archive.
       - name: Verify build output (macOS)
-        if: matrix.platform == 'macos'
+        if: startsWith(matrix.platform, 'macos')
         run: test -d dist/TravellerWorldGen.app
 
       - name: Verify build output (Windows)
@@ -94,8 +110,8 @@ jobs:
 
       # macOS: BUNDLE block in the spec produces dist/TravellerWorldGen.app
       - name: Archive (macOS)
-        if: matrix.platform == 'macos'
-        run: cd dist && zip -r TravellerWorldGen-macos.zip TravellerWorldGen.app
+        if: startsWith(matrix.platform, 'macos')
+        run: cd dist && zip -r TravellerWorldGen-${{ matrix.platform }}.zip TravellerWorldGen.app
 
       # Windows: archive the whole folder — the .exe requires its sibling DLLs
       - name: Archive (Windows)
@@ -134,7 +150,8 @@ jobs:
           dnf install -y \
             python3.11 python3.11-devel \
             gcc gcc-c++ git \
-            xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil
+            xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil \
+            upx
           python3.11 -m ensurepip --upgrade
 
       - uses: actions/cache@v4
@@ -185,7 +202,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          FILES="artifacts/TravellerWorldGen-macos/TravellerWorldGen-macos.zip \
+          FILES="artifacts/TravellerWorldGen-macos-arm64/TravellerWorldGen-macos-arm64.zip \
+                 artifacts/TravellerWorldGen-macos-x86_64/TravellerWorldGen-macos-x86_64.zip \
                  artifacts/TravellerWorldGen-windows/TravellerWorldGen-windows.zip \
                  artifacts/TravellerWorldGen-ubuntu/TravellerWorldGen-ubuntu.tar.gz \
                  artifacts/TravellerWorldGen-fedora/TravellerWorldGen-fedora.tar.gz"
