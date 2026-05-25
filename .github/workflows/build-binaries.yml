@@ -129,9 +129,10 @@ jobs:
       - name: Install system dependencies
         run: |
           dnf install -y \
-            python3.11 python3.11-pip python3.11-devel \
+            python3.11 python3.11-devel \
             gcc gcc-c++ git \
             xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil
+          python3.11 -m ensurepip --upgrade
 
       - uses: actions/cache@v4
         with:
