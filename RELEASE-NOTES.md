@@ -1,8 +1,31 @@
-# Release Notes — v1.3.0 (draft)
+# Release Notes — v1.4.0 (draft)
 
-**Branch:** `v1.3.0` → `main`
-**Sessions:** 55–68
+**Branch:** `v1.4.0` → `main`
+**Sessions:** 55–69
 **Tests:** 1449
+
+---
+
+## gen-ui UX Improvements (Session 69)
+
+### Orbit table horizontal scroll (issue #76)
+
+`templates/system_card.html` orbit survey table (11 columns) now scrolls horizontally when content overflows the panel width.
+
+- Added `.table-scroll{overflow-x:auto}` CSS class.
+- Added `white-space:nowrap` to `th` to prevent header line-wrapping under scroll.
+- Wrapped the orbit `<table>` in `<div class="table-scroll">`.
+- Shortened `Ecc/Incl` header to `e/i` in both `system_card.html` and `system_detail.html`.
+
+No Python or gen-ui changes — pure HTML/CSS template fix. The native Qt orbit table had previously been replaced by `QWebEngineView` (sessions 66–68), which handles browser-native scrolling once the HTML container has `overflow-x:auto`.
+
+### TravellerMap panel show/hide (issue #78)
+
+The TravellerMap input fields (Sector, Name, Hex) and their vertical separator are now hidden entirely when Procedural is selected, rather than shown grayed out.
+
+- `self._tm_panel` (grid widget) and `self._tm_vsep` (separator) stored as instance attributes in `_build_source_row()`.
+- `_on_source_toggled()` calls `setVisible()` on both instead of `setEnabled()` on individual fields.
+- Default startup state: panel and separator hidden (Procedural is default).
 
 ---
 
