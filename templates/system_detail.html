@@ -258,6 +258,9 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
   <div class="inner-card">
     <p class="inner-lbl">Hydrographic detail</p>
     {{ drow("Surface liquid", mw.hyd_pct|string ~ "%") }}
+    {% if mw.hyd_fluid_type is not none %}
+    {{ drow("Fluid type", mw.hyd_fluid_type) }}
+    {% endif %}
   </div>
   {% endif %}
   {% if mw.notes %}

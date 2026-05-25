@@ -277,6 +277,10 @@
               "minimum": 0,
               "maximum": 100,
               "description": "Precise surface liquid coverage to the nearest 1%, drawn from a flat random distribution over the code's defined range (WBH p.93)."
+            },
+            "fluid_type": {
+              "type": "string",
+              "description": "Primary fluid type covering the surface, determined by temperature zone (WBH pp.91-92). Absent for desert worlds (hydrographics 0) and gas-atmosphere worlds."
             }
           }
         }
@@ -536,20 +540,60 @@
               "minimum": 0,
               "description": "Residual Seismic Stress (WBH ~p.125). floor(Size - Age_Gyr + DMs)², treating values < 1 as 0 before squaring. Present after apply_moon_tidal_effects() is called."
             },
-            "tidal_heating_factor": {
+            "tidal_seismic_stress": {
               "type": "integer",
               "minimum": 0,
-              "description": "Tidal Heating Factor (WBH ~p.127). Derived from primary mass, world size, eccentricity, orbital distance, and period. Present after apply_moon_tidal_effects() is called. Only emitted when > 0."
+              "description": "Tidal Seismic Stress (WBH ~p.127). Derived from primary mass, world size, eccentricity, orbital distance, and period. Present after apply_moon_tidal_effects() is called. Only emitted when > 0."
+            },
+            "tidal_stress_factor": {
+              "type": "integer",
+              "minimum": 0,
+              "description": "Tidal Stress Factor (WBH p.126): floor(tidal_amplitude_m / 10). Represents the seismic stress contribution from surface tidal amplitude (star + moons). Present after apply_moon_tidal_effects() is called. Only emitted when > 0."
             },
             "total_seismic_stress": {
               "type": "integer",
               "minimum": 0,
-              "description": "Total Seismic Stress = Residual + Tidal Heating Factor (Tidal Stress Factor deferred). Present after apply_moon_tidal_effects() is called."
+              "description": "Total Seismic Stress = Residual Seismic Stress + Tidal Seismic Stress + Tidal Stress Factor. Present after apply_moon_tidal_effects() is called."
             },
             "seismic_temperature_k": {
               "type": "integer",
               "minimum": 3,
               "description": "Mean temperature adjusted for seismic stress (WBH ~p.128): fourth_root(T^4 + TSS^4). Only present when total_seismic_stress > 0 and mean_temperature_k is available, and the adjustment changes the rounded value."
+            },
+            "tidal_amplitude_m": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Total surface tidal amplitude in metres (WBH pp.107-108): sum of star tidal effect and each qualifying moon's tidal effect on the planet. Star effect = (star_mass_solar × size) / (32 × AU³); moon effect = (moon_mass_earth × size) / (3.2 × (orbit_km / 1e6)³). Present when orbital data is available."
+            },
+            "albedo": {
+              "type": "number",
+              "minimum": 0.02,
+              "maximum": 0.98,
+              "description": "Rolled surface albedo (WBH pp.47-48). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "greenhouse_factor": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Rolled greenhouse factor G (WBH p.48). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "advanced_mean_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Physics-based mean temperature in Kelvin (WBH pp.47-48): 279 × ⁴√(L × (1−A) × (1+G) / AU²). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "high_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Physics-based high temperature bound in Kelvin (WBH pp.48-50, Steps 1-9): uses high luminosity (L × (1 + luminosity_modifier)) and near AU (AU × (1 − eccentricity)). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "low_temperature_k": {
+              "type": "integer",
+              "minimum": 3,
+              "description": "Physics-based low temperature bound in Kelvin (WBH pp.48-50, Steps 1-9): uses low luminosity (L × (1 − luminosity_modifier)) and far AU (AU × (1 + eccentricity)). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "runaway_greenhouse": {
+              "type": "boolean",
+              "description": "True when the optional runaway greenhouse check (WBH p.79) determined a runaway occurred. Absent when the check was not performed or did not trigger."
             }
           }
         },
@@ -629,6 +673,24 @@
           }
         }
       ]
+    },
+    "biomass_rating": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Native life biomass rating (WBH pp.127-131). 0 means no native life. Absent when not yet generated."
+    },
+    "biocomplexity_rating": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Biocomplexity rating (WBH pp.127-131). Absent when biomass is 0 or not yet generated."
+    },
+    "native_sophont": {
+      "type": "boolean",
+      "description": "True when a native sophont currently exists (WBH p.131). Absent when false."
+    },
+    "extinct_sophont": {
+      "type": "boolean",
+      "description": "True when evidence of an extinct native sophont exists (WBH p.131). Absent when false."
     }
   },
   "$defs": {

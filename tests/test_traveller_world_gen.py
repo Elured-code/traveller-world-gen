@@ -5833,7 +5833,7 @@ class TestOrbitalEccentricity:
         # Patch traveller_orbit_gen.roll directly so we control the return value
         # of each dice call rather than fighting the 2d6 sum mechanics.
         import unittest.mock as mock
-        from traveller_orbit_gen import _roll_eccentricity
+        from traveller_orbit_gen import roll_eccentricity as _roll_eccentricity
         # (forced_first_roll, second_roll, expected_lo, expected_hi)
         # second_roll=3 gives a mid-range result for all rows.
         cases = [

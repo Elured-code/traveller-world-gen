@@ -52,11 +52,27 @@ traveller-world-gen/
 ├── traveller_system_gen.py         # Integration: full system + mainworld
 ├── traveller_world_gen.py          # CRB mainworld generation (pp.248-261)
 ├── traveller_world_detail.py       # Secondary world SAH/social + satellite detail
+├── traveller_world_physical.py     # WBH physical world detail (density, gravity, tidal lock, etc.)
+├── traveller_belt_physical.py      # WBH belt physical detail (span, composition, bulk, rating)
+├── traveller_hydro_detail.py       # WBH hydrographic detail (surface liquid percentages)
 ├── traveller_moon_gen.py           # Significant moon sizing and profiles
 ├── traveller_map_fetch.py          # TravellerMap integration: fetch UWP + stellar, reconstruct system
 │
+│  Shared data
+├── world_codes.py                  # StrEnum/IntEnum types: StarportCode, TradeCode, TravelZone, etc.
+├── tables.py                       # Centralised display-layer lookup tables (single source of truth)
+│
 │  Visualisation
 ├── system_map.py                   # SVG star system maps: arc zones, orbit tables, log-AU scale
+├── render_system_json.py           # Standalone HTML renderer for system JSON files
+│
+│  HTML rendering
+├── html_render.py                  # Jinja2 rendering environment for to_html() output
+├── templates/
+│   ├── world_card.html             # Single-world display card
+│   ├── world_list.html             # Multi-world list (--html with multiple worlds)
+│   ├── system_card.html            # Full system card
+│   └── system_detail.html          # System card with secondary world detail
 │
 │  Schema
 ├── traveller_world_schema.json     # JSON Schema (draft 2020-12) for World.to_dict()
@@ -66,7 +82,8 @@ traveller-world-gen/
 ├── shared/
 │   └── helpers.py                  # Request parsing & response helpers
 ├── host.json                       # Azure Functions host configuration
-├── requirements.txt                # Python dependencies
+├── requirements.txt                # Python dependencies (Azure + Jinja2)
+├── requirements-dev.txt            # Dev dependencies (pytest, pylint, pyright)
 ├── local.settings.json.example     # Local development settings template
 │                                   # (copy to local.settings.json — not committed)
 │
@@ -78,10 +95,22 @@ traveller-world-gen/
 │
 │  Tests
 ├── tests/
-│   ├── test_traveller_world_gen.py # Unit tests — mainworld generation
-│   └── test_function_app.py        # Unit tests — API endpoints
+│   ├── test_traveller_world_gen.py # Unit tests — mainworld generation (807 tests)
+│   ├── test_function_app.py        # Unit tests — API endpoints (117 tests)
+│   ├── test_world_physical.py      # Unit tests — world physical detail (122 tests)
+│   ├── test_belt_physical.py       # Unit tests — belt physical detail (49 tests)
+│   ├── test_hydro_detail.py        # Unit tests — hydrographic detail (29 tests)
+│   ├── test_moon_gen.py            # Unit tests — moon sizing and orbit placement (30 tests)
+│   └── test_orbit_gen.py           # Unit tests — orbit generation (14 tests)
 ├── conftest.py                     # pytest path configuration
 ├── pytest.ini                      # pytest settings
+├── pyrightconfig.json              # Pyright type-checker configuration
+├── .pylintrc                       # Pylint configuration
+│
+│  CI
+├── .github/workflows/
+│   ├── typecheck.yml               # Pyright type-check on every push/PR
+│   └── dependency-audit.yml        # pip-audit dependency scan
 │
 │  Documentation
 ├── docs/
@@ -90,7 +119,7 @@ traveller-world-gen/
 │   └── VSCODE.md                   # VS Code + Claude shared environment setup
 │
 │  Examples
-├── examples/                       # Generated sample SVG system maps
+├── examples/                       # Generated sample SVG system maps and HTML output
 │
 ├── LICENSE                         # MIT Licence + Traveller IP notice
 └── README.md                       # This file
@@ -627,7 +656,9 @@ pytest tests/ -v
 
 ### What is tested
 
-**`test_traveller_world_gen.py`** (414 tests, 27 classes)
+1168 tests across 7 files. All pass. Pylint 10.00/10 on all core generation modules.
+
+**`test_traveller_world_gen.py`** (807 tests, 71 classes)
 
 - All dice helper functions and clamp behaviour
 - Traveller hex digit conversion (0–9, A–G)
@@ -640,6 +671,7 @@ pytest tests/ -v
 - `World.to_html()` — HTML structure, all TL era labels (regression tests
   for the Pre-Stellar/Early Stellar boundary), survival gear danger
   highlighting, HTML escaping
+- `World.from_dict()` / `_validate_world_codes()` — valid and invalid inputs
 - JSON Schema validation against `traveller_world_schema.json`
   (requires `pip install jsonschema`)
 - Integration tests: range bounds, uninhabited world invariants,
@@ -647,14 +679,44 @@ pytest tests/ -v
 - `TestGasGiantOrbitSlot` — `gg_sah` field on `OrbitSlot`, `_gg_diameter()`
   helper, satellite size constraint, satellite note in mainworld record
 
-**`test_function_app.py`** (98 tests, 15 classes)
+**`test_function_app.py`** (117 tests, 17 classes)
 
-- All five HTTP endpoints: 200 responses, parameter parsing, content types
+- All HTTP endpoints: 200 responses, parameter parsing, content types
 - All error codes: invalid seed, name too long, bad JSON body,
   count too large, internal error mocking
 - Schema validation of all JSON responses
 - Seed determinism across endpoints
 - Batch sequencing consistency
+- Physical detail in system responses
+
+**`test_world_physical.py`** (122 tests, 22 classes)
+
+- Physical world generation: composition, density, diameter, mass, gravity, escape velocity
+- Axial tilt including extreme-tilt sub-table
+- Rotation period and tidal lock status (all 11 outcomes, broken-lock check)
+- Tidal lock DMs: eccentricity, moon size, multi-star, planet-to-moon lock
+- `apply_moon_tidal_effects()` integration
+- Basic mean temperature: orbital DMs, atmosphere DMs, table lookup, extrapolation
+- Seismic stress: residual stress, tidal heating factor, seismic temperature
+
+**`test_belt_physical.py`** (49 tests, 8 classes)
+
+- Belt span, composition percentages, bulk formula, resource rating
+- Significant body counts: Size 1 and Size S planetoids
+
+**`test_hydro_detail.py`** (29 tests)
+
+- Surface liquid percentages for all hydrographic codes
+
+**`test_moon_gen.py`** (30 tests, 8 classes)
+
+- Moon quantity rolls, adjacency DMs, sizing, ring consolidation
+- Moon orbit placement: Hill sphere, orbit range, PD distances, period
+- Moon SAH and social detail
+
+**`test_orbit_gen.py`** (14 tests, 3 classes)
+
+- Orbit generation integration: world counts, spread, slot placement, anomalous orbits
 
 ---
 
@@ -749,19 +811,13 @@ when a Close/Near/Far secondary is present.
 
 #### Not yet implemented
 
-The following WBH procedures are explicitly out of scope:
+The following WBH procedures are explicitly deferred:
 
 | Feature | WBH pages |
 |---------|-----------|
-| Anomalous orbits (random, eccentric, inclined, retrograde, trojan) | pp. 49–50 |
-| Orbital eccentricity | p. 51 |
-| Orbital periods | — |
-| Moon orbit placement (Hill sphere, Roche limit, PD distances) | pp. 74–77 |
-| Moon orbit adjacency DMs (3 of 4 conditions require eccentricity data) | p. 56 |
 | Secondary world independent government (Case 2) | p. 162 |
 | Secondary world classifications (Colony, Freeport, Mining, etc.) | p. 163 |
-| World physical detail beyond SAH (density, gravity, seismic stress, etc.) | pp. 74–130 |
-| Belt physical detail (span, composition, bulk, resource rating) | pp. 131–133 |
+| Tidal Stress Factor contribution to seismic stress | p. 126 |
 | Post-stellar special circumstances (neutron stars, black holes, pulsars) | pp. 219+ |
 
 ---

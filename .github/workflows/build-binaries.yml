@@ -1,0 +1,190 @@
+name: Build binaries
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'gen-ui/**'
+      - 'traveller_*.py'
+      - 'templates/**'
+      - 'traveller_gen_ui.spec'
+      - 'html_render.py'
+      - 'system_map.py'
+      - 'tables.py'
+      - 'world_codes.py'
+
+# Build jobs need read only; write is scoped to the release job.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+
+  # ── macOS / Windows / Ubuntu ────────────────────────────────────────────────
+  build:
+    name: build (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: macos
+            archive_ext: zip
+          - os: windows-latest
+            platform: windows
+            archive_ext: zip
+          - os: ubuntu-latest
+            platform: ubuntu
+            archive_ext: tar.gz
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # PySide6's XCB platform plugin requires these shared libraries at
+      # PyInstaller analysis time so they are discovered and bundled.
+      - name: Install XCB libraries (Ubuntu)
+        if: matrix.platform == 'ubuntu'
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libxcb-xinerama0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('gen-ui/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      # Install both requirements files: gen-ui/requirements.txt for PySide6,
+      # requirements.txt for Jinja2 (imported via html_render.py → app.py).
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
+
+      # The spec uses pathex=["."] and datas=[("templates", "templates")]
+      # relative to the project root, so this must run from the repo root.
+      - name: Build with PyInstaller
+        run: pyinstaller traveller_gen_ui.spec
+
+      # Fail now rather than silently upload an empty archive.
+      - name: Verify build output (macOS)
+        if: matrix.platform == 'macos'
+        run: test -d dist/TravellerWorldGen.app
+
+      - name: Verify build output (Windows)
+        if: matrix.platform == 'windows'
+        run: test -f dist/TravellerWorldGen/TravellerWorldGen.exe
+
+      - name: Verify build output (Ubuntu)
+        if: matrix.platform == 'ubuntu'
+        run: test -f dist/TravellerWorldGen/TravellerWorldGen
+
+      # macOS: BUNDLE block in the spec produces dist/TravellerWorldGen.app
+      - name: Archive (macOS)
+        if: matrix.platform == 'macos'
+        run: cd dist && zip -r TravellerWorldGen-macos.zip TravellerWorldGen.app
+
+      # Windows: archive the whole folder — the .exe requires its sibling DLLs
+      - name: Archive (Windows)
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist\TravellerWorldGen -DestinationPath dist\TravellerWorldGen-windows.zip
+
+      - name: Archive (Ubuntu)
+        if: matrix.platform == 'ubuntu'
+        run: cd dist && tar -czf TravellerWorldGen-ubuntu.tar.gz TravellerWorldGen/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TravellerWorldGen-${{ matrix.platform }}
+          path: dist/TravellerWorldGen-${{ matrix.platform }}.${{ matrix.archive_ext }}
+          retention-days: 30
+          if-no-files-found: error
+
+  # ── Fedora (container) ──────────────────────────────────────────────────────
+  # Fedora cannot share the matrix above because GitHub Actions does not allow
+  # the `container:` key to be conditionally omitted from a matrix row — an
+  # empty string triggers a pull-image error on current runner versions.
+  build-fedora:
+    name: build (fedora)
+    runs-on: ubuntu-latest
+    container: fedora:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # actions/setup-python is unreliable in a Fedora container (toolcache
+      # glibc mismatch). Install Python natively via dnf instead.
+      # gcc/gcc-c++ are required if PyInstaller needs to compile its bootloader.
+      - name: Install system dependencies
+        run: |
+          dnf install -y \
+            python3.11 python3.11-pip python3.11-devel \
+            gcc gcc-c++ git \
+            xcb-util-wm xcb-util-image xcb-util-keysyms xcb-util-renderutil
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: fedora-pip-${{ hashFiles('gen-ui/requirements.txt', 'requirements.txt') }}
+          restore-keys: fedora-pip-
+
+      - name: Install dependencies
+        run: |
+          python3.11 -m pip install --upgrade pip
+          python3.11 -m pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: python3.11 -m PyInstaller traveller_gen_ui.spec
+
+      - name: Verify build output
+        run: test -f dist/TravellerWorldGen/TravellerWorldGen
+
+      - name: Archive
+        run: cd dist && tar -czf TravellerWorldGen-fedora.tar.gz TravellerWorldGen/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TravellerWorldGen-fedora
+          path: dist/TravellerWorldGen-fedora.tar.gz
+          retention-days: 30
+          if-no-files-found: error
+
+  # ── GitHub Release ───────────────────────────────────────────────────────────
+  release:
+    name: release
+    needs: [build, build-fedora]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # Download all four artifacts into artifacts/<artifact-name>/
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="build-${{ github.run_number }}"
+          gh release create "$TAG" \
+            --title "Build #${{ github.run_number }}" \
+            --notes "Automated build from commit \`${{ github.sha }}\`." \
+            --prerelease \
+            artifacts/TravellerWorldGen-macos/TravellerWorldGen-macos.zip \
+            artifacts/TravellerWorldGen-windows/TravellerWorldGen-windows.zip \
+            artifacts/TravellerWorldGen-ubuntu/TravellerWorldGen-ubuntu.tar.gz \
+            artifacts/TravellerWorldGen-fedora/TravellerWorldGen-fedora.tar.gz

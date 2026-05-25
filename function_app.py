@@ -147,7 +147,7 @@ from traveller_world_gen import (
 from traveller_world_physical import generate_world_physical, apply_moon_tidal_effects
 from traveller_hydro_detail import generate_hydrographic_detail
 from traveller_system_gen import generate_full_system, generate_system_from_world
-from traveller_world_detail import attach_detail
+from traveller_world_detail import attach_detail, gg_diameter_from_sah
 from traveller_map_fetch import generate_system_from_map
 
 from shared.helpers import (
@@ -212,6 +212,12 @@ def _apply_mainworld_moon_tidal(system) -> None:
         return
     moons = _get_mainworld_moons(system)
     is_moon = mw_orbit.world_type == "gas_giant"
+    gg_mass_earth = 0.0
+    gg_sat_moon = None
+    if is_moon and getattr(mw_orbit, "gg_sah", ""):
+        gg_mass_earth = float(gg_diameter_from_sah(mw_orbit.gg_sah) ** 2)
+        if mw_orbit.detail and mw_orbit.detail.moons:
+            gg_sat_moon = mw_orbit.detail.moons[0]
     apply_moon_tidal_effects(
         mw.size_detail,
         moons=moons,
@@ -223,6 +229,8 @@ def _apply_mainworld_moon_tidal(system) -> None:
         star_mass=system.stellar_system.primary.mass,
         orbit_eccentricity=mw_orbit.eccentricity,
         is_moon=is_moon,
+        gg_mass_earth=gg_mass_earth,
+        gg_satellite_moon=gg_sat_moon,
     )
     if mw.size_detail.eccentricity_adjusted is not None:
         mw_orbit.eccentricity = mw.size_detail.eccentricity_adjusted
@@ -261,7 +269,9 @@ def generate_single_world(req: func.HttpRequest) -> func.HttpResponse:
             world.size, world.hydrographics,
         )
         world.hydrographic_detail = generate_hydrographic_detail(
-            world.hydrographics, world.size
+            world.hydrographics, world.size,
+            atmosphere=world.atmosphere,
+            temperature=world.temperature,
         )
         world.size_detail = generate_world_physical(world)
     except Exception as exc:
@@ -308,7 +318,9 @@ def generate_named_world(req: func.HttpRequest) -> func.HttpResponse:
             world.size, world.hydrographics,
         )
         world.hydrographic_detail = generate_hydrographic_detail(
-            world.hydrographics, world.size
+            world.hydrographics, world.size,
+            atmosphere=world.atmosphere,
+            temperature=world.temperature,
         )
         world.size_detail = generate_world_physical(world)
     except Exception as exc:
@@ -426,7 +438,9 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
             world.size, world.hydrographics,
         )
         world.hydrographic_detail = generate_hydrographic_detail(
-            world.hydrographics, world.size
+            world.hydrographics, world.size,
+            atmosphere=world.atmosphere,
+            temperature=world.temperature,
         )
         world.size_detail = generate_world_physical(world)
         html = world.to_html()

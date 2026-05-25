@@ -105,9 +105,11 @@ AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
 
+# pylint: disable=too-many-lines,locally-disabled,suppressed-message
 from __future__ import annotations
 
 import random
+from typing import Optional
 
 from traveller_orbit_gen import OrbitSlot, SystemOrbits
 from traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
@@ -118,7 +120,7 @@ from traveller_world_gen import (
     generate_hydrographics,
     to_hex,
 )
-from traveller_moon_gen import generate_moons, moons_str, Moon
+from traveller_moon_gen import generate_moons, moons_str, Moon, place_moon_orbit
 from traveller_belt_physical import generate_belt_physical, BeltPhysical
 
 
@@ -143,6 +145,18 @@ def _ehex_to_int(ch: str) -> int:
     """Decode a single eHex character to int; unknown chars return 0."""
     idx = _EHEX.find(ch.upper())
     return idx if idx >= 0 else 0
+
+
+def gg_diameter_from_sah(gg_sah: str) -> int:
+    """Return the numeric diameter (Terran diameters) from a gas giant SAH string.
+
+    E.g. 'GM9' → 9, 'GLE' → 14.  Returns 8 (mid-range default) on parse failure.
+    """
+    if len(gg_sah) >= 3:
+        idx = _EHEX.find(gg_sah[2].upper())
+        if idx >= 0:
+            return idx
+    return 8
 
 
 # ---------------------------------------------------------------------------
@@ -315,6 +329,194 @@ def _spaceport(population: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Biomass Rating (WBH pp.127-131)
+# ---------------------------------------------------------------------------
+
+_ATM_BIOMASS_DM: dict[int, int] = {
+    0: -6, 1: -4, 2: -3, 3: -3,
+    4: -2, 5: -2,
+    # 6, 7 absent from table → DM 0
+    8: +2, 9: +2,
+    10: -3,   # A
+    11: -5,   # B
+    12: -7,   # C
+    13: +2,   # D
+    14: -3,   # E
+    15: -5,   # F (F+ treated as 15)
+}
+
+_HYDRO_BIOMASS_DM: dict[int, int] = {
+    0: -4, 1: -2, 2: -2, 3: -2,
+    # 4, 5 absent → DM 0
+    6: +1, 7: +1, 8: +1, 9: +2, 10: +2,
+}
+
+_TEMP_ZONE_BIOMASS_DM: dict[str, int] = {
+    "temperate": +2, "cold": -2, "frozen": -6, "boiling": -6, "hot": 0,
+}
+
+# Special Case 2: for each inhospitable atmosphere, the SC2 biomass adjustment
+# is one less than the absolute value of the atmosphere DM (WBH p.131).
+_SC2_ATM_SET: frozenset[int] = frozenset({0, 1, 10, 11, 12, 15})
+_SC2_ADJUSTMENT: dict[int, int] = {0: 5, 1: 3, 10: 2, 11: 4, 12: 6, 15: 4}
+
+# Optional rule: atmospheres containing oxygen (WBH p.131)
+_OXYGEN_ATM_SET: frozenset[int] = frozenset({2, 3, 4, 5, 6, 7, 8, 9, 13, 14})
+
+# ---------------------------------------------------------------------------
+# Biocomplexity Rating (WBH pp.127-131)
+# ---------------------------------------------------------------------------
+
+_BIOCOMPLEXITY_DESC: dict[int, str] = {
+    1: "Primitive single-cell organisms",
+    2: "Advanced cellular organisms",
+    3: "Primitive multicellular organisms",
+    4: "Differentiated multicellular organisms",
+    5: "Complex multicellular organisms",
+    6: "Advanced multicellular organisms",
+    7: "Socially advanced organisms",
+    8: "Mentally advanced organisms",
+    9: "Extant or extinct sophonts",
+}
+
+
+def biocomplexity_description(rating: int) -> str:
+    """Return the descriptive label for a biocomplexity rating."""
+    if rating >= 10:
+        return "Ecosystem-wide superorganisms"
+    return _BIOCOMPLEXITY_DESC.get(rating, "")
+
+
+def generate_biocomplexity_rating(
+    biomass: int,
+    atm: int,
+    age_gyr: float,
+    has_low_oxygen_taint: bool = False,
+) -> int:
+    """
+    Roll and return the biocomplexity rating (WBH pp.127-131).
+
+    Only call when biomass > 0.  Biomass above 9 is capped at 9 for the roll.
+    Result of less than 1 becomes 1.
+
+    DMs:
+      Atmosphere not 4-9         : DM-2
+      Low oxygen taint           : DM-2
+      Age <= 1 Gyr               : DM-10 (worst DM at boundary)
+      1 < Age <= 2 Gyr           : DM-8
+      2 < Age <= 3 Gyr           : DM-4
+      3 < Age <= 4 Gyr           : DM-2
+      Age > 4 Gyr                : no DM
+    """
+    base = random.randint(1, 6) + random.randint(1, 6) - 7 + min(biomass, 9)
+    dm = 0
+    if atm < 4 or atm > 9:
+        dm -= 2
+    if has_low_oxygen_taint:
+        dm -= 2
+    if age_gyr <= 1.0:
+        dm -= 10
+    elif age_gyr <= 2.0:
+        dm -= 8
+    elif age_gyr <= 3.0:
+        dm -= 4
+    elif age_gyr <= 4.0:
+        dm -= 2
+    return max(1, base + dm)
+
+
+def generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, bool]:
+    """Check for native and extinct sophonts (WBH p.131).
+
+    Only call when biocomplexity >= 8.  Biocomplexity above 9 is capped at 9.
+
+    Returns (native_sophont, extinct_sophont).
+
+    Current sophont: 2D + min(biocomplexity, 9) − 7 ≥ 13 (no DMs).
+    Extinct sophont: 2D + min(biocomplexity, 9) − 7 + DMs ≥ 13.
+      DM+1 if age > 5 Gyrs (extinct check only).
+    If current sophont found, extinct check is skipped (returns False).
+    """
+    bio_eff = min(biocomplexity, 9)
+    current_roll = random.randint(1, 6) + random.randint(1, 6) + bio_eff - 7
+    if current_roll >= 13:
+        return True, False
+    dm = 1 if age_gyr > 5.0 else 0
+    extinct_roll = random.randint(1, 6) + random.randint(1, 6) + bio_eff - 7 + dm
+    return False, extinct_roll >= 13
+
+
+def generate_biomass_rating(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+    atm: int,
+    hydro: int,
+    age_gyr: float,
+    temperature_zone: str,
+    mean_temp_k: Optional[int] = None,
+    high_temp_k: Optional[int] = None,
+    has_biologic_taint: bool = False,
+) -> int:
+    """
+    Roll and return the biomass rating for a world (WBH pp.127-131).
+
+    Roll 2D, apply DMs, clamp combined DM to [-12, +4].
+    Returns 0 for no native life; positive values indicate life present.
+    Special Case 1: biologic taint + rolled ≤ 0 → biomass becomes 1.
+    Special Case 2: inhospitable atmosphere + biomass ≥ 1 → add adjustment.
+    """
+    base = random.randint(1, 6) + random.randint(1, 6)
+
+    atm_key = min(atm, 15)
+    dm = _ATM_BIOMASS_DM.get(atm_key, 0)
+    dm += _HYDRO_BIOMASS_DM.get(hydro, 0)
+
+    # Age DMs — each condition applies independently (cumulative)
+    if age_gyr < 0.2:
+        dm -= 6
+    if age_gyr < 1.0:
+        dm -= 2
+    if age_gyr > 4.0:
+        dm += 1
+
+    # Temperature DMs (WBH p.127) — "High temperature" rows use high_temp_k;
+    # "Mean temperature" rows use mean_temp_k. When high_temp_k is absent,
+    # mean_temp_k is used as a proxy for both (original single-value path).
+    if mean_temp_k is not None or high_temp_k is not None:
+        eff_high = high_temp_k if high_temp_k is not None else mean_temp_k
+        if eff_high is not None:
+            if eff_high > 353:
+                dm -= 2  # High temperature above 353K
+            elif eff_high < 273:
+                dm -= 4  # High temperature below 273K
+        if mean_temp_k is not None:
+            if mean_temp_k > 353:
+                dm -= 4  # Mean temperature above 353K
+            elif mean_temp_k < 273:
+                dm -= 2  # Mean temperature below 273K
+            if 279 <= mean_temp_k <= 303:
+                dm += 2  # Mean temperature between 279 and 303K
+    else:
+        # Simplified category path (WBH footnote †)
+        dm += _TEMP_ZONE_BIOMASS_DM.get(temperature_zone.lower(), 0)
+
+    dm = max(-12, min(4, dm))
+    rolled = base + dm
+
+    # Special Case 1 — biologic atmospheric taint + rolled 0 → becomes 1
+    if has_biologic_taint and rolled <= 0:
+        return 1
+
+    if rolled <= 0:
+        return 0
+
+    # Special Case 2 — inhospitable atmosphere: add adjustment to biomass
+    sc2_key = min(atm, 15)
+    if sc2_key in _SC2_ATM_SET:
+        rolled += _SC2_ADJUSTMENT.get(sc2_key, 0)
+
+    return rolled
+
+
+# ---------------------------------------------------------------------------
 # WorldDetail dataclass attached to each OrbitSlot
 # ---------------------------------------------------------------------------
 
@@ -322,7 +524,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
     """Physical and social details for one orbit slot."""
 
     __slots__ = ("sah", "population", "government", "law_level",
-                 "tech_level", "spaceport", "moons", "trade_codes", "physical")
+                 "tech_level", "spaceport", "moons", "trade_codes", "physical",
+                 "biomass_rating", "biocomplexity_rating")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -336,6 +539,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.spaceport  = spaceport
         self.moons      = moons if moons is not None else []
         self.physical: BeltPhysical | None = None
+        self.biomass_rating: Optional[int] = None
+        self.biocomplexity_rating: Optional[int] = None
         # Gas giants and rings carry no trade codes
         if (len(sah) == 3 and sah[0] == "G" and sah[1] in ("S", "M", "L")) \
                 or (len(sah) >= 1 and sah[0] == "R"):
@@ -386,7 +591,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
 
     def to_dict(self) -> dict:
         """Serialise this WorldDetail to a JSON-compatible dict."""
-        return {
+        d: dict = {
             "sah":         self.sah,
             "population":  self.population,
             "government":  self.government,
@@ -400,6 +605,11 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             "moons":       [m.to_dict() for m in self.moons],
             "physical":    self.physical.to_dict() if self.physical is not None else None,
         }
+        if self.biomass_rating is not None:
+            d["biomass_rating"] = self.biomass_rating
+        if self.biocomplexity_rating is not None:
+            d["biocomplexity_rating"] = self.biocomplexity_rating
+        return d
 
 
 
@@ -449,11 +659,12 @@ def _moon_adjacency_context(
     }
 
 
-def _moons_for(detail: WorldDetail, orbit_number: float,
-               orbit_au: float = 0.0,
-               planet_ecc: float = 0.0,
-               star_mass_solar: float = 0.0,
-               adjacency_ctx: dict | None = None) -> list:
+def _moons_for(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        detail: WorldDetail, orbit_number: float,
+        orbit_au: float = 0.0,
+        planet_ecc: float = 0.0,
+        star_mass_solar: float = 0.0,
+        adjacency_ctx: dict | None = None) -> list:
     """Generate moons for a WorldDetail based on its SAH and orbital context."""
     sah = detail.sah
     ctx = adjacency_ctx or {}
@@ -749,11 +960,17 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
     return result
 
 
-def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-locals,too-many-branches
+def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        system: TravellerSystem,
+        optional_biomass_rule: bool = False,
+) -> None:
     """
     Compute WorldDetail for all orbits and attach as `orbit.detail`
     on each OrbitSlot. Also attaches detail for the mainworld orbit
     (extracting values from the mainworld World object).
+
+    optional_biomass_rule: when True, oxygenated-atmosphere worlds with a
+    rolled biomass of 0 have their biomass raised to 1 (WBH p.131).
     """
     nhz = system.nhz_atmospheres
     detail_map = generate_system_detail(system, nhz_atmospheres=nhz)
@@ -773,8 +990,8 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
             else:
                 mw_size = int(mainworld.uwp()[1], 16) if mainworld.uwp()[1] not in ('S',) else 1
             phys    = mainworld.size_detail if mainworld else None
-            mw_diam = phys.diameter_km if phys and hasattr(phys, "diameter_km") else 0.0
-            mw_mass = phys.mass        if phys and hasattr(phys, "mass")        else 0.0
+            mw_diam = phys.diameter_km if phys and not isinstance(phys, BeltPhysical) else 0.0
+            mw_mass = phys.mass        if phys and not isinstance(phys, BeltPhysical) else 0.0
             mw_ctx = _moon_adjacency_context(
                 orbit.orbit_number, orbit.star_designation,
                 system.system_orbits, system.stellar_system,
@@ -819,6 +1036,19 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
                 # satellite.  Represent the satellite as the first moon sub-row
                 # so the orbit table shows its UWP beneath the gas giant profile.
                 satellite_moon = Moon(size_code=mw_size)
+                # Place the mainworld satellite's orbit around the GG so that
+                # its tidal contribution to seismic stress can be computed.
+                _gg_diam    = gg_diameter_from_sah(orbit.gg_sah)
+                _gg_mass    = float(_gg_diam ** 2)          # Earth masses
+                _gg_diam_km = float(_gg_diam * 12742)       # km
+                place_moon_orbit(
+                    satellite_moon,
+                    parent_diameter_km=_gg_diam_km,
+                    parent_mass_earth=_gg_mass,
+                    parent_orbit_au=orbit.orbit_au,
+                    star_mass_solar=system.stellar_system.primary.mass,
+                    parent_ecc=orbit.eccentricity,
+                )
                 satellite_moon.detail = satellite_detail
                 orbit.detail = WorldDetail(
                     sah=orbit.gg_sah,
@@ -876,6 +1106,138 @@ def attach_detail(system: TravellerSystem) -> None:  # pylint: disable=too-many-
         if mw_orbit.detail is not None:
             mw_orbit.detail.physical = bp
         mainworld.size_detail = bp
+
+    _apply_biomass(system, optional_biomass_rule=optional_biomass_rule)
+
+
+def _set_biocomplexity(
+        detail: "WorldDetail", atm: int, age_gyr: float, has_lo: bool = False,
+) -> None:
+    """Compute and attach biocomplexity to a WorldDetail when biomass > 0."""
+    if detail.biomass_rating and detail.biomass_rating > 0:
+        detail.biocomplexity_rating = generate_biocomplexity_rating(
+            detail.biomass_rating, atm, age_gyr, has_lo,
+        )
+
+
+def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+        system: TravellerSystem,
+        optional_biomass_rule: bool = False,
+) -> None:
+    """
+    Compute and attach biomass ratings for all terrestrial worlds and moons
+    (WBH pp.127-131).  Called last in attach_detail() so all biomass rolls
+    follow every other detail roll, preserving existing seed outputs.
+
+    optional_biomass_rule: when True, any world/moon whose oxygen-bearing
+    atmosphere (codes 2-9, D, E) rolls biomass 0 has it raised to 1.
+    """
+    mainworld = system.mainworld
+    age_gyr: float = system.stellar_system.primary.age_gyr or 0.0
+
+    def _oxygen_floor(biomass: int, atm: int) -> int:
+        if optional_biomass_rule and biomass == 0 and atm in _OXYGEN_ATM_SET:
+            return 1
+        return biomass
+
+    # — Secondary terrestrial orbits and their moons —
+    for orbit in system.system_orbits.orbits:
+        if orbit.world_type in ("empty", "gas_giant", "belt"):
+            continue
+        if orbit.is_mainworld_candidate:
+            continue
+        detail = orbit.detail
+        if detail is None:
+            continue
+        atm   = _ehex_to_int(detail.sah[1]) if len(detail.sah) > 1 else 0
+        hydro = _ehex_to_int(detail.sah[2]) if len(detail.sah) > 2 else 0
+        detail.biomass_rating = _oxygen_floor(generate_biomass_rating(
+            atm=atm, hydro=hydro, age_gyr=age_gyr,
+            temperature_zone=orbit.temperature_zone,
+        ), atm)
+        _set_biocomplexity(detail, atm, age_gyr)
+        for moon in detail.moons:
+            if moon.is_ring or moon.detail is None:
+                continue
+            m_atm   = _ehex_to_int(moon.detail.sah[1]) if len(moon.detail.sah) > 1 else 0
+            m_hydro = _ehex_to_int(moon.detail.sah[2]) if len(moon.detail.sah) > 2 else 0
+            moon.detail.biomass_rating = _oxygen_floor(generate_biomass_rating(
+                atm=m_atm, hydro=m_hydro, age_gyr=age_gyr,
+                temperature_zone=orbit.temperature_zone,
+            ), m_atm)
+            _set_biocomplexity(moon.detail, m_atm, age_gyr)
+
+    # — Mainworld: only when WorldPhysical is available (Mainworld Detail required) —
+    if mainworld is None:
+        return
+    phys = mainworld.size_detail
+    if phys is None or not hasattr(phys, "mean_temperature_k"):
+        return  # belt mainworld or physical detail not generated
+
+    mw_orbit = system.mainworld_orbit
+    if mw_orbit is None:
+        return
+
+    temp_zone    = mw_orbit.temperature_zone
+    mean_temp_k  = phys.mean_temperature_k  # type: ignore[attr-defined]
+    adv_mean_k   = getattr(phys, "advanced_mean_temperature_k", None)
+    high_temp_k  = getattr(phys, "high_temperature_k", None)
+    eff_mean_k   = adv_mean_k if adv_mean_k is not None else mean_temp_k
+    biologic     = any(
+        getattr(t, "subtype", "") == "Biologic"
+        for t in (mainworld.atmosphere_detail.taints
+                  if mainworld.atmosphere_detail else [])
+    )
+    mainworld.biomass_rating = _oxygen_floor(generate_biomass_rating(
+        atm=mainworld.atmosphere,
+        hydro=mainworld.hydrographics,
+        age_gyr=age_gyr,
+        temperature_zone=temp_zone,
+        mean_temp_k=eff_mean_k,
+        high_temp_k=high_temp_k,
+        has_biologic_taint=biologic,
+    ), mainworld.atmosphere)
+    if mainworld.biomass_rating and mainworld.biomass_rating > 0:
+        has_low_o = any(
+            getattr(t, "subtype_code", "") == "L"
+            for t in (mainworld.atmosphere_detail.taints
+                      if mainworld.atmosphere_detail else [])
+        )
+        mainworld.biocomplexity_rating = generate_biocomplexity_rating(
+            mainworld.biomass_rating, mainworld.atmosphere, age_gyr, has_low_o,
+        )
+        if mainworld.biocomplexity_rating >= 8:
+            mainworld.native_sophont, mainworld.extinct_sophont = (
+                generate_sophont_checks(mainworld.biocomplexity_rating, age_gyr)
+            )
+
+    # Propagate to orbit.detail so the orbit table works uniformly.
+    if mw_orbit.world_type == "gas_giant":
+        # Mainworld is a satellite sub-row; propagate to that moon's detail.
+        mw_actual_moons: list = []
+        if mw_orbit.detail and mw_orbit.detail.moons:
+            sat = mw_orbit.detail.moons[0]
+            if sat.detail is not None:
+                sat.detail.biomass_rating = mainworld.biomass_rating
+                sat.detail.biocomplexity_rating = mainworld.biocomplexity_rating
+                mw_actual_moons = sat.detail.moons
+    else:
+        if mw_orbit.detail is not None:
+            mw_orbit.detail.biomass_rating = mainworld.biomass_rating
+            mw_orbit.detail.biocomplexity_rating = mainworld.biocomplexity_rating
+        mw_actual_moons = mw_orbit.detail.moons if mw_orbit.detail else []
+
+    # Apply biomass and biocomplexity to mainworld's own moons
+    for moon in mw_actual_moons:
+        if moon.is_ring or moon.detail is None:
+            continue
+        m_atm   = _ehex_to_int(moon.detail.sah[1]) if len(moon.detail.sah) > 1 else 0
+        m_hydro = _ehex_to_int(moon.detail.sah[2]) if len(moon.detail.sah) > 2 else 0
+        moon.detail.biomass_rating = _oxygen_floor(generate_biomass_rating(
+            atm=m_atm, hydro=m_hydro, age_gyr=age_gyr,
+            temperature_zone=temp_zone,
+        ), m_atm)
+        _set_biocomplexity(moon.detail, m_atm, age_gyr)
 
 
 def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-many-locals

@@ -62,7 +62,8 @@ from typing import Optional
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
 from traveller_belt_physical import BeltPhysical
-from traveller_world_physical import TIDAL_STATUS_LABELS, WorldPhysical
+from traveller_world_physical import WorldPhysical
+from tables import TIDAL_STATUS_LABELS, BIOCOMPLEXITY_DESC
 from traveller_hydro_detail import generate_hydrographic_detail
 from html_render import render
 from traveller_world_gen import (
@@ -328,6 +329,12 @@ class TravellerSystem:
                     else:
                         moon_profile = f"size {moon.size_str}"
                         moon_codes = []
+                    moon_biosphere = ""
+                    if moon.detail is not None:
+                        mb = moon.detail.biomass_rating
+                        mc = moon.detail.biocomplexity_rating
+                        if mb is not None and mb > 0 and mc is not None:
+                            moon_biosphere = f"{to_hex(mb)}, {to_hex(mc)}"
                     moons.append({
                         "idx": mi,
                         "pd_str": (f"{moon.orbit_pd:.1f} PD"
@@ -340,7 +347,21 @@ class TravellerSystem:
                         "codes": moon_codes,
                         "range_str": (moon.orbit_range.capitalize()
                                       if moon.orbit_range else ""),
+                        "biosphere_str": moon_biosphere,
                     })
+
+            # Biosphere: biomass, biocomplexity for terrestrial worlds
+            biosphere_str = ""
+            if o.is_mainworld_candidate and mw:
+                bm = mw.biomass_rating
+                bc = mw.biocomplexity_rating
+                if bm is not None and bm > 0 and bc is not None:
+                    biosphere_str = f"{to_hex(bm)}, {to_hex(bc)}"
+            elif detail is not None and not detail.is_gas_giant:
+                bm = detail.biomass_rating
+                bc = detail.biocomplexity_rating
+                if bm is not None and bm > 0 and bc is not None:
+                    biosphere_str = f"{to_hex(bm)}, {to_hex(bc)}"
 
             orbit_rows.append({
                 "star_desig": o.star_designation,
@@ -356,6 +377,7 @@ class TravellerSystem:
                 "mw_mark": "  ".join(note_parts),
                 "row_cls": "mw-row" if o.is_mainworld_candidate else "",
                 "moons": moons,
+                "biosphere_str": biosphere_str,
             })
 
         # ── Mainworld panel data ──────────────────────────────────────────
@@ -410,6 +432,16 @@ class TravellerSystem:
                 "gas_parts": mw_gas_parts,
                 "hydro_detail": mw.hydrographic_detail,
                 "notes": list(mw.notes),
+                "biomass_rating": mw.biomass_rating,
+                "biomass_str": (to_hex(mw.biomass_rating)
+                                if mw.biomass_rating is not None else None),
+                "biocomplexity_rating": mw.biocomplexity_rating,
+                "biocomplexity_str": (
+                    f"{to_hex(mw.biocomplexity_rating)} — "
+                    + BIOCOMPLEXITY_DESC.get(
+                        mw.biocomplexity_rating, "Ecosystem-wide superorganisms")
+                    if mw.biocomplexity_rating is not None else None
+                ),
             }
 
         return render("system_card.html",
@@ -563,9 +595,11 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
                 world.size, world.hydrographics,
             )
 
-    # Hydrographic detail — precise surface-liquid percentage (WBH p.93)
+    # Hydrographic detail — surface-liquid percentage and fluid type (WBH pp.91-95)
     world.hydrographic_detail = generate_hydrographic_detail(
-        world.hydrographics, world.size
+        world.hydrographics, world.size,
+        atmosphere=world.atmosphere,
+        temperature=world.temperature,
     )
 
     # Steps 5-7: Population, Government, Law Level
