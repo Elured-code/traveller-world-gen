@@ -433,11 +433,16 @@ class WorldPhysical:       # pylint: disable=too-many-instance-attributes
     tidal_status: str      # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
     eccentricity_adjusted: Optional[float]  # field(default=None, init=False)
     # Set when tidal_status=="1:1_lock" and orbit_eccentricity > 0.1 (WBH p.77 Rule 4).
+    stellar_day_hours: Optional[float]      # field(default=None, init=False)
+    # Stellar (solar) day in hours — time between successive sunrises (WBH p.106).
+    # Prograde:  (T_sid × T_orb) / (T_orb − T_sid)
+    # Retrograde: (T_sid × T_orb) / (T_orb + T_sid)
+    # None for 1:1_lock (star stationary in sky) and when orbital data is absent.
 
     def to_dict(self) -> dict: ...
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
     #       gravity_g, escape_velocity_km_s, axial_tilt_deg, day_length_hours,
-    #       tidal_status[, eccentricity_adjusted]
+    #       tidal_status[, eccentricity_adjusted][, stellar_day_hours]
 ```
 
 **Tidal lock DMs (WBH pp.105–106):** `_tidal_lock_dm()` combines general DMs (size, eccentricity, axial tilt, atmosphere pressure, system age) with star-lock DMs (base −4, orbit# band, star mass band). Eccentricity DM (Session 50): `e > 0.1 → DM − floor(e × 10)`. Passed as `orbit_eccentricity: float = 0.0`; no effect when `orbital_eccentricity=False` (default).
@@ -984,7 +989,7 @@ The following WBH features are explicitly noted as not yet implemented. Page ref
 
 **Secondary world classifications** (WBH p.163). Colony, Farming, Freeport, Military Base, Mining Facility, Penal Colony, Research Base — trade codes for secondary worlds based on their characteristics and relationship to the mainworld. Not implemented.
 
-**World physical detail beyond basic** (WBH pp. 78–130). Basic physical characteristics (diameter, density, composition, mass, gravity, escape velocity, axial tilt, day length, tidal lock) are implemented in `traveller_world_physical.py`. Atmosphere detail through Phase 5 (pressure, O₂, scale height, taints, exotic/CI subtypes, gas composition, altitude bands, and Unusual subtypes) is implemented in `traveller_world_gen.py`. Remaining: seismic stress, tidal heating, hydrographic composition, native life ratings. Biologic taint (WBH p.83) is blocked on native-life ratings.
+**World physical detail beyond basic** (WBH pp. 78–130). Basic physical characteristics (diameter, density, composition, mass, gravity, escape velocity, axial tilt, day length, tidal lock) are implemented in `traveller_world_physical.py`. Stellar day vs sidereal day correction (WBH p.106) is implemented. Atmosphere detail through Phase 5 (pressure, O₂, scale height, taints, exotic/CI subtypes, gas composition, altitude bands, and Unusual subtypes) is implemented in `traveller_world_gen.py`. Seismic stress, tidal heating, surface tidal amplitude, biomass rating, biocomplexity rating, and native/extinct sophonts are all implemented. Remaining: hydrographic composition beyond surface liquid % (ocean type, ice caps, depth). Biologic taint (WBH p.83) is blocked on native-life ratings.
 
 **Moon orbit placement** (WBH pp. 74–77). Hill sphere calculation, Roche limit, Moon Orbit Range, and orbital distances in planetary diameters. Moons are sized and detailed but not given orbital positions within their parent's system.
 

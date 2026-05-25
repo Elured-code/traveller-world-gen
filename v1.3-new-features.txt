@@ -89,6 +89,22 @@ WORLD PHYSICAL DETAIL
   Total Seismic Stress is the sum of all three. Where internal heating raises the
   effective temperature, the Seismic Temperature is also shown.
 
+- The stellar day (solar day) is now calculated and displayed below the sidereal
+  day (rotation period) in the World Body detail card. The stellar day is the
+  time between successive sunrises — what inhabitants experience as "a day". It
+  differs from the sidereal rotation period because the world moves along its
+  orbit while rotating.
+
+  The correction follows WBH p.106:
+    • Prograde worlds: stellar day > sidereal day
+    • Retrograde worlds: stellar day < sidereal day
+    • Tidally locked worlds (1:1 lock): no stellar day row is shown (the star is
+      stationary in the sky)
+    • 3:2 resonance (Mercury-like): stellar day ≈ 2 × orbital period
+
+  The stellar day is only shown when orbital data is available (i.e., when
+  generating a full system with Physical detail enabled).
+
 GEN-UI CONTROLS
 ----------------
 - The "System detail" and "Mainworld detail" checkboxes have been replaced with

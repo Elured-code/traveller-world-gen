@@ -307,6 +307,13 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     #   Steps 1-4: axial tilt factor + rotation factor + geographic factor → variance.
     #   Steps 5-6: atmospheric factor = 1+bar; luminosity modifier = variance / atm_factor.
     #   Steps 7-9: high/low luminosity → high/low AU (near/far periastron) → T = 279×⁴√(...)
+    stellar_day_hours: Optional[float] = field(default=None, init=False)
+    # Stellar (solar) day in hours — time between successive sunrises (WBH p.106, Session 66).
+    # Derived from day_length (sidereal) and orbital period:
+    #   prograde:  (T_sid × T_orb) / (T_orb − T_sid)
+    #   retrograde: (T_sid × T_orb) / (T_orb + T_sid)
+    # None for 1:1_lock (star is stationary in sky) and when orbital data absent.
+    # Set in generate_world_physical() and recomputed in apply_moon_tidal_effects().
 
     # method: .to_dict()
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
@@ -316,7 +323,8 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     #       [, tidal_seismic_stress (only when >0)][, tidal_stress_factor (only when >0)]
     #       [, total_seismic_stress][, seismic_temperature_k]
     #       [, albedo][, greenhouse_factor][, advanced_mean_temperature_k]
-    #       [, high_temperature_k][, low_temperature_k]  ← all only when not None
+    #       [, high_temperature_k][, low_temperature_k]
+    #       [, stellar_day_hours]  ← all only when not None
 ```
 
 ---

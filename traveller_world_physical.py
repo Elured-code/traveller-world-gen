@@ -262,6 +262,27 @@ def _orbital_period_hours(orbit_au: float, star_mass: float) -> float:
     return math.sqrt(orbit_au ** 3 / star_mass) * 8766.0
 
 
+def _compute_stellar_day(
+        sidereal_h: float,
+        orbital_period_h: float,
+        tidal_status: str,
+) -> Optional[float]:
+    """Stellar (solar) day in hours from sidereal day and orbital period (WBH p.106).
+
+    The stellar day is what inhabitants experience as 'a day'. It differs from
+    the sidereal day because the planet moves along its orbit while rotating.
+    Returns None for 1:1 tidally locked worlds (star is stationary in the sky).
+    """
+    if tidal_status == "1:1_lock":
+        return None
+    if tidal_status == "retrograde":
+        return round((sidereal_h * orbital_period_h) / (orbital_period_h + sidereal_h), 1)
+    denom = orbital_period_h - sidereal_h
+    if denom <= 0:
+        return None
+    return round((sidereal_h * orbital_period_h) / denom, 1)
+
+
 def _reroll_axial_tilt_for_lock() -> float:
     """Reroll axial tilt for 3:2 lock: (2D-2) ÷ 10 degrees (WBH p.105)."""
     return round((_roll(2) - 2) / 10.0, 1)
@@ -909,6 +930,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     advanced_mean_temperature_k: Optional[int] = field(default=None, init=False)
     high_temperature_k: Optional[int] = field(default=None, init=False)
     low_temperature_k: Optional[int] = field(default=None, init=False)
+    stellar_day_hours: Optional[float] = field(default=None, init=False)
 
     def to_dict(self) -> dict:  # pylint: disable=too-many-branches
         """Return physical characteristics as a JSON-compatible dict."""
@@ -949,6 +971,8 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["high_temperature_k"] = self.high_temperature_k
         if self.low_temperature_k is not None:
             d["low_temperature_k"] = self.low_temperature_k
+        if self.stellar_day_hours is not None:
+            d["stellar_day_hours"] = self.stellar_day_hours
         return d
 
 
@@ -1047,6 +1071,9 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         wp.mean_temperature_k = _compute_mean_temperature(hz_deviation, world.atmosphere)
     if orbit_au is not None and star_mass is not None and world.size > 0:
         wp.tidal_amplitude_m = _compute_tidal_amplitude(world.size, star_mass, orbit_au)
+    if orbit_au is not None and star_mass is not None:
+        period_h = _orbital_period_hours(orbit_au, star_mass)
+        wp.stellar_day_hours = _compute_stellar_day(wp.day_length, period_h, wp.tidal_status)
     return wp
 
 
@@ -1111,6 +1138,10 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
         gg_mass_earth=gg_mass_earth,
         gg_satellite_moon=gg_satellite_moon,
     )
+    if period_h > 0:
+        physical.stellar_day_hours = _compute_stellar_day(
+            physical.day_length, period_h, physical.tidal_status
+        )
 
 
 # ---------------------------------------------------------------------------

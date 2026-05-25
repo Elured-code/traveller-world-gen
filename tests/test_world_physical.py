@@ -23,6 +23,7 @@ from tables import TIDAL_STATUS_LABELS
 from traveller_world_physical import (
     WorldPhysical,
     _apply_seismic_stress,
+    _compute_stellar_day,
     _apply_tidal_lock_result,
     _axial_tilt_factor,
     _compute_mean_temperature,
@@ -1916,3 +1917,117 @@ class TestHighLowTemperature:
             wp = self._run(luminosity=0.001, orbit_au=5.0)
             assert (wp.high_temperature_k or 0) >= 3
             assert (wp.low_temperature_k  or 0) >= 3
+
+
+# ---------------------------------------------------------------------------
+# TestComputeStellarDay — unit tests for _compute_stellar_day (WBH p.106)
+# ---------------------------------------------------------------------------
+
+class TestComputeStellarDay:
+    """Direct unit tests for _compute_stellar_day — pure function, no RNG."""
+
+    # 1 AU around a 1 M☉ star → T_orb = sqrt(1³/1) * 8766 = 8766.0 h
+    _T_ORB = 8766.0
+
+    def test_prograde_none_status(self):
+        # Prograde: T_sol = (T_sid × T_orb) / (T_orb − T_sid)
+        t_sid = 24.0
+        expected = round((t_sid * self._T_ORB) / (self._T_ORB - t_sid), 1)
+        assert _compute_stellar_day(t_sid, self._T_ORB, "none") == expected
+
+    def test_prograde_braking_status(self):
+        t_sid = 100.0
+        expected = round((t_sid * self._T_ORB) / (self._T_ORB - t_sid), 1)
+        assert _compute_stellar_day(t_sid, self._T_ORB, "braking") == expected
+
+    def test_prograde_prograde_status(self):
+        t_sid = 200.0
+        expected = round((t_sid * self._T_ORB) / (self._T_ORB - t_sid), 1)
+        assert _compute_stellar_day(t_sid, self._T_ORB, "prograde") == expected
+
+    def test_retrograde_shorter_than_sidereal(self):
+        # Retrograde: T_sol = (T_sid × T_orb) / (T_orb + T_sid)
+        # Denominator is always > T_orb, so T_sol < T_sid
+        t_sid = 24.0
+        result = _compute_stellar_day(t_sid, self._T_ORB, "retrograde")
+        expected = round((t_sid * self._T_ORB) / (self._T_ORB + t_sid), 1)
+        assert result == expected
+        assert result < t_sid
+
+    def test_1_1_lock_returns_none(self):
+        # Star is stationary in the sky; stellar day is undefined
+        assert _compute_stellar_day(self._T_ORB, self._T_ORB, "1:1_lock") is None
+
+    def test_3_2_lock_stellar_day_is_twice_orbital(self):
+        # 3:2 resonance: T_sid = (2/3) × T_orb → T_sol = 2 × T_orb (like Mercury)
+        t_sid = round((2 / 3) * self._T_ORB, 1)
+        result = _compute_stellar_day(t_sid, self._T_ORB, "3:2_lock")
+        assert result is not None
+        assert abs(result - 2 * self._T_ORB) < 1.0  # within 1 h of 2×T_orb
+
+    def test_edge_denom_zero_prograde_returns_none(self):
+        # T_sid == T_orb in a prograde status (defensive edge case)
+        assert _compute_stellar_day(self._T_ORB, self._T_ORB, "none") is None
+
+    def test_edge_denom_negative_prograde_returns_none(self):
+        # T_sid > T_orb in a prograde status (physically impossible, defensive)
+        assert _compute_stellar_day(self._T_ORB + 1.0, self._T_ORB, "none") is None
+
+
+# ---------------------------------------------------------------------------
+# TestStellarDayIntegration — wired through generate_world_physical
+# ---------------------------------------------------------------------------
+
+class TestStellarDayIntegration:
+    """Integration: stellar_day_hours set and serialised by generate_world_physical."""
+
+    def test_stellar_day_absent_without_orbital_data(self):
+        w = _World(size=6)
+        with patch("random.randint", return_value=3):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        assert wp.stellar_day_hours is None
+
+    def test_stellar_day_present_with_orbital_data(self):
+        w = _World(size=6, atmosphere=1)  # atm 1 → low tidal lock DM
+        with patch("random.randint", return_value=3):
+            wp = generate_world_physical(
+                w, age_gyr=5.0,
+                orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp is not None
+        assert wp.stellar_day_hours is not None
+        assert wp.stellar_day_hours > 0.0
+
+    def test_stellar_day_none_for_1_1_lock(self):
+        # Force 1:1 tidal lock by making _roll_tidal_lock_status return that status
+        w = _World(size=6, atmosphere=0)
+        t_orb = round((1.0 ** 1.5) * 8766.0, 1)
+        with patch("traveller_world_physical._roll_tidal_lock_status",
+                   return_value=(t_orb, 0.0, "1:1_lock")):
+            wp = generate_world_physical(
+                w, age_gyr=5.0,
+                orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp is not None
+        assert wp.tidal_status == "1:1_lock"
+        assert wp.stellar_day_hours is None
+
+    def test_to_dict_includes_stellar_day_when_set(self):
+        w = _World(size=6, atmosphere=1)
+        with patch("random.randint", return_value=3):
+            wp = generate_world_physical(
+                w, age_gyr=5.0,
+                orbit_number=3.0, orbit_au=1.0, star_mass=1.0,
+            )
+        assert wp is not None
+        d = wp.to_dict()
+        assert "stellar_day_hours" in d
+        assert d["stellar_day_hours"] == wp.stellar_day_hours
+
+    def test_to_dict_omits_stellar_day_when_none(self):
+        w = _World(size=6)
+        with patch("random.randint", return_value=3):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        assert "stellar_day_hours" not in wp.to_dict()
