@@ -752,21 +752,21 @@ _TAINTED_CODES = frozenset({2, 4, 7, 9})
 # Single-char profile codes that identify O2-driven subtypes.
 _O2_TAINT_CODES = frozenset({"L", "H"})
 
-# Subtype rolls that map to Biologic — rerolled per issue #28.
-_BIOLOGIC_SUBTYPE_ROLLS = frozenset({4, 9})
-
 # DM applied to the subtype 2D roll by atmosphere code (others: 0).
 _TAINT_SUBTYPE_DM = {4: -2, 9: 2}
 
 # 2D+DM → (subtype name, single-char profile code).
-# Entries 4 and 9 (Biologic) are absent — the roll function rerolls them.
+# Result 10: Particulates + roll again (needs_second_roll = True).
+# Biologic (B): forces biomass_rating ≥ 1 via generate_biomass_rating() (issue #28).
 _TAINT_SUBTYPE_TABLE = {
     2:  ("Low Oxygen",        "L"),
     3:  ("Radioactivity",     "R"),
+    4:  ("Biologic",          "B"),
     5:  ("Gas Mix",           "G"),
     6:  ("Particulates",      "P"),
     7:  ("Gas Mix",           "G"),
     8:  ("Sulphur Compounds", "S"),
+    9:  ("Biologic",          "B"),
     10: ("Particulates",      "P"),   # result 10: Particulates + roll again
     11: ("Radioactivity",     "R"),
     12: ("High Oxygen",       "H"),
@@ -812,9 +812,7 @@ def _roll_single_taint(atm_code: int, ppo: Optional[float] = None) -> tuple:
     """Roll one taint for a tainted atmosphere (WBH pp.82-83).
 
     Returns ``(Taint, needs_second_roll)``.  ``needs_second_roll`` is
-    ``True`` only when the subtype roll is 10 (Particulates and roll
-    again).  Biologic results (subtype rolls 4 and 9) are rerolled
-    until a non-Biologic subtype is obtained (issue #28).
+    ``True`` only when the subtype roll is 10 (Particulates and roll again).
 
     ``ppo`` constrains H/L subtypes to physically valid ranges (issue #55):
     High Oxygen (H) is only accepted when ppo > 0.5 bar; Low Oxygen (L)
@@ -828,8 +826,6 @@ def _roll_single_taint(atm_code: int, ppo: Optional[float] = None) -> tuple:
     dm = _TAINT_SUBTYPE_DM.get(atm_code, 0)
     while True:
         raw_sub = max(2, min(12, roll(2) + dm))
-        if raw_sub in _BIOLOGIC_SUBTYPE_ROLLS:
-            continue
         subtype_name, subtype_code = _TAINT_SUBTYPE_TABLE[raw_sub]
         if subtype_code == "H" and ppo is not None and ppo <= 0.5:
             continue

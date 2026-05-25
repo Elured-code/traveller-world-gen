@@ -1,0 +1,86 @@
+Traveller World & System Generator — What's New in v1.4.0
+==========================================================
+
+BIOLOGIC ATMOSPHERE TAINT (WBH p.83)
+--------------------------------------
+- Tainted atmospheres (codes 2, 4, 7, 9) can now produce a Biologic taint
+  subtype. This taint appears in the atmosphere detail card as a taint with
+  subtype "Biologic" (code B), representing alien micro-organisms or spores
+  suspended in the air.
+
+- When a biologic taint is present, the world is guaranteed to have at least
+  Biomass 1 — life must exist to produce the taint. This enforcement happens
+  automatically and is consistent with WBH p.83.
+
+- Previously, biologic taint rolls were silently rerolled because the native
+  life system (biomass ratings) was not yet implemented. Now that biomass
+  generation is in place, biologic taints are fully enabled.
+
+BELT MEAN TEMPERATURE (NEW IN WORLD CARD)
+------------------------------------------
+- Asteroid belt mainworlds (Size 0) now display a Mean temperature in Kelvin
+  in the World Body detail card. The temperature is computed using the same
+  WBH p.47 formula as for planetary worlds, with atmosphere DM set to zero
+  (belts have no retained atmosphere).
+
+GEN-UI — SYSTEM DETAIL CONTROLS REDESIGN
+-----------------------------------------
+- The flat row of radio buttons and checkboxes for system-detail sub-options
+  has been replaced by a "System detail" group box (QGroupBox). Enabling the
+  group-box checkbox activates the group; disabling it automatically grays out
+  all four child options (NHZ Atmospheres, Oxygen requires biomass, Advanced
+  temperature, and Runaway greenhouse). The dependency between System detail
+  and its sub-options is now immediately visible without having to try each
+  option to discover which ones are linked.
+
+GEN-UI — TRAVELLERMAP PANEL SHOW/HIDE
+----------------------------------------
+- When "Procedural" mode is selected, the Sector, Name, and Hex fields are now
+  hidden entirely rather than displayed grayed out. They reappear when
+  "TravellerMap" is selected. This removes visual clutter and eliminates the
+  confusion of visible-but-inactive fields.
+
+GEN-UI — TRAVELLERMAP LOOKUP FEEDBACK
+----------------------------------------
+- TravellerMap lookups now run on a background thread (QThread). As soon as
+  Generate is clicked, the status line shows "Looking up <world> in <sector>…"
+  and the Generate button is disabled until the response arrives. The UI
+  remains responsive and interactive during the lookup. Previously the app
+  would freeze for the duration of a slow or timing-out TravellerMap request.
+
+ORBIT TABLE — HORIZONTAL SCROLL
+---------------------------------
+- The system orbit survey table (11 columns: UWP, Name, Orbit#, Ecc/Incl,
+  Period, Notes, and others) now scrolls horizontally when the panel is
+  narrower than its content. Column headers no longer wrap to multiple lines.
+  This is particularly noticeable on narrower window sizes or when the Notes
+  column contains long text.
+
+STANDALONE BINARIES — SMALLER FILE SIZE
+-----------------------------------------
+- v1.4.0 binaries are substantially smaller than v1.3.x through a combination
+  of:
+    • 37 unused Qt modules excluded from the bundle
+    • Qt translation files removed (100+ languages not needed)
+    • Unused image format plugins removed (only SVG, JPEG, GIF, ICNS, ICO
+      retained)
+    • Python bytecode optimised (docstrings and assertions stripped)
+    • Debug symbols stripped on Linux and macOS
+    • UPX compression enabled on all platforms
+
+- macOS builds are now provided as separate architecture-native binaries
+  (Apple Silicon arm64 only from v1.4.0 onwards). The Intel x86_64 build has
+  been discontinued.
+
+BUG FIXES
+---------
+- Fixed (Windows binary): the System tab and any web-view panel showed a blank
+  white page. QtWebEngineProcess.exe and the WebEngine resource files (.pak,
+  locales) were not included in the PyInstaller bundle when PySide6-Addons is
+  installed separately from the base PySide6 package. These files are now
+  explicitly collected in traveller_gen_ui.spec.
+
+- Fixed (Windows install): a ModuleNotFoundError for PySide6.QtWebEngineWidgets
+  at startup. PySide6-Addons (which provides QtWebEngineWidgets) was missing
+  from gen-ui/requirements.txt. It is now listed with a compatible version
+  constraint alongside PySide6.
