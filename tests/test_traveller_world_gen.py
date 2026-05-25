@@ -90,7 +90,6 @@ from traveller_world_gen import (
     _TAINT_SUBTYPE_TABLE,
     _TAINT_SEVERITY_TABLE,
     _TAINT_PERSISTENCE_TABLE,
-    _BIOLOGIC_SUBTYPE_ROLLS,
     _TAINT_SUBTYPE_DM,
     _O2_TAINT_CODES,
     _roll_single_taint,
@@ -126,7 +125,7 @@ from traveller_world_gen import (
     UnusualSubtype,
 )
 from traveller_system_gen import generate_full_system
-from traveller_world_detail import attach_detail, _ehex_to_int
+from traveller_world_detail import attach_detail, _ehex_to_int, generate_biomass_rating
 
 
 # ===========================================================================
@@ -880,19 +879,30 @@ class TestTaintHelpers:
 class TestTaintSubtypeRoll:
     """Tests for the subtype portion of _roll_single_taint."""
 
-    def test_biologic_never_produced_code_2(self):
-        random.seed(0)
-        for _ in range(200):
+    def test_biologic_produced_on_roll_4(self):
+        """Forced subtype roll of 4 (DM 0 for atm code 2) → Biologic."""
+        with patch("traveller_world_gen.roll", side_effect=[4, 6, 6]):
             taint, _ = _roll_single_taint(2)
-            assert taint.subtype_code not in ("B",), (
-                f"Biologic produced: {taint.subtype}"
-            )
+        assert taint.subtype_code == "B"
+        assert taint.subtype == "Biologic"
 
-    def test_biologic_never_produced_code_7(self):
-        random.seed(1)
-        for _ in range(200):
-            taint, _ = _roll_single_taint(7)
-            assert taint.subtype_code not in ("B",)
+    def test_biologic_produced_on_roll_9(self):
+        """Forced subtype roll of 9 (DM 0 for atm code 2) → Biologic."""
+        with patch("traveller_world_gen.roll", side_effect=[9, 6, 6]):
+            taint, _ = _roll_single_taint(2)
+        assert taint.subtype_code == "B"
+        assert taint.subtype == "Biologic"
+
+    def test_biologic_taint_enforces_biomass_floor(self):
+        """generate_biomass_rating with has_biologic_taint=True never returns 0."""
+        for seed in range(100):
+            random.seed(seed)
+            result = generate_biomass_rating(
+                atm=0, hydro=0, age_gyr=0.1,
+                temperature_zone="frozen",
+                has_biologic_taint=True,
+            )
+            assert result >= 1, f"seed {seed}: biomass {result} with biologic taint"
 
     def test_subtype_code_always_in_table(self):
         valid_codes = {v[1] for v in _TAINT_SUBTYPE_TABLE.values()}

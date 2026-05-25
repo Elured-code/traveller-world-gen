@@ -114,7 +114,7 @@ errors must be resolved. Key patterns:
 
 ## Test suite
 
-990 tests total; all must pass before committing.
+1450 tests total; all must pass before committing.
 
 ```bash
 # All tests

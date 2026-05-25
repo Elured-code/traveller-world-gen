@@ -1,8 +1,29 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–70
-**Tests:** 1449
+**Sessions:** 55–71
+**Tests:** 1450
+
+---
+
+## Biologic Taint (Session 71, WBH p.83, issue #28)
+
+Atmospheric taints can now produce a Biologic subtype. Previously subtype dice
+rolls of 4 and 9 (which map to Biologic per WBH p.83) were silently rerolled
+because native-life ratings did not yet exist. Now that biomass generation is
+fully implemented (Session 61), the reroll guard is removed and biologic taints
+are enabled.
+
+- `_BIOLOGIC_SUBTYPE_ROLLS` frozenset removed from `traveller_world_gen.py`.
+- Subtype entries `4: ("Biologic", "B")` and `9: ("Biologic", "B")` added to
+  `_TAINT_SUBTYPE_TABLE`.
+- Reroll guard removed from `_roll_single_taint()`.
+- When a biologic taint fires, `generate_biomass_rating()` enforces
+  `biomass ≥ 1` via the existing `has_biologic_taint=True` parameter
+  (already wired in Session 61 via `_apply_biomass()` in
+  `traveller_world_detail.py`).
+- Affected atmosphere codes: 2 (Reducing), 4 (Thick/Tainted), 7 (Standard
+  Tainted), 9 (Dense/Tainted).
 
 ---
 
