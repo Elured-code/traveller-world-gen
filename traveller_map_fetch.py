@@ -703,7 +703,9 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
             world.size, world.hydrographics,
         )
     world.hydrographic_detail = generate_hydrographic_detail(
-        world.hydrographics, world.size
+        world.hydrographics, world.size,
+        atmosphere=world.atmosphere,
+        temperature=world.temperature,
     )
 
     system = TravellerSystem(

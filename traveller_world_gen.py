@@ -1865,6 +1865,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                 f"  {'Surface liq.':<12}: "
                 f"{self.hydrographic_detail.surface_liquid_pct}%"
             )
+            if self.hydrographic_detail.fluid_type is not None:
+                lines.append(
+                    f"  {'Fluid type':<12}: {self.hydrographic_detail.fluid_type}"
+                )
 
         if self.size_detail:
             p = self.size_detail
