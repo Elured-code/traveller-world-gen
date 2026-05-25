@@ -2,6 +2,8 @@ name: Build binaries
 
 on:
   workflow_dispatch:
+  release:
+    types: [created]
   push:
     branches: [main]
     paths:
@@ -176,17 +178,24 @@ jobs:
         with:
           path: artifacts/
 
-      - name: Create GitHub Release
+      # When triggered by a release event, upload binaries to the triggering
+      # release. Otherwise create a new pre-release tagged build-<run_number>.
+      - name: Upload to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          TAG="build-${{ github.run_number }}"
-          gh release create "$TAG" \
-            --title "Build #${{ github.run_number }}" \
-            --notes "Automated build from commit \`${{ github.sha }}\`." \
-            --prerelease \
-            artifacts/TravellerWorldGen-macos/TravellerWorldGen-macos.zip \
-            artifacts/TravellerWorldGen-windows/TravellerWorldGen-windows.zip \
-            artifacts/TravellerWorldGen-ubuntu/TravellerWorldGen-ubuntu.tar.gz \
-            artifacts/TravellerWorldGen-fedora/TravellerWorldGen-fedora.tar.gz
+          FILES="artifacts/TravellerWorldGen-macos/TravellerWorldGen-macos.zip \
+                 artifacts/TravellerWorldGen-windows/TravellerWorldGen-windows.zip \
+                 artifacts/TravellerWorldGen-ubuntu/TravellerWorldGen-ubuntu.tar.gz \
+                 artifacts/TravellerWorldGen-fedora/TravellerWorldGen-fedora.tar.gz"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            gh release upload "${{ github.event.release.tag_name }}" $FILES
+          else
+            TAG="build-${{ github.run_number }}"
+            gh release create "$TAG" \
+              --title "Build #${{ github.run_number }}" \
+              --notes "Automated build from commit \`${{ github.sha }}\`." \
+              --prerelease \
+              $FILES
+          fi
