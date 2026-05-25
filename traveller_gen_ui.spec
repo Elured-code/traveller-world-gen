@@ -6,17 +6,49 @@ Run from the project root:
     .venv/bin/pyinstaller traveller_gen_ui.spec
 
 Output:
-    dist/TravellerWorldGen.app   (macOS app bundle)
+    dist/TravellerWorldGen/   (one-dir bundle, all platforms)
+    dist/TravellerWorldGen.app  (macOS app bundle wrapper)
 """
+
+import os
+import sys
+from PyInstaller.utils.hooks import collect_data_files
+
+# ---------------------------------------------------------------------------
+# QtWebEngine support
+# ---------------------------------------------------------------------------
+# When PySide6-Addons is installed separately from the base PySide6 package,
+# PyInstaller's built-in hooks may not collect the WebEngine process binary
+# and resource files. Collect them explicitly here.
+
+_webengine_datas = []
+for _subdir in ("Qt/resources", "Qt/translations/qtwebengine_locales"):
+    _webengine_datas += collect_data_files("PySide6", subdir=_subdir)
+
+# QtWebEngineProcess is a standalone executable required by QtWebEngine.
+# On Windows: QtWebEngineProcess.exe; on Linux/macOS: QtWebEngineProcess.
+import PySide6 as _pyside6
+_pyside6_dir = os.path.dirname(_pyside6.__file__)
+_webengine_process_name = (
+    "QtWebEngineProcess.exe" if sys.platform == "win32" else "QtWebEngineProcess"
+)
+_webengine_process = os.path.join(_pyside6_dir, _webengine_process_name)
+_webengine_binaries = [(_webengine_process, ".")] if os.path.isfile(_webengine_process) else []
+
+# ---------------------------------------------------------------------------
 
 a = Analysis(
     ["gen-ui/app.py"],
     pathex=["."],
-    binaries=[],
+    binaries=_webengine_binaries,
     datas=[
         ("templates", "templates"),
+        *_webengine_datas,
     ],
-    hiddenimports=[],
+    hiddenimports=[
+        "PySide6.QtWebEngineCore",
+        "PySide6.QtWebEngineWidgets",
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

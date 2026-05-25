@@ -125,7 +125,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [install] Installing PySide6 (desktop GUI library) - this may take a few minutes...
+echo [install] Installing PySide6 and PySide6-Addons (desktop GUI library) - this may take a few minutes...
 "!VENV_PYTHON!" -m pip install --quiet -r "%~dp0gen-ui\requirements.txt"
 if errorlevel 1 (
     echo [error]   Failed to install PySide6. Check your internet connection and try again.

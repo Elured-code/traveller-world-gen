@@ -129,7 +129,7 @@ info "Installing backend dependencies (azure-functions, jsonschema)..."
 "$VENV_PYTHON" -m pip install --quiet -r "$SCRIPT_DIR/requirements.txt" \
     || fail "Failed to install backend dependencies."
 
-info "Installing PySide6 (desktop GUI library) — this may take a few minutes..."
+info "Installing PySide6 and PySide6-Addons (desktop GUI library) — this may take a few minutes..."
 "$VENV_PYTHON" -m pip install --quiet -r "$SCRIPT_DIR/gen-ui/requirements.txt" \
     || fail "Failed to install PySide6. Check your internet connection and try again."
 
