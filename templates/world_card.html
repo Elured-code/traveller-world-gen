@@ -243,6 +243,9 @@
     {{ drow("Bulk", bp.bulk|string) }}
     {{ drow("Resource rating", bp.resource_rating|string) }}
     {{ drow("Significant bodies", bp.size_1_bodies|string ~ " × Size 1, " ~ bp.size_s_bodies|string ~ " × Size S") }}
+    {% if bp.mean_temperature_k is defined %}
+    {{ drow("Mean temperature", bp.mean_temperature_k|string ~ " K") }}
+    {% endif %}
   </div>
   {% else %}
   {% set p = ctx.world.size_detail %}

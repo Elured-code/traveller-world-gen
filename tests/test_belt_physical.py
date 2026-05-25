@@ -439,6 +439,7 @@ class TestGenerateBeltPhysical:
             "m_type_pct", "s_type_pct", "c_type_pct", "other_pct",
             "bulk", "resource_rating",
             "size_1_bodies", "size_s_bodies",
+            "mean_temperature_k",
         }
         assert set(d.keys()) == expected
 

@@ -1,8 +1,79 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–69
+**Sessions:** 55–70
 **Tests:** 1449
+
+---
+
+## gen-ui UX + Build improvements (Session 70)
+
+### Belt temperature for asteroid belt worlds (size 0)
+
+`BeltPhysical` now carries a `mean_temperature_k` field computed via the same
+WBH p.47 Basic Mean Temperature formula used by `WorldPhysical`, with
+atmosphere DM fixed at 0 (belts have no atmosphere).
+
+- `traveller_belt_physical.py`: imports `_compute_mean_temperature` from
+  `traveller_world_physical`; `BeltPhysical` dataclass gains `mean_temperature_k: int`;
+  `to_dict()` emits it; `generate_belt_physical()` computes and passes it.
+- Display: "Mean temperature" row added to the Belt body card in
+  `templates/world_card.html`, `templates/world_list.html`, and
+  `templates/system_card.html`; `render_system_json.py` belt branch gains the
+  same row.
+- JSON schema: `mean_temperature_k` added to `BeltPhysical` `required` and
+  `properties`.
+- Test updated: `test_to_dict_keys` in `tests/test_belt_physical.py` extended
+  to include `"mean_temperature_k"`.
+
+### TravellerMap loading feedback — async worker (issue #77)
+
+TravellerMap lookups now run on a `QThread` so the UI stays responsive during
+network calls.
+
+- New `_TravMapWorker(QThread)` class with `result`, `failed`, and `ambiguous`
+  signals; `run()` calls `generate_system_from_map()`.
+- `_show_loading(message)` replaces the status panel with a centred dim label
+  the moment Generate is clicked.
+- `_start_travellermap_worker()` shows the loading label, disables the
+  Generate button, and starts the worker.
+- `_on_worker_result / _error / _ambiguous` re-enable Generate and dispatch
+  to the correct finish handler.
+- Disambiguation retry also goes through the async path.
+- Old blocking `_do_travellermap_generation()` removed.
+
+### Checkbox dependency hierarchy — QGroupBox (issue #79)
+
+The flat `[Mainworld only] [Full detail] [NHZ] [Oxygen] [Advanced] [Runaway]`
+row is replaced by a `QGroupBox("System detail")` with `setCheckable(True)`.
+When unchecked (default), Qt automatically grays out all four child checkboxes
+— the dependency relationship is now visually self-documenting.
+
+- `_radio_mainworld_only`, `_radio_full_detail`, and `_detail_group` removed.
+- `self._system_group = QGroupBox(...)` stores the new checkable group.
+- `_on_detail_toggled()` reduced to uncheck-on-collapse and `_map_btn` enable.
+- `_on_generate()` and `_build_system_summary_header()` use
+  `self._system_group.isChecked()`.
+
+### PyInstaller binary size reduction (issue #91)
+
+- **37 unused Qt modules** added to `excludes` (estimated 100–150 MB saving).
+- **`optimize=2`** replaces `optimize=0` — strips docstrings and assertions.
+- **`strip=True`** replaces `strip=False` in `EXE` and `COLLECT` (~10–20 MB
+  on Linux/macOS).
+- **Translation file filter** on `a.datas` strips Qt `.qm` files (~30–50 MB
+  on macOS).
+- **Image format plugin filter** on `a.binaries` keeps only `qsvg`, `qjpeg`,
+  `qgif`, `qicns`, `qico` (~10–15 MB on macOS).
+- **macOS CI split**: single `macos` matrix row replaced by `macos-arm64`
+  (macos-latest) and `macos-x86_64` (macos-13); `TARGET_ARCH` env var passed
+  to PyInstaller; `target_arch` in the spec reads from the env. Each build is
+  ~half the size of a universal binary.
+- **UPX installed in CI**: `apt-get install upx` (Ubuntu), `brew install upx`
+  (macOS), `choco install upx` (Windows), `dnf install upx` (Fedora).
+- Release job updated to publish five artifacts: `macos-arm64`, `macos-x86_64`,
+  `windows`, `ubuntu`, `fedora`.
+- `BUNDLE version` updated to `1.4.0`.
 
 ---
 
