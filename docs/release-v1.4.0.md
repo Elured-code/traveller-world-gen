@@ -214,3 +214,103 @@ New and updated fields in `traveller_world_schema.json`:
 | v1.4.0 | **1449** |
 
 All 1449 tests pass.
+
+---
+
+---
+
+# Traveller World Generator — v1.3.1
+
+## Bug Fixes
+
+- **Windows binary — web views blank**: `QtWebEngineProcess.exe` and WebEngine resource files (`.pak`, locales) were not bundled by PyInstaller when `PySide6-Addons` is installed separately from the base `PySide6` package. The System tab and any `QWebEngineView` rendered a blank white panel. Fixed by explicitly collecting these files in `traveller_gen_ui.spec`.
+
+- **Windows — `ModuleNotFoundError: No module named 'PySide6.QtWebEngineWidgets'`**: `PySide6-Addons` (which provides `QtWebEngineWidgets`) was not listed in `gen-ui/requirements.txt`. Added `PySide6-Addons>=6.4.0` so it is installed alongside `PySide6` with a compatible version constraint.
+
+## Documentation
+
+- Added `docs/MACOS-GATEKEEPER.md` with step-by-step instructions for macOS users to bypass Gatekeeper, including a workaround for the archive extraction failure (`xattr -dr com.apple.quarantine` and `unzip` via Terminal).
+
+---
+
+# Traveller World & System Generator — v1.3.0
+
+**Branch:** `v1.3.0` → `main` | **Sessions:** 55–68 | **Tests:** 1449 | **Pylint:** 10.00/10
+
+---
+
+## New Features
+
+### Optional Runaway Greenhouse Rule (Session 68, WBH p.79)
+- `check_runaway_greenhouse(atmosphere, temp_k, age_gyr, size)` in `traveller_world_physical.py` — pure function returning `Optional[RunawayGreenhouseResult]`
+- Trigger: Atm 2–15 AND `advanced_mean_temperature_k > 303`; roll 2D + ⌈age_gyr⌉ + `(temp_k−303)//10` ≥ 12
+- Case A (Atm A/B/C/F+): no code change, boiling hydrographic treatment. Case B (Atm 2–9/D/E): 1D selects A/B/C with size and taint DMs
+- Post-runaway: atmosphere mutated, temperature set to `"Boiling"`, hydrographics recalculated, `generate_advanced_mean_temperature()` re-run
+- `WorldPhysical.runaway_greenhouse: Optional[bool]`; emitted in JSON and displayed in world/system card
+- gen-ui: `_maybe_apply_runaway_greenhouse()` method; "Runaway greenhouse" checkbox enabled under Full detail + Advanced temperature
+
+### Advanced Mean Temperature, High/Low Temperature (Session 65, WBH pp.47–50)
+- `generate_advanced_mean_temperature()` in `traveller_world_physical.py`
+- Formula: `T(K) = 279 × ⁴√(L × (1−A) × (1+G) / AU²)`; albedo rolled by world type (rocky/icy/icy-far) with atmosphere and hydrographic modifiers; greenhouse factor from pressure scaled by atmosphere class
+- High/low temperatures via 9-step seasonal variance procedure (axial tilt, rotation, geographic, luminosity modifier factors)
+- New `WorldPhysical` fields: `albedo`, `greenhouse_factor`, `advanced_mean_temperature_k`, `high_temperature_k`, `low_temperature_k`
+- Biomass temperature DM split: `generate_biomass_rating()` gains `high_temp_k` parameter; WBH p.127 rows 1–2 (high temp) now applied independently of rows 3–5 (mean temp)
+
+### Hydrographic Fluid Type (Session 67, WBH pp.91–92)
+- `HydrographicDetail.fluid_type: Optional[str]` — Water / Ammonia / Liquid Hydrocarbons / Sulfuric Acid by temperature zone; `None` for desert worlds and Gas/Hydrogen atmospheres
+- Emitted in JSON; displayed in hydrographic detail card
+
+### Stellar Day / Sidereal Day Correction (Session 66, WBH p.106)
+- `WorldPhysical.stellar_day_hours: Optional[float]` — solar day computed from sidereal period and orbital period
+- Handles prograde, retrograde, 3:2 resonance, and 1:1 lock cases; only set when orbital data available
+
+### Biocomplexity Rating and Native Sophonts (Session 64, WBH pp.127–131)
+- `generate_biocomplexity_rating()`: 2D−7 + min(biomass,9) + DMs (atmosphere, low-oxygen taint, age)
+- `generate_sophont_checks()`: biocomplexity ≥ 8 rolls for current and extinct sophont presence
+- `World.biocomplexity_rating`, `World.native_sophont`, `World.extinct_sophont` fields
+- Biosphere column added to orbit table
+
+### Moon Orbital Eccentricity and Inclination (Session 62, WBH p.76)
+- Reuses world-orbit tables; `orbit_retrograde: bool` replaced by `orbit_inclination: float` (>90° implies retrograde)
+- `orbit_eccentricity` and `orbit_inclination` emitted in JSON when non-zero
+
+### Biomass Rating and Optional Oxygen Rule (Session 61, WBH pp.127–131)
+- `generate_biomass_rating()` for all terrestrial worlds and moons; RNG appended at end of `attach_detail()` to preserve existing seeds
+- Optional rule: `optional_biomass_rule=True` raises biomass to minimum 1 for oxygenated atmospheres
+
+### Seismic Stress Pipeline (Sessions 56–60, WBH pp.125–128)
+- Residual Seismic Stress, Tidal Seismic Stress, Tidal Stress Factor, Total Seismic Stress, Seismic Temperature
+- Surface tidal amplitude in metres (star + moon contributions); `tidal_amplitude_m` and `tidal_stress_factor` on `WorldPhysical`
+
+---
+
+## gen-ui Changes
+
+- **System tab** (issue #86): replaced `_build_stellar_card()` / `_build_orbits_card()` native Qt widgets (~273 lines) with `QWebEngineView` rendering `system.to_html()`
+- **Radio toggle**: "Mainworld only" / "Full detail" radio buttons replace System/Mainworld detail checkboxes
+- **Two-tab layout**: System tab (HTML) + Mainworld tab (world card HTML)
+- **Removed**: "Orbital Eccentricity" and "Orbital Inclination" checkboxes (always calculated under Full detail)
+
+---
+
+## Infrastructure
+
+- **PyInstaller** (`traveller_gen_ui.spec`): one-file spec bundling templates, PySide6 plugins, and all project modules; template path resolved via `sys._MEIPASS` when frozen
+- **CI** (`.github/workflows/build-binaries.yml`): cross-platform builds for Windows, macOS (Intel + ARM), Ubuntu, Fedora on release creation; `workflow_dispatch` trigger for manual runs
+- **Enum types** (`world_codes.py`, issue #38): `StarportCode`, `TemperatureCategory`, `TradeCode`, `TravelZone`, `AtmosphereCode`
+- **Centralised display tables** (`tables.py`, issue #39): seven lookup tables consolidated from across five files
+- **Pyright CI** (`.github/workflows/typecheck.yml`): runs on every push/PR to `main`
+
+---
+
+## Bug Fixes
+
+- Biomass temperature DM−6 for boiling/frozen worlds was only applying DM−4 or DM−2 (rows 1–2 of WBH p.127 table were not applied)
+- `apply_moon_tidal_effects()` crashed on belt mainworlds (`BeltPhysical` passed where `WorldPhysical` expected)
+- Mainworld-as-moon row not bold in orbit table
+
+---
+
+## Tests
+
+1449 tests across `tests/test_world_physical.py`, `tests/test_biomass.py`, `tests/test_moon_gen.py`, `tests/test_hydro_detail.py`, and others. All pass. Pylint 10.00/10 on all core modules.
