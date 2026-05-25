@@ -118,6 +118,36 @@ WORLD PHYSICAL DETAIL
   The stellar day is only shown when orbital data is available (i.e., when
   generating a full system with Physical detail enabled).
 
+OPTIONAL RUNAWAY GREENHOUSE
+-----------------------------
+- Enable the new "Runaway greenhouse" checkbox (available under Full detail when
+  Advanced temperature is also on) to apply the WBH p.79 optional rule.
+
+- When a world with a breathable or tainted atmosphere has a mean temperature
+  above 303 K, a dice roll (modified by system age and how far above 303 K the
+  temperature is) determines whether a runaway greenhouse occurred in the past.
+
+- If a runaway is triggered:
+    • Atmosphere codes 2–9/D/E are replaced by Exotic (A), Corrosive (B), or
+      Insidious (C), weighted by world size and whether the original atmosphere
+      was already tainted.
+    • Worlds already at A/B/C/F+ keep their code unchanged.
+    • Temperature is set to Boiling, hydrographics are recalculated (expect
+      very dry results), and the advanced temperature figures are recomputed
+      to reflect the new corrosive/insidious greenhouse factor.
+    • A "Runaway greenhouse: Yes" row appears in the world card.
+
+PYINSTALLER STANDALONE EXECUTABLES
+-------------------------------------
+- The generator can now be built as a standalone executable using PyInstaller —
+  no Python installation required to run it.
+
+- Pre-built binaries for Windows, macOS (Intel and Apple Silicon), and Linux
+  are produced automatically by GitHub Actions on each release and published
+  as GitHub release assets.
+
+- To build locally: see docs/BUILD.md.
+
 GEN-UI CONTROLS
 ----------------
 - The "System detail" and "Mainworld detail" checkboxes have been replaced with
@@ -128,7 +158,8 @@ GEN-UI CONTROLS
       moons, biomass, biocomplexity, sophont checks, and the system map.
 
 - System generation results now use a two-tab layout:
-    • "System" tab — stellar data and the full orbit table.
+    • "System" tab — the full system HTML (same output as Save as HTML),
+      including stellar data, orbit table, biosphere column, and moon rows.
     • "Mainworld" tab — the mainworld HTML card (default tab).
 
 - The "NHZ Atmospheres", "Oxygen requires biomass", and "Advanced temperature"

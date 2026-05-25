@@ -1,8 +1,8 @@
 # Release Notes — v1.3.0 (draft)
 
 **Branch:** `v1.3.0` → `main`
-**Sessions:** 55–65
-**Tests:** 1392
+**Sessions:** 55–68
+**Tests:** 1449
 
 ---
 
@@ -225,6 +225,82 @@ Biomass ratings are now generated for all terrestrial worlds and moons in a syst
 **Optional rule — "Oxygen requires biomass":** When enabled (`optional_biomass_rule=True` in `attach_detail()`), any world with an oxygenated atmosphere (codes 2–9, D, E) that rolls biomass 0 is raised to 1. In gen-ui, controlled by the **"Oxygen requires biomass"** checkbox (enabled only when System detail is active; cleared when System detail is disabled). No seed disruption when disabled. Rare earth variant remains deferred.
 
 **Tests:** 72 new tests in `tests/test_biomass.py` covering all DM table entries, DM clamping, Special Cases 1 and 2, temperature paths, age DM cumulative application, and the optional oxygen rule.
+
+---
+
+## Optional Runaway Greenhouse Rule (Session 68, WBH p.79)
+
+Physics-based optional rule: worlds with Atm 2–F and mean temperature > 303 K roll 2D + DMs for runaway; on 12+ the atmosphere converts and hydrographics are recalculated.
+
+**Trigger:** `atmosphere` in 2–15 (codes 2–F) AND `advanced_mean_temperature_k > 303`. Requires Advanced temperature to be enabled.
+
+**Roll:** 2D + ⌈age_gyr⌉ + `(temp_k − 303) // 10` ≥ 12 → runaway occurred.
+
+**Outcome — Case A (Atm already A/B/C/F+, codes 10–12/15–17):** atmosphere code unchanged; world treated as Boiling for hydrographic recalculation.
+
+**Outcome — Case B (Atm 2–9/D/E):** roll 1D (DM: size 2–5 → −2; tainted Atm 2/4/7/9 → +1) to select new code: ≤ 1 → A (10), 2–4 → B (11), ≥ 5 → C (12). Hydrographics recalculated with new code and "Boiling".
+
+**Post-runaway:** `world.temperature` set to `"Boiling"`; `generate_hydrographics()` re-called; `generate_advanced_mean_temperature()` re-run with new atmosphere code (reflects corrosive/insidious greenhouse multiplier — does not trigger a second runaway check).
+
+**New `WorldPhysical` field:** `runaway_greenhouse: Optional[bool]` — set `True` when runaway triggers; absent otherwise. Emitted in JSON and displayed as "Runaway greenhouse: Yes" in world card and system card.
+
+**New function:** `check_runaway_greenhouse(atmosphere, temp_k, age_gyr, size) → Optional[RunawayGreenhouseResult]` in `traveller_world_physical.py`. Pure function; caller applies mutations.
+
+**gen-ui:** "Runaway greenhouse" checkbox added under "Advanced temperature" (enabled only when Full detail + Advanced temperature are active; cleared when either is disabled). Controlled by `_maybe_apply_runaway_greenhouse()` extracted from `_finish_system_generation()` to keep pylint limits.
+
+**Tests:** 20 new tests in `TestCheckRunawayGreenhouse` covering trigger conditions, DM calculations, roll threshold, Case A/B branching, new atmosphere code selection (die 1/3/6), size DM, tainted DM, and `to_dict()` integration.
+
+---
+
+## Hydrographic Fluid Type (Session 67, WBH pp.91–92, issue #20)
+
+`HydrographicDetail` gains a `fluid_type: Optional[str]` field identifying the dominant surface liquid based on temperature zone.
+
+| Temperature zone | Fluid type |
+|---|---|
+| Boiling | Sulfuric Acid |
+| Hot / Temperate | Water |
+| Cold | Ammonia |
+| Frozen | Liquid Hydrocarbons |
+
+Desert worlds (Hydrographics 0) and Gas/Hydrogen atmosphere worlds (codes 16–17) carry `fluid_type = None` — no free liquid surface.
+
+**Display:** "Fluid type" row appears after "Surface liquid" in the hydrographic detail inner-card in all four output surfaces.
+
+**JSON:** `fluid_type` emitted inside `hydrographics.detail` when present; added to `traveller_world_schema.json`.
+
+---
+
+## Stellar Day / Sidereal Day Correction (Session 66, WBH p.106)
+
+`WorldPhysical` gains `stellar_day_hours: Optional[float]` — the solar day length (time between successive sunrises) computed from the sidereal rotation period and orbital period.
+
+**Formula:** For prograde worlds: `1 / (1/day − 1/year_hours)`. For retrograde: `1 / (1/day + 1/year_hours)`. 3:2 resonance: `stellar_day = 2 × orbital_period_yr × 8766`. 1:1 lock: field omitted (star stationary in sky). Only set when orbital data is available.
+
+**Display:** "Stellar day" row shown below "Day length" in World Body card when available. Tidally locked worlds show no stellar day row.
+
+**JSON:** `stellar_day_hours` emitted in `WorldPhysical.to_dict()` when set; added to schema.
+
+---
+
+## gen-ui: System Tab HTML Rendering (Issue #86)
+
+The System tab (formerly built from native Qt `QGroupBox` / `QLabel` widgets via `_build_stellar_card()` and `_build_orbits_card()`) now renders `system.to_html()` in a `QWebEngineView`.
+
+- `_build_stellar_card()`, `_build_orbits_card()`, `_WORLD_TYPE_LABEL`, `_orbit_profile()`, `_fmt_period()` removed (~273 lines).
+- The tab is populated by a single `setHtml()` call on the `QWebEngineView`, identical to the save-as-HTML output.
+- Net result: `gen-ui/app.py` reduced by ~273 lines (1283 → 1010); the System tab now includes all columns, styling, and detail the HTML template provides, including moon sub-rows, biosphere data, and anomaly notes.
+
+---
+
+## PyInstaller Binary Builds (issue #65)
+
+Cross-platform standalone executables can now be built using PyInstaller.
+
+**New files:**
+- `traveller_gen_ui.spec` — PyInstaller spec that bundles `gen-ui/app.py` as a one-file executable, collecting all template files, system data, and PySide6 Qt plugins. Template path resolved at runtime via `sys._MEIPASS` when frozen.
+- `.github/workflows/build-binaries.yml` — GitHub Actions workflow that builds signed executables for Windows, macOS (Intel + Apple Silicon), and Linux on every push to `main`. Artefacts published as GitHub release assets.
+- `docs/BUILD.md` — build instructions for local PyInstaller builds and CI workflow usage.
 
 ---
 

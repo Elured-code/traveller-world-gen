@@ -931,6 +931,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     high_temperature_k: Optional[int] = field(default=None, init=False)
     low_temperature_k: Optional[int] = field(default=None, init=False)
     stellar_day_hours: Optional[float] = field(default=None, init=False)
+    runaway_greenhouse: Optional[bool] = field(default=None, init=False)
 
     def to_dict(self) -> dict:  # pylint: disable=too-many-branches
         """Return physical characteristics as a JSON-compatible dict."""
@@ -973,6 +974,8 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["low_temperature_k"] = self.low_temperature_k
         if self.stellar_day_hours is not None:
             d["stellar_day_hours"] = self.stellar_day_hours
+        if self.runaway_greenhouse is not None:
+            d["runaway_greenhouse"] = self.runaway_greenhouse
         return d
 
 
@@ -1251,3 +1254,55 @@ def generate_advanced_mean_temperature(  # pylint: disable=too-many-arguments,to
 
     physical.high_temperature_k = _temp(high_lum, near_au)
     physical.low_temperature_k  = _temp(low_lum,  far_au)
+
+
+# ---------------------------------------------------------------------------
+# Optional Runaway Greenhouse Check (WBH p.79)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class RunawayGreenhouseResult:
+    """Produced by check_runaway_greenhouse() when a runaway occurred."""
+    new_atmosphere: Optional[int]  # None if world already had Atm A/B/C/F+
+
+
+def check_runaway_greenhouse(
+        atmosphere: int,
+        temp_k: int,
+        age_gyr: float,
+        size: int,
+) -> Optional[RunawayGreenhouseResult]:
+    """Roll for runaway greenhouse (WBH p.79).
+
+    Returns RunawayGreenhouseResult when runaway occurs, None otherwise.
+    The caller is responsible for mutating world.atmosphere,
+    world.temperature, world.hydrographics, and re-running
+    generate_advanced_mean_temperature() with the new atmosphere code.
+    """
+    if not 2 <= atmosphere <= 15:
+        return None
+    if temp_k <= 303:
+        return None
+
+    dm_age  = math.ceil(age_gyr)
+    dm_temp = (temp_k - 303) // 10
+    if _roll(2) + dm_age + dm_temp < 12:
+        return None
+
+    # Atm already A (10), B (11), C (12), or F+ (15–17) — no code change
+    if atmosphere in (10, 11, 12, 15, 16, 17):
+        return RunawayGreenhouseResult(new_atmosphere=None)
+
+    # Atm 2–9, D (13), or E (14) — roll 1D for new code
+    tainted  = atmosphere in (2, 4, 7, 9)
+    dm_size  = -2 if 2 <= size <= 5 else 0
+    dm_taint =  1 if tainted else 0
+    die = random.randint(1, 6) + dm_size + dm_taint
+    if die <= 1:
+        new_atm = 10   # A — Exotic
+    elif die <= 4:
+        new_atm = 11   # B — Corrosive
+    else:
+        new_atm = 12   # C — Insidious
+    return RunawayGreenhouseResult(new_atmosphere=new_atm)
