@@ -1,8 +1,40 @@
 # Running on macOS — Gatekeeper
 
 Because the Traveller World Generator is not signed with an Apple Developer
-certificate, macOS Gatekeeper will block it from opening on the first launch.
-There are two ways to allow it.
+certificate, macOS Gatekeeper may block both extraction of the archive and
+the first launch of the app. The instructions below cover both situations.
+
+---
+
+## Part 1 — Extracting the archive
+
+macOS may refuse to extract `TravellerWorldGen-macos.zip` with the error
+*"unable to expand"* or silently produce an empty folder. This happens because
+Gatekeeper quarantines the downloaded zip before it is opened.
+
+### Option A — Remove quarantine from the zip first (recommended)
+
+Run this in Terminal before double-clicking the zip:
+
+```bash
+xattr -dr com.apple.quarantine ~/Downloads/TravellerWorldGen-macos.zip
+```
+
+Then double-click the zip to extract it normally.
+
+### Option B — Extract using Terminal
+
+```bash
+cd ~/Downloads
+unzip TravellerWorldGen-macos.zip
+```
+
+The `unzip` command is not subject to Gatekeeper and will extract the app
+without error.
+
+---
+
+## Part 2 — Opening the app
 
 ---
 
