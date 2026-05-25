@@ -49,7 +49,6 @@ from PySide6.QtWidgets import (  # noqa: E402
     QFileDialog,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -80,12 +79,14 @@ from traveller_world_detail import (  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
     generate_atmosphere_detail,
     generate_gas_mix,
+    generate_hydrographics,
     generate_unusual_subtype,
     generate_world,
 )
 from traveller_world_physical import (  # noqa: E402
     generate_world_physical, apply_moon_tidal_effects,
     generate_advanced_mean_temperature,
+    check_runaway_greenhouse,
 )
 from tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
@@ -129,13 +130,6 @@ _FORMATS = [
     ("HTML",  "html"),
 ]
 
-_WORLD_TYPE_LABEL = {
-    "gas_giant":   "Gas Giant",
-    "terrestrial": "Terrestrial",
-    "belt":        "Belt",
-    "empty":       "Empty",
-}
-
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
@@ -155,32 +149,6 @@ def _make_vsep() -> QFrame:
     sep.setFrameShape(QFrame.Shape.VLine)
     sep.setFrameShadow(QFrame.Shadow.Sunken)
     return sep
-
-
-def _orbit_profile(orbit: object) -> str:
-    cp = getattr(orbit, "canonical_profile", None)
-    if cp:
-        return cp
-    # Gas giant orbits: always show gg_sah (e.g. "GM7") as the profile.
-    # When the mainworld is a satellite of the gas giant, attach_detail() sets
-    # orbit.detail.sah to the satellite's SAH, hiding the gas giant profile.
-    gg_sah = getattr(orbit, "gg_sah", "")
-    if gg_sah:
-        return gg_sah
-    detail = getattr(orbit, "detail", None)
-    if detail is None:
-        return "—"
-    return detail.profile  # type: ignore[attr-defined]
-
-
-def _fmt_period(period_yr: float) -> str:
-    """Format an orbital period: hours, days, or years."""
-    days = period_yr * 365.25
-    if days < 1.0:
-        return f"{days * 24:.1f}h"
-    if days < 365.25:
-        return f"{days:.1f}d"
-    return f"{period_yr:.2f}y"
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +380,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_oxygen_biomass.setEnabled(False)
         self._check_advanced_temp = QCheckBox("Advanced temperature")
         self._check_advanced_temp.setEnabled(False)
+        self._check_runaway_greenhouse = QCheckBox("Runaway greenhouse")
+        self._check_runaway_greenhouse.setEnabled(False)
 
         check_row = QWidget()
         check_layout = QHBoxLayout(check_row)
@@ -422,6 +392,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         check_layout.addWidget(self._check_nhz)
         check_layout.addWidget(self._check_oxygen_biomass)
         check_layout.addWidget(self._check_advanced_temp)
+        check_layout.addWidget(self._check_runaway_greenhouse)
         left_layout.addWidget(check_row)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
@@ -490,10 +461,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._check_nhz.setEnabled(checked)
         self._check_oxygen_biomass.setEnabled(checked)
         self._check_advanced_temp.setEnabled(checked)
+        self._check_runaway_greenhouse.setEnabled(checked)
         if not checked:
             self._check_nhz.setChecked(False)
             self._check_oxygen_biomass.setChecked(False)
             self._check_advanced_temp.setChecked(False)
+            self._check_runaway_greenhouse.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -678,6 +651,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         hz_deviation=mw_orbit.hz_deviation,
                         orbit_eccentricity=mw_orbit.eccentricity,
                         star_mass=stars[0].mass if stars else 1.0,
+                    )
+                    self._maybe_apply_runaway_greenhouse(
+                        world, stars, mw_orbit, interior_lum, mw_au
                     )
             _attach_detail(  # type: ignore[arg-type]
                 system,
@@ -896,24 +872,15 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
 
-        # Tab 1 — System: stellar + orbits cards in a scroll area
-        system_widget = QWidget()
-        system_layout = QVBoxLayout(system_widget)
-        system_layout.setSpacing(10)
-        system_layout.setContentsMargins(4, 4, 4, 4)
-        system_layout.addWidget(self._build_stellar_card(system))
-        system_layout.addWidget(
-            self._build_orbits_card(system, detail_attached=self._detail_attached)
+        # Tab 1 — System: HTML view via system.to_html()
+        system_view = QWebEngineView()
+        system_view.setHtml(
+            system.to_html(detail_attached=self._detail_attached)  # type: ignore[attr-defined]
         )
-        system_layout.addStretch()
-
-        system_scroll = QScrollArea()
-        system_scroll.setWidgetResizable(True)
-        system_scroll.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        system_view.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
-        system_scroll.setWidget(system_widget)
-        tabs.addTab(system_scroll, "System")
+        tabs.addTab(system_view, "System")
 
         # Tab 2 — Mainworld: world card HTML view
         if mw is not None:
@@ -1034,235 +1001,51 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         layout.addWidget(self._build_action_buttons())
         return header
 
-    def _build_stellar_card(self, system: object) -> QGroupBox:  # pylint: disable=too-many-locals
-        group = QGroupBox("Stellar System")
-        outer = QVBoxLayout(group)
-        outer.setSpacing(6)
-        outer.setContentsMargins(8, 4, 8, 6)
-
-        stars = system.stellar_system.stars  # type: ignore[attr-defined]
-        age_gyr = stars[0].age_gyr if stars else 0.0
-        age_lbl = QLabel(f"System age: {age_gyr:.2f} Gyr")
-        age_lbl.setObjectName("row-label")
-        outer.addWidget(age_lbl)
-
-        grid_widget = QWidget()
-        grid = QGridLayout(grid_widget)
-        grid.setSpacing(4)
-        grid.setHorizontalSpacing(16)
-        grid.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(grid_widget)
-
-        headers = ["Desig", "Type", "Mass (M☉)", "Temp (K)", "Lum (L☉)", "Orbit (AU)", "Period"]
-        right_cols = {2, 3, 4, 5, 6}
-        for col, hdr in enumerate(headers):
-            lbl = QLabel(hdr)
-            lbl.setObjectName("table-header")
-            align = (
-                Qt.AlignmentFlag.AlignRight
-                if col in right_cols
-                else Qt.AlignmentFlag.AlignLeft
-            )
-            lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-            grid.addWidget(lbl, 0, col)
-
-        for row, star in enumerate(stars, start=1):
-            orbit_str = f"{star.orbit_au:.3f}" if star.orbit_au else "—"
-            period_yr = getattr(star, "orbit_period_yr", None)
-            period_str = _fmt_period(period_yr) if period_yr is not None else "—"
-            cells = [
-                (star.designation,           Qt.AlignmentFlag.AlignLeft),
-                (star.classification(),      Qt.AlignmentFlag.AlignLeft),
-                (f"{star.mass:.3f}",         Qt.AlignmentFlag.AlignRight),
-                (f"{star.temperature:,}",    Qt.AlignmentFlag.AlignRight),
-                (f"{star.luminosity:.4f}",   Qt.AlignmentFlag.AlignRight),
-                (orbit_str,                  Qt.AlignmentFlag.AlignRight),
-                (period_str,                 Qt.AlignmentFlag.AlignRight),
-            ]
-            for col, (text, align) in enumerate(cells):
-                lbl = QLabel(text)
-                lbl.setObjectName("table-cell")
-                lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-                grid.addWidget(lbl, row, col)
-
-        return group
-
-    def _build_orbits_card(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-        self, system: object, detail_attached: bool = False
-    ) -> QGroupBox:
-        group = QGroupBox("System Orbits")
-        grid = QGridLayout(group)
-        grid.setSpacing(3)
-        grid.setHorizontalSpacing(14)
-
-        if detail_attached:
-            headers = [
-                "Star", "Orbit#", "AU", "Ecc/Incl",
-                "Type", "Profile", "Codes", "HZ", "Zone", "Period", "Notes",
-            ]
-            right_cols = {1, 2, 3, 9}
-        else:
-            headers = ["Star", "Orbit#", "AU", "Ecc/Incl", "Type", "HZ", "Zone", "Period", "Notes"]
-            right_cols = {1, 2, 3, 7}
-
-        for col, hdr in enumerate(headers):
-            lbl = QLabel(hdr)
-            lbl.setObjectName("table-header")
-            align = (
-                Qt.AlignmentFlag.AlignRight
-                if col in right_cols
-                else Qt.AlignmentFlag.AlignLeft
-            )
-            lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-            grid.addWidget(lbl, 0, col)
-
-        orbits = system.system_orbits.orbits  # type: ignore[attr-defined]
-        mw_orbit = system.system_orbits.mainworld_orbit  # type: ignore[attr-defined]
-
-        grid_row = 1
-        for orbit in orbits:
-            is_mw = orbit is mw_orbit
-            is_empty = orbit.world_type == "empty"
-            css = "table-mw" if is_mw else ("table-dim" if is_empty else "table-cell")
-            hz_str = "★ HZ" if orbit.is_habitable_zone else ""
-            _wt = str(orbit.world_type)
-            type_str = _WORLD_TYPE_LABEL.get(_wt, _wt)
-            zone_str = orbit.temperature_zone.capitalize()
-
-            p_yr = getattr(orbit, "orbit_period_yr", None)
-            period_str = _fmt_period(p_yr) if (p_yr is not None and not is_empty) else "—"
-            notes_str = str(orbit.notes) if orbit.notes else ""
-            if detail_attached and orbit.world_type == "terrestrial":
-                _od = getattr(orbit, "detail", None)
-                _br = getattr(_od, "biomass_rating", None)
-                _bc = getattr(_od, "biocomplexity_rating", None)
-                if _br is not None and _br > 0:
-                    _bn = f"Biomass {_br}"
-                    if _bc is not None:
-                        _bn += f", Complexity {_bc}"
-                    notes_str = f"{notes_str}, {_bn}" if notes_str else _bn
-
-            ecc_part = f"{orbit.eccentricity:.3f}" if orbit.eccentricity > 0 else "—"
-            incl_part = f"{orbit.inclination:.1f}°" if orbit.inclination > 0 else "—"
-            ecc_incl_str = (
-                f"{ecc_part}/{incl_part}"
-                if (orbit.eccentricity > 0 or orbit.inclination > 0)
-                else "—"
-            )
-            if detail_attached:
-                detail = getattr(orbit, "detail", None)
-                profile_str = _orbit_profile(orbit)
-                codes_str = ""
-                if is_mw:
-                    codes_str = " ".join(
-                        getattr(system.mainworld, "trade_codes", [])  # type: ignore[attr-defined]
-                    )
-                elif detail is not None and not detail.is_gas_giant:  # type: ignore[attr-defined]
-                    codes_str = " ".join(detail.trade_codes)  # type: ignore[attr-defined]
-                cells: list[tuple[str, Qt.AlignmentFlag]] = [
-                    (orbit.star_designation,       Qt.AlignmentFlag.AlignLeft),
-                    (f"{orbit.orbit_number:.2f}",  Qt.AlignmentFlag.AlignRight),
-                    (f"{orbit.orbit_au:.3f}",      Qt.AlignmentFlag.AlignRight),
-                    (ecc_incl_str,                 Qt.AlignmentFlag.AlignRight),
-                    (type_str,                     Qt.AlignmentFlag.AlignLeft),
-                    (profile_str,                  Qt.AlignmentFlag.AlignLeft),
-                    (codes_str,                    Qt.AlignmentFlag.AlignLeft),
-                    (hz_str,                       Qt.AlignmentFlag.AlignLeft),
-                    (zone_str,                     Qt.AlignmentFlag.AlignLeft),
-                    (period_str,                   Qt.AlignmentFlag.AlignRight),
-                    (notes_str,                    Qt.AlignmentFlag.AlignLeft),
-                ]
-            else:
-                detail = None
-                cells = [
-                    (orbit.star_designation,       Qt.AlignmentFlag.AlignLeft),
-                    (f"{orbit.orbit_number:.2f}",  Qt.AlignmentFlag.AlignRight),
-                    (f"{orbit.orbit_au:.3f}",      Qt.AlignmentFlag.AlignRight),
-                    (ecc_incl_str,                 Qt.AlignmentFlag.AlignRight),
-                    (type_str,                     Qt.AlignmentFlag.AlignLeft),
-                    (hz_str,                       Qt.AlignmentFlag.AlignLeft),
-                    (zone_str,                     Qt.AlignmentFlag.AlignLeft),
-                    (period_str,                   Qt.AlignmentFlag.AlignRight),
-                    (notes_str,                    Qt.AlignmentFlag.AlignLeft),
-                ]
-
-            for col, (text, align) in enumerate(cells):
-                lbl = QLabel(text)
-                lbl.setObjectName(css)
-                lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-                grid.addWidget(lbl, grid_row, col)
-            grid_row += 1
-
-            if detail_attached and detail is not None:
-                for mi, moon in enumerate(detail.moons or [], 1):  # type: ignore[attr-defined]
-                    if moon.is_ring:
-                        ring_count = moon.ring_count
-                        moon_profile = f"R{ring_count:02d}"
-                        moon_type = "ring"
-                        moon_codes = ""
-                    elif moon.detail is not None:
-                        moon_profile = moon.detail.profile
-                        moon_type = f"size {moon.size_str}"
-                        moon_codes = " ".join(moon.detail.trade_codes)
-                    else:
-                        moon_profile = f"size {moon.size_str}"
-                        moon_type = f"size {moon.size_str}"
-                        moon_codes = ""
-                    moon_pd_str = (
-                        f"{moon.orbit_pd:.1f} PD"
-                        if moon.orbit_pd is not None else ""
-                    )
-                    moon_period_str = (
-                        _fmt_period(moon.orbit_period_hours / 24 / 365.25)
-                        if moon.orbit_period_hours is not None else ""
-                    )
-                    moon_range_str = (
-                        moon.orbit_range.capitalize()
-                        if moon.orbit_range else ""
-                    )
-                    _moon_det = getattr(moon, "detail", None)
-                    _moon_br = getattr(_moon_det, "biomass_rating", None)
-                    _moon_bc = getattr(_moon_det, "biocomplexity_rating", None)
-                    if _moon_br is not None and _moon_br > 0:
-                        moon_biomass_note = f"Biomass {_moon_br}"
-                        if _moon_bc is not None:
-                            moon_biomass_note += f", Complexity {_moon_bc}"
-                    else:
-                        moon_biomass_note = ""
-                    _mecc  = moon.orbit_eccentricity
-                    _mincl = moon.orbit_inclination
-                    _mecc_part  = f"{_mecc:.3f}" if _mecc > 0 else "—"
-                    _mincl_part = f"{_mincl:.1f}°" if _mincl > 0 else "—"
-                    moon_ecc_incl = (
-                        f"{_mecc_part}/{_mincl_part}"
-                        if (_mecc > 0 or _mincl > 0) else ""
-                    )
-                    moon_cells = [
-                        ("",                  Qt.AlignmentFlag.AlignLeft),   # Star
-                        (f"↳ m{mi}",         Qt.AlignmentFlag.AlignRight),  # Orbit#
-                        (moon_pd_str,         Qt.AlignmentFlag.AlignRight),  # AU col → PD
-                        (moon_ecc_incl,       Qt.AlignmentFlag.AlignRight),  # Ecc/Incl
-                        (moon_type,           Qt.AlignmentFlag.AlignLeft),   # Type
-                        (moon_profile,        Qt.AlignmentFlag.AlignLeft),   # Profile
-                        (moon_codes,          Qt.AlignmentFlag.AlignLeft),   # Codes
-                        ("",                  Qt.AlignmentFlag.AlignLeft),   # HZ
-                        (moon_range_str,      Qt.AlignmentFlag.AlignLeft),   # Zone → range
-                        (moon_period_str,     Qt.AlignmentFlag.AlignRight),  # Period
-                        (moon_biomass_note,   Qt.AlignmentFlag.AlignLeft),   # Notes
-                    ]
-                    moon_css = (
-                        "table-mw"
-                        if is_mw and mi == 1 and orbit.world_type == "gas_giant"
-                        else "table-moon"
-                    )
-                    for col, (text, align) in enumerate(moon_cells):
-                        lbl = QLabel(text)
-                        lbl.setObjectName(moon_css)
-                        lbl.setAlignment(align | Qt.AlignmentFlag.AlignVCenter)
-                        grid.addWidget(lbl, grid_row, col)
-                    grid_row += 1
-
-        return group
+    def _maybe_apply_runaway_greenhouse(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+            self, world: object, stars: list,
+            mw_orbit: object, interior_lum: float, mw_au: float,
+    ) -> None:
+        """Apply optional runaway greenhouse mutations (WBH p.79)."""
+        if not self._check_runaway_greenhouse.isChecked():
+            return
+        if (world.size_detail is None  # type: ignore[attr-defined]
+                or world.size_detail.advanced_mean_temperature_k is None):  # type: ignore
+            return
+        rg = check_runaway_greenhouse(
+            atmosphere=world.atmosphere,  # type: ignore[attr-defined]
+            temp_k=world.size_detail.advanced_mean_temperature_k,  # type: ignore
+            age_gyr=stars[0].age_gyr if stars else 0.0,
+            size=world.size,  # type: ignore[attr-defined]
+        )
+        if rg is None:
+            return
+        world.size_detail.runaway_greenhouse = True  # type: ignore
+        if rg.new_atmosphere is not None:
+            world.atmosphere = rg.new_atmosphere  # type: ignore
+        world.temperature = "Boiling"  # type: ignore
+        world.hydrographics = generate_hydrographics(  # type: ignore
+            world.size, world.atmosphere, "Boiling"  # type: ignore
+        )
+        world.hydrographic_detail = generate_hydrographic_detail(  # type: ignore
+            world.hydrographics, world.size,  # type: ignore
+            atmosphere=world.atmosphere,  # type: ignore
+            temperature="Boiling",
+        )
+        rg_pb = (
+            world.atmosphere_detail.pressure_bar  # type: ignore
+            if world.atmosphere_detail else None  # type: ignore
+        )
+        generate_advanced_mean_temperature(
+            world.size_detail,  # type: ignore
+            atmosphere=world.atmosphere,  # type: ignore
+            hydrographics=world.hydrographics,  # type: ignore
+            pressure_bar=rg_pb,
+            luminosity=interior_lum,
+            orbit_au=mw_au,
+            hz_deviation=mw_orbit.hz_deviation,  # type: ignore
+            orbit_eccentricity=mw_orbit.eccentricity,  # type: ignore
+            star_mass=stars[0].mass if stars else 1.0,
+        )
 
 
 # ---------------------------------------------------------------------------

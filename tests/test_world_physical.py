@@ -22,6 +22,7 @@ from traveller_world_gen import World
 from tables import TIDAL_STATUS_LABELS
 from traveller_world_physical import (
     WorldPhysical,
+    RunawayGreenhouseResult,
     _apply_seismic_stress,
     _compute_stellar_day,
     _apply_tidal_lock_result,
@@ -45,6 +46,7 @@ from traveller_world_physical import (
     _star_tidal_effect_m,
     _tidal_lock_dm,
     apply_moon_tidal_effects,
+    check_runaway_greenhouse,
     generate_advanced_mean_temperature,
     generate_world_physical,
 )
@@ -2031,3 +2033,163 @@ class TestStellarDayIntegration:
             wp = generate_world_physical(w)
         assert wp is not None
         assert "stellar_day_hours" not in wp.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# check_runaway_greenhouse() — WBH p.79
+# ---------------------------------------------------------------------------
+
+
+class TestCheckRunawayGreenhouse:
+    """Unit tests for check_runaway_greenhouse()."""
+
+    # --- Trigger conditions ---
+
+    def test_no_roll_for_atm_0(self):
+        assert check_runaway_greenhouse(0, 350, 5.0, 6) is None
+
+    def test_no_roll_for_atm_1(self):
+        assert check_runaway_greenhouse(1, 350, 5.0, 6) is None
+
+    def test_no_roll_for_atm_16(self):
+        assert check_runaway_greenhouse(16, 400, 5.0, 6) is None
+
+    def test_no_roll_for_atm_17(self):
+        assert check_runaway_greenhouse(17, 400, 5.0, 6) is None
+
+    def test_no_roll_when_temp_exactly_303(self):
+        assert check_runaway_greenhouse(6, 303, 5.0, 6) is None
+
+    def test_roll_attempted_when_temp_304(self):
+        """304 K is the minimum that triggers the check."""
+        with patch("traveller_world_physical.random.randint", return_value=6):
+            # 2×6=12, age DM +ceil(5.0)=+5, temp DM +(304-303)//10=0 → 17 ≥ 12
+            result = check_runaway_greenhouse(6, 304, 5.0, 6)
+        assert result is not None
+
+    # --- DM calculations ---
+
+    def test_dm_age_rounds_up(self):
+        """Age 3.1 Gyr → DM+4 (ceil), not DM+3 (floor)."""
+        # Force 2D to return 2 (minimum). Need dm_age + dm_temp ≥ 10 to hit 12.
+        # dm_temp = (323-303)//10 = 2. So we need dm_age ≥ 8. Use age 7.1 → ceil=8.
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            # 2×1=2, dm_age=ceil(7.1)=8, dm_temp=(323-303)//10=2 → 12: runaway
+            result = check_runaway_greenhouse(6, 323, 7.1, 6)
+        assert result is not None
+
+    def test_dm_age_exact_integer(self):
+        """Age exactly 5.0 Gyr → DM+5 (ceil(5.0)=5)."""
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            # 2, dm_age=5, dm_temp=(313-303)//10=1 → 8: no runaway
+            result = check_runaway_greenhouse(6, 313, 5.0, 6)
+        assert result is None
+
+    def test_dm_temp_floor_division(self):
+        """DM+1 per full 10 K above 303: 312 K → DM+0 (not DM+1)."""
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            # 2, dm_age=1(ceil 0.5), dm_temp=(312-303)//10=0 → 3: no runaway
+            result = check_runaway_greenhouse(6, 312, 0.5, 6)
+        assert result is None
+
+    def test_dm_temp_exact_10_above(self):
+        """313 K is exactly 10 above 303 → DM+1."""
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            # 2, dm_age=ceil(0.1)=1, dm_temp=1 → 4: no runaway
+            result = check_runaway_greenhouse(6, 313, 0.1, 6)
+        assert result is None
+
+    # --- Roll threshold ---
+
+    def test_roll_below_12_no_runaway(self):
+        """Ensure that a combined total of 11 returns None."""
+        # Set 2D to return 2 (1+1), age=4.5→dm_age=5, temp=303+40→dm_temp=4 → 11
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            result = check_runaway_greenhouse(6, 343, 4.5, 6)
+        # 2 + 5 + 4 = 11 → no runaway
+        assert result is None
+
+    def test_roll_exactly_12_triggers_runaway(self):
+        """Combined total of exactly 12 → runaway."""
+        with patch("traveller_world_physical.random.randint", return_value=1):
+            # 2 + ceil(5.0)=5 + (353-303)//10=5 = 12 → runaway
+            result = check_runaway_greenhouse(6, 353, 5.0, 6)
+        assert result is not None
+
+    # --- Already exotic/corrosive/insidious: no atmosphere code change ---
+
+    @pytest.mark.parametrize("atm", [10, 11, 12, 15])
+    def test_already_abc_f_no_new_atmosphere(self, atm):
+        with patch("traveller_world_physical.random.randint", return_value=6):
+            result = check_runaway_greenhouse(atm, 400, 5.0, 6)
+        assert result is not None
+        assert result.new_atmosphere is None
+
+    # --- New atmosphere code selection for Atm 2–9, D, E ---
+
+    def test_new_atm_die_1_gives_exotic(self):
+        """1D result ≤ 1 → A (10)."""
+        # Force 2D part to ensure runaway (both 6), then 1D forced to 1
+        rolls = iter([6, 6, 1])
+        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+            result = check_runaway_greenhouse(6, 400, 0.1, 6)
+        assert result is not None
+        assert result.new_atmosphere == 10
+
+    def test_new_atm_die_3_gives_corrosive(self):
+        """1D result 2–4 → B (11)."""
+        rolls = iter([6, 6, 3])
+        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+            result = check_runaway_greenhouse(6, 400, 0.1, 6)
+        assert result is not None
+        assert result.new_atmosphere == 11
+
+    def test_new_atm_die_6_gives_insidious(self):
+        """1D result ≥ 5 → C (12)."""
+        rolls = iter([6, 6, 6])
+        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+            result = check_runaway_greenhouse(6, 400, 0.1, 6)
+        assert result is not None
+        assert result.new_atmosphere == 12
+
+    def test_size_dm_minus2_biases_toward_a(self):
+        """Size 3 (2–5 range) applies DM-2: die 3 → adjusted 1 → A."""
+        rolls = iter([6, 6, 3])
+        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+            result = check_runaway_greenhouse(6, 400, 0.1, 3)
+        assert result is not None
+        assert result.new_atmosphere == 10  # 3 + (-2) = 1 → A
+
+    def test_tainted_atm_dm_plus1_biases_toward_c(self):
+        """Tainted Atm 7 (tainted) applies DM+1: die 4 → adjusted 5 → C."""
+        rolls = iter([6, 6, 4])
+        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+            result = check_runaway_greenhouse(7, 400, 0.1, 6)
+        assert result is not None
+        assert result.new_atmosphere == 12  # 4 + 1 = 5 → C
+
+    def test_d_atmosphere_gets_new_code(self):
+        """Atm D (13) → code changes on runaway."""
+        rolls = iter([6, 6, 3])
+        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+            result = check_runaway_greenhouse(13, 400, 0.1, 6)
+        assert result is not None
+        assert result.new_atmosphere == 11  # die 3 → B
+
+    # --- to_dict integration ---
+
+    def test_to_dict_includes_runaway_greenhouse_when_true(self):
+        w = _World(size=6, atmosphere=1)
+        with patch("random.randint", return_value=3):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        wp.runaway_greenhouse = True
+        d = wp.to_dict()
+        assert d.get("runaway_greenhouse") is True
+
+    def test_to_dict_omits_runaway_greenhouse_when_none(self):
+        w = _World(size=6)
+        with patch("random.randint", return_value=3):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        assert "runaway_greenhouse" not in wp.to_dict()

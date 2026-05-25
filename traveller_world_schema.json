@@ -590,6 +590,10 @@
               "type": "integer",
               "minimum": 3,
               "description": "Physics-based low temperature bound in Kelvin (WBH pp.48-50, Steps 1-9): uses low luminosity (L × (1 − luminosity_modifier)) and far AU (AU × (1 + eccentricity)). Present only when generate_advanced_mean_temperature() has been called."
+            },
+            "runaway_greenhouse": {
+              "type": "boolean",
+              "description": "True when the optional runaway greenhouse check (WBH p.79) determined a runaway occurred. Absent when the check was not performed or did not trigger."
             }
           }
         },

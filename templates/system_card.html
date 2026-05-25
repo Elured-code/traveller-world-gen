@@ -237,6 +237,9 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
     {% if p.greenhouse_factor is not none %}
     {{ drow("Greenhouse factor", "%.4f"|format(p.greenhouse_factor)) }}
     {% endif %}
+    {% if p.runaway_greenhouse %}
+    {{ drow("Runaway greenhouse", "Yes") }}
+    {% endif %}
     {% if mw.phys_data.tidal_label %}
     {{ drow("Tidal status", mw.phys_data.tidal_label) }}
     {% endif %}
