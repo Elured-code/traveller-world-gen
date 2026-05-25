@@ -137,6 +137,12 @@ if ($LASTEXITCODE -ne 0) {
     Fail "Failed to install PySide6-Addons. Check your internet connection and try again."
 }
 
+Info "Installing PyQt6-WebEngine..."
+& $VenvPython -m pip install --quiet PyQt6-WebEngine
+if ($LASTEXITCODE -ne 0) {
+    Fail "Failed to install PyQt6-WebEngine. Check your internet connection and try again."
+}
+
 Info "Installing dev tools (pytest, pylint)..."
 & $VenvPython -m pip install --quiet -r (Join-Path $ScriptDir 'requirements-dev.txt')
 if ($LASTEXITCODE -ne 0) { Fail "Failed to install dev tools." }
