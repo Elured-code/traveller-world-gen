@@ -435,12 +435,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         grid.addWidget(self._hex_entry, 1, 3)
         grid.addWidget(optional_lbl, 1, 4)
 
+        self._tm_vsep = vsep
+        self._tm_panel = grid_widget
         layout.addWidget(grid_widget)
         layout.addStretch()
 
-        self._sector_entry.setEnabled(False)
-        self._tm_name_entry.setEnabled(False)
-        self._hex_entry.setEnabled(False)
+        self._tm_panel.setVisible(False)
+        self._tm_vsep.setVisible(False)
 
         return row
 
@@ -472,9 +473,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _on_source_toggled(self, checked: bool) -> None:  # pylint: disable=unused-argument
         procedural = self._radio_procedural.isChecked()
-        self._sector_entry.setEnabled(not procedural)
-        self._tm_name_entry.setEnabled(not procedural)
-        self._hex_entry.setEnabled(not procedural)
+        self._tm_panel.setVisible(not procedural)
+        self._tm_vsep.setVisible(not procedural)
 
     def _on_generate(self) -> None:
         name = self._name_entry.text().strip() or "Unknown"
