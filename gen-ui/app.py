@@ -36,7 +36,7 @@ import tempfile
 # Allow importing from the project root when run directly from any directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import Qt, QUrl  # noqa: E402
+from PySide6.QtCore import Qt, QThread, QUrl, Signal  # noqa: E402
 from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut  # noqa: E402
 from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QFileDialog,
     QFrame,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -251,6 +252,53 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
 
 
 # ---------------------------------------------------------------------------
+# Background worker
+# ---------------------------------------------------------------------------
+
+
+class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
+    """Background thread for TravellerMap network lookups."""
+
+    result = Signal(object)     # system object on success
+    failed = Signal(str)        # error message string
+    ambiguous = Signal(object)  # AmbiguousWorldError instance
+
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        sector: str,
+        search_name: "str | None",
+        hex_pos: "str | None",
+        seed: int,
+        orbital_eccentricity: bool = True,
+        orbital_inclination: bool = True,
+    ) -> None:
+        super().__init__()
+        self._sector = sector
+        self._search_name = search_name
+        self._hex_pos = hex_pos
+        self._seed = seed
+        self._orbital_eccentricity = orbital_eccentricity
+        self._orbital_inclination = orbital_inclination
+
+    def run(self) -> None:
+        """Call generate_system_from_map and emit result, failed, or ambiguous."""
+        try:
+            system = generate_system_from_map(
+                name=self._search_name,
+                sector=self._sector,
+                hex_pos=self._hex_pos,
+                seed=self._seed,
+                orbital_eccentricity=self._orbital_eccentricity,
+                orbital_inclination=self._orbital_inclination,
+            )
+            self.result.emit(system)
+        except AmbiguousWorldError as exc:
+            self.ambiguous.emit(exc)
+        except (ValueError, LookupError, ConnectionError) as exc:
+            self.failed.emit(str(exc))
+
+
+# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -269,6 +317,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto: bool = False
         self._map_windows: list[object] = []
         self._map_btn: QPushButton | None = None
+        self._generate_btn: QPushButton | None = None
+        self._worker: _TravMapWorker | None = None
+        self._pending_full_system: bool = False
+        self._pending_attach_detail: bool = False
+        self._pending_seed: int = 0
         app = QApplication.instance()
         if isinstance(app, QApplication):
             app.setStyleSheet(_CSS)
@@ -335,6 +388,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         btn.setObjectName("suggested-action")
         btn.clicked.connect(self._on_generate)
         layout.addWidget(btn)
+        self._generate_btn = btn
 
         return row
 
@@ -367,33 +421,22 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         radio_layout.addWidget(self._radio_travellermap)
         left_layout.addWidget(radio_row)
 
-        self._radio_mainworld_only = QRadioButton("Mainworld only")
-        self._radio_full_detail = QRadioButton("Full detail")
-        self._detail_group = QButtonGroup(self)
-        self._detail_group.addButton(self._radio_mainworld_only)
-        self._detail_group.addButton(self._radio_full_detail)
-        self._radio_mainworld_only.setChecked(True)
-        self._radio_full_detail.toggled.connect(self._on_detail_toggled)
         self._check_nhz = QCheckBox("NHZ Atmospheres")
-        self._check_nhz.setEnabled(False)
         self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
-        self._check_oxygen_biomass.setEnabled(False)
         self._check_advanced_temp = QCheckBox("Advanced temperature")
-        self._check_advanced_temp.setEnabled(False)
         self._check_runaway_greenhouse = QCheckBox("Runaway greenhouse")
-        self._check_runaway_greenhouse.setEnabled(False)
 
-        check_row = QWidget()
-        check_layout = QHBoxLayout(check_row)
-        check_layout.setSpacing(12)
-        check_layout.setContentsMargins(0, 0, 0, 0)
-        check_layout.addWidget(self._radio_mainworld_only)
-        check_layout.addWidget(self._radio_full_detail)
-        check_layout.addWidget(self._check_nhz)
-        check_layout.addWidget(self._check_oxygen_biomass)
-        check_layout.addWidget(self._check_advanced_temp)
-        check_layout.addWidget(self._check_runaway_greenhouse)
-        left_layout.addWidget(check_row)
+        self._system_group = QGroupBox("System detail")
+        self._system_group.setCheckable(True)
+        self._system_group.setChecked(False)
+        self._system_group.toggled.connect(self._on_detail_toggled)
+        checks_layout = QHBoxLayout(self._system_group)
+        checks_layout.setSpacing(12)
+        checks_layout.addWidget(self._check_nhz)
+        checks_layout.addWidget(self._check_oxygen_biomass)
+        checks_layout.addWidget(self._check_advanced_temp)
+        checks_layout.addWidget(self._check_runaway_greenhouse)
+        left_layout.addWidget(self._system_group)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -435,12 +478,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         grid.addWidget(self._hex_entry, 1, 3)
         grid.addWidget(optional_lbl, 1, 4)
 
+        self._tm_vsep = vsep
+        self._tm_panel = grid_widget
         layout.addWidget(grid_widget)
         layout.addStretch()
 
-        self._sector_entry.setEnabled(False)
-        self._tm_name_entry.setEnabled(False)
-        self._hex_entry.setEnabled(False)
+        self._tm_panel.setVisible(False)
+        self._tm_vsep.setVisible(False)
 
         return row
 
@@ -458,10 +502,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto = False
 
     def _on_detail_toggled(self, checked: bool) -> None:
-        self._check_nhz.setEnabled(checked)
-        self._check_oxygen_biomass.setEnabled(checked)
-        self._check_advanced_temp.setEnabled(checked)
-        self._check_runaway_greenhouse.setEnabled(checked)
         if not checked:
             self._check_nhz.setChecked(False)
             self._check_oxygen_biomass.setChecked(False)
@@ -472,9 +512,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _on_source_toggled(self, checked: bool) -> None:  # pylint: disable=unused-argument
         procedural = self._radio_procedural.isChecked()
-        self._sector_entry.setEnabled(not procedural)
-        self._tm_name_entry.setEnabled(not procedural)
-        self._hex_entry.setEnabled(not procedural)
+        self._tm_panel.setVisible(not procedural)
+        self._tm_vsep.setVisible(not procedural)
 
     def _on_generate(self) -> None:
         name = self._name_entry.text().strip() or "Unknown"
@@ -495,7 +534,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_entry.blockSignals(False)
         self._seed_auto = True
 
-        full_system = self._radio_full_detail.isChecked()
+        full_system = self._system_group.isChecked()
         attach_detail_flag = full_system
 
         if self._radio_travellermap.isChecked():
@@ -508,11 +547,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             if not search_name and not hex_pos:
                 self._show_error("Enter a world name or hex for TravellerMap lookup.")
                 return
-            self._do_travellermap_generation(
-                sector, search_name, hex_pos, seed, full_system, attach_detail_flag,
-                orbital_eccentricity=True,
-                orbital_inclination=True,
-            )
+            self._pending_full_system = full_system
+            self._pending_attach_detail = attach_detail_flag
+            self._pending_seed = seed
+            self._start_travellermap_worker(sector, search_name, hex_pos, seed)
         else:
             if full_system:
                 system = generate_full_system(
@@ -525,41 +563,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             else:
                 world = generate_world(name)
                 self._finish_generation(world)
-
-    def _do_travellermap_generation(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-        self,
-        sector: str,
-        search_name: "str | None",
-        hex_pos: "str | None",
-        seed: int,
-        full_system: bool = False,
-        attach_detail_flag: bool = False,
-        orbital_eccentricity: bool = False,
-        orbital_inclination: bool = False,
-    ) -> None:
-        try:
-            system = generate_system_from_map(
-                name=search_name,
-                sector=sector,
-                hex_pos=hex_pos,
-                seed=seed,
-                orbital_eccentricity=orbital_eccentricity,
-                orbital_inclination=orbital_inclination,
-            )
-        except AmbiguousWorldError as exc:
-            self._show_disambiguation_dialog(exc, seed, full_system, attach_detail_flag)
-            return
-        except (ValueError, LookupError, ConnectionError) as exc:
-            self._show_error(str(exc))
-            return
-        if full_system:
-            self._finish_system_generation(system, attach_detail_flag)
-        else:
-            world = system.mainworld
-            if world is None:
-                self._show_error("TravellerMap lookup returned no mainworld.")
-                return
-            self._finish_generation(world)
 
     def _finish_generation(self, world: object) -> None:
         self._current_system = None
@@ -703,8 +706,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self,
         error: AmbiguousWorldError,
         seed: int,
-        full_system: bool = False,
-        attach_detail_flag: bool = False,
     ) -> None:
         dialog = QDialog(self)
         dialog.setWindowTitle("Ambiguous World Name")
@@ -741,11 +742,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         if dialog.exec() == QDialog.DialogCode.Accepted:
             selected = next((h for radio, h in radios if radio.isChecked()), None)
             if selected:
-                self._do_travellermap_generation(
-                    error.sector, None, selected, seed, full_system, attach_detail_flag,
-                    orbital_eccentricity=True,
-                    orbital_inclination=True,
-                )
+                self._start_travellermap_worker(error.sector, None, selected, seed)
 
     def _on_map_clicked(self) -> None:
         if self._current_system is None:
@@ -848,6 +845,56 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.addWidget(lbl)
         self._status_layout.addStretch()
 
+    def _show_loading(self, message: str) -> None:
+        self._clear_status()
+        lbl = QLabel(message)
+        lbl.setObjectName("dim-label")
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._status_layout.addStretch()
+        self._status_layout.addWidget(lbl)
+        self._status_layout.addStretch()
+
+    def _start_travellermap_worker(
+        self,
+        sector: str,
+        search_name: "str | None",
+        hex_pos: "str | None",
+        seed: int,
+    ) -> None:
+        display = search_name or hex_pos or "world"
+        self._show_loading(f"Looking up {display} in {sector}…")
+        if self._generate_btn is not None:
+            self._generate_btn.setEnabled(False)
+        worker = _TravMapWorker(sector, search_name, hex_pos, seed)
+        worker.result.connect(self._on_worker_result)
+        worker.failed.connect(self._on_worker_error)
+        worker.ambiguous.connect(self._on_worker_ambiguous)
+        worker.finished.connect(worker.deleteLater)
+        self._worker = worker
+        worker.start()
+
+    def _on_worker_result(self, system: object) -> None:
+        if self._generate_btn is not None:
+            self._generate_btn.setEnabled(True)
+        if self._pending_full_system:
+            self._finish_system_generation(system, self._pending_attach_detail)
+        else:
+            world = system.mainworld  # type: ignore[attr-defined]
+            if world is None:
+                self._show_error("TravellerMap lookup returned no mainworld.")
+                return
+            self._finish_generation(world)
+
+    def _on_worker_error(self, message: str) -> None:
+        if self._generate_btn is not None:
+            self._generate_btn.setEnabled(True)
+        self._show_error(message)
+
+    def _on_worker_ambiguous(self, exc: object) -> None:
+        if self._generate_btn is not None:
+            self._generate_btn.setEnabled(True)
+        self._show_disambiguation_dialog(exc, self._pending_seed)  # type: ignore[arg-type]
+
     def _show_summary(self, world: object) -> None:
         self._clear_status()
         self._status_layout.addWidget(self._build_summary_header(world))
@@ -929,7 +976,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         map_btn = QPushButton("System Map")
         map_btn.clicked.connect(self._on_map_clicked)
-        map_btn.setEnabled(self._radio_full_detail.isChecked())
+        map_btn.setEnabled(self._system_group.isChecked())
         self._map_btn = map_btn
         layout.addWidget(map_btn)
 

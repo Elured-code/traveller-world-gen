@@ -330,6 +330,8 @@ def _phys_rows(sd: dict) -> tuple[str, list[dict]]:
          "value": (f"{sd.get('size_1_bodies', 0)} × Sz 1, "
                    f"{sd.get('size_s_bodies', 0)} × Sz S")},
     ]
+    if (mean_t := sd.get("mean_temperature_k")) is not None:
+        rows.append({"label": "Mean temperature", "value": f"{mean_t} K"})
     return "Belt body", rows
 
 

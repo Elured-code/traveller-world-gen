@@ -64,6 +64,19 @@ The `BUNDLE` block in the spec produces the `.app` bundle automatically.
 Bundle identifier is `com.elured.traveller-world-gen`; version is taken from
 the `version=` field in the spec.
 
+**Architecture.** The CI workflow builds two separate native binaries:
+`macos-arm64` (Apple Silicon, `macos-latest` runner) and `macos-x86_64`
+(Intel, `macos-13` runner). To target a specific architecture locally, set the
+`TARGET_ARCH` environment variable before running PyInstaller:
+
+```bash
+TARGET_ARCH=arm64 .venv/bin/pyinstaller traveller_gen_ui.spec
+TARGET_ARCH=x86_64 .venv/bin/pyinstaller traveller_gen_ui.spec
+```
+
+Leaving `TARGET_ARCH` unset (or empty) produces a binary for the host
+architecture.
+
 **Gatekeeper / "damaged app" warning.** Binaries distributed without an Apple
 Developer certificate will be quarantined. Recipients can bypass this once by
 right-clicking the `.app` and choosing **Open**, or you can clear the quarantine
