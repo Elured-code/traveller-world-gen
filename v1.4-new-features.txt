@@ -72,8 +72,26 @@ STANDALONE BINARIES — SMALLER FILE SIZE
   (Apple Silicon arm64 only from v1.4.0 onwards). The Intel x86_64 build has
   been discontinued.
 
+OPEN SYSTEM JSON — SECONDARY WORLD DETAIL NOW RESTORED
+--------------------------------------------------------
+- When a system JSON is opened (File > Open JSON…), secondary world profiles
+  are now fully restored from the saved file. Previously only the main system
+  structure (stars, orbit slots, mainworld) was reconstructed; the detail block
+  for each secondary world slot (SAH, social data, moons, moon orbits, belt/world
+  physical) was silently discarded.
+
+- The system card now shows complete secondary world information — the same
+  content that appears immediately after using "Full detail" generation — when
+  a file saved with full detail is reopened.
+
 BUG FIXES
 ---------
+- Fixed: `has_gas_giant` flag was incorrectly re-derived from `gas_giant_count`
+  when loading a world JSON. If the two values ever differed (e.g., a world
+  generated before the count was tracked, or an edited JSON), the flag would
+  be wrong. The saved boolean is now read directly; `gas_giant_count` is used
+  only as a fallback for legacy files that predate the explicit field.
+
 - Fixed (Windows binary): the System tab and any web-view panel showed a blank
   white page. QtWebEngineProcess.exe and the WebEngine resource files (.pak,
   locales) were not included in the PyInstaller bundle when PySide6-Addons is
