@@ -356,41 +356,56 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _build_controls(self) -> QWidget:
         # pylint: disable=attribute-defined-outside-init
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
+        container = QWidget()
+        vbox = QVBoxLayout(container)
+        vbox.setSpacing(4)
+        vbox.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(QLabel("Name:"))
+        # ── Row 1: Name + Generate ──────────────────────────────────
+        row1 = QWidget()
+        r1 = QHBoxLayout(row1)
+        r1.setSpacing(8)
+        r1.setContentsMargins(0, 0, 0, 0)
 
+        r1.addWidget(QLabel("Name:"))
         self._name_entry = QLineEdit()
         self._name_entry.setPlaceholderText("World name (optional)")
         self._name_entry.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self._name_entry.returnPressed.connect(self._on_generate)
-        layout.addWidget(self._name_entry)
+        r1.addWidget(self._name_entry)
 
-        layout.addWidget(QLabel("Seed:"))
+        self._generate_btn = QPushButton("Generate")
+        self._generate_btn.setObjectName("suggested-action")
+        self._generate_btn.clicked.connect(self._on_generate)
+        r1.addWidget(self._generate_btn)
 
+        vbox.addWidget(row1)
+
+        # ── Row 2: Seed (secondary) ─────────────────────────────────
+        row2 = QWidget()
+        r2 = QHBoxLayout(row2)
+        r2.setSpacing(8)
+        r2.setContentsMargins(0, 0, 0, 0)
+
+        r2.addWidget(QLabel("Seed:"))
         self._seed_entry = QLineEdit()
         self._seed_entry.setPlaceholderText("Integer (optional)")
         self._seed_entry.setFixedWidth(140)
         self._seed_entry.returnPressed.connect(self._on_generate)
         self._seed_entry.textChanged.connect(lambda _: self._on_seed_changed())
-        layout.addWidget(self._seed_entry)
+        r2.addWidget(self._seed_entry)
 
         clear_btn = QPushButton("New Seed")
         clear_btn.clicked.connect(self._on_clear_seed)
-        layout.addWidget(clear_btn)
+        r2.addWidget(clear_btn)
 
-        btn = QPushButton("Generate")
-        btn.setObjectName("suggested-action")
-        btn.clicked.connect(self._on_generate)
-        layout.addWidget(btn)
-        self._generate_btn = btn
+        r2.addStretch()
 
-        return row
+        vbox.addWidget(row2)
+
+        return container
 
     def _build_source_row(self) -> QWidget:  # pylint: disable=too-many-locals,too-many-statements
         # pylint: disable=attribute-defined-outside-init
