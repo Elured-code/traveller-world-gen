@@ -110,7 +110,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from traveller_orbit_gen import OrbitSlot, SystemOrbits
 from traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
@@ -123,6 +123,9 @@ from traveller_world_gen import (
 )
 from traveller_moon_gen import generate_moons, moons_str, Moon, place_moon_orbit
 from traveller_belt_physical import generate_belt_physical, BeltPhysical
+
+if TYPE_CHECKING:
+    from traveller_world_physical import WorldPhysical
 
 
 # ---------------------------------------------------------------------------
@@ -603,7 +606,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.tech_level = tech_level
         self.spaceport  = spaceport
         self.moons      = moons if moons is not None else []
-        self.physical: BeltPhysical | None = None
+        self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
         # Gas giants and rings carry no trade codes
