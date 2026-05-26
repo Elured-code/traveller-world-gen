@@ -1,8 +1,55 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–73
-**Tests:** 1466
+**Sessions:** 55–75
+**Tests:** 1498
+
+---
+
+## WorldDetail Round-Trip — Secondary World Detail Restored on Load (Session 75, issue #109)
+
+`OrbitSlot.from_dict()` now fully reconstructs the `WorldDetail` block for
+every orbit slot when a saved system JSON is opened. Previously the `"detail"`
+key was silently discarded, so secondary world profiles (SAH, social data,
+moons, physical) were absent after loading.
+
+Three new `from_dict()` classmethods implement the reconstruction chain:
+
+- **`Moon.from_dict(d)`** in `traveller_moon_gen.py` — parses the `"size"`
+  string back to a size code (`_EHEX.index()`), restores all post-init orbit
+  fields (`orbit_pd`, `orbit_km`, `orbit_period_hours`, `orbit_eccentricity`,
+  `orbit_inclination`), and recursively calls `WorldDetail.from_dict()` for
+  nested moon detail via a local import.
+- **`WorldDetail.from_dict(d)`** in `traveller_world_detail.py` — calls
+  `__init__` with the constructor params, overrides `trade_codes` from the
+  saved list, reconstructs `physical` (dispatching to `BeltPhysical.from_dict()`
+  or `WorldPhysical.from_dict()` based on the `"inner_au"` key presence), and
+  restores `biomass_rating` and `biocomplexity_rating`.
+- **`OrbitSlot.from_dict()`** updated — when a `"detail"` key is present, the
+  slot's `detail` attribute is populated by `WorldDetail.from_dict()` via a
+  local import; `detail_attached` is treated as `True` by the HTML renderer.
+
+Circular imports are handled with local imports (the same `# pylint: disable=import-outside-toplevel` pattern used elsewhere in the codebase).
+
+19 new tests across `TestMoonFromDict`, `TestWorldDetailFromDict`, and
+`TestOrbitDetailRoundtrip` in `tests/test_system_roundtrip.py`.
+
+---
+
+## Bug Fix — `has_gas_giant` Preserved in World JSON Round-Trip (Session 74, issue #110)
+
+`World.from_dict()` was re-deriving `has_gas_giant` as `gas_giant_count > 0`
+instead of reading the saved boolean directly. This produced incorrect results
+for any world where `has_gas_giant` and `gas_giant_count` disagreed (e.g., a
+world that never had a gas giant but for which the count was non-zero due to a
+data quirk, or vice versa).
+
+Fix: `has_gas_giant=bool(d.get("has_gas_giant", gas_giant_count > 0))` — reads
+the saved boolean when present, falls back to `gas_giant_count > 0` for legacy
+JSON files that predate the explicit field. Backward-compatible.
+
+3 new tests in `TestWorldDetailRoundtrip` covering: explicit `True` with count 0,
+explicit `False`, and absent key with count 3 (legacy fallback).
 
 ---
 

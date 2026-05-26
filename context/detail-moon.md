@@ -58,6 +58,14 @@ generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, bool]
     # Extinct: same + DM+1 if age > 5 Gyr; only rolled when current fails.
     # Returns (native_sophont, extinct_sophont).
 
+obj: WorldDetail = WorldDetail.from_dict(d: dict) -> "WorldDetail"
+    # Reconstruct a WorldDetail from a dict produced by to_dict() (Session 75).
+    # Calls __init__ with constructor params (sah, population, government,
+    # law_level, tech_level, spaceport, moons); overrides trade_codes from saved
+    # list; dispatches physical to BeltPhysical.from_dict() or WorldPhysical.from_dict()
+    # based on "inner_au" key presence; restores biomass_rating and biocomplexity_rating.
+    # Uses local import of WorldPhysical to avoid circular imports.
+
 table: str = system_body_table(system: TravellerSystem) -> str
     # Formatted text table of all orbits and their moon sub-rows.
 
@@ -125,6 +133,16 @@ law, or tech level.
 ## traveller_moon_gen.py — WBH pp. 55–57, 74–77
 
 ### Public API
+
+```python
+moon: Moon = Moon.from_dict(d: dict) -> "Moon"
+    # Reconstruct a Moon from a dict produced by to_dict() (Session 75).
+    # Parses size string: "R" → ring, "S" → small, else _EHEX.index(size.upper()).
+    # Sets post-init orbit fields (orbit_pd, orbit_km, orbit_range,
+    # orbit_period_hours, orbit_eccentricity, orbit_inclination) when present.
+    # Calls WorldDetail.from_dict(d["detail"]) for nested moon detail via local
+    # import (to avoid circular imports).
+```
 
 ```python
 moons: List[Moon] = generate_moons(

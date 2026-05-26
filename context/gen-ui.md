@@ -185,8 +185,11 @@ is enriched with `"_app_version": APP_VERSION` before serialisation. When
 opening, `data.get("_app_version") != APP_VERSION` → `QMessageBox.critical()`
 error dialog and abort.
 
-System JSONs (detected by presence of `"stars"` key) show an informative
-"not yet supported" dialog — `TravellerSystem` has no `from_dict()`.
+System JSONs (detected by presence of `"stars"` key) are fully reconstructed
+via `TravellerSystem.from_dict()` (Session 73) and then loaded via
+`_load_system_from_json()`. `OrbitSlot.detail` is now also restored from the
+`"detail"` key when present (Session 75, issue #109), so secondary world
+profiles appear in the system card after loading.
 
 The previous **Open in Browser** button, **format dropdown**, and **Save** button
 in the result header are removed. `_write_html()`, `_open_in_browser()`, and
