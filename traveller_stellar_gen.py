@@ -390,6 +390,34 @@ class Star:  # pylint: disable=too-many-instance-attributes
             d["orbit_inclination"] = round(self.orbit_inclination, 2)
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Star":
+        """Reconstruct a Star from a dict produced by to_dict()."""
+        return cls(
+            designation=str(d["designation"]),
+            role=str(d.get("role", "primary")),
+            spectral_type=str(d["spectral_type"]),
+            subtype=int(d["subtype"]) if d.get("subtype") is not None else None,
+            lum_class=str(d.get("luminosity_class", "V")),
+            mass=float(d["mass_solar"]),
+            temperature=int(d["temperature_k"]),
+            diameter=float(d["diameter_solar"]),
+            luminosity=float(d["luminosity_solar"]),
+            orbit_number=(float(d["orbit_number"])
+                          if d.get("orbit_number") is not None else None),
+            orbit_au=(float(d["orbit_au"])
+                      if d.get("orbit_au") is not None else None),
+            age_gyr=(float(d["age_gyr"])
+                     if d.get("age_gyr") is not None else None),
+            ms_lifespan_gyr=(float(d["ms_lifespan_gyr"])
+                              if d.get("ms_lifespan_gyr") is not None else None),
+            orbit_period_yr=(float(d["orbit_period_yr"])
+                              if d.get("orbit_period_yr") is not None else None),
+            orbit_eccentricity=float(d.get("orbit_eccentricity", 0.0)),
+            orbit_inclination=float(d.get("orbit_inclination", 0.0)),
+            special_notes=str(d.get("special_notes", "")),
+        )
+
 
 # ---------------------------------------------------------------------------
 # StarSystem dataclass
@@ -422,6 +450,11 @@ class StarSystem:
     def to_json(self, indent: int = 2) -> str:
         """Serialise this star system to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StarSystem":
+        """Reconstruct a StarSystem from a dict produced by to_dict()."""
+        return cls(stars=[Star.from_dict(s) for s in d.get("stars", [])])
 
     def summary(self) -> str:
         """Return a human-readable summary of this star system."""

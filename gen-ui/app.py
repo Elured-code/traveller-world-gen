@@ -73,7 +73,7 @@ except ImportError:
     _HAS_SVG_WIDGET = False
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
-from traveller_system_gen import generate_full_system  # noqa: E402
+from traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
 from traveller_world_detail import (  # noqa: E402
     attach_detail as _attach_detail, gg_diameter_from_sah,
 )
@@ -707,6 +707,15 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._act_save.setEnabled(True)
         self._show_system_summary(system)
 
+    def _load_system_from_json(self, system: object) -> None:
+        self._current_system = system
+        self._current_world = system.mainworld  # type: ignore[attr-defined]
+        self._detail_attached = False
+        self._act_save.setEnabled(True)
+        self._show_system_summary(system)
+        if self._map_btn is not None:
+            self._map_btn.setEnabled(True)
+
     def _show_disambiguation_dialog(  # pylint: disable=too-many-locals
         self,
         error: AmbiguousWorldError,
@@ -797,11 +806,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             return
 
         if "stars" in data:
-            QMessageBox.information(
-                self,
-                "Not supported",
-                "Re-opening full system JSON files is not yet supported.",
-            )
+            try:
+                system = TravellerSystem.from_dict(data)
+            except (ValueError, KeyError) as exc:
+                self._show_error(f"Invalid system JSON: {exc}")
+                return
+            self._load_system_from_json(system)
             return
 
         try:

@@ -307,6 +307,32 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["detail"] = self.detail.to_dict()
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "OrbitSlot":
+        """Reconstruct an OrbitSlot from a dict produced by to_dict().
+
+        detail is left as None — WorldDetail reconstruction is out of scope.
+        """
+        slot = cls(
+            star_designation=str(d["star"]),
+            orbit_number=float(d["orbit_number"]),
+            orbit_au=float(d["orbit_au"]),
+            slot_index=int(d["slot_index"]),
+            world_type=str(d["world_type"]),
+            is_habitable_zone=bool(d.get("is_habitable_zone", False)),
+            hz_deviation=float(d.get("hz_deviation", 0.0)),
+            temperature_zone=str(d.get("temperature_zone", "temperate")),
+            is_mainworld_candidate=bool(d.get("is_mainworld_candidate", False)),
+            notes=str(d.get("notes", "")),
+            canonical_profile=str(d.get("canonical_profile", "")),
+            gg_sah=str(d.get("gg_sah", "")),
+            anomaly_type=str(d.get("anomaly_type", "")),
+        )
+        slot.orbit_period_yr = d.get("orbit_period_yr")
+        slot.eccentricity = float(d.get("eccentricity", 0.0))
+        slot.inclination = float(d.get("inclination", 0.0))
+        return slot
+
 
 @dataclass
 class SystemOrbits:  # pylint: disable=too-many-instance-attributes
@@ -348,6 +374,28 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
     def to_json(self, indent=2):
         """Serialise this system's orbits to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent)
+
+    @classmethod
+    def from_dict(cls, d: dict, star_system: StarSystem) -> "SystemOrbits":
+        """Reconstruct a SystemOrbits from a dict produced by to_dict()."""
+        orbits = [OrbitSlot.from_dict(o) for o in d.get("orbits", [])]
+        mw_d = d.get("mainworld_orbit")
+        mainworld_orbit = OrbitSlot.from_dict(mw_d) if mw_d else None
+        zones = d.get("star_zones", {})
+        return cls(
+            stellar_system=star_system,
+            gas_giant_count=int(d.get("gas_giant_count", 0)),
+            belt_count=int(d.get("belt_count", 0)),
+            terrestrial_count=int(d.get("terrestrial_count", 0)),
+            total_worlds=int(d.get("total_worlds", 0)),
+            empty_orbits=int(d.get("empty_orbits", 0)),
+            orbits=orbits,
+            mainworld_orbit=mainworld_orbit,
+            star_mao={k: float(v["mao"]) for k, v in zones.items()},
+            star_hzco={k: float(v["hzco"]) for k, v in zones.items()},
+            star_hz_inner={k: float(v["hz_inner"]) for k, v in zones.items()},
+            star_hz_outer={k: float(v["hz_outer"]) for k, v in zones.items()},
+        )
 
     def summary(self) -> str:  # pylint: disable=too-many-locals,too-many-branches
         """
