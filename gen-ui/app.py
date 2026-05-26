@@ -27,6 +27,7 @@ The human author reviewed, directed, and is responsible for the code.
 
 # pylint: disable=wrong-import-position,no-name-in-module,import-error,too-many-lines
 
+import json
 import os
 import random
 import secrets
@@ -37,13 +38,12 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtCore import Qt, QThread, QUrl, Signal  # noqa: E402
-from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut  # noqa: E402
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut  # noqa: E402
 from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QButtonGroup,
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -78,6 +78,7 @@ from traveller_world_detail import (  # noqa: E402
     attach_detail as _attach_detail, gg_diameter_from_sah,
 )
 from traveller_world_gen import (  # noqa: E402
+    World,
     generate_atmosphere_detail,
     generate_gas_mix,
     generate_hydrographics,
@@ -124,12 +125,7 @@ QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 """
 
-# Save format definitions: (label, file extension)
-_FORMATS = [
-    ("JSON",  "json"),
-    ("Text",  "txt"),
-    ("HTML",  "html"),
-]
+APP_VERSION = "1.4.0"
 
 # ---------------------------------------------------------------------------
 # Module-level helpers
@@ -310,7 +306,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         super().__init__()
         self.setWindowTitle("Traveller World Generator")
         self.resize(800, 620)
-        self._html_path: str | None = None
         self._current_world: object | None = None
         self._current_system: object | None = None
         self._detail_attached: bool = False
@@ -325,6 +320,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         app = QApplication.instance()
         if isinstance(app, QApplication):
             app.setStyleSheet(_CSS)
+        self._build_menu_bar()
         self._build_ui()
         self._setup_shortcuts()
 
@@ -603,9 +599,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 atmosphere=world.atmosphere,  # type: ignore[attr-defined]
                 temperature=world.temperature,  # type: ignore[attr-defined]
             )
-        path = self._write_html(world.to_html())  # type: ignore[attr-defined]
-        if path is not None:
-            self._html_path = path
+        self._act_save.setEnabled(True)
         self._show_summary(world)
 
     def _finish_system_generation(  # pylint: disable=too-many-locals
@@ -710,11 +704,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         gg_satellite_moon=_gg_sat,
                     )
         self._detail_attached = attach_detail_flag
-        path = self._write_html(
-            system.to_html(detail_attached=attach_detail_flag)  # type: ignore[attr-defined]
-        )
-        if path is not None:
-            self._html_path = path
+        self._act_save.setEnabled(True)
         self._show_system_summary(system)
 
     def _show_disambiguation_dialog(  # pylint: disable=too-many-locals
@@ -766,13 +756,66 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_windows.append(win)
         win.show()
 
+    def _build_menu_bar(self) -> None:
+        # pylint: disable=attribute-defined-outside-init
+        file_menu = self.menuBar().addMenu("&File")
+
+        self._act_open_json = QAction("Open JSON…", self)
+        self._act_open_json.triggered.connect(self._on_open_json)
+        file_menu.addAction(self._act_open_json)
+
+        file_menu.addSeparator()
+
+        self._act_save = QAction("Save As…", self)
+        self._act_save.setShortcut(QKeySequence.StandardKey.Save)
+        self._act_save.setEnabled(False)
+        self._act_save.triggered.connect(self._on_save_clicked)
+        file_menu.addAction(self._act_save)
+
+    def _on_open_json(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open JSON", "", "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            self._show_error(f"Could not read file: {exc}")
+            return
+
+        file_ver = data.get("_app_version")
+        if file_ver != APP_VERSION:
+            QMessageBox.critical(
+                self,
+                "Version mismatch",
+                f"This file was saved with app version {file_ver!r}.\n"
+                f"Current version is {APP_VERSION!r}.\n"
+                "Open is only supported for files from the same version.",
+            )
+            return
+
+        if "stars" in data:
+            QMessageBox.information(
+                self,
+                "Not supported",
+                "Re-opening full system JSON files is not yet supported.",
+            )
+            return
+
+        try:
+            world = World.from_dict(data)
+        except (ValueError, KeyError) as exc:
+            self._show_error(f"Invalid world JSON: {exc}")
+            return
+
+        self._finish_generation(world)
+
     def _on_save_clicked(self) -> None:
         obj = self._current_system or self._current_world
         if obj is None:
             return
-
-        idx = self._format_dropdown.currentIndex()
-        label, ext = _FORMATS[idx]
 
         base_name = getattr(self._current_world, "name", None) or "world"
         if self._current_system is not None:
@@ -781,17 +824,18 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         path, _ = QFileDialog.getSaveFileName(
             self,
-            f"Save World Data as {label}",
-            f"{safe_name}.{ext}",
-            f"{label} files (*.{ext})",
+            "Save World Data",
+            f"{safe_name}.html",
+            "HTML (*.html);;JSON (*.json)",
         )
         if not path:
             return
 
+        ext = os.path.splitext(path)[1].lstrip(".")
         if ext == "json":
-            content = obj.to_json()  # type: ignore[attr-defined]
-        elif ext == "txt":
-            content = obj.summary()  # type: ignore[attr-defined]
+            raw = json.loads(obj.to_json())  # type: ignore[attr-defined]
+            raw["_app_version"] = APP_VERSION
+            content = json.dumps(raw, indent=2, ensure_ascii=False)
         else:
             if self._current_system is not None:
                 content = obj.to_html(  # type: ignore[attr-defined]
@@ -810,25 +854,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     # HTML file management
     # ------------------------------------------------------------------
 
-    def _write_html(self, html: str) -> str | None:
-        if self._html_path and os.path.exists(self._html_path):
-            try:
-                os.unlink(self._html_path)
-            except OSError:
-                pass
-        try:
-            fd, path = tempfile.mkstemp(suffix=".html", prefix="traveller-world-")
-            os.close(fd)
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(html)
-            return path
-        except OSError:
-            return None
-
-    @staticmethod
-    def _open_in_browser(path: str) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-
     # ------------------------------------------------------------------
     # Status panel
     # ------------------------------------------------------------------
@@ -844,6 +869,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _show_placeholder(self) -> None:
         self._clear_status()
+        self._act_save.setEnabled(False)
         lbl = QLabel("Enter a name and click Generate.")
         lbl.setObjectName("dim-label")
         lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -995,44 +1021,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_btn = map_btn
         layout.addWidget(map_btn)
 
-        vsep = _make_vsep()
-        vsep.setContentsMargins(6, 0, 6, 0)
-        layout.addWidget(vsep)
-
-        layout.addWidget(self._build_action_buttons())
         return header
-
-    def _build_action_buttons(self) -> QWidget:
-        # pylint: disable=attribute-defined-outside-init
-        box = QWidget()
-        layout = QHBoxLayout(box)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        open_btn = QPushButton("Open in Browser")
-        open_btn.clicked.connect(
-            lambda: self._open_in_browser(self._html_path)
-            if self._html_path
-            else None
-        )
-        layout.addWidget(open_btn)
-
-        vsep = _make_vsep()
-        vsep.setContentsMargins(4, 0, 4, 0)
-        layout.addWidget(vsep)
-
-        layout.addWidget(QLabel("Save as:"))
-
-        self._format_dropdown = QComboBox()
-        for lbl, _ in _FORMATS:
-            self._format_dropdown.addItem(lbl)
-        layout.addWidget(self._format_dropdown)
-
-        save_btn = QPushButton("Save…")
-        save_btn.clicked.connect(self._on_save_clicked)
-        layout.addWidget(save_btn)
-
-        return box
 
     def _build_summary_header(self, world: object) -> QWidget:
         header = QWidget()
@@ -1060,7 +1049,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         layout.addWidget(spacer)
 
-        layout.addWidget(self._build_action_buttons())
         return header
 
     def _maybe_apply_runaway_greenhouse(  # pylint: disable=too-many-arguments,too-many-positional-arguments

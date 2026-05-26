@@ -29,7 +29,8 @@ Key instance state:
 | `_current_world` | `object \| None` | Last generated `World` |
 | `_current_system` | `object \| None` | Last generated `TravellerSystem` |
 | `_detail_attached` | `bool` | Whether `attach_detail()` was called on `_current_system` |
-| `_html_path` | `str \| None` | Temp file path of last HTML card (for "Open in Browser") |
+| `_act_open_json` | `QAction` | File > Open JSON… — always enabled; opens a saved world JSON and re-renders it |
+| `_act_save` | `QAction` | File > Save As… (Ctrl+S / Cmd+S) — enabled only after generation |
 | `_map_btn` | `QPushButton \| None` | Active "System Map" button; `None` when no system result |
 | `_map_windows` | `list[object]` | Open `SystemMapWindow` instances — list keeps them alive against GC |
 
@@ -166,6 +167,30 @@ class SystemMapWindow(QMainWindow):
 `_render()` is called at construction and on every theme toggle. `QSvgWidget`
 is sized to exact SVG canvas dimensions (`_CANVAS_W × canvas_h`) so
 `QScrollArea` provides correct scrollbars for large maps.
+
+---
+
+## File menu (Session 72)
+
+`_build_menu_bar()` is called from `__init__` before `_build_ui()`. It creates a
+standard `QMenuBar` with a single **File** menu containing:
+
+| Action | Shortcut | Enabled | Behaviour |
+|--------|----------|---------|-----------|
+| Open JSON… | — | Always | `QFileDialog.getOpenFileName` → parse → version check → `World.from_dict()` → `_finish_generation()` |
+| Save As… | Ctrl+S / Cmd+S | After generation | `QFileDialog.getSaveFileName` (HTML or JSON); JSON output includes `"_app_version"` key |
+
+`APP_VERSION = "1.4.0"` is a module-level constant. When saving JSON the dict
+is enriched with `"_app_version": APP_VERSION` before serialisation. When
+opening, `data.get("_app_version") != APP_VERSION` → `QMessageBox.critical()`
+error dialog and abort.
+
+System JSONs (detected by presence of `"stars"` key) show an informative
+"not yet supported" dialog — `TravellerSystem` has no `from_dict()`.
+
+The previous **Open in Browser** button, **format dropdown**, and **Save** button
+in the result header are removed. `_write_html()`, `_open_in_browser()`, and
+`self._html_path` are deleted; the webview already uses `setHtml()` directly.
 
 ---
 
