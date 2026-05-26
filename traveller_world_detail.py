@@ -108,6 +108,7 @@ The human author reviewed, directed, and is responsible for the code.
 # pylint: disable=too-many-lines,locally-disabled,suppressed-message
 from __future__ import annotations
 
+import math
 import random
 from typing import Optional
 
@@ -425,6 +426,70 @@ def generate_biocomplexity_rating(
     return max(1, base + dm)
 
 
+# ---------------------------------------------------------------------------
+# Biodiversity and Compatibility Ratings (WBH p.130)
+# ---------------------------------------------------------------------------
+
+_ATM_COMPAT_DM: dict[int, int] = {
+    0:  -8,   # vacuum
+    1:  -8,   # trace
+    2:  -2,   # reducing (inherently tainted)
+    3:  +1,   # very thin
+    4:  -2,   # thick tainted
+    5:  +1,   # thin
+    6:  +2,   # standard
+    7:  -2,   # standard tainted
+    8:  +1,   # dense
+    9:  -2,   # dense tainted
+    10: -6,   # A — exotic
+    11: -8,   # B — corrosive
+    12: -10,  # C — insidious
+    13: -1,   # D — very dense
+    14: -1,   # E — low
+    15: -6,   # F — unusual
+    16: -8,   # G — helium gas (NHZ)
+    17: -8,   # H — hydrogen gas (NHZ)
+}
+
+# Codes 2, 4, 7, 9 are inherently tainted; "otherwise tainted" DM applies
+# only when the atmosphere code is not one of these.
+_INHERENT_TAINTED_CODES: frozenset[int] = frozenset({2, 4, 7, 9})
+
+
+def generate_biodiversity_rating(biomass: int, biocomplexity: int) -> int:
+    """Roll and return the biodiversity rating (WBH p.130).
+
+    Formula: 2D − 7 + Biomass + ⌈Biocomplexity / 2⌉. Minimum 0.
+    Only call when biomass ≥ 1.
+    """
+    base = (random.randint(1, 6) + random.randint(1, 6)
+            - 7 + biomass + math.ceil(biocomplexity / 2))
+    return max(0, base)
+
+
+def generate_compatibility_rating(
+    biocomplexity: int,
+    atm: int,
+    age_gyr: float,
+    has_taint: bool = False,
+) -> int:
+    """Roll and return the compatibility rating (WBH p.130).
+
+    Formula: 2D − ⌊Biocomplexity / 2⌋ + DMs. Minimum 0.
+    Only call when biomass ≥ 1.
+
+    DMs: atmosphere code, system age > 8 Gyrs, "otherwise tainted"
+    (a taint on an atmosphere code not already listed as tainted).
+    """
+    base = random.randint(1, 6) + random.randint(1, 6) - (biocomplexity // 2)
+    dm = _ATM_COMPAT_DM.get(atm, -8)
+    if has_taint and atm not in _INHERENT_TAINTED_CODES:
+        dm -= 2   # "otherwise tainted" (e.g. optional taint on code 13/14)
+    if age_gyr > 8.0:
+        dm -= 2
+    return max(0, base + dm)
+
+
 def generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, bool]:
     """Check for native and extinct sophonts (WBH p.131).
 
@@ -611,6 +676,32 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["biocomplexity_rating"] = self.biocomplexity_rating
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "WorldDetail":
+        """Reconstruct a WorldDetail from a dict produced by to_dict()."""
+        moons = [Moon.from_dict(m) for m in d.get("moons", [])]
+        obj = cls(
+            sah=str(d["sah"]),
+            population=int(d.get("population", 0)),
+            government=int(d.get("government", 0)),
+            law_level=int(d.get("law_level", 0)),
+            tech_level=int(d.get("tech_level", 0)),
+            spaceport=str(d.get("spaceport", "-")),
+            moons=moons,
+        )
+        obj.trade_codes = list(d.get("trade_codes", obj.trade_codes))
+        phys_d = d.get("physical")
+        if phys_d:
+            if "inner_au" in phys_d:
+                obj.physical = BeltPhysical.from_dict(phys_d)
+            else:
+                from traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
+                obj.physical = WorldPhysical.from_dict(phys_d)
+        if d.get("biomass_rating") is not None:
+            obj.biomass_rating = int(d["biomass_rating"])
+        if d.get("biocomplexity_rating") is not None:
+            obj.biocomplexity_rating = int(d["biocomplexity_rating"])
+        return obj
 
 
 def _moon_adjacency_context(
@@ -1210,6 +1301,24 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
             mainworld.native_sophont, mainworld.extinct_sophont = (
                 generate_sophont_checks(mainworld.biocomplexity_rating, age_gyr)
             )
+        mainworld.biodiversity_rating = generate_biodiversity_rating(
+            mainworld.biomass_rating, mainworld.biocomplexity_rating
+        )
+        has_taint = bool(
+            mainworld.atmosphere_detail and mainworld.atmosphere_detail.taints
+        )
+        mainworld.compatibility_rating = generate_compatibility_rating(
+            biocomplexity=mainworld.biocomplexity_rating,
+            atm=mainworld.atmosphere,
+            age_gyr=age_gyr,
+            has_taint=has_taint,
+        )
+        mainworld.lifeform_profile = (
+            f"{to_hex(mainworld.biomass_rating)}"
+            f"{to_hex(mainworld.biocomplexity_rating)}"
+            f"{to_hex(mainworld.biodiversity_rating)}"
+            f"{to_hex(mainworld.compatibility_rating)}"
+        )
 
     # Propagate to orbit.detail so the orbit table works uniformly.
     if mw_orbit.world_type == "gas_giant":

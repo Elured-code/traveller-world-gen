@@ -382,6 +382,15 @@
     {% elif ctx.extinct_sophont %}
     {{ drow("Native sophont", "Extinct (evidence present)") }}
     {% endif %}
+    {% if ctx.biodiversity_str is not none %}
+    {{ drow("Biodiversity", ctx.biodiversity_str) }}
+    {% endif %}
+    {% if ctx.compatibility_str is not none %}
+    {{ drow("Compatibility", ctx.compatibility_str) }}
+    {% endif %}
+    {% if ctx.lifeform_profile is not none %}
+    {{ drow("Lifeform profile", ctx.lifeform_profile) }}
+    {% endif %}
   </div>
   {% endif %}
 
