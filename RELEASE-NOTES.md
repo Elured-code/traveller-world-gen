@@ -1,8 +1,20 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–75
-**Tests:** 1498
+**Sessions:** 55–77
+**Tests:** 1515
+
+---
+
+## System Map — World Marker Position (Session 77)
+
+World glyphs on the orbit arc diagram now appear **one third of the way down
+the arc** from the top endpoint rather than at the top endpoint. The change
+improves visual clarity: markers no longer cluster at the very tip of short
+arcs and sit closer to the horizontal centreline of the diagram.
+
+Implemented as a one-line change to `_marker_xy()` in `system_map.py`:
+angle changed from `half_deg` to `half_deg / 3`.
 
 ---
 

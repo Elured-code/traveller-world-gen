@@ -84,6 +84,13 @@ OPEN SYSTEM JSON — SECONDARY WORLD DETAIL NOW RESTORED
   content that appears immediately after using "Full detail" generation — when
   a file saved with full detail is reopened.
 
+SYSTEM MAP — WORLD MARKER POSITION
+------------------------------------
+- World glyphs on the orbit arc diagram now appear one third of the way down
+  the arc from the top endpoint, rather than at the very top. Markers no longer
+  cluster at the tip of short arcs and sit closer to the visual centre of the
+  diagram, making multi-world systems easier to read at a glance.
+
 BUG FIXES
 ---------
 - Fixed: `has_gas_giant` flag was incorrectly re-derived from `gas_giant_count`
