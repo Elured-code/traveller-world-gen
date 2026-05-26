@@ -257,6 +257,38 @@ class Moon:  # pylint: disable=too-many-instance-attributes
             d["detail"] = self.detail.to_dict()
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "Moon":
+        """Reconstruct a Moon from a dict produced by to_dict()."""
+        size_raw = str(d["size"])
+        if size_raw == "R":
+            moon = cls(size_code=0, is_ring=True,
+                       is_gas_giant_moon=bool(d.get("is_gas_giant_moon", False)))
+            moon.ring_count = int(d.get("ring_count", 1))
+            if d.get("ring_centre_pd") is not None:
+                moon.ring_centre_pd = float(d["ring_centre_pd"])
+                moon.ring_span_pd   = float(d["ring_span_pd"])
+        elif size_raw == "S":
+            moon = cls(size_code="S",
+                       is_gas_giant_moon=bool(d.get("is_gas_giant_moon", False)))
+        else:
+            moon = cls(size_code=_EHEX.index(size_raw.upper()),
+                       is_gas_giant_moon=bool(d.get("is_gas_giant_moon", False)))
+        if d.get("orbit_pd") is not None:
+            moon.orbit_pd           = float(d["orbit_pd"])
+            moon.orbit_km           = (float(d["orbit_km"])
+                                       if d.get("orbit_km") is not None else None)
+            moon.orbit_range        = (str(d["orbit_range"])
+                                       if d.get("orbit_range") is not None else None)
+            moon.orbit_period_hours = (float(d["orbit_period_hours"])
+                                       if d.get("orbit_period_hours") is not None else None)
+            moon.orbit_eccentricity = float(d.get("orbit_eccentricity", 0.0))
+            moon.orbit_inclination  = float(d.get("orbit_inclination", 0.0))
+        if d.get("detail"):
+            from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+            moon.detail = WorldDetail.from_dict(d["detail"])
+        return moon
+
 
 # ---------------------------------------------------------------------------
 # Moon quantity (WBH p.56)

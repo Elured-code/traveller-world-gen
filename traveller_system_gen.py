@@ -66,6 +66,7 @@ from traveller_world_physical import WorldPhysical
 from tables import TIDAL_STATUS_LABELS, BIOCOMPLEXITY_DESC
 from traveller_hydro_detail import generate_hydrographic_detail
 from html_render import render
+from world_codes import APP_VERSION
 from traveller_world_gen import (
     World,
     generate_size,
@@ -194,6 +195,10 @@ class TravellerSystem:
         d = self.stellar_system.to_dict()
         d["orbits"] = self.system_orbits.to_dict()
         d["mainworld"] = self.mainworld.to_dict() if self.mainworld else None
+        d["nhz_atmospheres"] = self.nhz_atmospheres
+        d["orbital_eccentricity"] = self.orbital_eccentricity
+        d["orbital_inclination"] = self.orbital_inclination
+        d["_app_version"] = APP_VERSION
         return d
 
     def to_json(self, indent: int = 2) -> str:
@@ -216,6 +221,9 @@ class TravellerSystem:
             system_orbits=orbits,
             mainworld=mainworld,
             mainworld_orbit=orbits.mainworld_orbit,
+            nhz_atmospheres=bool(d.get("nhz_atmospheres", False)),
+            orbital_eccentricity=bool(d.get("orbital_eccentricity", False)),
+            orbital_inclination=bool(d.get("orbital_inclination", False)),
         )
 
     def summary(self) -> str:

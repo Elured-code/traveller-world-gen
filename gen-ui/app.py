@@ -92,6 +92,7 @@ from traveller_world_physical import (  # noqa: E402
 )
 from tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
+from world_codes import APP_VERSION  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -124,8 +125,6 @@ QLabel#table-dim    { font-size: 10pt; color: #9BA3AD; }
 QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 """
-
-APP_VERSION = "1.4.0"
 
 # ---------------------------------------------------------------------------
 # Module-level helpers
@@ -843,9 +842,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         ext = os.path.splitext(path)[1].lstrip(".")
         if ext == "json":
-            raw = json.loads(obj.to_json())  # type: ignore[attr-defined]
-            raw["_app_version"] = APP_VERSION
-            content = json.dumps(raw, indent=2, ensure_ascii=False)
+            content = obj.to_json()  # type: ignore[attr-defined]
         else:
             if self._current_system is not None:
                 content = obj.to_html(  # type: ignore[attr-defined]

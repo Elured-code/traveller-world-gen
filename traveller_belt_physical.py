@@ -271,6 +271,23 @@ class BeltPhysical:  # pylint: disable=too-many-instance-attributes
             "mean_temperature_k": self.mean_temperature_k,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "BeltPhysical":
+        """Reconstruct a BeltPhysical from a dict produced by to_dict()."""
+        return cls(
+            inner_au=float(d["inner_au"]),
+            outer_au=float(d["outer_au"]),
+            m_type_pct=int(d["m_type_pct"]),
+            s_type_pct=int(d["s_type_pct"]),
+            c_type_pct=int(d["c_type_pct"]),
+            other_pct=int(d["other_pct"]),
+            bulk=int(d["bulk"]),
+            resource_rating=int(d["resource_rating"]),
+            size_1_bodies=int(d["size_1_bodies"]),
+            size_s_bodies=int(d["size_s_bodies"]),
+            mean_temperature_k=int(d["mean_temperature_k"]),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Public API
