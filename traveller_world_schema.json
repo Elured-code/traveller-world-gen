@@ -162,10 +162,11 @@
               "description": "Atmosphere taints (WBH pp.82-85). Present only for tainted atmosphere codes (2, 4, 7, 9).",
               "items": {
                 "type": "object",
-                "required": ["subtype", "severity_code", "severity", "persistence_code", "persistence"],
+                "required": ["subtype", "subtype_code", "severity_code", "severity", "persistence_code", "persistence"],
                 "additionalProperties": false,
                 "properties": {
                   "subtype":          { "type": "string" },
+                  "subtype_code":     { "type": "string" },
                   "severity_code":    { "type": "integer", "minimum": 1, "maximum": 9 },
                   "severity":         { "type": "string" },
                   "persistence_code": { "type": "integer", "minimum": 2, "maximum": 9 },
@@ -697,6 +698,20 @@
     "extinct_sophont": {
       "type": "boolean",
       "description": "True when evidence of an extinct native sophont exists (WBH p.131). Absent when false."
+    },
+    "biodiversity_rating": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Biodiversity rating (WBH p.130). Absent when biomass is 0 or not yet generated."
+    },
+    "compatibility_rating": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Compatibility rating (WBH p.130). Absent when biomass is 0 or not yet generated."
+    },
+    "lifeform_profile": {
+      "type": "string",
+      "description": "Four-character eHex lifeform profile MXDC (WBH p.130). Absent when biomass is 0 or not yet generated."
     }
   },
   "$defs": {

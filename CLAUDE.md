@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-05-26 (Session 75)  
+**Last updated:** 2026-05-26 (Session 76)  
 **Branch:** `v1.4.0` · **Main:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -37,7 +37,7 @@ read only the context files listed below for the specific task at hand.
 ## Always-needed facts (no file read required)
 
 - **Pylint:** `.venv/bin/pylint <file>` — target **10.00/10 per file**
-- **Tests:** `.venv/bin/pytest tests/ -q` — **1498 tests**, all must pass
+- **Tests:** `.venv/bin/pytest tests/ -q` — **1515 tests**, all must pass
 - **RNG:** Global shared state; seed set once in `generate_full_system()`.
   Adding any dice roll anywhere shifts all subsequent results for that seed.
 - **`attach_detail()` is always a separate explicit step.** Never call it

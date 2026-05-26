@@ -143,6 +143,18 @@ class World:
     extinct_sophont: bool = field(default=False, init=False)
                                     # True when evidence of extinct sophont (WBH p.131);
                                     # only checked when current sophont roll fails
+    biodiversity_rating:  Optional[int] = field(default=None, init=False)
+                                    # set by _apply_biomass() after biocomplexity;
+                                    # formula: max(0, 2D−7 + biomass + ⌈biocomplexity/2⌉)
+    compatibility_rating: Optional[int] = field(default=None, init=False)
+                                    # set by _apply_biomass() after biocomplexity;
+                                    # formula: max(0, 2D − biocomplexity//2 + DMs)
+                                    # DMs: atmosphere code (_ATM_COMPAT_DM), age>8Gyr −2,
+                                    # "otherwise tainted" (taint on non-{2,4,7,9} code) −2
+    lifeform_profile: Optional[str] = field(default=None, init=False)
+                                    # 4-char eHex: MXDC
+                                    # (Biomass)(Biocomplexity)(Biodiversity)(Compatibility)
+                                    # None when biomass_rating is 0 or None
 
     # methods: .uwp(), .to_dict(), .to_json(), .to_html(), .summary()
     # classmethod: .from_dict(d) — reconstruct from to_dict() output

@@ -20,11 +20,15 @@ from traveller_world_detail import (  # pylint: disable=import-error
     generate_biomass_rating,
     generate_biocomplexity_rating,
     generate_sophont_checks,
+    generate_biodiversity_rating,
+    generate_compatibility_rating,
     _ATM_BIOMASS_DM,
     _HYDRO_BIOMASS_DM,
     _SC2_ATM_SET,
     _SC2_ADJUSTMENT,
     _OXYGEN_ATM_SET,
+    _ATM_COMPAT_DM,
+    _INHERENT_TAINTED_CODES,
 )
 
 
@@ -743,3 +747,157 @@ class TestSophontChecks:
         native, extinct = _roll_sophont(9, 3.0, [5, 5, 4, 5])
         assert native is False
         assert extinct is False
+
+
+# ---------------------------------------------------------------------------
+# Biodiversity Rating (WBH p.130)
+# ---------------------------------------------------------------------------
+
+def _roll_biodiversity(biomass: int, biocomplexity: int, rolls: list[int]) -> int:
+    """Helper: patch randint to fixed values and call generate_biodiversity_rating."""
+    it = iter(rolls)
+    with patch("traveller_world_detail.random.randint", side_effect=lambda a, b: next(it)):
+        return generate_biodiversity_rating(biomass, biocomplexity)
+
+
+class TestBiodiversityRating:
+    """Biodiversity rating formula: 2D − 7 + biomass + ⌈biocomplexity / 2⌉, min 0."""
+
+    def test_minimum_is_zero(self):
+        # rolls 1+1=2; bio=1, cx=1 → 2-7+1+1=−3 → clamped to 0
+        assert _roll_biodiversity(1, 1, [1, 1]) == 0
+
+    def test_biocomplexity_ceil_odd(self):
+        # cx=3 → ceil(3/2)=2; rolls 6+6=12; bio=1 → 12-7+1+2=8
+        assert _roll_biodiversity(1, 3, [6, 6]) == 8
+
+    def test_biocomplexity_ceil_even(self):
+        # cx=4 → ceil(4/2)=2 (same as cx=3)
+        # cx=6 → ceil(6/2)=3
+        assert _roll_biodiversity(1, 4, [6, 6]) == 8
+        assert _roll_biodiversity(1, 6, [6, 6]) == 9
+
+    def test_high_biomass_raises_result(self):
+        # rolls 4+3=7; bio=9, cx=9 → 7-7+9+5=14
+        assert _roll_biodiversity(9, 9, [4, 3]) == 14
+
+    def test_result_always_nonnegative_seed_sweep(self):
+        for seed in range(50):
+            random.seed(seed)
+            result = generate_biodiversity_rating(1, 1)
+            assert result >= 0
+
+    def test_high_value_encodes_as_ehex(self):
+        # Ensure biodiversity >= 10 produces a single eHex char in profile
+        from traveller_world_gen import to_hex  # pylint: disable=import-outside-toplevel
+        rating = _roll_biodiversity(9, 9, [6, 6])  # 12-7+9+5=19
+        assert len(to_hex(rating)) == 1
+
+
+# ---------------------------------------------------------------------------
+# Compatibility Rating (WBH p.130)
+# ---------------------------------------------------------------------------
+
+def _roll_compat(
+    biocomplexity: int,
+    atm: int,
+    age_gyr: float,
+    rolls: list[int],
+    has_taint: bool = False,
+) -> int:
+    """Helper: patch randint and call generate_compatibility_rating."""
+    it = iter(rolls)
+    with patch("traveller_world_detail.random.randint", side_effect=lambda a, b: next(it)):
+        return generate_compatibility_rating(biocomplexity, atm, age_gyr, has_taint)
+
+
+class TestCompatibilityRating:
+    """Compatibility rating: 2D − ⌊biocomplexity / 2⌋ + DMs, min 0."""
+
+    def test_minimum_is_zero(self):
+        # atm 12 (C) → DM-10; cx=9 → 9//2=4; rolls 1+1=2 → 2-4-10=-12 → 0
+        assert _roll_compat(9, 12, 3.0, [1, 1]) == 0
+
+    def test_biocomplexity_floor_div(self):
+        # cx=3 → 3//2=1; cx=5 → 5//2=2
+        # atm 6 (+2), age 3.0; rolls 6+6=12
+        assert _roll_compat(3, 6, 3.0, [6, 6]) == 13   # 12-1+2=13
+        assert _roll_compat(5, 6, 3.0, [6, 6]) == 12   # 12-2+2=12
+
+    def test_atm_6_dm_plus2(self):
+        # Standard atmosphere: best DM
+        assert _ATM_COMPAT_DM[6] == 2
+
+    def test_atm_0_dm_minus8(self):
+        assert _ATM_COMPAT_DM[0] == -8
+
+    def test_atm_12_insidious_dm_minus10(self):
+        assert _ATM_COMPAT_DM[12] == -10
+
+    def test_age_over_8_gyr_applies_dm(self):
+        # atm 6 (+2), cx=1 (floor 0); rolls 6+6=12
+        # age 3.0 → no age DM → 12+2=14
+        # age 9.0 → DM-2 → 12+2-2=12
+        assert _roll_compat(1, 6, 3.0, [6, 6]) == 14
+        assert _roll_compat(1, 6, 9.0, [6, 6]) == 12
+
+    def test_otherwise_tainted_applies_when_not_inherent(self):
+        # atm 13 (D) → DM-1; has_taint=True, atm not in {2,4,7,9} → extra DM-2
+        # cx=1 (floor 0); rolls 6+6=12 → 12-1-2=-3 → 9
+        without = _roll_compat(1, 13, 3.0, [6, 6], has_taint=False)
+        with_taint = _roll_compat(1, 13, 3.0, [6, 6], has_taint=True)
+        assert without == 11   # 12-1=11
+        assert with_taint == 9  # 12-1-2=9
+
+    def test_otherwise_tainted_not_double_counted_for_inherent(self):
+        # atm 7 is already DM-2 in the table; has_taint on an inherent code
+        # should NOT add another DM-2.
+        assert 7 in _INHERENT_TAINTED_CODES
+        without = _roll_compat(1, 7, 3.0, [6, 6], has_taint=False)
+        with_taint = _roll_compat(1, 7, 3.0, [6, 6], has_taint=True)
+        assert without == with_taint  # identical: DM not applied twice
+
+    def test_lifeform_profile_four_ehex_chars(self):
+        # Roll a world with known biomass/biocomplexity/biodiversity/compatibility
+        # and verify the profile string is exactly 4 eHex characters.
+        from traveller_world_gen import to_hex  # pylint: disable=import-outside-toplevel
+        bio = 5
+        cx = 3
+        div = _roll_biodiversity(bio, cx, [4, 4])   # 8-7+5+2=8
+        comp = _roll_compat(cx, 6, 3.0, [4, 4])    # 8-1+2=9
+        profile = f"{to_hex(bio)}{to_hex(cx)}{to_hex(div)}{to_hex(comp)}"
+        assert len(profile) == 4
+        for ch in profile:
+            assert ch in "0123456789ABCDEFGHIJ"
+
+    def test_biomass_zero_fields_are_none(self):
+        # The _apply_biomass() guard means no calls happen for biomass=0;
+        # verify the World fields are None by default.
+        from traveller_world_gen import World  # pylint: disable=import-outside-toplevel
+        w = World(
+            name="Test", size=6, atmosphere=6, temperature="Temperate",
+            hydrographics=5, population=0, government=0, law_level=0,
+            starport="X", tech_level=0, has_gas_giant=False,
+            gas_giant_count=0, belt_count=0, population_multiplier=0,
+            bases=[], trade_codes=[], travel_zone="Green", notes=[],
+        )
+        assert w.biodiversity_rating is None
+        assert w.compatibility_rating is None
+        assert w.lifeform_profile is None
+
+    def test_from_dict_restores_all_three_fields(self):
+        from traveller_world_gen import World  # pylint: disable=import-outside-toplevel
+        d = {
+            "name": "X", "size": 6, "atmosphere": 6, "temperature": "Temperate",
+            "hydrographics": 5, "population": 5, "government": 3, "law_level": 2,
+            "starport": "C", "tech_level": 8, "has_gas_giant": False,
+            "gas_giant_count": 0, "belt_count": 0, "population_multiplier": 5,
+            "bases": [], "trade_codes": [], "travel_zone": "Green", "notes": [],
+            "biomass_rating": 4, "biocomplexity_rating": 3,
+            "biodiversity_rating": 7, "compatibility_rating": 9,
+            "lifeform_profile": "4379",
+        }
+        w = World.from_dict(d)
+        assert w.biodiversity_rating == 7
+        assert w.compatibility_rating == 9
+        assert w.lifeform_profile == "4379"

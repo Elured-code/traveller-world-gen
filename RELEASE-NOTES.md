@@ -6,6 +6,55 @@
 
 ---
 
+## Biodiversity, Compatibility, and Lifeform Profile (Session 76, issue #104)
+
+Mainworlds with `biomass_rating ≥ 1` now receive two additional ratings and a
+four-character eHex lifeform profile. All three are computed at the end of
+`_apply_biomass()`, after biocomplexity and sophont checks, so they add exactly
+four dice rolls per inhabited mainworld with no seed disruption for uninhabited
+worlds.
+
+### Biodiversity Rating
+
+```
+max(0, 2D − 7 + Biomass + ⌈Biocomplexity / 2⌉)
+```
+
+Higher scores indicate a richer variety of distinct species. No maximum.
+
+### Compatibility Rating
+
+```
+max(0, 2D − ⌊Biocomplexity / 2⌋ + DMs)
+```
+
+DMs from WBH p.130: atmosphere code (vacuum/corrosive DM−8 through standard
+DM+2), system age > 8 Gyrs (DM−2), "otherwise tainted" atmosphere (DM−2 for a
+taint on a non-inherently-tainted code such as D or E). Full table in
+`_ATM_COMPAT_DM` in `traveller_world_detail.py`. A rating of A (10) equals full
+Terran compatibility.
+
+### Lifeform Profile
+
+Four-character eHex string `MXDC`: Biomass, Biocomplexity, Biodiversity,
+Compatibility. Displayed in the Biological detail card below Biocomplexity.
+
+### Data structures
+
+New fields on `World` (all `Optional`, `None` when biomass = 0):
+`biodiversity_rating`, `compatibility_rating`, `lifeform_profile`.
+Emitted in `World.to_dict()`, restored by `World.from_dict()`,
+added to JSON schema, and displayed in `templates/world_card.html`.
+
+New public functions in `traveller_world_detail.py`:
+`generate_biodiversity_rating(biomass, biocomplexity) -> int` and
+`generate_compatibility_rating(biocomplexity, atm, age_gyr, has_taint) -> int`.
+
+17 new tests in `TestBiodiversityRating` and `TestCompatibilityRating`
+in `tests/test_biomass.py`.
+
+---
+
 ## WorldDetail Round-Trip — Secondary World Detail Restored on Load (Session 75, issue #109)
 
 `OrbitSlot.from_dict()` now fully reconstructs the `WorldDetail` block for
