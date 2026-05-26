@@ -1,8 +1,26 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–71
+**Sessions:** 55–72
 **Tests:** 1450
+
+---
+
+## File Menu: Save As and Open JSON (Session 72, issues #75 + #107)
+
+The result header action buttons (Open in Browser, format dropdown, Save) have
+been moved to a standard **File** menu in the menu bar, and the Open in Browser
+action has been replaced with **Open JSON**.
+
+- **File > Open JSON…** — always enabled; opens a JSON file saved by the app,
+  version-checks the embedded `_app_version` tag, and re-renders the world card.
+- **File > Save As…** (`Ctrl+S` / `Cmd+S`) — enabled after generation; saves as
+  HTML or JSON (Text format removed). JSON output includes `"_app_version": "1.4.0"`.
+- Version mismatch on open shows a `QMessageBox` error dialog; system JSONs show
+  a "not yet supported" informational dialog.
+- `APP_VERSION = "1.4.0"` module-level constant in `gen-ui/app.py`.
+- `_write_html()`, `_open_in_browser()`, and `self._html_path` removed (temp
+  file was only needed for the now-gone Open in Browser action).
 
 ---
 
