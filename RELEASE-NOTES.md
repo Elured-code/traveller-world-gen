@@ -1,8 +1,24 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–72
-**Tests:** 1450
+**Sessions:** 55–73
+**Tests:** 1466
+
+---
+
+## Open System JSON (Session 73, issue #108)
+
+File > Open JSON… now fully supports system JSON files (previously showed "not
+yet supported"). The full reconstruction chain was added across three modules:
+
+- `Star.from_dict()` and `StarSystem.from_dict()` in `traveller_stellar_gen.py`
+- `OrbitSlot.from_dict()` and `SystemOrbits.from_dict()` in `traveller_orbit_gen.py`
+- `TravellerSystem.from_dict()` in `traveller_system_gen.py`
+
+On load the system renders in the two-tab view; Save As… and System Map are
+enabled. `OrbitSlot.detail` is not reconstructed — the system displays with
+`detail_attached=False` (secondary world profiles absent). 16 new tests in
+`tests/test_system_roundtrip.py`.
 
 ---
 

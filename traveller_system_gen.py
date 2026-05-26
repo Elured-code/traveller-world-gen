@@ -200,6 +200,24 @@ class TravellerSystem:
         """Serialise this system to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "TravellerSystem":
+        """Reconstruct a TravellerSystem from a dict produced by to_dict().
+
+        OrbitSlot.detail is not restored (WorldDetail reconstruction is out of
+        scope); the loaded system displays with detail_attached=False.
+        """
+        stellar = StarSystem.from_dict(d)
+        orbits = SystemOrbits.from_dict(d.get("orbits", {}), stellar)
+        mw_d = d.get("mainworld")
+        mainworld = World.from_dict(mw_d) if mw_d else None
+        return cls(
+            stellar_system=stellar,
+            system_orbits=orbits,
+            mainworld=mainworld,
+            mainworld_orbit=orbits.mainworld_orbit,
+        )
+
     def summary(self) -> str:
         """
         Human-readable full system summary.
