@@ -80,6 +80,14 @@ class HydrographicDetail:
             d["fluid_type"] = self.fluid_type
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "HydrographicDetail":
+        """Reconstruct a HydrographicDetail from a dict produced by to_dict()."""
+        return cls(
+            surface_liquid_pct=int(d["surface_liquid_pct"]),
+            fluid_type=d.get("fluid_type"),
+        )
+
 
 def generate_hydrographic_detail(
     hydrographics: int,

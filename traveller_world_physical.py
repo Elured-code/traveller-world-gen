@@ -933,6 +933,43 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     stellar_day_hours: Optional[float] = field(default=None, init=False)
     runaway_greenhouse: Optional[bool] = field(default=None, init=False)
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "WorldPhysical":
+        """Reconstruct a WorldPhysical from a dict produced by to_dict()."""
+        obj = cls(
+            composition=str(d["composition"]),
+            diameter_km=int(d["diameter_km"]),
+            density=float(d["density_g_cm3"]),
+            mass=float(d["mass_earth"]),
+            gravity=float(d["gravity_g"]),
+            escape_velocity=float(d["escape_velocity_km_s"]),
+            axial_tilt=float(d["axial_tilt_deg"]),
+            day_length=float(d["day_length_hours"]),
+            tidal_status=str(d["tidal_status"]),
+        )
+        def _fi(k):
+            return float(d[k]) if d.get(k) is not None else None
+        def _ii(k):
+            return int(d[k]) if d.get(k) is not None else None
+        obj.eccentricity_adjusted         = _fi("eccentricity_adjusted")
+        obj.mean_temperature_k            = _ii("mean_temperature_k")
+        obj.residual_seismic_stress       = _ii("residual_seismic_stress")
+        obj.tidal_seismic_stress          = _ii("tidal_seismic_stress")
+        obj.tidal_stress_factor           = _ii("tidal_stress_factor")
+        obj.total_seismic_stress          = _ii("total_seismic_stress")
+        obj.seismic_temperature_k         = _ii("seismic_temperature_k")
+        obj.tidal_amplitude_m             = _fi("tidal_amplitude_m")
+        obj.albedo                        = _fi("albedo")
+        obj.greenhouse_factor             = _fi("greenhouse_factor")
+        obj.advanced_mean_temperature_k   = _ii("advanced_mean_temperature_k")
+        obj.high_temperature_k            = _ii("high_temperature_k")
+        obj.low_temperature_k             = _ii("low_temperature_k")
+        obj.stellar_day_hours             = _fi("stellar_day_hours")
+        obj.runaway_greenhouse = (
+            bool(d["runaway_greenhouse"]) if d.get("runaway_greenhouse") is not None else None
+        )
+        return obj
+
     def to_dict(self) -> dict:  # pylint: disable=too-many-branches
         """Return physical characteristics as a JSON-compatible dict."""
         d = {

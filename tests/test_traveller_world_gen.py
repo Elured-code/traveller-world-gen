@@ -126,6 +126,9 @@ from traveller_world_gen import (
 )
 from traveller_system_gen import generate_full_system
 from traveller_world_detail import attach_detail, _ehex_to_int, generate_biomass_rating
+from traveller_hydro_detail import HydrographicDetail
+from traveller_world_physical import WorldPhysical
+from traveller_belt_physical import BeltPhysical
 
 
 # ===========================================================================
@@ -1084,13 +1087,13 @@ class TestTaintDataclass:
         t = Taint("Gas Mix", "G", 4, "Major irritant", 5, "Fluctuating")
         d = t.to_dict()
         assert set(d.keys()) == {
-            "subtype", "severity_code", "severity",
+            "subtype", "subtype_code", "severity_code", "severity",
             "persistence_code", "persistence",
         }
 
-    def test_to_dict_subtype_code_absent(self):
+    def test_to_dict_subtype_code_present(self):
         t = Taint("Gas Mix", "G", 4, "Major irritant", 5, "Fluctuating")
-        assert "subtype_code" not in t.to_dict()
+        assert t.to_dict()["subtype_code"] == "G"
 
     def test_to_dict_values_correct(self):
         t = Taint("Radioactivity", "R", 6, "Hazardous irritant", 9, "Constant")
@@ -2920,6 +2923,7 @@ class TestWorldToJsonBasic:
     def test_to_json_and_to_dict_are_consistent(self):
         w = self._make_world()
         from_json = json.loads(w.to_json())
+        from_json.pop("_app_version", None)
         from_dict = w.to_dict()
         assert from_json == from_dict
 
@@ -3552,13 +3556,211 @@ class TestWorldToJson:
         w = generate_world(name="Test")
         parsed = json.loads(w.to_json())
         required = {
-            "name", "uwp", "starport", "size", "atmosphere", "temperature",
-            "hydrographics", "population", "government", "law_level",
-            "tech_level", "has_gas_giant", "gas_giant_count", "belt_count",
-            "population_multiplier", "pbg", "bases", "trade_codes",
-            "travel_zone", "notes",
+            "_app_version", "name", "uwp", "starport", "size", "atmosphere",
+            "temperature", "hydrographics", "population", "government",
+            "law_level", "tech_level", "has_gas_giant", "gas_giant_count",
+            "belt_count", "population_multiplier", "pbg", "bases",
+            "trade_codes", "travel_zone", "notes",
         }
         assert required == set(parsed.keys())
+
+
+# ===========================================================================
+# TestWorldDetailRoundtrip
+# ===========================================================================
+
+class TestWorldDetailRoundtrip:
+    """Verify World.from_dict() restores all post-generation detail fields."""
+
+    def _base_world(self) -> World:
+        return World(
+            name="Test", size=6, atmosphere=6, temperature="Temperate",
+            hydrographics=7, population=5, government=4, law_level=3,
+            starport="B", tech_level=9,
+        )
+
+    def test_atmosphere_detail_roundtrip(self):
+        w = self._base_world()
+        taint = Taint(
+            subtype="Particulates", subtype_code="P",
+            severity_code=3, severity="Minor irritant",
+            persistence_code=5, persistence="Frequent",
+        )
+        gas = GasMixComponent(gas_name="Nitrogen", gas_code="N₂", percentage=78)
+        w.atmosphere_detail = AtmosphereDetail(
+            pressure_bar=1.013,
+            oxygen_partial_pressure=0.212,
+            scale_height_km=8.5,
+            taints=[taint],
+            gas_mix=[gas],
+        )
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.atmosphere_detail is not None
+        assert restored.atmosphere_detail.pressure_bar == pytest.approx(1.013)
+        assert restored.atmosphere_detail.oxygen_partial_pressure == pytest.approx(0.212)
+        assert restored.atmosphere_detail.scale_height_km == pytest.approx(8.5)
+        assert len(restored.atmosphere_detail.taints) == 1
+        t = restored.atmosphere_detail.taints[0]
+        assert t.subtype == "Particulates"
+        assert t.subtype_code == "P"
+        assert t.severity_code == 3
+        assert t.persistence_code == 5
+        assert len(restored.atmosphere_detail.gas_mix) == 1
+        assert restored.atmosphere_detail.gas_mix[0].gas_name == "Nitrogen"
+        assert restored.atmosphere_detail.gas_mix[0].percentage == 78
+
+    def test_insidious_hazard_roundtrip(self):
+        w = self._base_world()
+        w.atmosphere = 12
+        hazard = InsidiousHazard(
+            hazard_code="G", hazard="Gas Mix", gases=["Chlorine", "Fluorine"]
+        )
+        w.atmosphere_detail = AtmosphereDetail(
+            subtype_code="A", subtype_name="Acid Rain",
+            hazards=[hazard],
+        )
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.atmosphere_detail is not None
+        assert restored.atmosphere_detail.subtype_code == "A"
+        assert len(restored.atmosphere_detail.hazards) == 1
+        h = restored.atmosphere_detail.hazards[0]
+        assert h.hazard_code == "G"
+        assert h.gases == ["Chlorine", "Fluorine"]
+
+    def test_unusual_subtype_roundtrip(self):
+        w = self._base_world()
+        w.atmosphere = 15
+        sub = UnusualSubtype(subtype_code="5", subtype_name="High Radiation",
+                             description="Constant high radiation bombardment")
+        w.atmosphere_detail = AtmosphereDetail(unusual_subtypes=[sub])
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.atmosphere_detail is not None
+        assert len(restored.atmosphere_detail.unusual_subtypes) == 1
+        s = restored.atmosphere_detail.unusual_subtypes[0]
+        assert s.subtype_code == "5"
+        assert s.subtype_name == "High Radiation"
+
+    def test_hydrographic_detail_roundtrip(self):
+        w = self._base_world()
+        w.hydrographic_detail = HydrographicDetail(
+            surface_liquid_pct=72, fluid_type="Water"
+        )
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.hydrographic_detail is not None
+        assert restored.hydrographic_detail.surface_liquid_pct == 72
+        assert restored.hydrographic_detail.fluid_type == "Water"
+
+    def test_world_physical_roundtrip(self):
+        w = self._base_world()
+        phys = WorldPhysical(
+            composition="Rocky", diameter_km=12750, density=5.5,
+            mass=1.0, gravity=1.0, escape_velocity=11.2,
+            axial_tilt=23.5, day_length=24.0, tidal_status="none",
+        )
+        phys.mean_temperature_k = 288
+        phys.albedo = 0.306
+        phys.advanced_mean_temperature_k = 290
+        phys.high_temperature_k = 310
+        phys.low_temperature_k = 265
+        w.size_detail = phys
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.size_detail is not None
+        assert isinstance(restored.size_detail, WorldPhysical)
+        p = restored.size_detail
+        assert p.composition == "Rocky"
+        assert p.diameter_km == 12750
+        assert p.gravity == pytest.approx(1.0)
+        assert p.tidal_status == "none"
+        assert p.mean_temperature_k == 288
+        assert p.albedo == pytest.approx(0.306)
+        assert p.advanced_mean_temperature_k == 290
+        assert p.high_temperature_k == 310
+        assert p.low_temperature_k == 265
+
+    def test_belt_physical_roundtrip(self):
+        w = World(name="Belt", size=0, atmosphere=0, temperature="Temperate",
+                  hydrographics=0, population=0, government=0, law_level=0,
+                  starport="X", tech_level=0)
+        bp = BeltPhysical(
+            inner_au=2.1, outer_au=3.4,
+            m_type_pct=15, s_type_pct=60, c_type_pct=20, other_pct=5,
+            bulk=4, resource_rating=7,
+            size_1_bodies=2, size_s_bodies=5,
+            mean_temperature_k=180,
+        )
+        w.size_detail = bp
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.size_detail is not None
+        assert isinstance(restored.size_detail, BeltPhysical)
+        b = restored.size_detail
+        assert b.inner_au == pytest.approx(2.1)
+        assert b.outer_au == pytest.approx(3.4)
+        assert b.m_type_pct == 15
+        assert b.resource_rating == 7
+        assert b.mean_temperature_k == 180
+
+    def test_biomass_biocomplexity_roundtrip(self):
+        w = self._base_world()
+        w.biomass_rating = 3
+        w.biocomplexity_rating = 2
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.biomass_rating == 3
+        assert restored.biocomplexity_rating == 2
+
+    def test_sophont_flags_roundtrip(self):
+        w = self._base_world()
+        w.native_sophont = True
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.native_sophont is True
+        assert restored.extinct_sophont is False
+
+        w2 = self._base_world()
+        w2.extinct_sophont = True
+        restored2 = World.from_dict(json.loads(w2.to_json()))
+        assert restored2.native_sophont is False
+        assert restored2.extinct_sophont is True
+
+    def test_detail_absent_leaves_none(self):
+        """A world JSON with no detail sub-objects produces None for all fields."""
+        w = self._base_world()
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.atmosphere_detail is None
+        assert restored.hydrographic_detail is None
+        assert restored.size_detail is None
+        assert restored.biomass_rating is None
+        assert restored.biocomplexity_rating is None
+        assert restored.native_sophont is False
+        assert restored.extinct_sophont is False
+
+    def test_has_gas_giant_read_from_saved_boolean(self):
+        """has_gas_giant is read directly from JSON, not re-derived from gas_giant_count."""
+        w = self._base_world()
+        w.has_gas_giant = True
+        w.gas_giant_count = 0
+        d = json.loads(w.to_json())
+        assert d["has_gas_giant"] is True
+        assert d["gas_giant_count"] == 0
+        restored = World.from_dict(d)
+        assert restored.has_gas_giant is True
+        assert restored.gas_giant_count == 0
+
+    def test_has_gas_giant_false_roundtrip(self):
+        """has_gas_giant=False is preserved correctly on round-trip."""
+        w = self._base_world()
+        w.has_gas_giant = False
+        w.gas_giant_count = 0
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.has_gas_giant is False
+        assert restored.gas_giant_count == 0
+
+    def test_has_gas_giant_backward_compat_missing_key(self):
+        """Dicts without has_gas_giant fall back to gas_giant_count > 0."""
+        d = json.loads(self._base_world().to_json())
+        d.pop("has_gas_giant", None)
+        d["gas_giant_count"] = 3
+        restored = World.from_dict(d)
+        assert restored.has_gas_giant is True
+        assert restored.gas_giant_count == 3
 
 
 # ===========================================================================

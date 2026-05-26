@@ -331,6 +331,10 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
         slot.orbit_period_yr = d.get("orbit_period_yr")
         slot.eccentricity = float(d.get("eccentricity", 0.0))
         slot.inclination = float(d.get("inclination", 0.0))
+        detail_d = d.get("detail")
+        if detail_d:
+            from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+            slot.detail = WorldDetail.from_dict(detail_d)
         return slot
 
 

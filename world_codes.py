@@ -1,7 +1,11 @@
+"""Shared constants and code enumerations for the Traveller world generator."""
+
 from enum import IntEnum, StrEnum
 
 
 class StarportCode(StrEnum):
+    """UWP starport quality codes (Mongoose Traveller 2e, p.205)."""
+
     A = "A"
     B = "B"
     C = "C"
@@ -11,6 +15,8 @@ class StarportCode(StrEnum):
 
 
 class TemperatureCategory(StrEnum):
+    """World temperature categories derived from orbital position."""
+
     FROZEN    = "Frozen"
     COLD      = "Cold"
     TEMPERATE = "Temperate"
@@ -19,6 +25,8 @@ class TemperatureCategory(StrEnum):
 
 
 class TradeCode(StrEnum):
+    """Standard Traveller trade classification codes."""
+
     AG = "Ag"
     AS = "As"
     BA = "Ba"
@@ -40,12 +48,16 @@ class TradeCode(StrEnum):
 
 
 class TravelZone(StrEnum):
+    """Traveller travel zone classifications."""
+
     GREEN = "Green"
     AMBER = "Amber"
     RED   = "Red"
 
 
 class AtmosphereCode(IntEnum):
+    """UWP atmosphere codes (WBH pp.78-95)."""
+
     NONE              = 0
     TRACE             = 1
     VERY_THIN_TAINTED = 2
@@ -64,3 +76,6 @@ class AtmosphereCode(IntEnum):
     UNUSUAL           = 15
     GAS_GIANT_H       = 16
     GAS_GIANT_I       = 17
+
+
+APP_VERSION = "1.4.0"
