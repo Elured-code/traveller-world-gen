@@ -100,7 +100,27 @@ lives in the project root alongside `v1.3-new-features.txt`.
 
 ---
 
-## Step 5 — Update RELEASE-NOTES.md and docs/release-v1.4.0.md
+## Step 5 — Check and update traveller_world_schema.json
+
+Read `traveller_world_schema.json` and compare it against the current source
+code. Update it if any of the following changed:
+
+- A field was **added** to `World`, `WorldDetail`, `WorldPhysical`,
+  `BeltPhysical`, `Moon`, `OrbitSlot`, `Star`, or `SystemOrbits` and is emitted
+  by `to_dict()` but not yet in the schema.
+- A field was **removed** from `to_dict()` — remove it from the schema too.
+- A field's **type or constraints** changed (e.g. an `int` became `Optional[int]`,
+  a minimum value changed).
+
+**Do not add** fields that are only used internally and never appear in JSON
+output. Only properties emitted by `to_dict()` / `to_json()` belong in the schema.
+
+After editing the schema, add `traveller_world_schema.json` to the staging list
+in Step 7 if it changed.
+
+---
+
+## Step 6 — Update RELEASE-NOTES.md and docs/release-v1.4.0.md
 
 `RELEASE-NOTES.md` is the AI-context release log (detailed, technical).
 `docs/release-v1.4.0.md` is the human-facing release document.
@@ -116,7 +136,7 @@ For each change:
 
 ---
 
-## Step 6 — Update context files
+## Step 7 — Update context files
 
 For each context file that needs updating:
 
@@ -127,7 +147,7 @@ For each context file that needs updating:
 
 ---
 
-## Step 7 — Commit
+## Step 8 — Commit
 
 Stage only documentation and context files — never source code:
 
@@ -135,7 +155,8 @@ Stage only documentation and context files — never source code:
 git add CLAUDE.md RELEASE-NOTES.md v1.4-new-features.txt
 git add context/*.md
 git add docs/*.md
-git add .claude/commands/*.md   # if the command file itself was updated
+git add .claude/commands/*.md        # if the command file itself was updated
+git add traveller_world_schema.json  # if the schema was updated in Step 5
 ```
 
 Commit message format:
