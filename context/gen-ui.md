@@ -79,7 +79,7 @@ system_scroll.setWidget(system_widget)
 tabs.addTab(system_scroll, "System")
 # Tab 2 — Mainworld (default when mw is not None)
 mw_view = QWebEngineView()
-mw_view.setHtml(mw.to_html())
+mw_view.setHtml(self._themed_html(mw.to_html()))
 tabs.addTab(mw_view, "Mainworld")
 tabs.setCurrentIndex(1)
 ```
@@ -167,6 +167,62 @@ class SystemMapWindow(QMainWindow):
 `_render()` is called at construction and on every theme toggle. `QSvgWidget`
 is sized to exact SVG canvas dimensions (`_CANVAS_W × canvas_h`) so
 `QScrollArea` provides correct scrollbars for large maps.
+
+---
+
+## View menu — Dark Mode (Session 84, issue #81)
+
+`_build_menu_bar()` adds a **View** menu after the File menu containing a single
+checkable `QAction("Dark Mode")`:
+
+```python
+view_menu = self.menuBar().addMenu("&View")
+self._act_dark_mode = QAction("Dark Mode", self)
+self._act_dark_mode.setCheckable(True)
+self._act_dark_mode.setChecked(self._dark_mode)
+self._act_dark_mode.triggered.connect(self._on_toggle_dark_mode)
+view_menu.addAction(self._act_dark_mode)
+```
+
+`self._dark_mode: bool` is set in `__init__` by reading from
+`QSettings("traveller-world-gen", "AppWindow")`:
+
+```python
+raw = QSettings("traveller-world-gen", "AppWindow").value("dark_mode", False)
+self._dark_mode: bool = str(raw).lower() == "true"
+```
+
+`str(raw).lower() == "true"` safely handles both Python `bool` and `str`
+representations that `QSettings` may return on different platforms.
+
+### `_apply_theme()`
+
+Calls `QApplication.setStyleSheet(_CSS_DARK if self._dark_mode else _CSS)`.
+`_CSS_DARK` is a module-level constant covering `QWidget`, `QGroupBox`, and all
+named `QLabel#` selectors in the same structure as `_CSS`. The `QWidget` rule sets
+`background-color: #1e1e1e; color: #e0e0e0` to colour the main window background.
+
+### `_themed_html(html)`
+
+```python
+def _themed_html(self, html: str) -> str:
+    if self._dark_mode:
+        return html.replace('<html lang="en">', '<html lang="en" data-theme="dark">', 1)
+    return html
+```
+
+Applied at all three `setHtml()` call sites (`_show_summary` for world cards;
+`_show_system_summary` for system card and mainworld tab). The HTML templates carry
+a `[data-theme=dark]` CSS block that overrides all custom properties when the
+attribute is present, so the web views follow the in-app toggle rather than the OS
+`prefers-color-scheme` setting. The `@media(prefers-color-scheme:dark)` blocks are
+preserved for API / browser export use.
+
+### `_on_toggle_dark_mode(checked)`
+
+Saves the preference to `QSettings`, calls `_apply_theme()`, then live-refreshes
+the currently displayed result by re-calling `_show_system_summary(_current_system)`
+or `_show_summary(_current_world)` when one is set.
 
 ---
 

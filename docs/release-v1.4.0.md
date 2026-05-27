@@ -4,6 +4,15 @@
 
 ---
 
+## gen-ui Dark Mode (Session 84, issue #81)
+
+The **View › Dark Mode** menu item toggles a dark colour scheme for all native Qt
+controls (main window, group boxes, labels, badges). The preference persists across
+launches via `QSettings`. HTML world and system cards follow the in-app toggle
+rather than the OS dark-mode setting, so the card and native UI always match.
+
+---
+
 ## System Card Improvements (Session 83)
 
 ### MAO and HZ Orbit# in Stars Table (issue #115)

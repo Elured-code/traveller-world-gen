@@ -37,7 +37,7 @@ import tempfile
 # Allow importing from the project root when run directly from any directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import Qt, QThread, QUrl, Signal  # noqa: E402
+from PySide6.QtCore import Qt, QSettings, QThread, QUrl, Signal  # noqa: E402
 from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut  # noqa: E402
 from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
@@ -123,6 +123,36 @@ QLabel#table-cell   { font-size: 10pt; }
 QLabel#table-mw     { font-size: 10pt; font-weight: bold; }
 QLabel#table-dim    { font-size: 10pt; color: #9BA3AD; }
 QLabel#table-moon   { font-size: 9pt; color: #888888; }
+QPushButton#suggested-action { background-color: #3584e4; color: white; }
+"""
+
+_CSS_DARK = """
+QWidget { background-color: #1e1e1e; color: #e0e0e0; }
+QGroupBox { background-color: #2b2b2b; color: #e0e0e0; }
+QLabel#zone-green   { background-color: #27ae60; color: white;
+                      padding: 2px 10px; border-radius: 4px; }
+QLabel#zone-amber   { background-color: #e67e22; color: white;
+                      padding: 2px 10px; border-radius: 4px; }
+QLabel#zone-red     { background-color: #c0392b; color: white;
+                      padding: 2px 10px; border-radius: 4px; }
+QLabel#uwp-label    { font-family: monospace; font-size: 18pt; font-weight: bold; }
+QLabel#world-name   { font-size: 16pt; font-weight: bold; }
+QLabel#error-label  { color: #ff6b6b; font-weight: bold; }
+QLabel#hint-label   { font-style: italic; }
+QLabel#dim-label    { color: #aaaaaa; }
+QLabel#stat-value   { font-size: 13pt; font-weight: bold; }
+QLabel#stat-sub     { font-size: 9pt; }
+QLabel#section-label { font-size: 9pt; font-weight: bold; }
+QLabel#row-label    { font-size: 10pt; }
+QLabel#row-value    { font-size: 10pt; font-weight: bold; }
+QLabel#danger-value { font-size: 10pt; font-weight: bold; color: #ff6b6b; }
+QLabel#tc-badge     { background-color: #3d1f17; color: #f5a78a;
+                      padding: 2px 8px; border-radius: 4px; font-size: 10pt; }
+QLabel#table-header { font-size: 9pt; font-weight: bold; }
+QLabel#table-cell   { font-size: 10pt; color: #e0e0e0; }
+QLabel#table-mw     { font-size: 10pt; font-weight: bold; }
+QLabel#table-dim    { font-size: 10pt; color: #6b7280; }
+QLabel#table-moon   { font-size: 9pt; color: #aaaaaa; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 """
 
@@ -316,9 +346,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._pending_full_system: bool = False
         self._pending_attach_detail: bool = False
         self._pending_seed: int = 0
-        app = QApplication.instance()
-        if isinstance(app, QApplication):
-            app.setStyleSheet(_CSS)
+        raw = QSettings("traveller-world-gen", "AppWindow").value("dark_mode", False)
+        self._dark_mode: bool = str(raw).lower() == "true"
+        self._apply_theme()
         self._build_menu_bar()
         self._build_ui()
         self._setup_shortcuts()
@@ -328,6 +358,25 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             QApplication.instance().quit  # type: ignore[union-attr]
         )
         QShortcut(QKeySequence.StandardKey.Close, self).activated.connect(self.close)
+
+    def _apply_theme(self) -> None:
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            app.setStyleSheet(_CSS_DARK if self._dark_mode else _CSS)
+
+    def _themed_html(self, html: str) -> str:
+        if self._dark_mode:
+            return html.replace('<html lang="en">', '<html lang="en" data-theme="dark">', 1)
+        return html
+
+    def _on_toggle_dark_mode(self, checked: bool) -> None:
+        self._dark_mode = checked
+        self._apply_theme()
+        QSettings("traveller-world-gen", "AppWindow").setValue("dark_mode", checked)
+        if self._current_system is not None:
+            self._show_system_summary(self._current_system)
+        elif self._current_world is not None:
+            self._show_summary(self._current_world)
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -780,6 +829,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._act_save.triggered.connect(self._on_save_clicked)
         file_menu.addAction(self._act_save)
 
+        view_menu = self.menuBar().addMenu("&View")
+        self._act_dark_mode = QAction("Dark Mode", self)
+        self._act_dark_mode.setCheckable(True)
+        self._act_dark_mode.setChecked(self._dark_mode)
+        self._act_dark_mode.triggered.connect(self._on_toggle_dark_mode)
+        view_menu.addAction(self._act_dark_mode)
+
     def _on_open_json(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Open JSON", "", "JSON (*.json)"
@@ -948,7 +1004,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.addWidget(self._build_summary_header(world))
         self._status_layout.addWidget(_make_hsep(margin_v=6))
         view = QWebEngineView()
-        view.setHtml(world.to_html())  # type: ignore[attr-defined]
+        view.setHtml(self._themed_html(world.to_html()))  # type: ignore[attr-defined]
         view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -969,9 +1025,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         # Tab 1 — System: HTML view via system.to_html()
         system_view = QWebEngineView()
-        system_view.setHtml(
+        system_view.setHtml(self._themed_html(
             system.to_html(detail_attached=self._detail_attached)  # type: ignore[attr-defined]
-        )
+        ))
         system_view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -980,7 +1036,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         # Tab 2 — Mainworld: world card HTML view
         if mw is not None:
             mw_view = QWebEngineView()
-            mw_view.setHtml(mw.to_html())  # type: ignore[attr-defined]
+            mw_view.setHtml(self._themed_html(mw.to_html()))  # type: ignore[attr-defined]
             mw_view.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
             )
