@@ -91,6 +91,42 @@ SYSTEM MAP — WORLD MARKER POSITION
   cluster at the tip of short arcs and sit closer to the visual centre of the
   diagram, making multi-world systems easier to read at a glance.
 
+HABITABILITY RATING (WBH p.131)
+---------------------------------
+- Every mainworld now receives a Habitability Rating — a score from 0 to 10+
+  that indicates how suitable the world is for unprotected human habitation
+  without survival gear.
+
+- The rating is deterministic (no dice roll): it starts at 10 and applies
+  modifiers for world size, atmosphere code, hydrographics, solar tidal lock,
+  surface temperature, and surface gravity.
+
+- Temperature modifiers use the physics-based advanced temperature figures when
+  Advanced temperature is enabled; they fall back to the basic temperature
+  category (Frozen, Cold, Hot, Boiling) otherwise.
+
+- The rating appears in a new Habitability section of the world card, with a
+  descriptive label:
+
+    0         Actively hostile world
+    1–2       Barely habitable world
+    3–5       Marginally survivable world
+    6–7       Regionally habitable world
+    8–9       Suitable for human habitation
+    10 or higher  Terra-equivalent garden world
+
+- Terra itself scores exactly 10. A world with a thin oxygen atmosphere, mild
+  temperature, and Earthlike gravity might score 8 or 9.
+
+SEISMIC HEATING — ABSORBED INTO TEMPERATURE DISPLAY
+------------------------------------------------------
+- The former "Seismic temperature" row in the world card has been removed.
+  Tidal/seismic heating is now folded directly into the Advanced mean
+  temperature, High temperature, and Low temperature values shown on the card.
+  If seismic heating raises any of those figures, the new higher value is what
+  appears — there is no longer a separate "what if you add seismic heating"
+  display field.
+
 BUG FIXES
 ---------
 - Fixed: `has_gas_giant` flag was incorrectly re-derived from `gas_giant_count`
@@ -98,6 +134,11 @@ BUG FIXES
   generated before the count was tracked, or an edited JSON), the flag would
   be wrong. The saved boolean is now read directly; `gas_giant_count` is used
   only as a fallback for legacy files that predate the explicit field.
+
+- Fixed: worlds at extreme orbital distances (very cold, near absolute zero)
+  could display a mean temperature of 3 K due to unchecked formula extrapolation.
+  The WBH footnote specifies that results below 10 K should be replaced with a
+  random 6–11 K roll. This is now correctly implemented.
 
 - Fixed (Windows binary): the System tab and any web-view panel showed a blank
   white page. QtWebEngineProcess.exe and the WebEngine resource files (.pak,
