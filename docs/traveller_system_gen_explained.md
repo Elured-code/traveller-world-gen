@@ -145,3 +145,26 @@ TravellerSystem(stellar, orbits, mainworld, mainworld_orbit)
         ▼
 attach_detail(system, ...)        →  fills OrbitSlot.detail for each secondary world
 ```
+
+---
+
+## `to_html()` — system card (Session 53, issues #114, #115)
+
+`TravellerSystem.to_html()` renders the `system_card.html` Jinja2 template. It passes
+two main data structures:
+
+- **`star_rows`** — one dict per star: `designation`, `classification`, `mass`,
+  `temperature`, `luminosity`, `orbit`, plus four new fields added in Session 83
+  (issue #115):
+  - `mao` — Minimum Armistice Orbit (Orbit# at stellar separation / 3), or `"—"` for
+    the primary
+  - `hz_inner` / `hzco` / `hz_outer` — inner edge, centre, and outer edge of the
+    Habitable Zone, formatted to 2 decimal places, or `"—"` for stars without a
+    computed HZ
+- **`orbit_rows`** — one dict per orbit slot, with inline `moons` list
+
+The system card shows **stellar data and orbital survey only**. Mainworld detail
+(UWP stats, atmosphere, hydrographic, biological, habitability) appears exclusively
+on the Mainworld tab via `World.to_html()` — the `mw_data` construction block and
+the corresponding HTML section were removed in Session 83 (issue #114) to eliminate
+duplication between the System tab and Mainworld tab in gen-ui.
