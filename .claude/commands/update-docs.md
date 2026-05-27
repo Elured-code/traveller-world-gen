@@ -115,8 +115,51 @@ code. Update it if any of the following changed:
 **Do not add** fields that are only used internally and never appear in JSON
 output. Only properties emitted by `to_dict()` / `to_json()` belong in the schema.
 
-After editing the schema, add `traveller_world_schema.json` to the staging list
-in Step 7 if it changed.
+### If the schema changed — create a maintenance release
+
+When `traveller_world_schema.json` is modified, a maintenance release is
+required (schema changes are a contract change for API consumers).
+
+**5a. Determine the new version.**
+
+Read the current `APP_VERSION` from `world_codes.py` (line ~81). Increment the
+**patch** digit: `1.4.0` → `1.4.1`, `1.4.1` → `1.4.2`, etc.
+
+**5b. Bump `APP_VERSION` in `world_codes.py`.**
+
+Edit the single `APP_VERSION = "X.Y.Z"` line with the new version string.
+
+**5c. Create `docs/release-vX.Y.Z.md`.**
+
+Copy the structure from the previous maintenance release file (e.g.
+`docs/release-v1.4.0.md`) and write a short release note listing:
+- The schema fields added, removed, or changed
+- The test count (from `pytest tests/ -q`)
+- A "Schema changes" table in the same format used in `docs/release-v1.4.0.md`
+
+**5d. Commit the version bump as a separate commit** (this is the only case
+where `/update-docs` commits source code):
+
+```bash
+git add world_codes.py traveller_world_schema.json docs/release-vX.Y.Z.md
+git commit -m "chore: bump version to vX.Y.Z — schema update"
+```
+
+**5e. Tag and publish the release:**
+
+```bash
+git tag vX.Y.Z
+git push origin v1.4.0       # push the branch
+git push origin vX.Y.Z       # push the tag
+gh release create vX.Y.Z \
+    --title "vX.Y.Z — Schema update" \
+    --notes "$(cat docs/release-vX.Y.Z.md)" \
+    --repo Elured-code/traveller-world-gen
+```
+
+After completing steps 5a–5e, continue with Step 6 (the docs commit will
+include the updated `docs/release-vX.Y.Z.md` if it was not already staged).
+If the schema did **not** change, skip 5a–5e entirely.
 
 ---
 
