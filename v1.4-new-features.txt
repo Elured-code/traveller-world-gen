@@ -1,6 +1,18 @@
 Traveller World & System Generator — What's New in v1.4.0
 ==========================================================
 
+GEN-UI — DARK MODE
+-------------------
+The app now has a dark mode. Toggle it via View > Dark Mode in the menu bar. The
+setting is saved and restored the next time the app starts.
+
+- Native Qt controls (window background, group boxes, labels, and badges) switch
+  to a dark palette.
+- The world and system HTML cards also switch to dark colours, matching the app
+  rather than following the operating system setting.
+- Toggling while a result is displayed updates the card immediately — no need to
+  regenerate.
+
 BIOLOGIC ATMOSPHERE TAINT (WBH p.83)
 --------------------------------------
 - Tainted atmospheres (codes 2, 4, 7, 9) can now produce a Biologic taint

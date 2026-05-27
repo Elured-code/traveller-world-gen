@@ -1,8 +1,26 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–83
+**Sessions:** 55–84
 **Tests:** 1650
+
+---
+
+## gen-ui Dark Mode (Session 84, issue #81)
+
+The desktop UI now supports a **dark mode** toggled via **View › Dark Mode**.
+
+- `_CSS_DARK` stylesheet covers `QWidget` (main window background), `QGroupBox`,
+  and all named `QLabel#` selectors with dark equivalents.
+- Preference persisted across sessions via `QSettings("traveller-world-gen",
+  "AppWindow")` key `dark_mode`.
+- `_themed_html()` injects `data-theme="dark"` on the `<html>` tag at all three
+  `setHtml()` call sites (world card, system card, mainworld tab), so HTML cards
+  follow the in-app toggle rather than the OS `prefers-color-scheme` setting.
+  `@media(prefers-color-scheme:dark)` blocks are preserved for API / browser export.
+- `[data-theme=dark]` CSS blocks added to `system_card.html` (shorthand variables)
+  and `world_card.html` (semantic variables).
+- Toggling while a result is displayed live-refreshes the card without regenerating.
 
 ---
 
