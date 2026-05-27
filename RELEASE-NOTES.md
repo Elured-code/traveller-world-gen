@@ -1,8 +1,65 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–82
-**Tests:** 1561
+**Sessions:** 55–83
+**Tests:** 1650
+
+---
+
+## System Card — MAO and HZ Columns (Session 83, issue #115)
+
+The Stars table in the system HTML card now shows two additional columns:
+
+- **MAO** — Minimum Armistice Orbit (Orbit# at stellar separation / 3). Populated
+  from `SystemOrbits.star_mao`; shown as a 2-decimal-places Orbit# value. The
+  primary star has no MAO and shows `—`.
+- **HZ Orbit#** — inner edge, centre (HZCO), and outer edge of the star's
+  Habitable Zone from `SystemOrbits.star_hz_inner`, `star_hzco`, `star_hz_outer`.
+  Formatted as `inner – hzco – outer`; stars without an HZ show `—`.
+
+`star_rows` in `TravellerSystem.to_html()` gains `mao`, `hz_inner`, `hzco`, and
+`hz_outer` keys. The Stars table header gains `<th>MAO</th><th>HZ Orbit#</th>`.
+No new tests needed — these fields are pre-computed at orbit-gen time and are
+already covered by orbit-gen tests.
+
+---
+
+## System Card — Mainworld Detail Removed (Session 83, issue #114)
+
+The `mw_data` construction block (~70 lines) has been removed from
+`TravellerSystem.to_html()`, and the corresponding mainworld HTML section
+(~200+ lines covering UWP stats, atmosphere, hydrographic, biological,
+habitability, and notes) has been removed from `system_card.html`.
+
+Mainworld detail now appears exclusively on the Mainworld tab in gen-ui via
+`World.to_html()`. The System tab shows stellar data and orbital survey only.
+Unused imports (`BeltPhysical`, `WorldPhysical`, `TIDAL_STATUS_LABELS`,
+`BIOCOMPLEXITY_DESC`, `GOVERNMENT_NAMES`, `HYDROGRAPHIC_NAMES`,
+`STARPORT_QUALITY_LABEL`, `format_atmosphere_profile`) were removed from
+`traveller_system_gen.py`. No test changes needed.
+
+---
+
+## Ammonia Fluid Type Bug Fix (Session 83, issue #116)
+
+`_fluid_type()` in `traveller_hydro_detail.py` incorrectly returned `"Ammonia"`
+for Cold worlds with standard breathable atmospheres (codes 0–9). The WBH
+specifies that ammonia oceans only form under exotic, corrosive, insidious, or
+unusual atmospheres (codes 10–15). Standard atmospheres at Cold temperatures
+should retain Water.
+
+Fix: added `_AMMONIA_ELIGIBLE_ATMS: frozenset[int] = frozenset({10, 11, 12, 13,
+14, 15})` and a guard in `_fluid_type()`:
+
+```python
+if temperature == "Cold" and atmosphere not in _AMMONIA_ELIGIBLE_ATMS:
+    return "Water"
+```
+
+6 new tests replace the previous single `test_cold_is_ammonia` test: separate
+parametrised checks over standard atmospheres (0–9 → Water) and exotic
+atmospheres (10–15 → Ammonia), plus integration tests covering both cases via
+`generate_hydrographic_detail()`.
 
 ---
 

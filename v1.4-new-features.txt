@@ -118,6 +118,25 @@ HABITABILITY RATING (WBH p.131)
 - Terra itself scores exactly 10. A world with a thin oxygen atmosphere, mild
   temperature, and Earthlike gravity might score 8 or 9.
 
+SYSTEM CARD — HABITABLE ZONE AND MINIMUM ARMISTICE ORBIT COLUMNS
+------------------------------------------------------------------
+- The Stars table in the System tab now shows two additional columns for each
+  star: MAO (Minimum Armistice Orbit) and HZ Orbit# range.
+- MAO is the minimum safe orbit for a treaty world — roughly one-third of the
+  distance to the next star. It is shown as an Orbit# value to 2 decimal places.
+  The primary star has no MAO and shows a dash.
+- HZ Orbit# shows the inner edge, centre, and outer edge of the star's Habitable
+  Zone as three Orbit# values separated by dashes, e.g. "4.50 – 5.00 – 5.50".
+  Stars without a computed Habitable Zone show a dash.
+
+SYSTEM TAB — MAINWORLD DETAIL REMOVED
+--------------------------------------
+- The System tab no longer duplicates the mainworld's UWP statistics,
+  atmosphere, hydrographic, biological, habitability, and notes sections.
+  Those details appear only on the Mainworld tab, which shows them via the
+  full world card. The System tab now shows stellar data and the orbital
+  survey table only.
+
 SEISMIC HEATING — ABSORBED INTO TEMPERATURE DISPLAY
 ------------------------------------------------------
 - The former "Seismic temperature" row in the world card has been removed.
@@ -129,6 +148,12 @@ SEISMIC HEATING — ABSORBED INTO TEMPERATURE DISPLAY
 
 BUG FIXES
 ---------
+- Fixed: Cold-temperature worlds with standard breathable atmospheres (vacuum,
+  trace, thin, standard, dense, etc.) were incorrectly shown as having an
+  Ammonia ocean instead of Water. Ammonia oceans only form in chemically exotic
+  environments — worlds with exotic, corrosive, insidious, or unusual atmospheres
+  (codes A–F). All other Cold worlds now correctly display Water as the surface fluid.
+
 - Fixed: `has_gas_giant` flag was incorrectly re-derived from `gas_giant_count`
   when loading a world JSON. If the two values ever differed (e.g., a world
   generated before the count was tracked, or an edited JSON), the flag would

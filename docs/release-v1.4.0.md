@@ -1,6 +1,29 @@
 # Traveller World Generator — v1.4.0 Release Notes
 
-**1644 tests pass. Pylint 10.00/10.**
+**1650 tests pass. Pylint 10.00/10.**
+
+---
+
+## System Card Improvements (Session 83)
+
+### MAO and HZ Orbit# in Stars Table (issue #115)
+
+The Stars table now shows the **Minimum Armistice Orbit** (MAO) and **Habitable
+Zone Orbit#** (inner – centre – outer) for each star. These values are pre-computed
+at orbit-generation time and are now surfaced directly in the system HTML output.
+
+### Mainworld Detail Removed from System Tab (issue #114)
+
+The System tab no longer duplicates the mainworld's full world card content. UWP
+statistics, atmosphere, hydrographic, biological, habitability, and notes now appear
+exclusively on the Mainworld tab.
+
+### Ammonia Fluid Type Fix (issue #116)
+
+Cold worlds with standard breathable atmospheres no longer incorrectly display
+Ammonia as the surface fluid. Ammonia oceans are now restricted to worlds with
+exotic, corrosive, insidious, or unusual atmosphere codes (10–15), matching the
+WBH pp.91–92 specification.
 
 ---
 
