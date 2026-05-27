@@ -6,6 +6,7 @@ from traveller_hydro_detail import (
     generate_hydrographic_detail,
     _HYDRO_PCT_RANGE,
     _FLUID_TYPE_BY_TEMP,
+    _AMMONIA_ELIGIBLE_ATMS,
     _fluid_type,
 )
 
@@ -181,8 +182,15 @@ class TestFluidTypeHelper:
     def test_boiling_is_sulfuric_acid(self):
         assert _fluid_type(0, "Boiling") == "Sulfuric Acid"
 
-    def test_cold_is_ammonia(self):
-        assert _fluid_type(0, "Cold") == "Ammonia"
+    def test_cold_standard_atm_is_water(self):
+        # Standard breathable atmosphere (code 0–9) + Cold → Water, not Ammonia
+        for atm in range(10):
+            assert _fluid_type(atm, "Cold") == "Water", f"atm={atm}"
+
+    def test_cold_exotic_atm_is_ammonia(self):
+        # Exotic/corrosive/insidious atmospheres (10–15) + Cold → Ammonia
+        for atm in _AMMONIA_ELIGIBLE_ATMS:
+            assert _fluid_type(atm, "Cold") == "Ammonia", f"atm={atm}"
 
     def test_frozen_is_liquid_hydrocarbons(self):
         assert _fluid_type(0, "Frozen") == "Liquid Hydrocarbons"
@@ -221,8 +229,15 @@ class TestFluidTypeIntegration:
         assert result is not None
         assert result.fluid_type == "Water"
 
-    def test_fluid_type_ammonia_for_cold(self):
-        result = generate_hydrographic_detail(5, 5, temperature="Cold")
+    def test_fluid_type_water_for_cold_standard_atm(self):
+        # Standard atmosphere (code 5) + Cold → Water (not Ammonia)
+        result = generate_hydrographic_detail(5, 5, atmosphere=5, temperature="Cold")
+        assert result is not None
+        assert result.fluid_type == "Water"
+
+    def test_fluid_type_ammonia_for_cold_exotic_atm(self):
+        # Exotic atmosphere (code 10) + Cold → Ammonia
+        result = generate_hydrographic_detail(5, 5, atmosphere=10, temperature="Cold")
         assert result is not None
         assert result.fluid_type == "Ammonia"
 
@@ -247,7 +262,8 @@ class TestFluidTypeIntegration:
         assert result.fluid_type == "Water"  # default temperature="Temperate"
 
     def test_to_dict_includes_fluid_type_when_set(self):
-        result = generate_hydrographic_detail(5, 5, temperature="Cold")
+        # Use exotic atmosphere so fluid_type is Ammonia and present in dict
+        result = generate_hydrographic_detail(5, 5, atmosphere=10, temperature="Cold")
         assert result is not None
         d = result.to_dict()
         assert "fluid_type" in d

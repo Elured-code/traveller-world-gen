@@ -58,11 +58,19 @@ _FLUID_TYPE_BY_TEMP: dict[str, str] = {
 # Atmosphere codes with no surface liquid (gas giant / hydrogen atmospheres).
 _NO_SURFACE_LIQUID_ATMS: frozenset[int] = frozenset({16, 17})
 
+# Atmosphere codes where Cold → Ammonia applies (WBH pp.91-92).
+# Only exotic/corrosive/insidious/unusual atmospheres (10–15) can support an
+# ammonia ocean.  Standard breathable atmospheres (0–9) retain Water even at
+# Cold temperatures.
+_AMMONIA_ELIGIBLE_ATMS: frozenset[int] = frozenset({10, 11, 12, 13, 14, 15})
+
 
 def _fluid_type(atmosphere: int, temperature: str) -> Optional[str]:
     """Return the primary fluid type (WBH pp.91-92) or None for dry/gas worlds."""
     if atmosphere in _NO_SURFACE_LIQUID_ATMS:
         return None
+    if temperature == "Cold" and atmosphere not in _AMMONIA_ELIGIBLE_ATMS:
+        return "Water"
     return _FLUID_TYPE_BY_TEMP.get(temperature)
 
 
