@@ -304,6 +304,11 @@ apply_moon_tidal_effects(
 ) -> None
 # Re-runs tidal lock check with moon data (skipped when moons is empty).
 # Always computes seismic stress (RSS + Tidal SS + TSF) and tidal amplitude.
+# Sets seismic_temperature_k (⁴√(T_mean⁴ + TSS⁴)) when mean_temperature_k is set
+# and the rounded value changes.
+# Updates advanced_mean_temperature_k, high_temperature_k, and low_temperature_k
+# in-place using ⁴√(T⁴ + TSS⁴) when those fields are set and the rounded value
+# changes (Session 79).
 # Returns immediately (no-op) when physical is not a WorldPhysical instance (BeltPhysical guard).
 # Mutates physical in-place. Must be called AFTER generate_moons() completes.
 # Call sites: function_app._apply_mainworld_moon_tidal(), gen-ui _finish_system_generation().

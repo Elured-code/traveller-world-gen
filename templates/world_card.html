@@ -370,6 +370,13 @@
   </div>
   {% endif %}
 
+  {% if ctx.habitability_str is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Habitability</p>
+    {{ drow("Habitability rating", ctx.habitability_str) }}
+  </div>
+  {% endif %}
+
   {% if ctx.biomass_rating is not none and ctx.biomass_rating > 0 %}
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Biological detail</p>

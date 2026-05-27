@@ -840,11 +840,32 @@ class TestComputeMeanTemperature:
         # hz_deviation=-2.0 (DM+6), atm=11 (DM+6) → roll=7+6+6=19 → 388+(19-12)*50=738K
         assert _compute_mean_temperature(-2.0, 11) == 738
 
-    def test_minimum_temperature_3k(self):
-        """Temperature is clamped to 3K minimum for extreme outer orbits."""
-        # hz_deviation=20 → DM=-4-round(19*2)=-42, roll=7-42=-35
-        # → 178+(-35)*5=178-175=3K → max(3,3)=3K
-        assert _compute_mean_temperature(20.0, 0) == 3
+    def test_below_10k_triggers_1d5_roll(self):
+        """When extrapolated result < 10K (modified roll ≤ -34), returns 1D+5."""
+        # hz_deviation=20 → orbit_dm=-42, roll=7-42=-35 → T=178+(-35)*5=3K < 10K
+        with patch("traveller_world_physical.random.randint", return_value=4) as mock_roll:
+            result = _compute_mean_temperature(20.0, 0)
+        mock_roll.assert_called_once_with(1, 6)
+        assert result == 9  # 4 + 5
+
+    def test_1d5_result_range(self):
+        """1D+5 produces values 6–11K for die results 1–6."""
+        for die in range(1, 7):
+            with patch("traveller_world_physical.random.randint", return_value=die):
+                result = _compute_mean_temperature(20.0, 0)
+            assert result == die + 5
+
+    def test_threshold_roll_minus33_uses_extrapolation(self):
+        """Modified roll of -33 gives 13K via extrapolation, not 1D+5."""
+        # Need orbit_dm + atm_dm = -40 so that 7 + (-40) = -33
+        # hz_deviation=21 → orbit_dm = -4 - round(20*2) = -44
+        # atm=10 → DM+2 → modified_roll = 7 - 44 + 2 = -35 (too low)
+        # hz_deviation=19 → orbit_dm = -4 - round(18*2) = -40
+        # atm=0 → DM=0 → modified_roll = 7 - 40 = -33 → T = 178 + (-33)*5 = 13K
+        with patch("traveller_world_physical.random.randint") as mock_roll:
+            result = _compute_mean_temperature(19.0, 0)
+        mock_roll.assert_not_called()
+        assert result == 13  # 178 + (-33)*5 = 13K, no 1D+5
 
     def test_generate_world_physical_sets_mean_temperature(self):
         """mean_temperature_k is set when hz_deviation is provided."""
@@ -1048,6 +1069,56 @@ class TestApplySeismicStress:
         _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.0, 8766.0)
         assert wp.tidal_seismic_stress == 0
         assert "tidal_seismic_stress" not in wp.to_dict()
+
+    def test_advanced_mean_temperature_updated_in_place_by_seismic(self):
+        """_apply_seismic_stress() updates advanced_mean_temperature_k in-place
+        using ⁴√(T⁴ + TSS⁴) when tss > 0 and the rounded value changes."""
+        wp = self._make_wp(mean_temp=50)
+        wp.advanced_mean_temperature_k = 50
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        tss = wp.total_seismic_stress or 0
+        if tss > 0:
+            expected = max(50, round((50 ** 4 + tss ** 4) ** 0.25))
+            assert wp.advanced_mean_temperature_k == expected
+
+    def test_advanced_mean_temperature_unchanged_when_none(self):
+        """advanced_mean_temperature_k stays None when not set before seismic stress."""
+        wp = self._make_wp(mean_temp=50)
+        # advanced_mean_temperature_k left at None (default)
+        _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.1, 8766.0)
+        assert wp.advanced_mean_temperature_k is None
+
+    def test_high_low_temperature_updated_with_advanced_mean(self):
+        """high_temperature_k and low_temperature_k are also updated when
+        advanced_mean_temperature_k is adjusted for seismic heating."""
+        wp = self._make_wp(mean_temp=50)
+        wp.advanced_mean_temperature_k = 50
+        wp.high_temperature_k = 60
+        wp.low_temperature_k = 40
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        tss = wp.total_seismic_stress or 0
+        if tss > 0 and wp.advanced_mean_temperature_k != 50:
+            assert wp.high_temperature_k >= 60
+            assert wp.low_temperature_k >= 40
+            assert wp.high_temperature_k == max(60, round((60 ** 4 + tss ** 4) ** 0.25))
+            assert wp.low_temperature_k  == max(40, round((40 ** 4 + tss ** 4) ** 0.25))
+
+    def test_advanced_mean_temperature_roundtrips_from_dict_after_seismic(self):
+        """advanced_mean_temperature_k (after seismic adjustment) survives round-trip."""
+        wp = self._make_wp(mean_temp=50)
+        wp.advanced_mean_temperature_k = 50
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        d = wp.to_dict()
+        wp2 = WorldPhysical.from_dict(d)
+        assert wp2.advanced_mean_temperature_k == wp.advanced_mean_temperature_k
+
+    def test_advanced_mean_temperature_no_less_than_original_after_seismic(self):
+        """Seismic heating never reduces advanced_mean_temperature_k."""
+        original = 50
+        wp = self._make_wp(mean_temp=original)
+        wp.advanced_mean_temperature_k = original
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        assert wp.advanced_mean_temperature_k >= original
 
 
 # ---------------------------------------------------------------------------

@@ -11,23 +11,24 @@ Traveller has hundreds of codes, and almost every code needs a human-readable la
 for display. Rather than defining the same label in the world generator, the HTML
 templates, the GUI, and the API separately, all label data lives in `tables.py`.
 
-The file exports pure lookup dictionaries. No functions, no classes, no side effects —
-just data.
+The file exports pure lookup dictionaries and one small helper function. No classes,
+no side effects — just data and display logic.
 
 ---
 
 ## What is stored here
 
-| Constant | Maps | Example |
+| Constant / Function | Maps / Returns | Example |
 |----------|------|---------|
 | `SIZE_DIAMETER_LABEL` | Size code → diameter string | `8 → "12,800"` |
 | `SIZE_GRAVITY_LABEL` | Size code → gravity string | `8 → "1.00G"` |
 | `POPULATION_RANGE` | Population code → range description | `9 → "Billions"` |
 | `TRADE_CODE_FULL` | Trade code → full label | `"Ag" → "Ag — Agricultural"` |
-| `BASE_FULL` | Base code → full name | `"N" → "Naval Base"` |
-| `ZONE_CSS_CLASS` | Travel zone → CSS class | `"Amber" → "amber-zone"` |
-| `TIDAL_STATUS_LABELS` | Tidal lock status string → display label | `"1:1_lock" → "Tidally locked"` |
-| `BIOCOMPLEXITY_DESC` | Biocomplexity value → description | `0 → "Microbial only"` |
+| `BASE_FULL` | Base code → full name | `"N" → "N — Naval"` |
+| `ZONE_CSS_CLASS` | Travel zone → CSS class | `"Amber" → "zone-amber"` |
+| `TIDAL_STATUS_LABELS` | Tidal lock status string → display label | `"1:1_lock" → "1:1 tidal lock (synchronous)"` |
+| `BIOCOMPLEXITY_DESC` | Biocomplexity rating → description | `9 → "Extant or extinct sophonts"` |
+| `habitability_description(rating)` | Habitability rating → descriptive label | `10 → "Terra-equivalent garden world"` |
 
 ---
 

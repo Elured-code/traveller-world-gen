@@ -159,6 +159,9 @@ created. These use `field(default=..., init=False)`:
     biodiversity_rating:  Optional[int] = field(default=None, init=False)
     compatibility_rating: Optional[int] = field(default=None, init=False)
     lifeform_profile:     Optional[str] = field(default=None, init=False)
+
+    # Set by attach_detail() → _apply_habitability()
+    habitability_rating:  Optional[int] = field(default=None, init=False)
 ```
 
 `init=False` means the field is **not** a parameter to `__init__` — it starts at its
@@ -392,6 +395,24 @@ Compatibility DMs are drawn from `_ATM_COMPAT_DM` (atmosphere code → DM) in
 
 All three fields are `None` when `biomass_rating` is 0 (no life present).
 
+### Habitability rating
+
+After biological detail, `_apply_habitability()` computes a **Habitability Rating**
+(WBH p.131) for every mainworld regardless of whether it has life:
+
+| Base | 10 |
+|------|----|
+| Size DM | −(6 − size) for very small or very large worlds |
+| Atmosphere DM | lookup by atmosphere code; −12 for corrosive/insidious |
+| Hydrographics DM | 0 for 30–60%, −2 for dry or waterworld extremes, −4 for none |
+| Tidal lock DM | −2 for 1:1 or 3:2 lock |
+| Temperature DM | up to −4 for too hot/cold mean; −2 for extreme high or low seasonal temps |
+| Gravity DM | −4 to +1 depending on G; −6 for > 2G |
+
+Result is clamped to a minimum of 0. The rating is stored on both `World.habitability_rating`
+and `WorldDetail.habitability_rating`, and displayed on the world card with a
+descriptive label from `tables.habitability_description()`.
+
 ---
 
 ## The random seed
@@ -454,12 +475,13 @@ random seed (optional)
                    │
                    ▼
           attach_detail()   ← from traveller_world_detail.py
-          ├─ generate_world_physical()  → World.size_detail (WorldPhysical)
-          ├─ generate_belt_physical()   → World.size_detail (BeltPhysical)
-          ├─ generate_biomass_rating()  → World.biomass_rating
+          ├─ generate_world_physical()       → World.size_detail (WorldPhysical)
+          ├─ generate_belt_physical()        → World.size_detail (BeltPhysical)
+          ├─ generate_biomass_rating()       → World.biomass_rating
           ├─ generate_biocomplexity_rating() → World.biocomplexity_rating
-          ├─ generate_sophont_checks()  → World.native_sophont / extinct_sophont
-          ├─ generate_biodiversity_rating() → World.biodiversity_rating
+          ├─ generate_sophont_checks()       → World.native_sophont / extinct_sophont
+          ├─ generate_biodiversity_rating()  → World.biodiversity_rating
           ├─ generate_compatibility_rating() → World.compatibility_rating
-          └─ lifeform_profile          → World.lifeform_profile (eHex "MXDC")
+          ├─ lifeform_profile                → World.lifeform_profile (eHex "MXDC")
+          └─ generate_habitability_rating()  → World.habitability_rating
 ```

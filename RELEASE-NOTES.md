@@ -1,8 +1,72 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–77
-**Tests:** 1515
+**Sessions:** 55–82
+**Tests:** 1561
+
+---
+
+## Habitability Rating (Session 82, issue #106)
+
+`generate_habitability_rating()` in `traveller_world_detail.py` computes the
+WBH p.131 habitability rating (base 10 + DMs) for all terrestrial worlds.
+DMs cover size, atmosphere (all codes including B/C/F+), hydrographics, solar
+tidal lock, temperature (full path when `WorldPhysical` is available; fallback
+to category string otherwise), and gravity (defined or undefined formula).
+Gravity boundaries apply the worst-DM rule. Result clamped to 0 minimum.
+
+`habitability_description()` added to `tables.py`. Field added to `WorldDetail`,
+`World`, `to_dict()` / `from_dict()`, JSON schema, and `world_card.html`.
+`_apply_habitability()` is called after `_apply_biomass()` in `attach_detail()`.
+81 new tests in `tests/test_habitability.py`.
+
+---
+
+## Basic Mean Temperature — 1D+5 for Extreme Cold (Session 81)
+
+`_compute_mean_temperature()` now rolls 1D+5 (giving 6–11K) when the
+extrapolated result would fall below 10K (modified roll ≤ −34), per the WBH
+p.47 footnote. Previously the code just clamped to 3K. This edge case only
+arises for worlds at hz_deviation ≥ ~18.5 (extremely distant orbits).
+
+---
+
+## Tidal Heating Baked into Advanced Mean Temperature (Sessions 79–80)
+
+`_apply_seismic_stress()` (called via `apply_moon_tidal_effects()`) now updates
+`advanced_mean_temperature_k`, `high_temperature_k`, and `low_temperature_k`
+in-place using ⁴√(T⁴ + TSS⁴) when TSS > 0 and the rounded value changes. The
+former separate `advanced_seismic_temperature_k` display field has been removed;
+the tidal heating correction is now reflected in the canonical temperature fields
+used downstream.
+
+9 new tests cover the `optional_inhospitable_rule` flag added in Session 78:
+rule disabled (individual rolls), group roll < 12 (all NHZ worlds zeroed),
+natural 12 (winner gets biomass roll; loser and its moons get 0), in-HZ worlds
+unaffected, no group roll when no NHZ worlds, and the `attach_detail`
+flag pass-through.
+
+---
+
+## Biological Pipeline — Edge-Case Test Coverage (Session 78, issue #112)
+
+WBH p.130 Suggested Usage confirmed: limiting the full biological pipeline
+(biodiversity, compatibility, lifeform profile) to the mainworld is correct; secondary
+worlds receive only biomass + biocomplexity per rulebook intent.
+
+32 new targeted tests verify:
+
+- **NHZ codes 16 (G) and 17 (H):** biomass clamped to code 15 (F) via `min(atm, 15)`;
+  biocomplexity DM-2 applies (not in [4–9]); compatibility DM-8 (same as vacuum) confirmed
+  in `_ATM_COMPAT_DM` and exercised end-to-end.
+- **Extreme HZ deviation worlds (|hz_dev| ≥ 3):** frozen/boiling worlds with atmosphere 0,
+  1, 16, or 17 always produce `biomass_rating = 0` — demonstrated on both the simplified
+  temperature-zone path and the K-temperature (WorldPhysical) path.
+- **`atmosphere_detail = None` guard:** all three taint checks (`biologic`, `has_low_o`,
+  `has_taint`) default to `False` when `atmosphere_detail` is `None`; `_apply_biomass`
+  runs without error.
+- **Biomass=0 short-circuit:** biodiversity, compatibility, and lifeform_profile remain
+  `None` when the world is lifeless.
 
 ---
 

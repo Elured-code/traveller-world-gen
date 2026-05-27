@@ -155,6 +155,13 @@ class World:
                                     # 4-char eHex: MXDC
                                     # (Biomass)(Biocomplexity)(Biodiversity)(Compatibility)
                                     # None when biomass_rating is 0 or None
+    habitability_rating: Optional[int] = field(default=None, init=False)
+                                    # set by _apply_habitability() in attach_detail() (Session 82).
+                                    # base 10 + DMs: size, atmosphere, hydrographics, tidal lock,
+                                    # temperature, gravity. Clamped to min 0.
+                                    # Full temp path when WorldPhysical available; fallback to
+                                    # temperature_category string otherwise.
+                                    # Gravity: defined G value OR undefined formula (1 − |6−size|).
 
     # methods: .uwp(), .to_dict(), .to_json(), .to_html(), .summary()
     # classmethod: .from_dict(d) — reconstruct from to_dict() output
@@ -289,13 +296,14 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     # Basic Mean Temperature in Kelvin (WBH p.47). Set when hz_deviation is passed
     # to generate_world_physical(). Computed from orbital DM + atmosphere DM applied
     # to base roll 7; extrapolates below 0 (-5K/step) and above 12 (+50K/step); min 3K.
+    # When extrapolated result < 10K (modified roll ≤ -34), rolls 1D+5 instead (WBH footnote).
     residual_seismic_stress: Optional[int] = field(default=None, init=False)
     tidal_seismic_stress: Optional[int] = field(default=None, init=False)
     tidal_stress_factor: Optional[int] = field(default=None, init=False)
     total_seismic_stress: Optional[int] = field(default=None, init=False)
     seismic_temperature_k: Optional[int] = field(default=None, init=False)
     tidal_amplitude_m: Optional[float] = field(default=None, init=False)
-    # Seismic and tidal fields set by apply_moon_tidal_effects() (Sessions 56–60).
+    # Seismic and tidal fields set by apply_moon_tidal_effects() (Sessions 56–60, 79).
     # residual_seismic_stress: floor(Size - Age_Gyr + DMs)² — DMs: is_moon +1;
     #   density > 1.0 +2; density < 0.5 -1; sum of Size 1+ moon sizes capped at +12.
     # tidal_seismic_stress: PrimaryMass⊕² × (diam/1600)⁵ × e² /
@@ -315,10 +323,13 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     # greenhouse_factor: 0.5×√bar × atmosphere-type multiplier (WBH p.48).
     # advanced_mean_temperature_k: 279 × ⁴√(L × (1-A) × (1+G) / AU²); min 3K.
     #   L = luminosity of all stars interior to world's orbit.
+    #   If apply_moon_tidal_effects() produces TSS>0, updated in-place to
+    #   ⁴√(T⁴ + TSS⁴) when the rounded value changes (Session 79).
     # high_temperature_k / low_temperature_k: seasonal extremes (WBH pp.48-50).
     #   Steps 1-4: axial tilt factor + rotation factor + geographic factor → variance.
     #   Steps 5-6: atmospheric factor = 1+bar; luminosity modifier = variance / atm_factor.
     #   Steps 7-9: high/low luminosity → high/low AU (near/far periastron) → T = 279×⁴√(...)
+    #   Also updated in-place by apply_moon_tidal_effects() using ⁴√(T⁴ + TSS⁴) (Session 79).
     stellar_day_hours: Optional[float] = field(default=None, init=False)
     # Stellar (solar) day in hours — time between successive sunrises (WBH p.106, Session 66).
     # Derived from day_length (sidereal) and orbital period:

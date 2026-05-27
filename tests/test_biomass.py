@@ -12,7 +12,7 @@ Special cases and edge conditions are tested exhaustively.
 """
 
 import random
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest  # pylint: disable=import-error
 
@@ -29,6 +29,8 @@ from traveller_world_detail import (  # pylint: disable=import-error
     _OXYGEN_ATM_SET,
     _ATM_COMPAT_DM,
     _INHERENT_TAINTED_CODES,
+    _apply_biomass,
+    attach_detail,
 )
 
 
@@ -901,3 +903,420 @@ class TestCompatibilityRating:
         assert w.biodiversity_rating == 7
         assert w.compatibility_rating == 9
         assert w.lifeform_profile == "4379"
+
+
+# ---------------------------------------------------------------------------
+# NHZ atmosphere codes 16 (G) and 17 (H) — biomass, biocomplexity, compatibility
+# Issue #112 — confirm DM tables handle non-HZ atmosphere codes correctly.
+# ---------------------------------------------------------------------------
+
+class TestNHZAtmosphereCodes:
+    """NHZ atmosphere codes 16 (G — helium) and 17 (H — hydrogen).
+
+    Biomass/biocomplexity: both clamped to code 15 (F) via min(atm, 15).
+    Compatibility: explicit -8 entries in _ATM_COMPAT_DM (same as vacuum/trace).
+    """
+
+    # Biomass clamping -------------------------------------------------------
+
+    def test_atm_h17_biomass_treated_as_f15(self):
+        """Code 17 (H) gives the same biomass result as code 15 (F)."""
+        result_15 = _roll_biomass(15, 5, 3.0, "temperate")
+        result_17 = _roll_biomass(17, 5, 3.0, "temperate")
+        assert result_15 == result_17
+
+    def test_atm_g16_sc2_clamped_to_f15(self):
+        # dice=7, atm 16→15 (DM-5), hydro=5 (DM 0), age=3, temperate (+2)
+        # pre-SC2: 7-5+2=4; SC2: atm_key=15 in SC2_SET, add 4 → 4+4=8
+        assert _roll_biomass(16, 5, 3.0, "temperate") == 8
+
+    def test_atm_h17_sc2_clamped_to_f15(self):
+        assert _roll_biomass(17, 5, 3.0, "temperate") == 8
+
+    # Biocomplexity DM -------------------------------------------------------
+
+    def test_atm_g16_biocomplexity_not_in_4_9_range(self):
+        # biomass=5, dice=7: base=5; atm 16 not in [4,9] → DM-2; age 5.0 → no age DM
+        assert _roll_biocomplexity(5, 16, 5.0) == 3
+
+    def test_atm_h17_biocomplexity_dm_minus2(self):
+        assert _roll_biocomplexity(5, 17, 5.0) == 3
+
+    # Compatibility table entries --------------------------------------------
+
+    def test_atm_g16_compat_dm_minus8(self):
+        """Code 16 (G — helium gas) has explicit DM-8 in _ATM_COMPAT_DM."""
+        assert _ATM_COMPAT_DM[16] == -8
+
+    def test_atm_h17_compat_dm_minus8(self):
+        """Code 17 (H — hydrogen gas) has explicit DM-8 in _ATM_COMPAT_DM."""
+        assert _ATM_COMPAT_DM[17] == -8
+
+    def test_atm_g16_compat_matches_vacuum(self):
+        """NHZ helium atmosphere is as hostile to compatibility as vacuum."""
+        assert _ATM_COMPAT_DM[16] == _ATM_COMPAT_DM[0]
+
+    def test_atm_h17_compat_matches_vacuum(self):
+        assert _ATM_COMPAT_DM[17] == _ATM_COMPAT_DM[0]
+
+    def test_atm_g16_compat_integration(self):
+        # cx=5, age=3.0, rolls 6+6=12: base=12-(5//2)=10; DM-8 → max(0,2)=2
+        assert _roll_compat(5, 16, 3.0, [6, 6]) == 2
+
+    def test_atm_h17_compat_integration(self):
+        assert _roll_compat(5, 17, 3.0, [6, 6]) == 2
+
+    def test_atm_g16_not_inherent_tainted(self):
+        """Code 16 is not inherently tainted; otherwise-tainted DM-2 can apply."""
+        assert 16 not in _INHERENT_TAINTED_CODES
+
+    def test_atm_h17_not_inherent_tainted(self):
+        assert 17 not in _INHERENT_TAINTED_CODES
+
+
+# ---------------------------------------------------------------------------
+# Worlds far outside the habitable zone (hz_deviation >= 3 or <= -3)
+# Issue #112 — biomass is always 0 for vacuum/trace/NHZ worlds in frozen or
+# boiling zones, whether the simplified zone path or the K-temperature path
+# is used.
+# ---------------------------------------------------------------------------
+
+class TestExtremeHZDeviationWorlds:
+    """Biomass for worlds with large HZ offsets and hostile atmospheres."""
+
+    # Simplified zone path (no temperature K data) --------------------------
+
+    def test_frozen_vacuum_always_lifeless(self):
+        # atm 0 (-6), hydro 0 (-4), frozen (-6) → DM-16 clamped -12; 12-12=0
+        assert _roll_biomass(0, 0, 3.0, "frozen", dice_total=12) == 0
+
+    def test_frozen_trace_always_lifeless(self):
+        # atm 1 (-4), hydro 0 (-4), frozen (-6) → DM-14 clamped -12; 12-12=0
+        assert _roll_biomass(1, 0, 3.0, "frozen", dice_total=12) == 0
+
+    def test_boiling_vacuum_always_lifeless(self):
+        assert _roll_biomass(0, 0, 3.0, "boiling", dice_total=12) == 0
+
+    def test_boiling_trace_always_lifeless(self):
+        assert _roll_biomass(1, 0, 3.0, "boiling", dice_total=12) == 0
+
+    def test_frozen_nhz_atm16_always_lifeless(self):
+        # atm 16 (→15, DM-5), hydro 0 (-4), frozen (-6) → DM-15 clamped -12; 12-12=0
+        assert _roll_biomass(16, 0, 3.0, "frozen", dice_total=12) == 0
+
+    def test_frozen_nhz_atm17_always_lifeless(self):
+        assert _roll_biomass(17, 0, 3.0, "frozen", dice_total=12) == 0
+
+    def test_boiling_nhz_atm16_always_lifeless(self):
+        assert _roll_biomass(16, 0, 3.0, "boiling", dice_total=12) == 0
+
+    def test_boiling_nhz_atm17_always_lifeless(self):
+        assert _roll_biomass(17, 0, 3.0, "boiling", dice_total=12) == 0
+
+    # K-temperature path (mainworld with WorldPhysical advanced temp data) --
+
+    def test_very_cold_vacuum_lifeless_k_path(self):
+        # mean_temp_k=50 (<273): high DM-4, mean DM-2; atm 0 (-6), hydro 0 (-4)
+        # total -16 clamped -12; 12-12=0
+        assert _roll_biomass(0, 0, 3.0, "frozen",
+                              mean_temp_k=50, dice_total=12) == 0
+
+    def test_very_hot_vacuum_lifeless_k_path(self):
+        # mean_temp_k=700 (>353): high DM-2, mean DM-4; atm 0 (-6), hydro 0 (-4)
+        # total -16 clamped -12; 12-12=0
+        assert _roll_biomass(0, 0, 3.0, "boiling",
+                              mean_temp_k=700, dice_total=12) == 0
+
+    def test_very_cold_nhz_atm_lifeless_k_path(self):
+        # atm 16 (→15, DM-5), hydro 0 (-4), very cold (-4 high, -2 mean)
+        # total -15 clamped -12; 12-12=0
+        assert _roll_biomass(16, 0, 3.0, "frozen",
+                              mean_temp_k=50, dice_total=12) == 0
+
+    def test_very_hot_nhz_atm_lifeless_k_path(self):
+        assert _roll_biomass(17, 0, 3.0, "boiling",
+                              mean_temp_k=1200, dice_total=12) == 0
+
+    # Seed sweeps -----------------------------------------------------------
+
+    def test_frozen_world_biomass_never_negative_seed_sweep(self):
+        for seed in range(50):
+            random.seed(seed)
+            assert generate_biomass_rating(0, 0, 3.0, "frozen") >= 0
+
+    def test_boiling_world_biomass_never_negative_seed_sweep(self):
+        for seed in range(50):
+            random.seed(seed)
+            assert generate_biomass_rating(0, 0, 3.0, "boiling") >= 0
+
+
+# ---------------------------------------------------------------------------
+# atmosphere_detail = None guard conditions (issue #112)
+# Guards in _apply_biomass when mainworld.atmosphere_detail is None: NHZ
+# mainworlds and worlds outside the HZ may have None when atmosphere detail
+# was not generated or the code produces no taint object.
+# ---------------------------------------------------------------------------
+
+class TestAtmosphereDetailNoneGuard:
+    """atmosphere_detail = None does not crash _apply_biomass and defaults
+    biologic/has_taint/has_low_o all to False."""
+
+    def test_biologic_guard_false_when_none(self):
+        """biologic taint defaults to False when atmosphere_detail is None."""
+        atmosphere_detail = None
+        biologic = any(
+            getattr(t, "subtype", "") == "Biologic"
+            for t in (atmosphere_detail.taints if atmosphere_detail else [])
+        )
+        assert biologic is False
+
+    def test_has_low_o_guard_false_when_none(self):
+        """has_low_o defaults to False when atmosphere_detail is None."""
+        atmosphere_detail = None
+        has_low_o = any(
+            getattr(t, "subtype_code", "") == "L"
+            for t in (atmosphere_detail.taints if atmosphere_detail else [])
+        )
+        assert has_low_o is False
+
+    def test_has_taint_guard_false_when_none(self):
+        """has_taint is False when atmosphere_detail is None."""
+        atmosphere_detail = None
+        has_taint = bool(atmosphere_detail and atmosphere_detail.taints)
+        assert has_taint is False
+
+    def test_apply_biomass_no_crash_with_none_atmosphere_detail(self):
+        """_apply_biomass runs without error when atmosphere_detail is None."""
+        from traveller_system_gen import generate_full_system    # pylint: disable=import-outside-toplevel
+        from traveller_world_physical import generate_world_physical  # pylint: disable=import-outside-toplevel
+        system = None
+        for seed in range(100):
+            s = generate_full_system(seed=seed)
+            if s.mainworld is not None and s.mainworld.size > 0:
+                system = s
+                break
+        assert system is not None
+        mw = system.mainworld
+        mw_orbit = system.mainworld_orbit
+        # generate_world_physical sets size_detail (WorldPhysical with mean_temperature_k)
+        mw.size_detail = generate_world_physical(
+            mw,
+            age_gyr=system.stellar_system.primary.age_gyr,
+            hz_deviation=mw_orbit.hz_deviation if mw_orbit else None,
+        )
+        mw.atmosphere_detail = None
+        _apply_biomass(system)          # must not raise
+        assert mw.biomass_rating is not None
+
+    def test_biomass_zero_leaves_downstream_fields_none(self):
+        """When _apply_biomass produces biomass_rating == 0, biodiversity/
+        compatibility/lifeform_profile remain None."""
+        from traveller_system_gen import generate_full_system    # pylint: disable=import-outside-toplevel
+        from traveller_world_physical import generate_world_physical  # pylint: disable=import-outside-toplevel
+        system = None
+        for seed in range(100):
+            s = generate_full_system(seed=seed)
+            if s.mainworld is not None and s.mainworld.size > 0:
+                system = s
+                break
+        assert system is not None
+        mw = system.mainworld
+        assert mw is not None
+        mw_orbit = system.mainworld_orbit
+        mw.size_detail = generate_world_physical(
+            mw,
+            age_gyr=system.stellar_system.primary.age_gyr,
+            hz_deviation=mw_orbit.hz_deviation if mw_orbit else None,
+        )
+        # Force lifeless conditions: vacuum, no water, no taint info
+        mw.atmosphere = 0
+        mw.hydrographics = 0
+        mw.atmosphere_detail = None
+        mw.biodiversity_rating = None
+        mw.compatibility_rating = None
+        mw.lifeform_profile = None
+        # dice=1+1=2 with atm 0 (DM-6), hydro 0 (DM-4) guarantees biomass=0
+        with patch("traveller_world_detail.random.randint", return_value=1):
+            _apply_biomass(system)
+        assert mw.biomass_rating == 0
+        assert mw.biodiversity_rating is None
+        assert mw.compatibility_rating is None
+        assert mw.lifeform_profile is None
+
+
+# ---------------------------------------------------------------------------
+# Optional inhospitable rule (WBH p.130 Suggested Usage)
+# ---------------------------------------------------------------------------
+
+class TestOptionalInhospitableRule:
+    """
+    When optional_inhospitable_rule=True, out-of-HZ secondary terrestrial worlds
+    are deferred to a single 2D group roll; only a natural 12 allows one randomly
+    chosen world a normal biomass roll — all others receive biomass_rating = 0.
+    """
+
+    # ---- minimal mock factories ----
+
+    @staticmethod
+    def _make_system(orbits):
+        """Return a minimal mock TravellerSystem for _apply_biomass."""
+        system = MagicMock()
+        system.mainworld = None
+        system.stellar_system.primary.age_gyr = 3.0
+        system.system_orbits.orbits = orbits
+        return system
+
+    @staticmethod
+    def _make_orbit(sah="000", is_hz=False, temp_zone="frozen", is_main=False):
+        """Return a mock non-gas-giant, non-belt secondary orbit slot."""
+        orbit = MagicMock()
+        orbit.world_type = "terrestrial"
+        orbit.is_mainworld_candidate = is_main
+        orbit.is_habitable_zone = is_hz
+        orbit.temperature_zone = temp_zone
+        orbit.detail = MagicMock()
+        orbit.detail.sah = sah
+        orbit.detail.moons = []
+        orbit.detail.biomass_rating = None
+        return orbit
+
+    @staticmethod
+    def _make_moon(sah="000"):
+        """Return a non-ring mock moon with a writable detail stub."""
+        moon = MagicMock()
+        moon.is_ring = False
+        moon.detail = MagicMock()
+        moon.detail.sah = sah
+        moon.detail.biomass_rating = None
+        return moon
+
+    # ---- rule disabled (default) ----
+
+    def test_rule_disabled_nhz_world_rolls_individually(self):
+        """With rule off, each out-of-HZ world rolls its biomass independently
+        (exactly 2 random.randint calls; no group roll is made)."""
+        orbit = self._make_orbit(sah="000", is_hz=False, temp_zone="frozen")
+        system = self._make_system([orbit])
+        with patch("traveller_world_detail.random.randint", return_value=1) as mock_roll:
+            _apply_biomass(system)
+        # 2 calls = 1 biomass 2D; no group-roll calls
+        assert mock_roll.call_count == 2
+        assert orbit.detail.biomass_rating == 0  # atm0/hydro0/frozen DMs → always 0
+
+    # ---- rule enabled, group roll < 12 ----
+
+    def test_rule_on_non12_all_nhz_worlds_get_zero(self):
+        """Group roll 7 (< 12): every out-of-HZ world is zeroed; no individual dice."""
+        orbits = [
+            self._make_orbit(sah="000", is_hz=False),
+            self._make_orbit(sah="880", is_hz=False, temp_zone="temperate"),
+        ]
+        system = self._make_system(orbits)
+        with patch("traveller_world_detail.random.randint",
+                   side_effect=[3, 4]) as mock_roll:
+            _apply_biomass(system, optional_inhospitable_rule=True)
+        assert mock_roll.call_count == 2          # group roll only
+        assert orbits[0].detail.biomass_rating == 0
+        assert orbits[1].detail.biomass_rating == 0
+
+    def test_rule_on_non12_hz_world_unaffected(self):
+        """Group roll < 12 does not affect in-HZ worlds; they are still rolled."""
+        nhz  = self._make_orbit(sah="000", is_hz=False)
+        hz   = self._make_orbit(sah="880", is_hz=True, temp_zone="temperate")
+        system = self._make_system([nhz, hz])
+        # Loop processes nhz (→ _inhospitable), then hz (→ _roll_world_and_moons).
+        # After the loop: group roll for _inhospitable.
+        # Call order: [hz_bio_d1, hz_bio_d2, hz_bc_d1, hz_bc_d2, group_d1, group_d2]
+        with patch("traveller_world_detail.random.randint",
+                   side_effect=[6, 6, 6, 6, 1, 1]):
+            _apply_biomass(system, optional_inhospitable_rule=True)
+        assert nhz.detail.biomass_rating == 0
+        # SAH "880" → atm=8(DM+2), hydro=0(DM-4), temperate(DM+2), net DM=0
+        # dice 6+6=12, rolled=12 → biomass 12
+        assert hz.detail.biomass_rating == 12
+
+    # ---- rule enabled, natural 12 ----
+
+    def test_rule_on_natural12_winner_gets_biomass_roll(self):
+        """Natural 12: the selected world receives a normal biomass roll."""
+        winner = self._make_orbit(sah="880", is_hz=False, temp_zone="temperate")
+        loser  = self._make_orbit(sah="000", is_hz=False)
+        system = self._make_system([winner, loser])
+        # [group_d1, group_d2, winner_bio_d1, winner_bio_d2, winner_bc_d1, winner_bc_d2]
+        with patch("traveller_world_detail.random.randint",
+                   side_effect=[6, 6, 6, 6, 6, 6]):
+            with patch("traveller_world_detail.random.randrange", return_value=0):
+                _apply_biomass(system, optional_inhospitable_rule=True)
+        # SAH "880" → atm=8(DM+2), hydro=0(DM-4), temperate(DM+2), net DM=0 → biomass 12
+        assert winner.detail.biomass_rating == 12
+        assert loser.detail.biomass_rating == 0
+
+    def test_rule_on_natural12_loser_gets_zero_not_rolled(self):
+        """Natural 12: the losing world is zeroed directly (no biomass 2D for it)."""
+        winner = self._make_orbit(sah="000", is_hz=False)   # biomass=0 if rolled
+        loser  = self._make_orbit(sah="880", is_hz=False, temp_zone="temperate")
+        system = self._make_system([winner, loser])
+        # winner's biomass=0 → no biocomplexity; loser is zeroed without dice.
+        # Exactly 4 calls: 2 group + 2 winner biomass.
+        with patch("traveller_world_detail.random.randint",
+                   side_effect=[6, 6, 6, 6]) as mock_roll:
+            with patch("traveller_world_detail.random.randrange", return_value=0):
+                _apply_biomass(system, optional_inhospitable_rule=True)
+        assert mock_roll.call_count == 4   # no extra dice for loser
+        assert loser.detail.biomass_rating == 0
+
+    def test_rule_on_natural12_winner_moons_get_rolled(self):
+        """Natural 12: the winner's moons receive biomass rolls alongside it."""
+        moon   = self._make_moon(sah="880")
+        winner = self._make_orbit(sah="880", is_hz=False, temp_zone="temperate")
+        winner.detail.moons = [moon]
+        loser  = self._make_orbit(sah="000", is_hz=False)
+        system = self._make_system([winner, loser])
+        # [group*2, winner_bio*2, winner_bc*2, moon_bio*2, moon_bc*2]
+        with patch("traveller_world_detail.random.randint",
+                   side_effect=[6, 6, 6, 6, 6, 6, 6, 6, 6, 6]):
+            with patch("traveller_world_detail.random.randrange", return_value=0):
+                _apply_biomass(system, optional_inhospitable_rule=True)
+        # moon SAH "880" → atm=8(DM+2), hydro=0(DM-4), temperate(DM+2), net DM=0 → biomass 12
+        assert moon.detail.biomass_rating == 12
+
+    def test_rule_on_natural12_loser_moons_get_zero(self):
+        """Natural 12: a losing world's moons receive biomass_rating = 0."""
+        moon  = self._make_moon(sah="880")
+        loser = self._make_orbit(sah="880", is_hz=False, temp_zone="temperate")
+        loser.detail.moons = [moon]
+        winner = self._make_orbit(sah="000", is_hz=False)
+        system = self._make_system([winner, loser])
+        # winner biomass=0 (atm0/frozen/dice12 → 0); no biocomplexity; loser zeroed.
+        with patch("traveller_world_detail.random.randint",
+                   side_effect=[6, 6, 6, 6]):
+            with patch("traveller_world_detail.random.randrange", return_value=0):
+                _apply_biomass(system, optional_inhospitable_rule=True)
+        assert moon.detail.biomass_rating == 0
+
+    # ---- edge case: no NHZ secondary worlds ----
+
+    def test_no_nhz_worlds_no_group_roll(self):
+        """With no out-of-HZ secondary worlds the group roll is never made."""
+        in_hz = self._make_orbit(sah="880", is_hz=True, temp_zone="temperate")
+        system = self._make_system([in_hz])
+        # In-HZ world rolls normally: bio (2) + biocomplexity (2) = 4 calls.
+        # If a group roll were wrongly made it would consume 2 extra calls.
+        with patch("traveller_world_detail.random.randint",
+                   side_effect=[6, 6, 6, 6]) as mock_roll:
+            _apply_biomass(system, optional_inhospitable_rule=True)
+        assert mock_roll.call_count == 4
+        # SAH "880" temperate: net DM=0, dice 6+6=12 → biomass 12
+        assert in_hz.detail.biomass_rating == 12
+
+    # ---- attach_detail flag pass-through ----
+
+    def test_attach_detail_passes_inhospitable_flag(self):
+        """attach_detail() forwards optional_inhospitable_rule to _apply_biomass."""
+        from traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel
+        system = generate_full_system(seed=0)
+        with patch("traveller_world_detail._apply_biomass") as mock_apply:
+            attach_detail(system, optional_inhospitable_rule=True)
+        mock_apply.assert_called_once()
+        _, kwargs = mock_apply.call_args
+        assert kwargs.get("optional_inhospitable_rule") is True
