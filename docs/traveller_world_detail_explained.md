@@ -24,7 +24,12 @@ it:
    temperature, rolls biomass rating, biocomplexity, sophont presence, biodiversity,
    and compatibility ratings. Sets these on `World` (not on `WorldDetail`).
 
-Implements WBH pp.53–55 (secondary worlds), 44–50 (physical), 125–131 (biology).
+5. **Habitability rating** — after biological detail, computes the WBH p.131
+   Habitability Rating for the mainworld (base 10 + DMs for size, atmosphere,
+   hydrographics, tidal lock, temperature, and gravity). No dice rolls; always runs
+   after `_apply_biomass()` so low-oxygen taint is available.
+
+Implements WBH pp.53–55 (secondary worlds), 44–50 (physical), 125–131 (biology, habitability).
 
 ---
 
@@ -39,6 +44,8 @@ Implements WBH pp.53–55 (secondary worlds), 44–50 (physical), 125–131 (bio
 | `WorldDetail` class | The detail object for one orbit slot |
 | `_apply_biomass()` | Orchestrates the full biological detail pipeline |
 | Biological generators | `generate_biomass_rating()`, `generate_biocomplexity_rating()` etc. |
+| `_apply_habitability()` | Orchestrates the habitability rating pipeline |
+| Habitability generators | `generate_habitability_rating()`, `_gravity_habitability_dm()`, `_atmosphere_habitability_dm()` |
 | `attach_detail()` | Entry point |
 
 ---
@@ -64,9 +71,11 @@ class WorldDetail:
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
+        self.habitability_rating: Optional[int] = None
 ```
 
-`trade_codes` and `physical` are set after construction by separate steps.
+`trade_codes`, `physical`, and the rating fields are set after construction by
+separate steps.
 
 ---
 
@@ -146,6 +155,20 @@ lifeform_profile = to_hex(M) + to_hex(X) + to_hex(D) + to_hex(C)
 
 All these fields remain `None` (or `False` for the booleans) if `biomass_rating` is 0.
 
+After `_apply_biomass()` completes, `_apply_habitability()` runs unconditionally:
+
+```
+size + atmosphere + hydrographics + gravity + tidal_status
++ has_low_oxygen_taint (from biomass step)
++ advanced_mean_temperature_k / high_temperature_k (or temperature_category fallback)
+        │
+        ▼
+generate_habitability_rating()  →  World.habitability_rating
+                                →  WorldDetail.habitability_rating
+```
+
+No dice are rolled; the rating is purely deterministic from world characteristics.
+
 ---
 
 ## Key methods
@@ -154,12 +177,13 @@ All these fields remain `None` (or `False` for the booleans) if `biomass_rating`
 |--------|----------|-------------|
 | `.to_dict()` | `WorldDetail` | Serialises the slot's detail to a plain dict |
 | `.from_dict(d)` | `WorldDetail` | Reconstructs from a dict, including nested Moon and physical objects |
-| `attach_detail(system, ...)` | module | Entry point — populates every slot and the mainworld biology |
+| `attach_detail(system, ...)` | module | Entry point — populates every slot, mainworld biology, and habitability |
 | `generate_biomass_rating(...)` | module | WBH p.127 biomass roll with atmosphere/temperature DMs |
 | `generate_biocomplexity_rating(...)` | module | WBH p.129 biocomplexity roll |
 | `generate_sophont_checks(...)` | module | WBH p.131 current and extinct sophont rolls |
 | `generate_biodiversity_rating(...)` | module | WBH p.130 biodiversity roll |
 | `generate_compatibility_rating(...)` | module | WBH p.130 compatibility roll with atmosphere DMs |
+| `generate_habitability_rating(...)` | module | WBH p.131 habitability rating — base 10 + DMs, no dice |
 
 ---
 
@@ -178,7 +202,9 @@ attach_detail(system, nhz=False, use_oxygen=False, advanced_temp=False)
         │       OrbitSlot.detail  = WorldDetail
         │
         └─ For mainworld:
-                generate_world_physical()           →  World.size_detail
+                generate_world_physical()            →  World.size_detail
                 generate_advanced_mean_temperature() →  WorldPhysical advanced fields
-                _apply_biomass()                    →  World.biomass_rating, etc.
+                _apply_biomass()                     →  World.biomass_rating, etc.
+                _apply_habitability()                →  World.habitability_rating
+                                                        WorldDetail.habitability_rating
 ```

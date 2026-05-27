@@ -50,7 +50,7 @@ from world_codes import (
 from tables import (
     SIZE_DIAMETER_LABEL, SIZE_GRAVITY_LABEL, POPULATION_RANGE,
     TRADE_CODE_FULL, BASE_FULL, ZONE_CSS_CLASS, TIDAL_STATUS_LABELS,
-    BIOCOMPLEXITY_DESC,
+    BIOCOMPLEXITY_DESC, habitability_description,
 )
 
 if TYPE_CHECKING:
@@ -1538,6 +1538,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     biodiversity_rating:  Optional[int] = field(default=None, init=False)
     compatibility_rating: Optional[int] = field(default=None, init=False)
     lifeform_profile:     Optional[str] = field(default=None, init=False)
+    habitability_rating:  Optional[int] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1646,6 +1647,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.compatibility_rating is not None else {}),
             **({"lifeform_profile": self.lifeform_profile}
                if self.lifeform_profile is not None else {}),
+            **({"habitability_rating": self.habitability_rating}
+               if self.habitability_rating is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1819,6 +1822,8 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("compatibility_rating") is not None:
             world.compatibility_rating = int(d["compatibility_rating"])
         world.lifeform_profile = d.get("lifeform_profile")
+        if d.get("habitability_rating") is not None:
+            world.habitability_rating = int(d["habitability_rating"])
 
         return world
 
@@ -2097,6 +2102,12 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "compatibility_str": (to_hex(world.compatibility_rating)
                               if world.compatibility_rating is not None else None),
         "lifeform_profile": world.lifeform_profile,
+        "habitability_rating": world.habitability_rating,
+        "habitability_str": (
+            f"{world.habitability_rating} — "
+            + habitability_description(world.habitability_rating)
+            if world.habitability_rating is not None else None
+        ),
         "json_str": world.to_json(),
     }
 

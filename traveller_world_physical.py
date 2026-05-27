@@ -710,6 +710,9 @@ def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positi
 
     Sets residual_seismic_stress, tidal_seismic_stress, total_seismic_stress,
     and seismic_temperature_k (only when it differs from mean_temperature_k).
+    Also updates advanced_mean_temperature_k, high_temperature_k, and
+    low_temperature_k in-place using ⁴√(T⁴ + TSS⁴) when those fields are set
+    and the rounded value changes.
     When gg_mass_earth > 0 and gg_satellite_moon has orbit data, also adds the
     gas giant primary's tidal contribution (for GG satellite mainworlds).
     Mutates physical in-place.
@@ -748,6 +751,15 @@ def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positi
         adj = round((old_t ** 4 + tss ** 4) ** 0.25)
         if adj != old_t:
             physical.seismic_temperature_k = max(old_t, adj)
+    if physical.advanced_mean_temperature_k is not None and tss > 0:
+        adv_t = physical.advanced_mean_temperature_k
+        adv_adj = round((adv_t ** 4 + tss ** 4) ** 0.25)
+        if adv_adj != adv_t:
+            physical.advanced_mean_temperature_k = max(adv_t, adv_adj)
+            for attr in ("high_temperature_k", "low_temperature_k"):
+                t = getattr(physical, attr)
+                if t is not None:
+                    setattr(physical, attr, max(t, round((t ** 4 + tss ** 4) ** 0.25)))
 
 
 # ---------------------------------------------------------------------------
@@ -885,6 +897,8 @@ def _compute_mean_temperature(hz_deviation: float, atmosphere: int) -> int:
     Modified roll = 7 + orbital_DM + atmosphere_DM, then table lookup.
     Extrapolates below roll 0 (-5K/step) and above roll 12 (+50K/step).
     Result is clamped to a minimum of 3K.
+    When the extrapolated value would fall below 10K (modified roll < -33),
+    the result is instead 1D+5 per the WBH footnote.
     """
     orbit_dm = _orbit_dm_for_mean_temp(hz_deviation)
     atm_dm = _MEAN_TEMP_ATM_DM.get(atmosphere, 0)
@@ -892,7 +906,10 @@ def _compute_mean_temperature(hz_deviation: float, atmosphere: int) -> int:
     if modified_roll in _MEAN_TEMP_TABLE_K:
         return max(3, _MEAN_TEMP_TABLE_K[modified_roll])
     if modified_roll < 0:
-        return max(3, 178 + modified_roll * 5)
+        t = 178 + modified_roll * 5
+        if t < 10:
+            return random.randint(1, 6) + 5
+        return max(3, t)
     return max(3, 388 + (modified_roll - 12) * 50)
 
 
@@ -957,8 +974,8 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
         obj.tidal_seismic_stress          = _ii("tidal_seismic_stress")
         obj.tidal_stress_factor           = _ii("tidal_stress_factor")
         obj.total_seismic_stress          = _ii("total_seismic_stress")
-        obj.seismic_temperature_k         = _ii("seismic_temperature_k")
-        obj.tidal_amplitude_m             = _fi("tidal_amplitude_m")
+        obj.seismic_temperature_k              = _ii("seismic_temperature_k")
+        obj.tidal_amplitude_m                 = _fi("tidal_amplitude_m")
         obj.albedo                        = _fi("albedo")
         obj.greenhouse_factor             = _fi("greenhouse_factor")
         obj.advanced_mean_temperature_k   = _ii("advanced_mean_temperature_k")

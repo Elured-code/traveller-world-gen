@@ -712,6 +712,11 @@
     "lifeform_profile": {
       "type": "string",
       "description": "Four-character eHex lifeform profile MXDC (WBH p.130). Absent when biomass is 0 or not yet generated."
+    },
+    "habitability_rating": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Habitability rating (WBH p.131): 10 + DMs for size, atmosphere, hydrographics, tidal lock, temperature, and gravity. 0 = actively hostile; 10 = Terra-equivalent baseline. Absent when physical detail has not been generated."
     }
   },
   "$defs": {

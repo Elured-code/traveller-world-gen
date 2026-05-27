@@ -430,6 +430,142 @@ def generate_biocomplexity_rating(
 
 
 # ---------------------------------------------------------------------------
+# Habitability Rating (WBH p.131)
+# ---------------------------------------------------------------------------
+
+# Atmosphere DMs for habitability (WBH p.131 table).
+# Codes 12+ not in this dict fall through to the C/F+ DM-12 catch-all.
+_HAB_ATM_DM: dict[int, int] = {
+    0: -8, 1: -8, 10: -8,       # vacuum / trace / exotic (A)
+    2: -4, 14: -4,               # reducing / low (E)
+    3: -3, 13: -3,               # very thin / very dense (D)
+    4: -2, 9: -2,                # thin tainted / dense tainted
+    5: -1, 7: -1, 8: -1,        # thin / standard tainted / dense
+    6:  0,                        # standard — explicitly no DM
+    11: -10,                      # corrosive (B)
+}
+
+
+def _atmosphere_habitability_dm(atm: int) -> int:
+    """Return the habitability DM for atmosphere code atm."""
+    if atm in _HAB_ATM_DM:
+        return _HAB_ATM_DM[atm]
+    if atm >= 12:   # C (12), F (15), G (16), H (17)
+        return -12
+    return 0
+
+
+def _gravity_habitability_dm(  # pylint: disable=too-many-return-statements
+        gravity: float,
+) -> int:
+    """Return the habitability DM for surface gravity in G.
+
+    Boundary values use the worst (most negative) adjacent DM per WBH p.131†.
+    """
+    if gravity <= 0.2:
+        return -4
+    if gravity <= 0.4:
+        return -2
+    if gravity <= 0.7:
+        return -1
+    if gravity < 0.9:
+        return 1
+    if gravity < 1.1:
+        return 0
+    if gravity < 1.4:
+        return -1
+    if gravity < 2.0:
+        return -3
+    return -6
+
+
+def generate_habitability_rating(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+        size: int,
+        atmosphere: int,
+        hydrographics: int,
+        gravity: Optional[float] = None,
+        tidal_status: Optional[str] = None,
+        has_low_oxygen_taint: bool = False,
+        advanced_mean_temperature_k: Optional[int] = None,
+        high_temperature_k: Optional[int] = None,
+        low_temperature_k: Optional[int] = None,
+        temperature_category: Optional[str] = None,
+) -> int:
+    """Compute and return the Habitability Rating (WBH p.131).
+
+    Base value is 10; DMs are applied for size, atmosphere, hydrographics,
+    tidal lock, temperature, and gravity.  Result is clamped to minimum 0.
+
+    Temperature DM path selection:
+      Full path  — when advanced_mean_temperature_k is provided.
+      Fallback   — when only temperature_category is provided (Hot/Cold → DM-2;
+                   Boiling/Frozen → DM-6).
+
+    Gravity DM path selection:
+      Defined    — when gravity (float, G) is provided.
+      Undefined  — when gravity is None: DM = 1 − |6 − size|.
+    """
+    dm = 0
+
+    # Size
+    if size <= 4:
+        dm -= 1
+    elif size >= 9:
+        dm += 1
+
+    # Atmosphere
+    dm += _atmosphere_habitability_dm(atmosphere)
+
+    # Low oxygen taint (in addition to atmosphere DM)
+    if has_low_oxygen_taint:
+        dm -= 2
+
+    # Hydrographics
+    if hydrographics == 0:
+        dm -= 4
+    elif hydrographics <= 3:
+        dm -= 2
+    elif hydrographics == 9:
+        dm -= 1
+    elif hydrographics >= 10:
+        dm -= 2
+
+    # Solar tidal lock
+    if tidal_status == "1:1_lock":
+        dm -= 2
+
+    # Temperature
+    if advanced_mean_temperature_k is not None:
+        if high_temperature_k is not None:
+            if high_temperature_k > 323:
+                dm -= 2
+            if high_temperature_k < 279:
+                dm -= 2
+        if advanced_mean_temperature_k > 323:
+            dm -= 4
+        elif advanced_mean_temperature_k >= 304:
+            dm -= 2
+        if advanced_mean_temperature_k < 273:
+            dm -= 2
+        if low_temperature_k is not None and low_temperature_k < 200:
+            dm -= 2
+    elif temperature_category is not None:
+        cat = temperature_category.lower()
+        if cat in ("boiling", "frozen"):
+            dm -= 6
+        elif cat in ("hot", "cold"):
+            dm -= 2
+
+    # Gravity
+    if gravity is not None:
+        dm += _gravity_habitability_dm(gravity)
+    else:
+        dm += 1 - abs(6 - size)
+
+    return max(0, 10 + dm)
+
+
+# ---------------------------------------------------------------------------
 # Biodiversity and Compatibility Ratings (WBH p.130)
 # ---------------------------------------------------------------------------
 
@@ -593,7 +729,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
 
     __slots__ = ("sah", "population", "government", "law_level",
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
-                 "biomass_rating", "biocomplexity_rating")
+                 "biomass_rating", "biocomplexity_rating", "habitability_rating")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -609,6 +745,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
+        self.habitability_rating: Optional[int] = None
         # Gas giants and rings carry no trade codes
         if (len(sah) == 3 and sah[0] == "G" and sah[1] in ("S", "M", "L")) \
                 or (len(sah) >= 1 and sah[0] == "R"):
@@ -677,6 +814,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["biomass_rating"] = self.biomass_rating
         if self.biocomplexity_rating is not None:
             d["biocomplexity_rating"] = self.biocomplexity_rating
+        if self.habitability_rating is not None:
+            d["habitability_rating"] = self.habitability_rating
         return d
 
     @classmethod
@@ -704,6 +843,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             obj.biomass_rating = int(d["biomass_rating"])
         if d.get("biocomplexity_rating") is not None:
             obj.biocomplexity_rating = int(d["biocomplexity_rating"])
+        if d.get("habitability_rating") is not None:
+            obj.habitability_rating = int(d["habitability_rating"])
         return obj
 
 
@@ -1057,6 +1198,7 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
 def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         system: TravellerSystem,
         optional_biomass_rule: bool = False,
+        optional_inhospitable_rule: bool = False,
 ) -> None:
     """
     Compute WorldDetail for all orbits and attach as `orbit.detail`
@@ -1065,6 +1207,11 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
 
     optional_biomass_rule: when True, oxygenated-atmosphere worlds with a
     rolled biomass of 0 have their biomass raised to 1 (WBH p.131).
+    optional_inhospitable_rule: when True, secondary terrestrial worlds outside
+    the habitable zone (is_habitable_zone=False) are not rolled individually.
+    Instead a single 2D is made for all such worlds; only on a natural 12 does
+    one randomly chosen world receive a biomass roll — all others get 0 (WBH
+    p.130 Suggested Usage).
     """
     nhz = system.nhz_atmospheres
     detail_map = generate_system_detail(system, nhz_atmospheres=nhz)
@@ -1201,7 +1348,10 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
             mw_orbit.detail.physical = bp
         mainworld.size_detail = bp
 
-    _apply_biomass(system, optional_biomass_rule=optional_biomass_rule)
+    _apply_biomass(system,
+                   optional_biomass_rule=optional_biomass_rule,
+                   optional_inhospitable_rule=optional_inhospitable_rule)
+    _apply_habitability(system)
 
 
 def _set_biocomplexity(
@@ -1217,6 +1367,7 @@ def _set_biocomplexity(
 def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         system: TravellerSystem,
         optional_biomass_rule: bool = False,
+        optional_inhospitable_rule: bool = False,
 ) -> None:
     """
     Compute and attach biomass ratings for all terrestrial worlds and moons
@@ -1225,6 +1376,8 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
 
     optional_biomass_rule: when True, any world/moon whose oxygen-bearing
     atmosphere (codes 2-9, D, E) rolls biomass 0 has it raised to 1.
+    optional_inhospitable_rule: when True, secondary terrestrials outside the
+    HZ use the single-2D / natural-12 rule (WBH p.130 Suggested Usage).
     """
     mainworld = system.mainworld
     age_gyr: float = system.stellar_system.primary.age_gyr or 0.0
@@ -1234,7 +1387,41 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
             return 1
         return biomass
 
+    def _roll_world_and_moons(orb: "OrbitSlot", a: int, h: int) -> None:
+        """Roll biomass + biocomplexity for one secondary world and its moons."""
+        det = orb.detail
+        if det is None:
+            return
+        det.biomass_rating = _oxygen_floor(generate_biomass_rating(
+            atm=a, hydro=h, age_gyr=age_gyr,
+            temperature_zone=orb.temperature_zone,
+        ), a)
+        _set_biocomplexity(det, a, age_gyr)
+        for moon in det.moons:
+            if moon.is_ring or moon.detail is None:
+                continue
+            m_atm   = _ehex_to_int(moon.detail.sah[1]) if len(moon.detail.sah) > 1 else 0
+            m_hydro = _ehex_to_int(moon.detail.sah[2]) if len(moon.detail.sah) > 2 else 0
+            moon.detail.biomass_rating = _oxygen_floor(generate_biomass_rating(
+                atm=m_atm, hydro=m_hydro, age_gyr=age_gyr,
+                temperature_zone=orb.temperature_zone,
+            ), m_atm)
+            _set_biocomplexity(moon.detail, m_atm, age_gyr)
+
+    def _zero_world_and_moons(orb: "OrbitSlot") -> None:
+        """Set biomass 0 for one secondary world and all its moons."""
+        det = orb.detail
+        if det is None:
+            return
+        det.biomass_rating = 0
+        for moon in det.moons:
+            if not moon.is_ring and moon.detail is not None:
+                moon.detail.biomass_rating = 0
+
     # — Secondary terrestrial orbits and their moons —
+    # Worlds outside the HZ are deferred when the inhospitable rule is active.
+    _inhospitable: list[tuple["OrbitSlot", int, int]] = []
+
     for orbit in system.system_orbits.orbits:
         if orbit.world_type in ("empty", "gas_giant", "belt"):
             continue
@@ -1245,21 +1432,26 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
             continue
         atm   = _ehex_to_int(detail.sah[1]) if len(detail.sah) > 1 else 0
         hydro = _ehex_to_int(detail.sah[2]) if len(detail.sah) > 2 else 0
-        detail.biomass_rating = _oxygen_floor(generate_biomass_rating(
-            atm=atm, hydro=hydro, age_gyr=age_gyr,
-            temperature_zone=orbit.temperature_zone,
-        ), atm)
-        _set_biocomplexity(detail, atm, age_gyr)
-        for moon in detail.moons:
-            if moon.is_ring or moon.detail is None:
-                continue
-            m_atm   = _ehex_to_int(moon.detail.sah[1]) if len(moon.detail.sah) > 1 else 0
-            m_hydro = _ehex_to_int(moon.detail.sah[2]) if len(moon.detail.sah) > 2 else 0
-            moon.detail.biomass_rating = _oxygen_floor(generate_biomass_rating(
-                atm=m_atm, hydro=m_hydro, age_gyr=age_gyr,
-                temperature_zone=orbit.temperature_zone,
-            ), m_atm)
-            _set_biocomplexity(moon.detail, m_atm, age_gyr)
+        if optional_inhospitable_rule and not orbit.is_habitable_zone:
+            _inhospitable.append((orbit, atm, hydro))
+        else:
+            _roll_world_and_moons(orbit, atm, hydro)
+
+    # — Optional inhospitable rule (WBH p.130 Suggested Usage) —
+    # Single 2D for all out-of-HZ secondary worlds; natural 12 → one world
+    # gets a normal biomass roll; all others receive biomass 0.
+    if _inhospitable:
+        group_roll = random.randint(1, 6) + random.randint(1, 6)
+        if group_roll == 12:
+            winner = random.randrange(len(_inhospitable))
+            for idx, (orb, a, h) in enumerate(_inhospitable):
+                if idx == winner:
+                    _roll_world_and_moons(orb, a, h)
+                else:
+                    _zero_world_and_moons(orb)
+        else:
+            for orb, _, __ in _inhospitable:
+                _zero_world_and_moons(orb)
 
     # — Mainworld: only when WorldPhysical is available (Mainworld Detail required) —
     if mainworld is None:
@@ -1350,6 +1542,104 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
             temperature_zone=temp_zone,
         ), m_atm)
         _set_biocomplexity(moon.detail, m_atm, age_gyr)
+
+
+def _apply_habitability(system: TravellerSystem) -> None:  # pylint: disable=too-many-locals,too-many-branches
+    """Compute and attach habitability_rating for all terrestrial worlds and moons.
+
+    Secondary worlds use the fallback temperature path (category string only)
+    and the undefined-gravity formula.  The mainworld uses the full path when
+    WorldPhysical is available (detailed temperature + gravity fields).
+    Makes no dice rolls; safe to call after _apply_biomass().
+    """
+    mainworld = system.mainworld
+
+    def _hab_secondary(
+            sah: str,
+            temp_zone: Optional[str],
+            tidal_status: Optional[str] = None,
+            gravity: Optional[float] = None,
+    ) -> int:
+        sz  = _ehex_to_int(sah[0]) if len(sah) > 0 else 0
+        atm = _ehex_to_int(sah[1]) if len(sah) > 1 else 0
+        hyd = _ehex_to_int(sah[2]) if len(sah) > 2 else 0
+        return generate_habitability_rating(
+            size=sz, atmosphere=atm, hydrographics=hyd,
+            gravity=gravity, tidal_status=tidal_status,
+            temperature_category=temp_zone,
+        )
+
+    for orbit in system.system_orbits.orbits:
+        if orbit.world_type in ("empty", "gas_giant", "belt"):
+            continue
+        if orbit.is_mainworld_candidate:
+            continue
+        detail = orbit.detail
+        if detail is None:
+            continue
+        detail.habitability_rating = _hab_secondary(detail.sah, orbit.temperature_zone)
+        for moon in detail.moons:
+            if moon.is_ring or moon.detail is None:
+                continue
+            moon.detail.habitability_rating = _hab_secondary(
+                moon.detail.sah, orbit.temperature_zone,
+            )
+
+    # Mainworld — full DM path when WorldPhysical is available.
+    if mainworld is None:
+        return
+    phys = mainworld.size_detail
+    if phys is None or not hasattr(phys, "mean_temperature_k"):
+        return  # belt mainworld or physical detail not generated
+
+    mw_orbit = system.mainworld_orbit
+    if mw_orbit is None:
+        return
+
+    has_low_o = any(
+        getattr(t, "subtype_code", "") == "L"
+        for t in (mainworld.atmosphere_detail.taints
+                  if mainworld.atmosphere_detail else [])
+    )
+    mainworld.habitability_rating = generate_habitability_rating(
+        size=mainworld.size,
+        atmosphere=mainworld.atmosphere,
+        hydrographics=mainworld.hydrographics,
+        gravity=getattr(phys, "gravity", None),
+        tidal_status=getattr(phys, "tidal_status", None),
+        has_low_oxygen_taint=has_low_o,
+        advanced_mean_temperature_k=getattr(phys, "advanced_mean_temperature_k", None),
+        high_temperature_k=getattr(phys, "high_temperature_k", None),
+        low_temperature_k=getattr(phys, "low_temperature_k", None),
+        temperature_category=mw_orbit.temperature_zone,
+    )
+
+    # Propagate to orbit.detail
+    if mw_orbit.world_type == "gas_giant":
+        if mw_orbit.detail and mw_orbit.detail.moons:
+            sat = mw_orbit.detail.moons[0]
+            if sat.detail is not None:
+                sat.detail.habitability_rating = mainworld.habitability_rating
+    else:
+        if mw_orbit.detail is not None:
+            mw_orbit.detail.habitability_rating = mainworld.habitability_rating
+
+    # Mainworld moons use fallback path
+    mw_actual_moons: list = []
+    if mw_orbit.world_type == "gas_giant":
+        if mw_orbit.detail and mw_orbit.detail.moons:
+            sat = mw_orbit.detail.moons[0]
+            if sat.detail is not None:
+                mw_actual_moons = sat.detail.moons
+    else:
+        mw_actual_moons = mw_orbit.detail.moons if mw_orbit.detail else []
+
+    for moon in mw_actual_moons:
+        if moon.is_ring or moon.detail is None:
+            continue
+        moon.detail.habitability_rating = _hab_secondary(
+            moon.detail.sah, mw_orbit.temperature_zone,
+        )
 
 
 def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-many-locals

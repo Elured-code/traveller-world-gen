@@ -115,6 +115,29 @@ Albedo and greenhouse factor are each rolled from sub-tables in the WBH, then th
 formula gives the mean temperature. High/low seasonal extremes are derived from
 axial tilt, rotation rate, and hydrographics.
 
+### Very cold worlds (below 10 K)
+
+WBH p.47 footnote: when the extrapolated mean temperature would fall below 10 K
+(modified roll ≤ −34), the result is replaced with `1D+5` — a random value from
+6 K to 11 K. This represents the floor of measurable surface temperatures where
+the linear formula breaks down.
+
+### Seismic heating baked in
+
+After `generate_advanced_mean_temperature()` sets `advanced_mean_temperature_k`,
+`high_temperature_k`, and `low_temperature_k`, a later call to
+`apply_moon_tidal_effects()` may invoke `_apply_seismic_stress()`. If total
+seismic stress is non-zero and produces a higher temperature via Stefan-Boltzmann
+superposition, the three temperature fields are updated **in place**:
+
+```python
+# T_total = ⁴√(T₁⁴ + T₂⁴)  — heat sources add in quadrature
+adv_adj = round((adv_t ** 4 + tss ** 4) ** 0.25)
+```
+
+There is no separate "seismic temperature" display field — the seismic heating is
+already included in the values shown on the world card.
+
 ---
 
 ## Tidal lock and stellar day
