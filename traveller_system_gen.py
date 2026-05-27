@@ -61,9 +61,6 @@ from typing import Optional
 
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
-from traveller_belt_physical import BeltPhysical
-from traveller_world_physical import WorldPhysical
-from tables import TIDAL_STATUS_LABELS, BIOCOMPLEXITY_DESC
 from traveller_hydro_detail import generate_hydrographic_detail
 from html_render import render
 from world_codes import APP_VERSION
@@ -89,11 +86,7 @@ from traveller_world_gen import (
     to_hex,
     ATMOSPHERE_MIN_TL,
     ATMOSPHERE_NAMES,
-    GOVERNMENT_NAMES,
-    HYDROGRAPHIC_NAMES,
-    STARPORT_QUALITY_LABEL,
     TEMPERATURE_DM,
-    format_atmosphere_profile,
 )
 
 
@@ -283,13 +276,22 @@ class TravellerSystem:
         for star in self.stellar_system.stars:
             orb = (f"Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)"
                    if star.orbit_number else "")
+            desig    = star.designation
+            mao_v    = self.system_orbits.star_mao.get(desig)
+            hzco_v   = self.system_orbits.star_hzco.get(desig)
+            hz_in_v  = self.system_orbits.star_hz_inner.get(desig)
+            hz_out_v = self.system_orbits.star_hz_outer.get(desig)
             star_rows.append({
-                "designation": star.designation,
+                "designation":    desig,
                 "classification": star.classification(),
-                "mass": f"{star.mass:.2f}",
-                "temperature": f"{star.temperature:,}",
-                "luminosity": f"{star.luminosity:.3g}",
-                "orbit": orb,
+                "mass":           f"{star.mass:.2f}",
+                "temperature":    f"{star.temperature:,}",
+                "luminosity":     f"{star.luminosity:.3g}",
+                "orbit":          orb,
+                "mao":      f"{mao_v:.2f}"    if mao_v    is not None else "—",
+                "hz_inner": f"{hz_in_v:.2f}"  if hz_in_v  is not None else "—",
+                "hzco":     f"{hzco_v:.2f}"   if hzco_v   is not None else "—",
+                "hz_outer": f"{hz_out_v:.2f}" if hz_out_v is not None else "—",
             })
 
         # ── Orbital rows ──────────────────────────────────────────────────
@@ -406,70 +408,6 @@ class TravellerSystem:
                 "biosphere_str": biosphere_str,
             })
 
-        # ── Mainworld panel data ──────────────────────────────────────────
-        mw_data = None
-        if mw:
-            mw_atm_profile = ""
-            mw_gas_parts = ""
-            if mw.atmosphere_detail is not None:
-                mw_atm_profile = format_atmosphere_profile(
-                    mw.atmosphere, mw.atmosphere_detail)
-                if mw.atmosphere_detail.gas_mix:
-                    mw_gas_parts = " · ".join(
-                        f"{c.gas_name} ({c.gas_code})"
-                        + (f" {c.percentage}%" if c.percentage is not None else "")
-                        for c in mw.atmosphere_detail.gas_mix
-                    )
-
-            phys_data = None
-            if isinstance(mw.size_detail, BeltPhysical):
-                phys_data = {"type": "belt", "data": mw.size_detail}
-            elif isinstance(mw.size_detail, WorldPhysical):
-                p = mw.size_detail
-                tidal_label = (TIDAL_STATUS_LABELS[p.tidal_status]
-                               if p.tidal_status != "none" else "")
-                phys_data = {"type": "world", "data": p,
-                             "tidal_label": tidal_label}
-
-            mw_data = {
-                "world": mw,
-                "uwp": mw.uwp(),
-                "zone_cls": {
-                    "Green": "zone-green",
-                    "Amber": "zone-amber",
-                    "Red": "zone-red",
-                }.get(mw.travel_zone, "zone-green"),
-                "trade_codes": list(mw.trade_codes),
-                "starport_quality": STARPORT_QUALITY_LABEL.get(mw.starport, "?"),
-                "size_hex": to_hex(mw.size),
-                "size_str": str(mw.size * 1600) + " km" if mw.size else "Belt",
-                "atm_hex": to_hex(mw.atmosphere),
-                "atm_name": ATMOSPHERE_NAMES.get(mw.atmosphere, "?"),
-                "hydro_hex": to_hex(mw.hydrographics),
-                "hydro_name": HYDROGRAPHIC_NAMES.get(mw.hydrographics, "?"),
-                "pop_hex": to_hex(mw.population),
-                "tl_hex": to_hex(mw.tech_level),
-                "gov_hex": to_hex(mw.government),
-                "gov_name": GOVERNMENT_NAMES.get(mw.government, "?"),
-                "law_hex": to_hex(mw.law_level),
-                "phys_data": phys_data,
-                "atm_detail": mw.atmosphere_detail,
-                "atm_profile": mw_atm_profile,
-                "gas_parts": mw_gas_parts,
-                "hydro_detail": mw.hydrographic_detail,
-                "notes": list(mw.notes),
-                "biomass_rating": mw.biomass_rating,
-                "biomass_str": (to_hex(mw.biomass_rating)
-                                if mw.biomass_rating is not None else None),
-                "biocomplexity_rating": mw.biocomplexity_rating,
-                "biocomplexity_str": (
-                    f"{to_hex(mw.biocomplexity_rating)} — "
-                    + BIOCOMPLEXITY_DESC.get(
-                        mw.biocomplexity_rating, "Ecosystem-wide superorganisms")
-                    if mw.biocomplexity_rating is not None else None
-                ),
-            }
-
         return render("system_card.html",
             title=(mw.name if mw else "Unknown") + " system",
             star_classes=" + ".join(
@@ -480,7 +418,6 @@ class TravellerSystem:
             star_rows=star_rows,
             orbit_rows=orbit_rows,
             detail_attached=detail_attached,
-            mw_data=mw_data,
             json_str=self.to_json(),
         )
 

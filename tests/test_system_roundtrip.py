@@ -560,3 +560,27 @@ class TestOrbitDetailRoundtrip:
             if o1.get("detail"):
                 assert o2.get("detail") is not None
                 assert o1["detail"]["sah"] == o2["detail"]["sah"]
+
+
+# ── Issue #115 — HZCO and HZ limits displayed in Stars table ─────────────────
+
+class TestSystemHTMLStarHZ:
+    """to_html() exposes MAO, HZCO, and HZ inner/outer limits in the Stars table."""
+
+    def _html(self, seed=42):
+        from traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel
+        return generate_full_system("TestWorld", seed=seed).to_html()
+
+    def test_mao_column_header_present(self):
+        assert "MAO" in self._html()
+
+    def test_hz_orbit_column_header_present(self):
+        assert "HZ Orbit#" in self._html()
+
+    def test_primary_star_hz_shows_three_values(self):
+        import re  # pylint: disable=import-outside-toplevel
+        assert re.search(r'\d+\.\d+\s*–\s*\d+\.\d+\s*–\s*\d+\.\d+', self._html())
+
+    def test_mao_value_is_numeric(self):
+        import re  # pylint: disable=import-outside-toplevel
+        assert re.search(r'<td class="mono">\d+\.\d+</td>', self._html())
