@@ -71,6 +71,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
+_rng: random.Random = random  # type: ignore[assignment]
+
 if TYPE_CHECKING:
     from traveller_world_gen import World
     from traveller_moon_gen import Moon
@@ -82,7 +84,7 @@ if TYPE_CHECKING:
 
 def _roll(n: int, dm: int = 0) -> int:
     """Return the sum of n d6 rolls plus dm, minimum 0."""
-    return max(0, sum(random.randint(1, 6) for _ in range(n)) + dm)
+    return max(0, sum(_rng.randint(1, 6) for _ in range(n)) + dm)
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +144,7 @@ _DENSITY_PARAMS: dict[str, tuple[float, float]] = {
 def _roll_density(composition: str) -> float:
     """Roll on the Terrestrial Density Table and return density in g/cm³."""
     base, mult = _DENSITY_PARAMS.get(composition, (3.4, 0.3))
-    return round(base + random.randint(1, 6) * mult, 2)
+    return round(base + _rng.randint(1, 6) * mult, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -178,17 +180,17 @@ def _roll_extreme_axial_tilt() -> float:
       6   : 120 + 1D × 10 →  130–180° (extreme retrograde, high variance)
     Result clamped to [0, 180].
     """
-    band = random.randint(1, 6)
+    band = _rng.randint(1, 6)
     if band <= 2:
-        return float(10 + random.randint(1, 6) * 10)
+        return float(10 + _rng.randint(1, 6) * 10)
     if band == 3:
-        return float(30 + random.randint(1, 6) * 10)
+        return float(30 + _rng.randint(1, 6) * 10)
     if band == 4:
-        return min(float(90 + random.randint(1, 6) * random.randint(1, 6)), 180.0)
+        return min(float(90 + _rng.randint(1, 6) * _rng.randint(1, 6)), 180.0)
     if band == 5:
-        return max(float(180 - random.randint(1, 6) * random.randint(1, 6)), 0.0)
+        return max(float(180 - _rng.randint(1, 6) * _rng.randint(1, 6)), 0.0)
     # band == 6
-    return min(float(120 + random.randint(1, 6) * 10), 180.0)
+    return min(float(120 + _rng.randint(1, 6) * 10), 180.0)
 
 
 def _roll_axial_tilt() -> float:
@@ -205,31 +207,31 @@ def _roll_axial_tilt() -> float:
     """
     result = _roll(2)
     if result <= 4:
-        return round((random.randint(1, 6) - 1) / 50, 2)
+        return round((_rng.randint(1, 6) - 1) / 50, 2)
     if result == 5:
-        return round(random.randint(1, 6) / 5, 1)
+        return round(_rng.randint(1, 6) / 5, 1)
     if result == 6:
-        return float(random.randint(1, 6))
+        return float(_rng.randint(1, 6))
     if result == 7:
-        return float(6 + random.randint(1, 6))
+        return float(6 + _rng.randint(1, 6))
     if result <= 9:
-        return float(5 + random.randint(1, 6) * 5)
+        return float(5 + _rng.randint(1, 6) * 5)
     return _roll_extreme_axial_tilt()
 
 
 def _roll_axial_tilt_1d() -> float:
     """Recompute axial tilt for 1:1 lock: 1D selects band on Axial Tilt table (WBH p.77 Rule 3)."""
-    band = random.randint(1, 6)
+    band = _rng.randint(1, 6)
     if band == 1:
-        return round((random.randint(1, 6) - 1) / 50, 2)
+        return round((_rng.randint(1, 6) - 1) / 50, 2)
     if band == 2:
-        return round(random.randint(1, 6) / 5, 1)
+        return round(_rng.randint(1, 6) / 5, 1)
     if band == 3:
-        return float(random.randint(1, 6))
+        return float(_rng.randint(1, 6))
     if band == 4:
-        return float(6 + random.randint(1, 6))
+        return float(6 + _rng.randint(1, 6))
     if band == 5:
-        return float(5 + random.randint(1, 6) * 5)
+        return float(5 + _rng.randint(1, 6) * 5)
     return _roll_extreme_axial_tilt()  # band == 6
 
 
@@ -252,7 +254,7 @@ def _roll_day_length(age_gyr: float = 0.0) -> float:
     DM: +1 per 2 full Gyrs of system age (round down).
     """
     dm = _age_dm(age_gyr)
-    hours = (_roll(2) - 2) * 4 + 2 + random.randint(1, 6) + dm
+    hours = (_roll(2) - 2) * 4 + 2 + _rng.randint(1, 6) + dm
     return round(float(max(1, hours)), 1)
 
 
@@ -304,10 +306,10 @@ def _reroll_eccentricity_tidal(orbit_number: float, age_gyr: float) -> float:
     dm = -2
     if orbit_number < 1.0 < age_gyr:
         dm -= 1
-    first = random.randint(1, 6) + random.randint(1, 6) + dm
+    first = _rng.randint(1, 6) + _rng.randint(1, 6) + dm
     for max_roll, base, n_dice, divisor in _ECC_TABLE_PHYS:
         if first <= max_roll:
-            frac = sum(random.randint(1, 6) for _ in range(n_dice)) / divisor
+            frac = sum(_rng.randint(1, 6) for _ in range(n_dice)) / divisor
             return min(0.999, max(0.0, base + frac))
     return 0.0
 
@@ -451,17 +453,17 @@ def _apply_tidal_lock_result(  # pylint: disable=too-many-return-statements
     if result == 6:
         return round(basic_day_h * 5.0, 1), axial_tilt, "braking"
     if result == 7:
-        day = float(random.randint(1, 6) * 5 * 24)
+        day = float(_rng.randint(1, 6) * 5 * 24)
         return day, axial_tilt, "prograde"
     if result == 8:
-        day = float(random.randint(1, 6) * 20 * 24)
+        day = float(_rng.randint(1, 6) * 20 * 24)
         return day, axial_tilt, "prograde"
     if result == 9:
-        day = float(random.randint(1, 6) * 10 * 24)
+        day = float(_rng.randint(1, 6) * 10 * 24)
         new_tilt = (180.0 - axial_tilt) if axial_tilt < 90.0 else axial_tilt
         return day, new_tilt, "retrograde"
     if result == 10:
-        day = float(random.randint(1, 6) * 50 * 24)
+        day = float(_rng.randint(1, 6) * 50 * 24)
         new_tilt = (180.0 - axial_tilt) if axial_tilt < 90.0 else axial_tilt
         return day, new_tilt, "retrograde"
     if result == 11:
@@ -469,9 +471,9 @@ def _apply_tidal_lock_result(  # pylint: disable=too-many-return-statements
         new_tilt = _reroll_axial_tilt_for_lock() if axial_tilt > 3.0 else axial_tilt
         return day, new_tilt, "3:2_lock"
     # result >= 12: 1:1 tidal lock
-    if allow_broken_check and (random.randint(1, 6) + random.randint(1, 6)) == 12:
+    if allow_broken_check and (_rng.randint(1, 6) + _rng.randint(1, 6)) == 12:
         # Broken tidal lock: reroll on the table with no DMs (WBH p.105 footnote)
-        reroll = random.randint(1, 6) + random.randint(1, 6)
+        reroll = _rng.randint(1, 6) + _rng.randint(1, 6)
         return _apply_tidal_lock_result(
             reroll, basic_day_h, axial_tilt, period_h, allow_broken_check=False
         )
@@ -724,22 +726,17 @@ def _apply_seismic_stress(  # pylint: disable=too-many-arguments,too-many-positi
     )
     tidal_amp = _compute_tidal_amplitude(world_size, star_mass_solar, orbit_au, moons)
 
-    # Gas giant primary contribution (for mainworld-as-GG-satellite, WBH p.127)
+    # Gas giant primary tidal amplitude (for mainworld-as-GG-satellite, WBH p.127)
+    # Note: _compute_tidal_ss is NOT applied here — that formula is calibrated for
+    # star→planet distances (AU scale) and produces nonsensical values at moon
+    # distances (~0.1–0.8 Mkm). The amplitude contribution below correctly captures
+    # the GG tidal effect; it flows through TSF into the seismic stress total.
     if gg_mass_earth > 0.0 and gg_satellite_moon is not None and gg_satellite_moon.orbit_km:
-        gg_orbit_au   = gg_satellite_moon.orbit_km / 1_000_000.0 / _AU_TO_MKM
-        gg_mass_solar = gg_mass_earth / _SOLAR_TO_EARTH_MASS
-        gg_period_h   = gg_satellite_moon.orbit_period_hours or 0.0
-        tidal_ss += _compute_tidal_ss(
-            physical.diameter_km, physical.mass,
-            gg_mass_solar, gg_orbit_au,
-            gg_satellite_moon.orbit_eccentricity,
-            gg_period_h,
-        )
         dist_mkm = gg_satellite_moon.orbit_km / 1_000_000.0
         if dist_mkm > 0.0:
             tidal_amp += (gg_mass_earth * world_size) / (3.2 * dist_mkm ** 3)
 
-    tsf = math.floor(tidal_amp / 10)
+    tsf = min(math.floor(tidal_amp / 10), 500)
     tss = rss + tidal_ss + tsf
     physical.residual_seismic_stress = rss
     physical.tidal_seismic_stress = tidal_ss
@@ -800,7 +797,7 @@ def _roll_albedo(  # pylint: disable=too-many-branches
         # Icy-far world (beyond HZCO+2)
         albedo = 0.25 + (_roll(2) - 2) * 0.07
         if albedo <= 0.40:
-            albedo -= max(0, random.randint(1, 6) - 1) * 0.05
+            albedo -= max(0, _rng.randint(1, 6) - 1) * 0.05
 
     # Atmosphere modifier
     if atmosphere in _ATM_THIN:
@@ -841,9 +838,9 @@ def _roll_greenhouse_factor(atmosphere: int, pressure_bar: float) -> float:
     if atmosphere in _ATM_GH_STANDARD:
         return round(initial + _roll(3) * 0.01, 4)
     if atmosphere in _ATM_GH_EXOTIC:
-        return round(initial * max(0.5, random.randint(1, 6) - 1), 4)
+        return round(initial * max(0.5, _rng.randint(1, 6) - 1), 4)
     if atmosphere in _ATM_GH_EXTREME:
-        die = random.randint(1, 6)
+        die = _rng.randint(1, 6)
         multiplier = float(die) if die <= 5 else float(_roll(3))
         return round(initial * multiplier, 4)
     # Unknown atmosphere code — treat as standard
@@ -908,7 +905,7 @@ def _compute_mean_temperature(hz_deviation: float, atmosphere: int) -> int:
     if modified_roll < 0:
         t = 178 + modified_roll * 5
         if t < 10:
-            return random.randint(1, 6) + 5
+            return _rng.randint(1, 6) + 5
         return max(3, t)
     return max(3, 388 + (modified_roll - 12) * 50)
 
@@ -1045,6 +1042,7 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         star_mass: Optional[float] = None,
         orbit_eccentricity: float = 0.0,
         hz_deviation: Optional[float] = None,
+        rng: Optional[random.Random] = None,
 ) -> Optional[WorldPhysical]:
     """Generate physical characteristics for a mainworld.
 
@@ -1080,6 +1078,9 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
     -------
     WorldPhysical or None
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     if world.size == 0:
         return None
 
@@ -1352,7 +1353,7 @@ def check_runaway_greenhouse(
     tainted  = atmosphere in (2, 4, 7, 9)
     dm_size  = -2 if 2 <= size <= 5 else 0
     dm_taint =  1 if tainted else 0
-    die = random.randint(1, 6) + dm_size + dm_taint
+    die = _rng.randint(1, 6) + dm_size + dm_taint
     if die <= 1:
         new_atm = 10   # A — Exotic
     elif die <= 4:

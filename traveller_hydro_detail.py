@@ -30,6 +30,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional
 
+_rng: random.Random = random  # type: ignore[assignment]
+
 
 # WBH p.93 Hydrographics Ranges table: code -> (low_pct, high_pct)
 _HYDRO_PCT_RANGE: dict[int, tuple[int, int]] = {
@@ -103,6 +105,7 @@ def generate_hydrographic_detail(
     *,
     atmosphere: int = 0,
     temperature: str = "Temperate",
+    rng: Optional[random.Random] = None,
 ) -> Optional[HydrographicDetail]:
     """Return hydrographic detail for a mainworld.
 
@@ -129,6 +132,9 @@ def generate_hydrographic_detail(
     Returns:
         HydrographicDetail or None.
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     if size == 0:
         return None
     if hydrographics < 0 or hydrographics > 10:
@@ -138,7 +144,7 @@ def generate_hydrographic_detail(
         pct = 100
     else:
         low, high = _HYDRO_PCT_RANGE[hydrographics]
-        pct = random.randint(low, high)
+        pct = _rng.randint(low, high)
 
     fluid = _fluid_type(atmosphere, temperature) if hydrographics > 0 else None
 

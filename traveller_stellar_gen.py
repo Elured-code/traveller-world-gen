@@ -57,6 +57,7 @@ from __future__ import annotations
 import json
 import math
 import random
+_rng: random.Random = random  # type: ignore[assignment]
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -67,17 +68,17 @@ from typing import List, Optional, Tuple
 
 def roll(n: int, dm: int = 0) -> int:
     """Roll n six-sided dice and add dm. Minimum result is 0."""
-    return max(0, sum(random.randint(1, 6) for _ in range(n)) + dm)
+    return max(0, sum(_rng.randint(1, 6) for _ in range(n)) + dm)
 
 
 def d3() -> int:
     """Simulate a D3 as ceil(1D / 2)."""
-    return (random.randint(1, 6) + 1) // 2
+    return (_rng.randint(1, 6) + 1) // 2
 
 
 def d10() -> int:
     """Roll a d10 (1-10)."""
-    return random.randint(1, 10)
+    return _rng.randint(1, 10)
 
 
 # ---------------------------------------------------------------------------
@@ -764,7 +765,7 @@ def _small_star_age() -> float:
     Age for stars with mass < 0.9 (WBH p.20-21).
     Roll 1D × 2, add D3-1, optionally add d10 fractional digit.
     """
-    age = random.randint(1, 6) * 2 + (d3() - 1)
+    age = _rng.randint(1, 6) * 2 + (d3() - 1)
     # Add one fractional digit via d10 (subtract 1 from integer part)
     frac = d10() / 10.0
     age = max(0.1, (age - 1) + frac)
@@ -783,7 +784,7 @@ def _generate_system_age(mass: float, ms_lifespan: float) -> float:
 
     # Larger stars — age is a random fraction of their main sequence lifespan
     # Use linear variance: age = ms_lifespan × (random fraction 0–1)
-    fraction = random.random()
+    fraction = _rng.random()
     age = ms_lifespan * fraction
     # Minimum age check
     if mass < 4.7:
@@ -940,7 +941,7 @@ def _determine_non_primary_type(  # pylint: disable=too-many-return-statements,t
         if parent.subtype is None:
             return _build_star(parent.spectral_type, parent.lum_class,
                                designation, role)
-        sub_reduction = random.randint(1, 6)
+        sub_reduction = _rng.randint(1, 6)
         new_sub = parent.subtype + sub_reduction  # higher number = dimmer
         # Wrap to next cooler type if needed
         sp_idx = (SPECTRAL_ORDER.index(parent.spectral_type)
@@ -1026,7 +1027,7 @@ def _companion_orbit() -> Tuple[float, float]:
     Companion star Orbit# (WBH p.27):
     Orbit# = 1D÷10 + (2D-7)÷100  → range ~0.05–0.65
     """
-    orbit_num = random.randint(1, 6) / 10.0 + (roll(2) - 7) / 100.0
+    orbit_num = _rng.randint(1, 6) / 10.0 + (roll(2) - 7) / 100.0
     orbit_num = max(0.05, min(0.65, orbit_num))
     return round(orbit_num, 2), _orbit_to_au(orbit_num)
 
@@ -1039,14 +1040,14 @@ def _secondary_orbit(slot: str) -> Tuple[float, float]:
       Far    = 1D+11; range 12–17
     """
     if slot == "close":
-        base = random.randint(1, 6) - 1
+        base = _rng.randint(1, 6) - 1
         orbit_num = max(0.5, float(base))
     elif slot == "near":
-        orbit_num = float(random.randint(1, 6) + 5)
+        orbit_num = float(_rng.randint(1, 6) + 5)
     else:  # far
-        orbit_num = float(random.randint(1, 6) + 11)
+        orbit_num = float(_rng.randint(1, 6) + 11)
     # Add optional fractional variance
-    frac = random.randint(0, 9) / 10.0
+    frac = _rng.randint(0, 9) / 10.0
     orbit_num = round(orbit_num + frac, 1)
     return orbit_num, _orbit_to_au(orbit_num)
 
@@ -1055,7 +1056,9 @@ def _secondary_orbit(slot: str) -> Tuple[float, float]:
 # Top-level system generation
 # ---------------------------------------------------------------------------
 
-def generate_stellar_data() -> StarSystem:  # pylint: disable=too-many-locals,too-many-branches
+def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        rng: Optional[random.Random] = None,
+) -> StarSystem:
     """
     Generate complete stellar data for a star system.
 
@@ -1067,6 +1070,9 @@ def generate_stellar_data() -> StarSystem:  # pylint: disable=too-many-locals,to
 
     Returns a StarSystem with all stars populated.
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     system = StarSystem()
 
     # Step 1: Primary star
@@ -1179,10 +1185,8 @@ def main() -> None:
                         help="Number of systems to generate")
     args = parser.parse_args()
 
-    if args.seed is not None:
-        random.seed(args.seed)
-
-    systems = [generate_stellar_data() for _ in range(args.count)]
+    rng = random.Random(args.seed) if args.seed is not None else None
+    systems = [generate_stellar_data(rng=rng) for _ in range(args.count)]
 
     if args.json:
         if args.count == 1:

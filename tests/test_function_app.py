@@ -890,7 +890,7 @@ class TestDeterminism:
         ]
 
         # Sequential calls mirroring exactly what the batch endpoint does
-        random.seed(seed)
+        rng = random.Random(seed)
         from traveller_world_gen import (
             generate_world as _gen,
             generate_atmosphere_detail as _gen_atm,
@@ -901,7 +901,7 @@ class TestDeterminism:
         from traveller_hydro_detail import generate_hydrographic_detail as _gen_hydro
         sequential_uwps = []
         for i in range(count):
-            world = _gen(name=f"World-{i+1}")
+            world = _gen(name=f"World-{i+1}", seed=seed, rng=rng)
             world.atmosphere_detail = _gen_atm(
                 world.atmosphere, world.size, temperature=world.temperature
             )
@@ -913,8 +913,9 @@ class TestDeterminism:
                 world.atmosphere_detail, world.atmosphere,
                 world.size, world.hydrographics,
             )
-            world.hydrographic_detail = _gen_hydro(world.hydrographics, world.size)
-            world.size_detail = _gen_phys(world)
+            world.hydrographic_detail = _gen_hydro(world.hydrographics, world.size,
+                                                   rng=rng)
+            world.size_detail = _gen_phys(world, rng=rng)
             sequential_uwps.append(world.uwp())
 
         assert batch_uwps == sequential_uwps

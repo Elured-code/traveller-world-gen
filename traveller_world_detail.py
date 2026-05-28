@@ -110,6 +110,7 @@ from __future__ import annotations
 
 import math
 import random
+_rng: random.Random = random  # type: ignore[assignment]
 from typing import TYPE_CHECKING, Optional
 
 from traveller_orbit_gen import OrbitSlot, SystemOrbits
@@ -133,10 +134,10 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 def _roll(n: int, dm: int = 0) -> int:
-    return max(0, sum(random.randint(1, 6) for _ in range(n)) + dm)
+    return max(0, sum(_rng.randint(1, 6) for _ in range(n)) + dm)
 
 def _d3() -> int:
-    return (random.randint(1, 6) + 1) // 2
+    return (_rng.randint(1, 6) + 1) // 2
 
 _EHEX = "0123456789ABCDEFGHIJ"
 
@@ -189,9 +190,9 @@ def _minimal_tl(atmosphere: int) -> int:
 
 def _terrestrial_size() -> int:
     """Two-stage terrestrial world size roll (WBH p.53-54)."""
-    r = random.randint(1, 6)
+    r = _rng.randint(1, 6)
     if r <= 2:
-        return random.randint(1, 6)   # 1-6
+        return _rng.randint(1, 6)   # 1-6
     if r <= 4:
         return _roll(2)               # 2-12 (C)
     return _roll(2, 3)                # 5-15 (F)
@@ -210,11 +211,11 @@ def _gg_dm(star_spectral: str, star_lum_class: str) -> int:
 
 def _gas_giant_sah(star_spectral: str, star_lum_class: str) -> str:
     """Generate gas giant SAH string: GS#, GM#, or GL# (WBH p.55)."""
-    cat = random.randint(1, 6) + _gg_dm(star_spectral, star_lum_class)
+    cat = _rng.randint(1, 6) + _gg_dm(star_spectral, star_lum_class)
     if cat <= 2:
         return f"GS{_ehex(_d3() + _d3())}"         # 2-6
     if cat <= 4:
-        return f"GM{_ehex(random.randint(1,6) + 6)}" # 7-12
+        return f"GM{_ehex(_rng.randint(1,6) + 6)}" # 7-12
     return f"GL{_ehex(_roll(2, 6))}"             # 8-18
 
 
@@ -256,9 +257,9 @@ def _secondary_population(max_pop: int) -> int:
     """
     if max_pop <= 0:
         return 0
-    if random.randint(1, 6) >= 5:
+    if _rng.randint(1, 6) >= 5:
         return 0
-    return random.randint(1, max_pop)
+    return _rng.randint(1, max_pop)
 
 
 def _secondary_government(mainworld_pop: int, mainworld_gov: int) -> int:
@@ -269,7 +270,7 @@ def _secondary_government(mainworld_pop: int, mainworld_gov: int) -> int:
       1 → 0, 2 → 1, 3 → 2, 4 → 3, 5+ → 6
     DMs: Mainworld Gov 0 → DM-2; Mainworld Gov 6 → DM + mainworld pop
     """
-    r = random.randint(1, 6)
+    r = _rng.randint(1, 6)
     if mainworld_gov == 0:
         r = max(1, r - 2)
     elif mainworld_gov == 6:
@@ -292,14 +293,14 @@ def _secondary_law_level(government: int, mainworld_law: int) -> int:
     For others: standard 2D-7 + Government.
     """
     if government == 6:
-        r = random.randint(1, 6)
+        r = _rng.randint(1, 6)
         if r <= 2:
             return max(0, _roll(2, -7 + 6))       # rerolled for Gov 6
         if r <= 4:
             return mainworld_law                    # equal to mainworld
         if r == 5:
             return mainworld_law + 1                # mainworld + 1
-        return mainworld_law + random.randint(1, 6)
+        return mainworld_law + _rng.randint(1, 6)
     return max(0, _roll(2, -7 + government))
 
 
@@ -322,7 +323,7 @@ def _spaceport(population: int) -> str:
         dm = 2
     elif population == 1:
         dm = -1
-    r = random.randint(1, 6) + dm
+    r = _rng.randint(1, 6) + dm
     if r <= 2:
         return "Y"
     if r == 3:
@@ -412,7 +413,7 @@ def generate_biocomplexity_rating(
       3 < Age <= 4 Gyr           : DM-2
       Age > 4 Gyr                : no DM
     """
-    base = random.randint(1, 6) + random.randint(1, 6) - 7 + min(biomass, 9)
+    base = _rng.randint(1, 6) + _rng.randint(1, 6) - 7 + min(biomass, 9)
     dm = 0
     if atm < 4 or atm > 9:
         dm -= 2
@@ -601,7 +602,7 @@ def generate_biodiversity_rating(biomass: int, biocomplexity: int) -> int:
     Formula: 2D − 7 + Biomass + ⌈Biocomplexity / 2⌉. Minimum 0.
     Only call when biomass ≥ 1.
     """
-    base = (random.randint(1, 6) + random.randint(1, 6)
+    base = (_rng.randint(1, 6) + _rng.randint(1, 6)
             - 7 + biomass + math.ceil(biocomplexity / 2))
     return max(0, base)
 
@@ -620,7 +621,7 @@ def generate_compatibility_rating(
     DMs: atmosphere code, system age > 8 Gyrs, "otherwise tainted"
     (a taint on an atmosphere code not already listed as tainted).
     """
-    base = random.randint(1, 6) + random.randint(1, 6) - (biocomplexity // 2)
+    base = _rng.randint(1, 6) + _rng.randint(1, 6) - (biocomplexity // 2)
     dm = _ATM_COMPAT_DM.get(atm, -8)
     if has_taint and atm not in _INHERENT_TAINTED_CODES:
         dm -= 2   # "otherwise tainted" (e.g. optional taint on code 13/14)
@@ -642,11 +643,11 @@ def generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, b
     If current sophont found, extinct check is skipped (returns False).
     """
     bio_eff = min(biocomplexity, 9)
-    current_roll = random.randint(1, 6) + random.randint(1, 6) + bio_eff - 7
+    current_roll = _rng.randint(1, 6) + _rng.randint(1, 6) + bio_eff - 7
     if current_roll >= 13:
         return True, False
     dm = 1 if age_gyr > 5.0 else 0
-    extinct_roll = random.randint(1, 6) + random.randint(1, 6) + bio_eff - 7 + dm
+    extinct_roll = _rng.randint(1, 6) + _rng.randint(1, 6) + bio_eff - 7 + dm
     return False, extinct_roll >= 13
 
 
@@ -667,7 +668,7 @@ def generate_biomass_rating(  # pylint: disable=too-many-arguments,too-many-posi
     Special Case 1: biologic taint + rolled ≤ 0 → biomass becomes 1.
     Special Case 2: inhospitable atmosphere + biomass ≥ 1 → add adjustment.
     """
-    base = random.randint(1, 6) + random.randint(1, 6)
+    base = _rng.randint(1, 6) + _rng.randint(1, 6)
 
     atm_key = min(atm, 15)
     dm = _ATM_BIOMASS_DM.get(atm_key, 0)
@@ -899,6 +900,7 @@ def _moons_for(  # pylint: disable=too-many-arguments,too-many-positional-argume
         orbit_au: float = 0.0,
         planet_ecc: float = 0.0,
         star_mass_solar: float = 0.0,
+        gg_mass_earth: float = 0.0,
         adjacency_ctx: dict | None = None) -> list:
     """Generate moons for a WorldDetail based on its SAH and orbital context."""
     sah = detail.sah
@@ -912,7 +914,9 @@ def _moons_for(  # pylint: disable=too-many-arguments,too-many-positional-argume
         return generate_moons(
             size_code=diam, orbit_number=orbit_number,
             is_gas_giant=True, gg_category=cat, gg_diameter=diam,
+            planet_mass_earth=gg_mass_earth,
             orbit_au=orbit_au, star_mass_solar=star_mass_solar, planet_ecc=planet_ecc,
+            rng=_rng,
             **ctx,
         )
     # Terrestrial
@@ -923,6 +927,7 @@ def _moons_for(  # pylint: disable=too-many-arguments,too-many-positional-argume
     return generate_moons(
         size_code=sz, orbit_number=orbit_number,
         orbit_au=orbit_au, star_mass_solar=star_mass_solar, planet_ecc=planet_ecc,
+        rng=_rng,
         **ctx,
     )
 
@@ -1022,12 +1027,16 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
 def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     system: TravellerSystem,
     nhz_atmospheres: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> dict[str, WorldDetail]:
     """
     Generate WorldDetail for every non-mainworld, non-empty orbit slot.
 
     Returns a dict mapping "{star_designation}-{slot_index}" → WorldDetail.
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     orbits: SystemOrbits = system.system_orbits
     mainworld = system.mainworld
 
@@ -1037,7 +1046,7 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
     mw_law  = mainworld.law_level  if mainworld else 0
     mw_tl   = mainworld.tech_level if mainworld else 0
 
-    max_secondary_pop = max(0, mw_pop - random.randint(1, 6))
+    max_secondary_pop = max(0, mw_pop - _rng.randint(1, 6))
 
     primary = system.stellar_system.primary
 
@@ -1114,6 +1123,7 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
                 next_is_gas_giant=next_is_gg,
                 is_outermost=orbit.orbit_au >= outermost_au,
                 is_exploited=is_exploited,
+                rng=_rng,
             )
 
         elif orbit.world_type == "gas_giant":
@@ -1172,6 +1182,7 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
             orbit_au=parent_orbit.orbit_au,
             planet_ecc=parent_orbit.eccentricity,
             star_mass_solar=host_for_moon.mass,
+            gg_mass_earth=parent_orbit.gg_mass_earth or 0.0,
             adjacency_ctx=_moon_adjacency_context(
                 on, desig, orbits, system.stellar_system),
         )
@@ -1199,6 +1210,7 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
         system: TravellerSystem,
         optional_biomass_rule: bool = False,
         optional_inhospitable_rule: bool = False,
+        rng: Optional[random.Random] = None,
 ) -> None:
     """
     Compute WorldDetail for all orbits and attach as `orbit.detail`
@@ -1213,6 +1225,9 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
     one randomly chosen world receive a biomass roll — all others get 0 (WBH
     p.130 Suggested Usage).
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     nhz = system.nhz_atmospheres
     detail_map = generate_system_detail(system, nhz_atmospheres=nhz)
     mainworld  = system.mainworld
@@ -1244,6 +1259,7 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
                 star_mass_solar=system.stellar_system.primary.mass,
                 planet_diameter_km=mw_diam,
                 planet_mass_earth=mw_mass,
+                rng=_rng,
                 **mw_ctx,
             )
             mw_hzco   = system.system_orbits.star_hzco.get(orbit.star_designation, 1.0)
@@ -1259,7 +1275,7 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
                         mw_gov=mainworld.government,
                         mw_law=mainworld.law_level,
                         mw_tl=mainworld.tech_level,
-                        max_secondary_pop=max(0, mainworld.population - random.randint(1,6)),
+                        max_secondary_pop=max(0, mainworld.population - _rng.randint(1,6)),
                         nhz_atmospheres=nhz,
                     )
             # WorldDetail for the satellite body itself (with its own moons).
@@ -1280,7 +1296,11 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
                 # Place the mainworld satellite's orbit around the GG so that
                 # its tidal contribution to seismic stress can be computed.
                 _gg_diam    = gg_diameter_from_sah(orbit.gg_sah)
-                _gg_mass    = float(_gg_diam ** 2)          # Earth masses
+                _gg_mass    = (
+                    orbit.gg_mass_earth
+                    if orbit.gg_mass_earth is not None
+                    else float(_gg_diam ** 2)
+                )
                 _gg_diam_km = float(_gg_diam * 12742)       # km
                 place_moon_orbit(
                     satellite_moon,
@@ -1343,6 +1363,7 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
             next_is_gas_giant=next_is_gg,
             is_outermost=mw_orbit.orbit_au >= outermost_au,
             is_exploited=is_exploited,
+            rng=_rng,
         )
         if mw_orbit.detail is not None:
             mw_orbit.detail.physical = bp
@@ -1441,9 +1462,9 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
     # Single 2D for all out-of-HZ secondary worlds; natural 12 → one world
     # gets a normal biomass roll; all others receive biomass 0.
     if _inhospitable:
-        group_roll = random.randint(1, 6) + random.randint(1, 6)
+        group_roll = _rng.randint(1, 6) + _rng.randint(1, 6)
         if group_roll == 12:
-            winner = random.randrange(len(_inhospitable))
+            winner = _rng.randrange(len(_inhospitable))
             for idx, (orb, a, h) in enumerate(_inhospitable):
                 if idx == winner:
                     _roll_world_and_moons(orb, a, h)
