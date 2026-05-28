@@ -138,6 +138,22 @@ adv_adj = round((adv_t ** 4 + tss ** 4) ** 0.25)
 There is no separate "seismic temperature" display field — the seismic heating is
 already included in the values shown on the world card.
 
+### Tidal Stress Factor (TSF) cap and GG-satellite special case
+
+The Tidal Stress Factor (TSF) is capped at 500 to prevent runaway results from
+extreme orbital configurations:
+
+```python
+tsf = min(math.floor(tidal_amp / 10), 500)
+```
+
+For worlds that are moons of a gas giant (GG-satellite mainworlds), the
+`_compute_tidal_ss` sub-formula is **not** applied. That formula is derived from
+AU-scale orbital distances and gives physically meaningless results at the
+planetary-diameter distances of moon orbits. The tidal amplitude contribution
+from the parent body still applies; only the Tidal Stress Score (TSS) formula
+step is skipped.
+
 ---
 
 ## Tidal lock and stellar day
@@ -165,7 +181,7 @@ The **stellar day** (time between sunrises) is different from the **sidereal day
 |--------|----------|-------------|
 | `.to_dict()` | `WorldPhysical` | Serialises all fields to a plain dict |
 | `.from_dict(d)` | `WorldPhysical` | Reconstructs from a dict |
-| `generate_world_physical(...)` | module | Main entry point |
+| `generate_world_physical(..., rng=None)` | module | Main entry point; accepts optional `rng` |
 | `generate_advanced_mean_temperature(...)` | module | Optional second pass |
 | `apply_moon_tidal_effects(...)` | module | Updates day/stellar day after moon data |
 

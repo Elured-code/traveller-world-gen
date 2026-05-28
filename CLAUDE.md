@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-05-27 (Session 84)  
+**Last updated:** 2026-05-28 (Session 86)  
 **Branch:** `v1.4.0` · **Main:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -37,11 +37,17 @@ read only the context files listed below for the specific task at hand.
 ## Always-needed facts (no file read required)
 
 - **Pylint:** `.venv/bin/pylint <file>` — target **10.00/10 per file**
-- **Tests:** `.venv/bin/pytest tests/ -q` — **1515 tests**, all must pass
-- **RNG:** Global shared state; seed set once in `generate_full_system()`.
+- **Tests:** `.venv/bin/pytest tests/ -q` — **1657 tests**, all must pass
+- **RNG:** Injectable `random.Random` instance; each generation module has a
+  module-level `_rng` sentinel (initially `random` the module). Public
+  entry-point functions accept `rng: Optional[random.Random] = None`; when
+  provided, they write it to `_rng`. `generate_world()` only replaces `_rng`
+  when an explicit `seed` or `rng` argument is given. `generate_full_system()`
+  always creates a fresh `random.Random(seed)` and propagates it.
   Adding any dice roll anywhere shifts all subsequent results for that seed.
 - **`attach_detail()` is always a separate explicit step.** Never call it
-  automatically inside `generate_full_system()`.
+  automatically inside `generate_full_system()`. Always pass `rng=rng` when
+  calling it from a handler or wherever the same RNG instance must be continued.
 - **New dice rolls belong at the end of the pipeline** to minimise seed disruption.
 
 ---

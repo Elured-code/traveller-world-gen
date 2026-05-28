@@ -162,6 +162,9 @@ created. These use `field(default=..., init=False)`:
 
     # Set by attach_detail() → _apply_habitability()
     habitability_rating:  Optional[int] = field(default=None, init=False)
+
+    # Set when an explicit seed or rng was passed to generate_world():
+    seed: Optional[str] = field(default=None, init=False)
 ```
 
 `init=False` means the field is **not** a parameter to `__init__` — it starts at its
@@ -199,11 +202,14 @@ lifeform_profile = (
 
 ## How a world is generated: `generate_world()`
 
-The entry point is `generate_world(name)` (line ~2466). It calls each characteristic's
-generator in rulebook order, passing earlier results as inputs to later ones:
+The entry point is `generate_world(name, seed=None, rng=None)` (line ~2466). It calls
+each characteristic's generator in rulebook order, passing earlier results as inputs
+to later ones. When `seed` or `rng` is provided, the module-level `_rng` instance is
+replaced with a seeded `random.Random` for that call; without either argument the
+existing `_rng` state is used unchanged.
 
 ```python
-def generate_world(name: str = "Unknown") -> World:
+def generate_world(name: str = "Unknown", seed=None, rng=None) -> World:
     size         = generate_size()
     atmosphere   = generate_atmosphere(size)          # needs size
     temperature  = generate_temperature(atmosphere)   # needs atmosphere
@@ -417,11 +423,17 @@ descriptive label from `tables.habitability_description()`.
 
 ## The random seed
 
-Many functions use `random.randint(1, 6)` (through `roll()`) from Python's standard
-`random` module. The global random state means every roll feeds into the next.
+Each generation module has a module-level `_rng` sentinel that starts as the standard
+`random` module. When `generate_world()` is called with an explicit `seed` or `rng`
+argument, it replaces `_rng` with a seeded `random.Random` instance, making that
+world fully reproducible. Without either argument, `_rng` is left unchanged and the
+existing random state continues.
 
-If you set the seed with `random.seed(42)` before calling `generate_world()`, you
-get the same world every time. This is how the `--seed` CLI argument works.
+`World.seed` is set when an explicit seed or RNG was supplied; it is included in
+`to_dict()` output so that a saved world can document which seed produced it.
+
+For standalone CLI use, `--seed 42` passes a seed to `generate_world()` and you
+get the same world every time.
 
 ---
 

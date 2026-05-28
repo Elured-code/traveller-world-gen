@@ -106,10 +106,13 @@ This is physics, not a dice roll — the WBH uses this formula directly.
 ## The entry point
 
 ```python
-system = generate_stellar_data()
+system = generate_stellar_data(rng=None)
 ```
 
-This runs the full WBH pp.14–29 procedure in order:
+This runs the full WBH pp.14–29 procedure in order. The optional `rng` parameter
+accepts a `random.Random` instance; when supplied it is used for all dice rolls in
+this module instead of the module-level default. `generate_full_system()` always
+passes its shared `rng` here so the entire system uses one reproducible sequence.
 
 1. Roll primary spectral type and luminosity class
 2. Look up or interpolate physical properties (mass, temperature, diameter)

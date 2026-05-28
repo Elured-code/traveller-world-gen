@@ -158,8 +158,38 @@ SEISMIC HEATING — ABSORBED INTO TEMPERATURE DISPLAY
   appears — there is no longer a separate "what if you add seismic heating"
   display field.
 
+GAS GIANT MASS — WBH TABLE NOW USED
+-------------------------------------
+- Gas giant mass is now rolled using the correct WBH three-tier mass table,
+  rather than being estimated from the gas giant's size category:
+
+    Small gas giant (GS):  10–35 Earth masses    (5 × 1D+1)
+    Medium gas giant (GM): 40–340 Earth masses   (20 × 3D−1)
+    Large gas giant (GL):  350–3,300 Earth masses (D3×50 × 3D+4)
+
+- This rolled mass is stored in the system JSON and used everywhere a gas giant
+  mass is needed: moon generation, tidal stress calculations, and Roche limit
+  checks. A fallback based on diameter is used when loading older JSON files
+  that predate this change.
+
+MOONS NEAR THE ROCHE LIMIT NOW CONVERTED TO RINGS
+---------------------------------------------------
+- If a significant moon's closest approach to its parent gas giant (accounting
+  for orbital eccentricity) falls inside the Roche limit (2.0 planetary diameters),
+  it is tidally disrupted and converted to ring material. The ring count on the
+  gas giant increases by one. This check runs after eccentricity rolls, so only
+  moons with genuinely unsafe orbits are disrupted.
+
 BUG FIXES
 ---------
+- Fixed: Worlds orbiting a gas giant as a satellite displayed seismic stress
+  values millions of times larger than physically possible. The tidal stress
+  formula (calibrated for AU-scale star-to-planet distances) was incorrectly
+  applied at moon distances (~0.1–0.8 Mkm), amplifying results by a factor of
+  10¹⁵ or more. The formula is no longer applied at moon distances; only the
+  tidal amplitude contribution remains. Additionally, the Tidal Stress Factor
+  is now capped at 500 to prevent overflow at the display layer.
+
 - Fixed: Cold-temperature worlds with standard breathable atmospheres (vacuum,
   trace, thin, standard, dense, etc.) were incorrectly shown as having an
   Ammonia ocean instead of Water. Ammonia oceans only form in chemically exotic
