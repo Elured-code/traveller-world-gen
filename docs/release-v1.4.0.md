@@ -1,6 +1,42 @@
 # Traveller World Generator — v1.4.0 Release Notes
 
-**1650 tests pass. Pylint 10.00/10.**
+**1657 tests pass. Pylint 10.00/10.**
+
+---
+
+## Injectable RNG for Deterministic Generation (Session 86, issue #42)
+
+All generation modules now use injectable `random.Random` instances instead of the
+global `random` module. This eliminates shared-state hazards on warm Azure Function
+instances and enables fully isolated unit tests. Public entry-point functions accept
+`rng: Optional[random.Random] = None`; `generate_full_system()` always creates a fresh
+`random.Random(seed)` and propagates it through the entire pipeline. Seed reproducibility
+is preserved — `random.Random(N)` uses the same Mersenne Twister as `random.seed(N)`.
+`TravellerSystem` and `World` both gain a `seed` field emitted to JSON automatically,
+removing the need for manual injection in API handlers.
+
+---
+
+## GG Moons Near the Roche Limit (Session 85, issue #120)
+
+Four related bugs in the gas-giant satellite tidal-stress pipeline, exposed by seed
+253115564 (which previously produced TSF 644, TSS 1,256,530 — physically impossible).
+
+- **GG mass table:** New `_roll_gg_mass(gg_category)` rolls the WBH three-tier mass
+  table (GS: 10–35 M⊕; GM: 40–340 M⊕; GL: 350–3,300 M⊕) and stores the result in
+  `OrbitSlot.gg_mass_earth`. All five call sites updated; legacy files fall back to the
+  old `diameter²` estimate.
+- **TSS formula removed for GG satellites:** `_compute_tidal_ss` is calibrated for
+  AU-scale distances; at moon distances it amplified results by ~10¹⁵×. The formula is
+  no longer called for GG-satellite mainworlds; tidal amplitude contribution is kept.
+- **TSF capped at 500:** Prevents overflow at the display layer and enforces a physical
+  liquefaction ceiling on dissipation.
+- **Perigee Roche limit check:** Any significant moon whose `orbit_pd × (1 − e) < 2.0`
+  is tidally disrupted and converted to ring material after eccentricity rolls.
+
+Seed result for 253115564: TSF 644 → 8; TSS 1,256,530 → 0; total SS 1,257,174 → 8.
+**This is a seed-breaking change** — `_roll_gg_mass()` adds 1–2 dice rolls per gas
+giant before the eccentricity block.
 
 ---
 

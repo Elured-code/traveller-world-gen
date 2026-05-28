@@ -59,15 +59,17 @@ adds its DMs on top of this raw roll.
 When no seed is provided, `generate_full_system()` creates a random seed using
 `secrets.token_hex(4)` — a cryptographically random 8-character hex string. This is
 different from `random.seed()`: `secrets` is used only to *generate* the seed string.
-The actual game-dice randomness uses Python's standard `random` module throughout.
+The actual game-dice randomness uses a dedicated `random.Random` instance throughout.
 
 ```python
 seed = seed or secrets.token_hex(4)
-random.seed(seed)
+rng = random.Random(seed)   # fresh instance — always propagated to sub-generators
 ```
 
-Storing the seed string in the output makes every generated system exactly
-reproducible if the seed is saved.
+`generate_full_system()` always creates a fresh `random.Random(seed)` and passes it
+to every sub-generator (`generate_stellar_data`, `generate_orbits`, `generate_world`,
+etc.) so that the full system is isolated from any global random state. Storing the
+seed string in `TravellerSystem.seed` makes every system exactly reproducible.
 
 ---
 
@@ -80,9 +82,12 @@ class TravellerSystem:
     system_orbits: SystemOrbits       # from traveller_orbit_gen.py
     mainworld: Optional[World]        # from traveller_world_gen.py
     mainworld_orbit: Optional[OrbitSlot]
+    seed: Optional[str] = None        # the seed used to generate this system
 ```
 
 This is the root object for a complete system. Everything else hangs off it.
+`seed` is emitted by `to_dict()` when set, so a saved system always records the
+seed that produced it.
 
 ---
 
@@ -115,6 +120,8 @@ Optional flags:
 - `nhz_atmospheres=True` — allow non-habitable-zone atmospheres for secondary worlds
 - `orbital_eccentricity=True` — roll orbital eccentricities and inclinations
 - `orbital_inclination=True` — roll inclinations separately
+- `rng` — an existing `random.Random` instance to use instead of creating a new one
+  (when provided, `seed` is still recorded but the supplied `rng` drives generation)
 
 ### TravellerMap (canonical) generation
 

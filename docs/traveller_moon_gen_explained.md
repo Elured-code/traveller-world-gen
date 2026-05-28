@@ -95,17 +95,34 @@ by `3600` converts seconds to hours.
 
 ---
 
-## Orbital eccentricity and inclination
+## Orbital eccentricity, inclination, and the Roche limit
 
 After size and orbit placement, `generate_moons()` calls:
 
 ```python
-eccentricity = roll_eccentricity()   # from traveller_orbit_gen
-inclination  = roll_inclination()    # from traveller_orbit_gen
+eccentricity = roll_eccentricity(rng)   # from traveller_orbit_gen
+inclination  = roll_inclination(rng)    # from traveller_orbit_gen
 ```
 
 Both functions are shared with the main orbit generator. Inclinations over 90°
 indicate a retrograde orbit (the moon orbits opposite to the planet's rotation).
+
+After the eccentricity is known, the moon's **perigee** (closest approach to the
+parent planet) is checked:
+
+```python
+perigee_pd = orbit_pd * (1 - eccentricity)   # orbit in planetary diameters
+```
+
+If `perigee_pd < 2.0` — inside the Roche limit — the moon is tidally disrupted
+and becomes ring material instead. The moon is removed from the significant-moon
+list and `ring_count` is incremented. This check requires the parent planet's
+mass, passed in as `planet_mass_earth`.
+
+`generate_moons()` accepts a `planet_mass_earth: float = 0.0` parameter for this
+purpose. For gas giant orbit slots the value comes from `OrbitSlot.gg_mass_earth`
+(rolled in `traveller_orbit_gen.py`); for terrestrial worlds it is estimated from
+the world's physical diameter when `gg_mass_earth` is not available.
 
 ---
 
@@ -125,7 +142,7 @@ by only generating one level of moon detail.
 |--------|----------|-------------|
 | `.to_dict()` | `Moon` | Serialises the moon to a plain dict |
 | `.from_dict(d)` | `Moon` | Reconstructs from a dict (including nested detail) |
-| `generate_moons(world_detail, orbit_number)` | module | Entry point — full list of moons |
+| `generate_moons(world_detail, orbit_number, planet_mass_earth=0.0, rng=None)` | module | Entry point — full list of moons |
 | `place_moon_orbit(moon, parent_mass, ...)` | module | Sets orbit distance and period |
 | `moons_str(moons)` | module | Compact display string e.g. `"R S 2 4"` |
 

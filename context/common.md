@@ -96,7 +96,8 @@ Common suppressions used in this codebase:
 | `missing-function-docstring` | `main()` alongside `too-many-return-statements` |
 | `broad-exception-caught` | All endpoint handlers (deliberate) |
 | `locally-disabled,suppressed-message` | Module-level disable comment — silences I0011/I0020 noise |
-| `too-many-lines` | `traveller_system_gen.py` (file exceeded 1000 lines in Session 37) |
+| `too-many-lines` | `traveller_system_gen.py` (file exceeded 1000 lines in Session 37); `traveller_orbit_gen.py` (exceeded 1000 lines in Session 86) |
+| `protected-access` | `conftest.py` — intentionally sets `mod._rng` on generation modules for test isolation |
 
 ### Pylance (VS Code)
 
@@ -114,7 +115,7 @@ errors must be resolved. Key patterns:
 
 ## Test suite
 
-1450 tests total; all must pass before committing.
+1657 tests total; all must pass before committing.
 
 ```bash
 # All tests
@@ -128,7 +129,10 @@ errors must be resolved. Key patterns:
 ```
 
 The Azure Functions SDK is stubbed automatically by `conftest.py` — no live
-Azure runtime needed.
+Azure runtime needed. `conftest.py` also provides an `autouse` fixture that
+resets every generation module's `_rng` sentinel to the global `random` module
+before/after each test, preventing order-dependent failures from injectable RNG
+(issue #42).
 
 ---
 

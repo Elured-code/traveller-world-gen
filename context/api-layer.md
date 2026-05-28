@@ -90,7 +90,7 @@ Error response shape:
 | `parse_orbital_inclination(req)` | `bool` | Accepts `true`, `1`, `yes`; gates inclination rolls (WBH p.28) |
 | `parse_format(req)` | `str` | `"json"` \| `"html"` \| `"text"` |
 | `max_batch_size()` | `int` | Reads `TRAVELLER_MAX_BATCH_SIZE` env var; bounds-checked 1–1000; default 20 |
-| `apply_seed(seed)` | `None` | Calls `random.seed(seed)` if seed is not None |
+| `apply_seed(seed)` | `Tuple[int, random.Random]` | Creates `random.Random(seed)` (generates via `secrets` if None); returns `(seed, rng)`; does NOT call `random.seed()` |
 | `ok(body, status_code)` | `HttpResponse` | JSON 200 (or custom) response |
 | `error(message, code, status_code)` | `HttpResponse` | JSON error response |
 

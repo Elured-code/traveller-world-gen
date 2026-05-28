@@ -125,7 +125,7 @@ of temperature. Worlds with gas-atmosphere codes (16, 17) also get `None`.
 |--------|----------|-------------|
 | `.to_dict()` | `HydrographicDetail` | Serialises to `{"surface_liquid_pct": ..., "fluid_type": ...}` |
 | `.from_dict(d)` | `HydrographicDetail` | Class method — reconstructs from a dict |
-| `generate_hydrographic_detail(hydrographics, size, *, atmosphere, temperature)` | module | Entry point |
+| `generate_hydrographic_detail(hydrographics, size, *, atmosphere, temperature, rng=None)` | module | Entry point |
 
 ---
 

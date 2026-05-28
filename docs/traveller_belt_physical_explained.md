@@ -109,7 +109,7 @@ The `max(2, min(12, ...))` clamp ensures the result stays in the valid range.
 |--------|----------|-------------|
 | `.to_dict()` | `BeltPhysical` | Serialises all fields to a plain dict |
 | `.from_dict(d)` | `BeltPhysical` | Class method — reconstructs from a dict |
-| `generate_belt_physical(orbit_slot, ...)` | module | Entry point |
+| `generate_belt_physical(orbit_slot, ..., rng=None)` | module | Entry point |
 
 ---
 

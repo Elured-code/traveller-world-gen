@@ -57,6 +57,9 @@ class OrbitSlot:
                                 # takes display priority over detail.profile
     gg_sah: str                 # Gas giant SAH rolled at orbit-gen time (e.g. "GM9");
                                 # empty string for non-gas-giant slots
+    gg_mass_earth: Optional[float]  # field(default=None, init=False); WBH third-roll mass
+                                    # in Earth masses (GS:10–35, GM:40–340, GL:350–3300);
+                                    # None for non-GG slots and legacy saved systems
     anomaly_type: str           # ""|"random"|"eccentric"|"inclined"|"retrograde"
                                 # |"trojan_leading"|"trojan_trailing"; "" for normal orbits
     orbit_period_yr: Optional[float]  # field(default=None, init=False); orbital period
@@ -104,6 +107,7 @@ class TravellerSystem:
     nhz_atmospheres: bool = False   # set by generate_full_system(); read by attach_detail()
     orbital_eccentricity: bool = False  # set by generate_full_system()
     orbital_inclination: bool = False   # set by generate_full_system()
+    seed: Optional[int] = None          # RNG seed used; emitted by to_dict(); restored by from_dict()
     # methods: .to_dict(), .to_json(), .to_html(detail_attached), .summary()
 ```
 
@@ -162,6 +166,10 @@ class World:
                                     # Full temp path when WorldPhysical available; fallback to
                                     # temperature_category string otherwise.
                                     # Gravity: defined G value OR undefined formula (1 − |6−size|).
+    seed: Optional[int] = None         # RNG seed used; emitted by to_dict() only when not None;
+                                    # set by generate_world(seed=N) or generate_world(rng=rng);
+                                    # None when world generated with no explicit seed (tests, CLI
+                                    # without seed flag)
 
     # methods: .uwp(), .to_dict(), .to_json(), .to_html(), .summary()
     # classmethod: .from_dict(d) — reconstruct from to_dict() output

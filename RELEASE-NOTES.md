@@ -1,8 +1,70 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–84
-**Tests:** 1650
+**Sessions:** 55–86
+**Tests:** 1657
+
+---
+
+## Injectable RNG for Deterministic Generation (Session 86, issue #42)
+
+All generation modules now use injectable `random.Random` instances instead of
+the global `random` module, eliminating shared-state hazards on warm Azure
+Function instances and enabling isolated unit tests.
+
+- **Module-level `_rng` pattern:** Each of the 8 generation modules
+  (`traveller_hydro_detail`, `traveller_belt_physical`, `traveller_world_physical`,
+  `traveller_world_gen`, `traveller_stellar_gen`, `traveller_orbit_gen`,
+  `traveller_moon_gen`, `traveller_world_detail`) has a module-level
+  `_rng: random.Random = random` sentinel. All `random.XXX()` calls replaced
+  with `_rng.XXX()`. Public entry-point functions accept `rng: Optional[random.Random]
+  = None`; when provided, they set `_rng = rng`.
+- **`generate_world()` is seed-agnostic by default:** Only replaces `_rng` when
+  an explicit `seed` or `rng` argument is given, preserving `random.seed()`
+  behaviour for callers that rely on global state.
+- **`generate_full_system()` always creates a fresh RNG:** `random.seed()` removed;
+  replaced with `rng = random.Random(seed)` propagated to all sub-calls.
+- **`TravellerSystem.seed` and `World.seed` fields added:** Both `to_dict()` emit
+  `"seed"` when set; `from_dict()` restores it. Handlers in `function_app.py` no
+  longer inject `d["seed"] = seed` manually — the seed comes from the object.
+- **`apply_seed()` return type changed** from `int` to `Tuple[int, random.Random]`.
+  All 13 handler call sites updated: `seed, rng = apply_seed(seed)`.
+- **Cross-module propagation:** `traveller_map_fetch.generate_system_from_map()`
+  uses `random.Random(seed)` and passes `rng` to `generate_orbits()`,
+  `generate_hydrographic_detail()`, and `attach_detail()`.
+- **`conftest.py` autouse fixture:** Resets every module's `_rng` to the global
+  `random` module before/after each test, preventing order-dependent failures.
+
+This is **not a seed-breaking change** — `random.Random(seed)` uses the same
+Mersenne Twister as `random.seed(seed)`, producing identical sequences.
+
+---
+
+## GG Moons Near the Roche Limit (Session 85, issue #120)
+
+Four related bugs in the gas-giant satellite tidal-stress pipeline, exposed by
+seed 253115564 (TSF 644, TSS 1,256,530, total SS 1,257,174 — physically impossible).
+
+- **TSS formula removed from GG block:** `_compute_tidal_ss` is calibrated for
+  AU-scale star→planet distances; at moon distances (~0.1–0.8 Mkm) it amplifies
+  results by ~10¹⁵×. The formula is no longer called for GG-satellite mainworlds;
+  the `tidal_amp +=` amplitude contribution (already correct at all distances) is
+  kept. Seed result: TSS drops from 1,256,530 to 0.
+- **TSF capped at 500:** `tsf = min(math.floor(tidal_amp / 10), 500)`. Beyond
+  ~500K-equivalent, material liquefaction limits further tidal dissipation. Seed
+  result: TSF drops from 644 to 8.
+- **Perigee Roche limit check:** After eccentricity/inclination rolls, any
+  significant moon whose `orbit_pd × (1 − e) < 2.0` is tidally disrupted and
+  converted to ring material. `ring_count` is incremented on the existing ring
+  or a new ring created if none exists.
+- **WBH GG mass roll:** New `_roll_gg_mass(gg_category)` in `traveller_orbit_gen.py`
+  implements the WBH third-roll mass table (GS: 5×(1D+1)=10–35 M⊕; GM:
+  20×(3D−1)=40–340 M⊕; GL: D3×50×(3D+4)=350–3,300 M⊕). Result stored as
+  `OrbitSlot.gg_mass_earth` (Optional[float], serialised). Replaces the incorrect
+  `gg_diameter ** 2` formula at all five call sites with a legacy-safe fallback
+  (`orbit.gg_mass_earth if not None else float(diam ** 2)`). **This is a
+  seed-breaking change** — adds 1–2 dice rolls per gas giant before the
+  eccentricity block.
 
 ---
 

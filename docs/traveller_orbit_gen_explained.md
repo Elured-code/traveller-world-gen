@@ -50,6 +50,7 @@ class OrbitSlot:
     is_mainworld_candidate: bool
     canonical_profile: str  # TravellerMap systems: overrides generated UWP
     gg_sah: str             # gas giant SAH, e.g. "GM9" — empty for non-GGs
+    gg_mass_earth: Optional[float]  # GG mass in Earth masses (None for non-GGs)
     anomaly_type: str       # "" | "random" | "eccentric" | "inclined" | ...
     notes: str
     # Post-init fields (set after construction):
@@ -141,6 +142,25 @@ was chosen as the mainworld.
 
 ---
 
+## Gas giant mass: `_roll_gg_mass()`
+
+Every gas giant orbit slot has a `gg_mass_earth` value (in Earth masses) rolled from
+the WBH mass table:
+
+| GG category | Formula | Range |
+|---|---|---|
+| GS (small) | 5 × (1D + 1) | 10–35 M⊕ |
+| GM (medium) | 20 × (3D − 1) | 40–340 M⊕ |
+| GL (large) | D3 × 50 × (3D + 4) | 350–3,300 M⊕ |
+
+The result is stored as `OrbitSlot.gg_mass_earth` and round-tripped through
+`to_dict()` / `from_dict()`. Non-GG slots have `gg_mass_earth = None`.
+
+This mass is used by `generate_moons()` to check whether a moon's perigee lies
+inside the Roche limit (see `traveller_moon_gen_explained.md`).
+
+---
+
 ## Key methods
 
 | Method | On class | What it does |
@@ -149,7 +169,9 @@ was chosen as the mainworld.
 | `.to_dict()` | `SystemOrbits` | Serialises all slots and zone data |
 | `.from_dict(d)` | `OrbitSlot` | Reconstructs from a dict (detail sub-key optional) |
 | `.from_dict(d, star_system)` | `SystemOrbits` | Reconstructs from a dict |
-| `generate_orbits(star_system, ...)` | module | Entry point |
+| `generate_orbits(star_system, ...)` | module | Entry point; accepts optional `rng` |
+| `roll_eccentricity(rng=None)` | module | Rolls one eccentricity value; accepts optional `rng` |
+| `roll_inclination(rng=None)` | module | Rolls one inclination value; accepts optional `rng` |
 
 ---
 

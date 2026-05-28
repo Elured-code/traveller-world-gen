@@ -245,16 +245,24 @@ Inner edge clamped: if `centre − span/2 < 0.55`, centre is shifted outward.
 |------|------------|------------|
 | Size S | 800 | (800/12742)³ |
 | Terrestrial size N | N × 1600 | (N × 1600 / 12742)³ |
-| Gas giant diam D | D × 12800 | D² |
+| Gas giant diam D | D × 12800 | `OrbitSlot.gg_mass_earth` (WBH roll); fallback `D²` for legacy |
 
 For the mainworld, `WorldPhysical.diameter_km` and `WorldPhysical.mass` are used
-directly (accessed via `mainworld.size_detail`).
+directly (accessed via `mainworld.size_detail`). `_moons_for()` accepts
+`gg_mass_earth: float = 0.0` and passes it as `planet_mass_earth` to
+`generate_moons()`, overriding the diameter² estimate for gas giant slots.
 
 **Eccentricity and inclination** (WBH p.76) — rolled for each significant moon
 when orbit data is provided. `roll_eccentricity(orbit_number=2.0, system_age_gyr=0.0)`
 (no world-specific DMs) and `roll_inclination()` are called from `traveller_orbit_gen`.
 Inclination > 90° implies retrograde. Emitted to JSON as `orbit_eccentricity` (4 d.p.)
 and `orbit_inclination` (2 d.p.) when > 0.
+
+**Perigee Roche limit check** (Session 85, issue #120) — after eccentricity/inclination
+rolls, any significant moon whose perigee `orbit_pd × (1 − e) < 2.0` is tidally
+disrupted and converted to ring material. `ring_count` is incremented on the existing
+consolidated ring, or a new ring is created if none exists. This check only runs when
+orbit placement has been performed (`orbit_au > 0` and `star_mass_solar > 0`).
 
 ### Belt physical detail (WBH pp.131-133)
 

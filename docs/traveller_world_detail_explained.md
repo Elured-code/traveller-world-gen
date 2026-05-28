@@ -177,7 +177,8 @@ No dice are rolled; the rating is purely deterministic from world characteristic
 |--------|----------|-------------|
 | `.to_dict()` | `WorldDetail` | Serialises the slot's detail to a plain dict |
 | `.from_dict(d)` | `WorldDetail` | Reconstructs from a dict, including nested Moon and physical objects |
-| `attach_detail(system, ...)` | module | Entry point — populates every slot, mainworld biology, and habitability |
+| `attach_detail(system, ..., rng=None)` | module | Entry point — populates every slot, mainworld biology, and habitability |
+| `generate_system_detail(system, ..., rng=None)` | module | Alias / variant entry point; also accepts `rng` |
 | `generate_biomass_rating(...)` | module | WBH p.127 biomass roll with atmosphere/temperature DMs |
 | `generate_biocomplexity_rating(...)` | module | WBH p.129 biocomplexity roll |
 | `generate_sophont_checks(...)` | module | WBH p.131 current and extinct sophont rolls |
@@ -198,6 +199,7 @@ attach_detail(system, nhz=False, use_oxygen=False, advanced_temp=False)
         ├─ For each non-empty OrbitSlot:
         │       _generate_sah()   →  WorldDetail.sah
         │       social rolls      →  WorldDetail.population / government / law / tech
+        │       _moons_for()      →  passes OrbitSlot.gg_mass_earth to generate_moons()
         │       generate_moons()  →  WorldDetail.moons
         │       OrbitSlot.detail  = WorldDetail
         │
