@@ -636,13 +636,13 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
 
     if seed is None:
         seed = secrets.randbelow(2 ** 31)
-    random.seed(seed)
+    rng = random.Random(seed)
 
     # Step 2: canonical stellar system (types fixed, orbit positions random)
     stellar = reconstruct_star_system(map_data.stars_str)
 
     # Step 3: procedural orbital layout
-    orbits  = generate_orbits(stellar,
+    orbits  = generate_orbits(stellar, rng=rng,
                               orbital_eccentricity=orbital_eccentricity,
                               orbital_inclination=orbital_inclination)
 
@@ -706,6 +706,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
         world.hydrographics, world.size,
         atmosphere=world.atmosphere,
         temperature=world.temperature,
+        rng=rng,
     )
 
     system = TravellerSystem(
@@ -715,10 +716,11 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
         mainworld_orbit      = mw_orbit,
         orbital_eccentricity = orbital_eccentricity,
         orbital_inclination  = orbital_inclination,
+        seed                 = seed,
     )
 
     if attach:
-        attach_detail(system)
+        attach_detail(system, rng=rng)
 
     return system
 

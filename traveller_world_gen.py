@@ -37,6 +37,7 @@ The human author reviewed, directed, and is responsible for the code.
 import json
 import math
 import random
+_rng: random.Random = random  # type: ignore[assignment]
 import argparse
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, TYPE_CHECKING
@@ -67,7 +68,7 @@ def roll(num_dice: int, modifier: int = 0) -> int:
     The result is clamped to a minimum of 0 because many Traveller tables
     treat negative totals as zero (e.g. Atmosphere, Hydrographics).
     """
-    total = sum(random.randint(1, 6) for _ in range(num_dice))
+    total = sum(_rng.randint(1, 6) for _ in range(num_dice))
     return max(0, total + modifier)
 
 
@@ -335,7 +336,7 @@ def _dice(num: int) -> int:
     WBH formulas where a negative variance term is legitimate
     (e.g. the (2D-7)/100 term in the oxygen-fraction formula).
     """
-    return sum(random.randint(1, 6) for _ in range(num))
+    return sum(_rng.randint(1, 6) for _ in range(num))
 
 
 def _atmosphere_pressure_bar(code: int) -> Optional[float]:
@@ -350,7 +351,7 @@ def _atmosphere_pressure_bar(code: int) -> Optional[float]:
         return None
     minimum, width = span
     variance = (
-        (random.randint(1, 6) - 1) * 5 + (random.randint(1, 6) - 1)
+        (_rng.randint(1, 6) - 1) * 5 + (_rng.randint(1, 6) - 1)
     ) / 30
     return round(minimum + width * variance, 3)
 
@@ -367,7 +368,7 @@ def _subtype_pressure_bar(
     if span_bar is None:
         return None
     variance = (
-        (random.randint(1, 6) - 1) * 5 + (random.randint(1, 6) - 1)
+        (_rng.randint(1, 6) - 1) * 5 + (_rng.randint(1, 6) - 1)
     ) / 30
     return round(max(0.0, min_bar + span_bar * variance), 3)
 
@@ -389,9 +390,9 @@ def _oxygen_partial_pressure(
     if code not in _PPO_CODES or total_pressure_bar is None:
         return None
     dm = 1 if (system_age_gyr is not None and system_age_gyr > 4.0) else 0
-    fraction = (random.randint(1, 6) + dm) / 20 + (_dice(2) - 7) / 100
+    fraction = (_rng.randint(1, 6) + dm) / 20 + (_dice(2) - 7) / 100
     if fraction <= 0:
-        fraction = random.randint(1, 6) * 0.01
+        fraction = _rng.randint(1, 6) * 0.01
     return round(fraction * total_pressure_bar, 3)
 
 
@@ -988,7 +989,7 @@ def _roll_insidious_hazard(subtype_code: str) -> list:
     if h_code == "G":
         n_roll = _dice(1)
         n = 1 if n_roll <= 2 else (2 if n_roll <= 4 else 3)
-        gases = random.sample(_HAZARDOUS_GASES, n)
+        gases = _rng.sample(_HAZARDOUS_GASES, n)
     hazards.append(InsidiousHazard(hazard_code=h_code, hazard=h_name, gases=gases))
     return hazards
 
@@ -1294,7 +1295,7 @@ def generate_atmosphere_detail(  # pylint: disable=too-many-locals,too-many-bran
         if needs_second:
             second, _ = _roll_single_taint(code, ppo)
             taints.append(second)
-    if code in (13, 14) and random.randint(1, 6) >= 4:
+    if code in (13, 14) and _rng.randint(1, 6) >= 4:
         taint, needs_second = _roll_single_taint(code, ppo)
         taints.append(taint)
         if needs_second:
@@ -1371,7 +1372,7 @@ class UnusualSubtype:
         )
 
 
-# D26 table (roll random.randint(1,2)*10 + random.randint(1,6) → 11–26).
+# D26 table (roll _rng.randint(1,2)*10 + _rng.randint(1,6) → 11–26).
 # Entries: (subtype_code, subtype_name, atmospheric_conditions_description)
 _UNUSUAL_SUBTYPE_TABLE: dict = {
     11: ("1", "Dense, Extreme",
@@ -1402,7 +1403,7 @@ _UNUSUAL_SUBTYPE_TABLE: dict = {
 
 def _d26() -> int:
     """Roll D26 (1D2 × 10 + 1D6), giving results 11–26."""
-    return random.randint(1, 2) * 10 + random.randint(1, 6)
+    return _rng.randint(1, 2) * 10 + _rng.randint(1, 6)
 
 
 def _roll_unusual_subtype(
@@ -1530,6 +1531,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     trade_codes:    List[str] = field(default_factory=list)
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
+    seed:           Optional[int] = None
     size_detail:    Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
     biomass_rating:        Optional[int] = field(default=None, init=False)
     biocomplexity_rating:  Optional[int] = field(default=None, init=False)
@@ -1649,6 +1651,7 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.lifeform_profile is not None else {}),
             **({"habitability_rating": self.habitability_rating}
                if self.habitability_rating is not None else {}),
+            **({"seed": self.seed} if self.seed is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1824,6 +1827,8 @@ class World:  # pylint: disable=too-many-instance-attributes
         world.lifeform_profile = d.get("lifeform_profile")
         if d.get("habitability_rating") is not None:
             world.habitability_rating = int(d["habitability_rating"])
+        if d.get("seed") is not None:
+            world.seed = int(d["seed"])
 
         return world
 
@@ -2166,7 +2171,7 @@ def generate_nhz_atmosphere(size: int, hz_deviation: float) -> tuple:
     if atm_code == 10:
         if star:
             dm = 1 if (dagger and hz_deviation <= -3.0) else 0
-            exotic_key = irr_key if random.randint(1, 6) + dm >= 4 else base_key
+            exotic_key = irr_key if _rng.randint(1, 6) + dm >= 4 else base_key
         else:
             exotic_key = base_key
 
@@ -2409,7 +2414,7 @@ def generate_population_multiplier(population: int) -> int:
         return 0
     # D3 is simulated as ceil(1D/2)
     def d3() -> int:
-        return (random.randint(1, 6) + 1) // 2   # gives 1, 2 or 3
+        return (_rng.randint(1, 6) + 1) // 2   # gives 1, 2 or 3
 
     first  = d3()   # maps 1→0, 2→3, 3→6
     second = d3()   # maps 1→1, 2→2, 3→3
@@ -2611,13 +2616,24 @@ def assign_travel_zone(atmosphere: int, government: int,
 # Master generation function
 # ---------------------------------------------------------------------------
 
-def generate_world(name: str = "Unknown") -> World:
+def generate_world(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        name: str = "Unknown",
+        seed: Optional[int] = None,
+        rng: Optional[random.Random] = None,
+) -> World:
     """Generate a complete mainworld following the rulebook procedure.
 
     Steps 1-13 are performed in order, each using the results of
     previous steps exactly as the rulebook specifies.
     """
-    world = World(name=name)
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
+    elif seed is not None:
+        rng = random.Random(seed)
+        _rng = rng
+    # When neither is given, use current _rng as-is (preserves random.seed() behaviour)
+    world = World(name=name, seed=seed)
 
     # --- Step 1: Size ---
     world.size = generate_size()
@@ -2736,10 +2752,9 @@ def main():  # pylint: disable=too-many-branches
     if args.json and args.html:
         parser.error("--json and --html are mutually exclusive.")
 
-    if args.seed is not None:
-        random.seed(args.seed)
-        if not args.json and not args.html:
-            print(f"[Using random seed {args.seed}]\n")
+    rng = random.Random(args.seed) if args.seed is not None else None
+    if args.seed is not None and not args.json and not args.html:
+        print(f"[Using random seed {args.seed}]\n")
 
     worlds = []
     for i in range(args.count):
@@ -2750,7 +2765,7 @@ def main():  # pylint: disable=too-many-branches
         else:
             name = f"World-{i+1}"
 
-        world = generate_world(name=name)
+        world = generate_world(name=name, seed=args.seed, rng=rng)
         worlds.append(world)
 
     if args.json:

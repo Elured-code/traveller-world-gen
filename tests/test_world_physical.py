@@ -1495,15 +1495,21 @@ class TestGGSatelliteTidal:
         assert wp_gg.tidal_amplitude_m > wp_base.tidal_amplitude_m
         assert (wp_gg.tidal_stress_factor or 0) >= (wp_base.tidal_stress_factor or 0)
 
-    def test_gg_tidal_ss_increases_with_eccentricity(self):
-        """Non-zero satellite eccentricity around GG adds to tidal seismic stress."""
+    def test_gg_tidal_ss_unaffected_by_satellite_eccentricity(self):
+        """GG satellite eccentricity does not add to tidal seismic stress.
+
+        The _compute_tidal_ss formula is calibrated for star→planet distances and
+        produces nonsensical values at moon distances; it is not applied for GG
+        parent contributions. The GG tidal effect flows through TSF via amplitude.
+        """
         wp_base = self._make_wp()
         wp_gg   = self._make_wp()
         assert wp_base is not None and wp_gg is not None
         self._apply(wp_base)
         self._apply(wp_gg, gg_mass_earth=81.0,
                     gg_satellite_moon=self._sat_moon(orbit_km=500_000.0, ecc=0.3, period_h=48.0))
-        assert (wp_gg.tidal_seismic_stress or 0) > (wp_base.tidal_seismic_stress or 0)
+        assert (wp_gg.tidal_seismic_stress or 0) == (wp_base.tidal_seismic_stress or 0)
+        assert (wp_gg.tidal_amplitude_m or 0.0) > (wp_base.tidal_amplitude_m or 0.0)
         assert (wp_gg.total_seismic_stress or 0) > (wp_base.total_seismic_stress or 0)
 
     def test_gg_zero_mass_is_backward_compatible(self):
@@ -1517,6 +1523,16 @@ class TestGGSatelliteTidal:
         assert wp1.tidal_stress_factor == wp2.tidal_stress_factor
         assert wp1.tidal_seismic_stress == wp2.tidal_seismic_stress
         assert wp1.total_seismic_stress == wp2.total_seismic_stress
+
+    def test_tsf_capped_at_500(self):
+        """TSF is capped at 500 regardless of tidal amplitude (liquefaction limit)."""
+        wp = self._make_wp()
+        assert wp is not None
+        # A GG satellite at 50,000 km from an 81 ME giant produces amplitude >> 5,000 m
+        self._apply(wp, gg_mass_earth=81.0,
+                    gg_satellite_moon=self._sat_moon(orbit_km=50_000.0, ecc=0.0))
+        assert wp.tidal_stress_factor is not None
+        assert wp.tidal_stress_factor <= 500
 
 
 # ---------------------------------------------------------------------------

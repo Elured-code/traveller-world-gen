@@ -172,7 +172,7 @@ def generate_temperature_from_orbit(
 # ---------------------------------------------------------------------------
 
 @dataclass
-class TravellerSystem:
+class TravellerSystem:  # pylint: disable=too-many-instance-attributes
     """A fully generated Traveller star system with mainworld."""
 
     stellar_system: StarSystem
@@ -182,6 +182,7 @@ class TravellerSystem:
     nhz_atmospheres: bool = False
     orbital_eccentricity: bool = False
     orbital_inclination: bool = False
+    seed: Optional[int] = None
 
     def to_dict(self) -> dict:
         """Serialise this system to a JSON-compatible dict."""
@@ -191,6 +192,8 @@ class TravellerSystem:
         d["nhz_atmospheres"] = self.nhz_atmospheres
         d["orbital_eccentricity"] = self.orbital_eccentricity
         d["orbital_inclination"] = self.orbital_inclination
+        if self.seed is not None:
+            d["seed"] = self.seed
         d["_app_version"] = APP_VERSION
         return d
 
@@ -217,6 +220,7 @@ class TravellerSystem:
             nhz_atmospheres=bool(d.get("nhz_atmospheres", False)),
             orbital_eccentricity=bool(d.get("orbital_eccentricity", False)),
             orbital_inclination=bool(d.get("orbital_inclination", False)),
+            seed=int(d["seed"]) if "seed" in d else None,
         )
 
     def summary(self) -> str:
@@ -440,6 +444,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     belt_count: int,
     system_age_gyr: Optional[float] = None,
     nhz_atmospheres: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> World:
     """
     Generate a mainworld whose temperature is constrained by its orbital
@@ -453,6 +458,9 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
       via ``generate_atmosphere_detail()``; *system_age_gyr* feeds the
       WBH p.80 DM+1 to oxygen fraction for systems older than 4 Gyr.
     """
+    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    if rng is not None:
+        _twg._rng = rng  # pylint: disable=protected-access
     world = World(name=name)
 
     # If the mainworld orbit is a belt, the physical characteristics are
@@ -627,12 +635,13 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     return world
 
 
-def generate_full_system(
+def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     name: str = "Unknown",
     seed: Optional[int] = None,
     nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system with stellar data, orbital
@@ -647,20 +656,23 @@ def generate_full_system(
                               worlds and companion stars (WBH p.27).
         orbital_inclination:  When True, roll orbital inclination for all
                               worlds and companion stars (WBH p.28).
+        rng:                  Optional pre-seeded random.Random instance.
+                              When provided, seed is ignored.
 
     Returns:
         A TravellerSystem containing stellar data, orbits, and mainworld.
     """
-    if seed is None:
-        seed = secrets.randbelow(2 ** 31)
-    random.seed(seed)
+    if rng is None:
+        if seed is None:
+            seed = secrets.randbelow(2 ** 31)
+        rng = random.Random(seed)
 
     # Step 1: Stars
-    stellar = generate_stellar_data()
+    stellar = generate_stellar_data(rng=rng)
 
     # Step 2: Orbits and mainworld orbit selection
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
-                             orbital_inclination=orbital_inclination)
+                             orbital_inclination=orbital_inclination, rng=rng)
 
     mw_orbit = orbits.mainworld_orbit
     mainworld = None
@@ -677,6 +689,7 @@ def generate_full_system(
             belt_count=orbits.belt_count,
             system_age_gyr=stellar.age_gyr,
             nhz_atmospheres=nhz_atmospheres,
+            rng=rng,
         )
 
     return TravellerSystem(
@@ -687,6 +700,7 @@ def generate_full_system(
         nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
+        seed=seed,
     )
 
 
@@ -695,6 +709,7 @@ def generate_system_from_world(
     seed: Optional[int] = None,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system around an existing mainworld.
@@ -716,13 +731,17 @@ def generate_system_from_world(
     Returns:
         A TravellerSystem with the supplied world placed as the mainworld.
     """
-    if seed is None:
-        seed = secrets.randbelow(2 ** 31)
-    random.seed(seed)
+    if rng is None:
+        if seed is None:
+            seed = secrets.randbelow(2 ** 31)
+        rng = random.Random(seed)
 
-    stellar = generate_stellar_data()
+    stellar = generate_stellar_data(rng=rng)
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
-                             orbital_inclination=orbital_inclination)
+                             orbital_inclination=orbital_inclination, rng=rng)
+
+    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    _twg._rng = rng  # pylint: disable=protected-access
 
     # Reconcile PBG: honour the world's canonical gas giant and belt counts
     # rather than the freshly generated orbit counts.
@@ -778,6 +797,7 @@ def generate_system_from_world(
         mainworld_orbit=mw_orbit,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
+        seed=seed,
     )
 
 

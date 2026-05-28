@@ -60,6 +60,7 @@ The human author reviewed, directed, and is responsible for the code.
 from __future__ import annotations
 import math
 import random
+_rng: random.Random = random  # type: ignore[assignment]
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
 from traveller_orbit_gen import roll_eccentricity, roll_inclination
@@ -72,10 +73,10 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 def _roll(n: int, dm: int = 0) -> int:
-    return max(0, sum(random.randint(1, 6) for _ in range(n)) + dm)
+    return max(0, sum(_rng.randint(1, 6) for _ in range(n)) + dm)
 
 def _d3() -> int:
-    return (random.randint(1, 6) + 1) // 2
+    return (_rng.randint(1, 6) + 1) // 2
 
 _EHEX = "0123456789ABCDEFG"
 def _ehex(n: int) -> str:
@@ -122,7 +123,7 @@ def _roll_moon_pd(mor: int) -> tuple[float, str]:
     Returns (pd, range_name) where range_name is "inner", "middle", or "outer".
     """
     dm = 1 if mor < 60 else 0
-    r1 = random.randint(1, 6) + dm
+    r1 = _rng.randint(1, 6) + dm
     r2d = _roll(2) - 2   # 2D-2
     if r1 <= 3:
         return round(r2d * mor / 60.0 + 2.0, 1), "inner"
@@ -327,7 +328,7 @@ def _moon_quantity(  # pylint: disable=too-many-arguments,too-many-positional-ar
     else:
         sz = int(size_code) if size_code != "S" else 1
         if sz <= 2:
-            result = random.randint(1, 6) + dm - 5     # 1D-5
+            result = _rng.randint(1, 6) + dm - 5     # 1D-5
         elif sz <= 9:
             result = _roll(2, dm * 2) - 8              # 2D-8
         else:
@@ -354,7 +355,7 @@ def _size_terrestrial_moon(parent_size: int) -> Moon:
     a ring." The formula is (parent_size - 1) - 1D. For parent_size=1 the
     result is always ≤ 0 (ring or S). For larger parents it can be positive.
     """
-    r = random.randint(1, 6)
+    r = _rng.randint(1, 6)
     if r <= 3:
         return Moon(size_code="S")
     if r <= 5:
@@ -365,7 +366,7 @@ def _size_terrestrial_moon(parent_size: int) -> Moon:
         sz = min(sz, parent_size)
         return Moon(size_code=sz)
     # Size = (parent_size - 1) - 1D; negative → S, zero → ring (WBH p.57)
-    sz = (parent_size - 1) - random.randint(1, 6)
+    sz = (parent_size - 1) - _rng.randint(1, 6)
     if sz < 0:
         return Moon(size_code="S")
     if sz == 0:
@@ -375,7 +376,7 @@ def _size_terrestrial_moon(parent_size: int) -> Moon:
 
 def _size_gg_moon(gg_diameter: int) -> Moon:
     """Size one moon for a gas giant parent."""
-    r = random.randint(1, 6)
+    r = _rng.randint(1, 6)
     if r <= 3:
         return Moon(size_code="S")
     if r <= 5:
@@ -384,9 +385,9 @@ def _size_gg_moon(gg_diameter: int) -> Moon:
             return Moon(size_code=0, is_ring=True)
         return Moon(size_code=sz)
     # Gas Giant Special Moon Sizing
-    r2 = random.randint(1, 6)
+    r2 = _rng.randint(1, 6)
     if r2 <= 3:
-        sz = random.randint(1, 6)             # 1D → 1-6
+        sz = _rng.randint(1, 6)             # 1D → 1-6
     elif r2 <= 5:
         sz = max(0, _roll(2) - 2)             # 2D-2 → 0-A
     else:
@@ -478,8 +479,8 @@ def place_moon_orbit(  # pylint: disable=too-many-arguments,too-many-positional-
     moon.orbit_km           = round(pd * parent_diameter_km, 1)
     moon.orbit_range        = "excess" if pd > mor + 2 else rng
     moon.orbit_period_hours = _moon_period_hours(moon.orbit_km, parent_mass_earth)
-    moon.orbit_eccentricity = roll_eccentricity(orbit_number=2.0, system_age_gyr=0.0)
-    moon.orbit_inclination  = roll_inclination()
+    moon.orbit_eccentricity = roll_eccentricity(orbit_number=2.0, system_age_gyr=0.0, rng=_rng)
+    moon.orbit_inclination  = roll_inclination(rng=_rng)
 
 
 def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-branches,too-many-statements
@@ -496,6 +497,7 @@ def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-ar
     star_mao: float = 0.0,
     companion_exclusion_zones: list | None = None,
     is_adjacent_outermost_far: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> List[Moon]:
     """
     Generate all significant moons for a world.
@@ -519,6 +521,9 @@ def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-ar
     Orbit fields (orbit_pd, orbit_km, …) are set when orbit_au and
     star_mass_solar are non-zero; otherwise they remain None.
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     # Belts (size 0) are diffuse debris fields, not solid bodies.
     # The WBH moon rules apply to planets (solid bodies ≥ size S).
     # A belt cannot gravitationally retain significant moons.
@@ -600,9 +605,28 @@ def generate_moons(  # pylint: disable=too-many-arguments,too-many-positional-ar
             # Eccentricity and inclination (WBH p.76)
             for m in sig_moons:
                 m.orbit_eccentricity = roll_eccentricity(
-                    orbit_number=2.0, system_age_gyr=0.0,
+                    orbit_number=2.0, system_age_gyr=0.0, rng=_rng,
                 )
-                m.orbit_inclination = roll_inclination()
+                m.orbit_inclination = roll_inclination(rng=_rng)
+
+            # Perigee Roche limit check: r(perigee) = orbit_pd × (1 − e).
+            # If perigee < 2 PD the moon will be tidally disrupted at closest
+            # approach and must be converted to ring material.
+            roche_victims = [
+                m for m in sig_moons
+                if m.orbit_pd is not None and m.orbit_pd * (1.0 - m.orbit_eccentricity) < 2.0
+            ]
+            if roche_victims:
+                for m in roche_victims:
+                    moons.remove(m)
+                sig_moons = [m for m in sig_moons if m not in roche_victims]
+                if rings:
+                    rings[0].ring_count += len(roche_victims)
+                else:
+                    new_ring = Moon(size_code=0, is_ring=True)
+                    new_ring.ring_count = len(roche_victims)
+                    rings.append(new_ring)
+                    moons.append(new_ring)
 
             moons = sorted(moons, key=sort_key)
 

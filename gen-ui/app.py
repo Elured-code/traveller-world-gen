@@ -727,11 +727,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         first = det.moons[0] if det.moons else None
                         moons = first.detail.moons if first and first.detail else []
                         _gg_sat = det.moons[0] if det.moons else None
-                        _gg_m_e = float(
-                            gg_diameter_from_sah(  # type: ignore[attr-defined]
-                                getattr(mw_orbit, "gg_sah", "")
-                            ) ** 2
-                        ) if getattr(mw_orbit, "gg_sah", "") else 0.0
+                        _gg_sah = getattr(mw_orbit, "gg_sah", "")
+                        _stored = getattr(mw_orbit, "gg_mass_earth", None)
+                        _gg_m_e = (
+                            float(_stored) if _stored is not None
+                            else float(gg_diameter_from_sah(_gg_sah) ** 2)  # type: ignore[attr-defined]
+                            if _gg_sah else 0.0
+                        )
                     else:
                         moons = det.moons or []
                         _gg_sat = None

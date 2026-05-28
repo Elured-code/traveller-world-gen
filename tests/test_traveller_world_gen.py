@@ -3121,11 +3121,8 @@ class TestGenerateWorld:
 
     def test_seed_produces_reproducible_world(self):
         """The same random seed should yield identical worlds."""
-        random.seed(99)
-        w1 = generate_world()
-
-        random.seed(99)
-        w2 = generate_world()
+        w1 = generate_world(seed=99)
+        w2 = generate_world(seed=99)
 
         assert w1.uwp() == w2.uwp()
         assert w1.trade_codes == w2.trade_codes
@@ -5549,13 +5546,17 @@ class TestNhzSecondaryWorlds:
 
     def test_nhz_off_secondary_deterministic(self):
         # With NHZ off the secondary SAH values must be stable across runs.
-        # attach_detail must run immediately after generate_full_system so both
-        # calls share the same RNG state at the point attach_detail starts.
-        sys1 = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=False)
-        attach_detail(sys1)
+        # Pass the same rng to both generate_full_system and attach_detail so
+        # detail generation continues from the same RNG state each time.
+        rng1 = random.Random(_NHZ_TEST_SEED)
+        sys1 = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=False,
+                                    rng=rng1)
+        attach_detail(sys1, rng=rng1)
 
-        sys2 = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=False)
-        attach_detail(sys2)
+        rng2 = random.Random(_NHZ_TEST_SEED)
+        sys2 = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=False,
+                                    rng=rng2)
+        attach_detail(sys2, rng=rng2)
 
         for o1, o2 in zip(sys1.system_orbits.orbits, sys2.system_orbits.orbits):
             sah1 = o1.detail.sah if o1.detail else None
@@ -6131,3 +6132,33 @@ class TestGenerateSystemFromMapOrbitalFlags:
                     f"orbit {o.orbit_number:.2f} inclination "
                     f"{o.inclination} out of range"
                 )
+
+
+class TestGGMassRoll:
+    """_roll_gg_mass() returns values in WBH table ranges for each GG category."""
+
+    def test_gs_range(self):
+        from traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
+        # GS: 5 × (1D + 1) = 10–35 M⊕
+        with patch("random.randint", return_value=1):
+            assert _roll_gg_mass("GS") == 10.0
+        with patch("random.randint", return_value=6):
+            assert _roll_gg_mass("GS") == 35.0
+
+    def test_gm_range(self):
+        from traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
+        # GM: 20 × (3D − 1); roll(3) min=3, max=18 → 40–340 M⊕
+        with patch("traveller_orbit_gen.roll", return_value=3):
+            assert _roll_gg_mass("GM") == 40.0
+        with patch("traveller_orbit_gen.roll", return_value=18):
+            assert _roll_gg_mass("GM") == 340.0
+
+    def test_gl_range(self):
+        from traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
+        # GL: D3 × 50 × (3D + 4); min = 1×50×7=350, max = 3×50×22=3300
+        with patch("random.randint", return_value=1), \
+             patch("traveller_orbit_gen.roll", return_value=3):
+            assert _roll_gg_mass("GL") == 350.0
+        with patch("random.randint", return_value=3), \
+             patch("traveller_orbit_gen.roll", return_value=18):
+            assert _roll_gg_mass("GL") == 3300.0

@@ -449,24 +449,19 @@ def parse_world_json(
     return data, None
 
 
-def apply_seed(seed: Optional[int]) -> int:
-    """Seed the global random state and return the seed used.
+def apply_seed(seed: Optional[int]) -> Tuple[int, random.Random]:
+    """Create a seeded random.Random instance and return (seed, rng).
 
     If *seed* is None a cryptographically random seed is generated via
     :mod:`secrets` so that results are always reproducible: callers can
-    record the returned value and pass it back to reproduce the same output.
-
-    Azure Functions runs one worker per invocation in the consumption plan,
-    so there is no cross-request state leak, but note that in a Premium/
-    Dedicated plan with warm instances the seed would affect all subsequent
-    calls on that instance.  For production use at scale, consider passing
-    the seed through to the generation logic rather than using global state.
+    record the returned seed and pass it back to reproduce the same output.
 
     Returns:
-        The integer seed that was applied to :func:`random.seed`.
+        A (seed, rng) tuple where seed is the integer used and rng is a
+        :class:`random.Random` instance initialised with that seed.
     """
     if seed is None:
         seed = secrets.randbelow(2 ** 31)
-    random.seed(seed)
+    rng = random.Random(seed)
     logger.debug("Random seed set to %d", seed)
-    return seed
+    return seed, rng
