@@ -457,7 +457,7 @@
     "seed": {
       "type": "integer",
       "minimum": 0,
-      "description": "The RNG seed used to generate this world. Pass this value as the 'seed' parameter to reproduce identical output."
+      "description": "The RNG seed used to generate this world. Pass this value as the 'seed' parameter to reproduce identical output. For system-endpoint responses, also pass the three boolean flags defined in $defs/system_generation_options."
     },
     "size_detail": {
       "description": "Physical characteristics of the mainworld. Present only when physical detail has been generated. Exactly one of two shapes: WorldPhysical (terrestrial) or BeltPhysical (asteroid belt).",
@@ -595,6 +595,12 @@
             "runaway_greenhouse": {
               "type": "boolean",
               "description": "True when the optional runaway greenhouse check (WBH p.79) determined a runaway occurred. Absent when the check was not performed or did not trigger."
+            },
+            "resource_rating": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 12,
+              "description": "Terrestrial resource rating (WBH p.131): 2D-7 + Size + density DM, clamped to [2, 12]. Biological DMs (biomass, biodiversity, compatibility) are applied deterministically by attach_detail(). Present whenever generate_world_physical() has been called for a Size 1+ world."
             }
           }
         },
@@ -728,6 +734,27 @@
         "$ref": "#"
       },
       "minItems": 1
+    },
+    "system_generation_options": {
+      "title": "System Generation Options",
+      "description": "Boolean flags emitted at the TravellerSystem level (alongside 'seed') by all system endpoints. Together with 'seed' they uniquely identify the inputs needed to reproduce a system: pass seed + these three flags back to any system endpoint to obtain byte-identical output.",
+      "type": "object",
+      "required": ["nhz_atmospheres", "orbital_eccentricity", "orbital_inclination"],
+      "additionalProperties": false,
+      "properties": {
+        "nhz_atmospheres": {
+          "type": "boolean",
+          "description": "When true, worlds outside the habitable zone use WBH Non-Habitable Zone atmosphere tables (WBH pp.42-48). Pass ?nhz_atmospheres=true to reproduce. Default false."
+        },
+        "orbital_eccentricity": {
+          "type": "boolean",
+          "description": "When true, orbital eccentricity is rolled for all orbiting bodies (WBH p.27). Pass ?orbital_eccentricity=true to reproduce. Default false."
+        },
+        "orbital_inclination": {
+          "type": "boolean",
+          "description": "When true, orbital inclination is rolled for all orbiting bodies (WBH p.28). Pass ?orbital_inclination=true to reproduce. Default false."
+        }
+      }
     }
   }
 }
