@@ -609,8 +609,8 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
             if i == len(primary_stars)-1:
                 alloc[star.designation] = remaining
             else:
-                rng = _avail_range(star)
-                n = round(result.total_worlds * rng / max(total_range, 0.01))
+                star_rng = _avail_range(star)
+                n = round(result.total_worlds * star_rng / max(total_range, 0.01))
                 n = max(0, min(n, remaining))
                 alloc[star.designation] = n
                 remaining -= n
