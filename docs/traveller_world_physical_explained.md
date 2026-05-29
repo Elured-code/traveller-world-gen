@@ -23,7 +23,7 @@ it into physical reality:
 - **High/low temperature** — seasonal extremes driven by axial tilt, rotation, and
   geography
 
-Implements WBH pp.74–78, 103–107, and 47–50.
+Implements WBH pp.74–78, 103–107, 47–50, and 131 (resource rating).
 
 ---
 
@@ -86,6 +86,13 @@ class WorldPhysical:
 
     # Set after moon orbital data is known:
     stellar_day_hours: Optional[float] = field(default=None, init=False)
+
+    # Set at end of generate_world_physical():
+    resource_rating: Optional[int] = field(default=None, init=False)
+    # Terrestrial resource rating (WBH p.131): 2D-7 + Size + density_DM,
+    # clamped [2, 12]. Density DM: +2 if density > 1.12 g/cm³; -2 if < 0.50.
+    # Always set for Size 1+ worlds. Biological DMs (biomass, biodiversity,
+    # compatibility) are applied deterministically by attach_detail().
 ```
 
 The constructor fields are set first. The `init=False` fields are filled in by
@@ -184,6 +191,7 @@ The **stellar day** (time between sunrises) is different from the **sidereal day
 | `generate_world_physical(..., rng=None)` | module | Main entry point; accepts optional `rng` |
 | `generate_advanced_mean_temperature(...)` | module | Optional second pass |
 | `apply_moon_tidal_effects(...)` | module | Updates day/stellar day after moon data |
+| `apply_biological_resource_dms(rr, biomass, biodiversity, compatibility)` | module | Applies biological DMs to resource_rating; called by `attach_detail()` |
 
 ---
 

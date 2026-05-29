@@ -180,6 +180,48 @@ MOONS NEAR THE ROCHE LIMIT NOW CONVERTED TO RINGS
   gas giant increases by one. This check runs after eccentricity rolls, so only
   moons with genuinely unsafe orbits are disrupted.
 
+GEN-UI — ONBOARDING CARD
+-------------------------
+- When the app starts and no world has been generated yet, the result area
+  now shows a styled card explaining the three-step workflow:
+  "Enter a name → Choose options → Click Generate". It also includes a
+  keyboard shortcut hint ("Press Return in any field to generate") and a
+  note about TravellerMap mode. Previously this area showed only a dim grey
+  placeholder label.
+
+ORBIT TABLE — MOON ECCENTRICITY AND INCLINATION
+-------------------------------------------------
+- The e/i column in the system card orbit table now shows eccentricity and
+  inclination values for non-ring moons. For example, a moon with eccentricity
+  0.042 and inclination 12.3° will show "0.042/12.3°" in its sub-row.
+  Previously this column was always blank for moon sub-rows.
+- Only moons with at least one non-zero value are shown; rings always show blank.
+
+ORBIT TABLE — GAS GIANT MASS AND DENSITY IN NOTES
+---------------------------------------------------
+- The Notes column in the system card orbit table now shows the mass and
+  computed density of each gas giant — for example "120 M⊕ · 1.34 g/cm³".
+  Mass is the value rolled from the WBH three-tier table; density is derived
+  from the mass and the size-code diameter.
+
+RESOURCE RATING (WBH p.131)
+-----------------------------
+- Terrestrial worlds (Size 1+) now receive a Resource Rating in the World Body
+  section of the world card. The rating runs from 2 to 12 and reflects how
+  rich the world is in natural resources:
+
+  2–4   Very scarce   (low density or low size)
+  5–8   Typical       (mid-range density and size)
+  9–12  Very rich     (high density and large size, or rich biosphere)
+
+- The base value is computed from a 2D roll modified by world size and
+  density (heavy iron-core worlds roll higher; icy low-density worlds roll
+  lower). If the world has native life, biological modifiers (biomass,
+  biodiversity, compatibility) are applied on top.
+
+- The rating appears after Escape Velocity in the World Body detail section
+  when World Physical detail has been generated.
+
 BUG FIXES
 ---------
 - Fixed: Worlds orbiting a gas giant as a satellite displayed seismic stress

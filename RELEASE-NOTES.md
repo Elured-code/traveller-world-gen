@@ -1,10 +1,57 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–86
-**Tests:** 1657
+**Sessions:** 55–87
+**Tests:** 1686
 
 ---
+
+## Terrestrial Resource Rating (Session 87, issue #105)
+
+`WorldPhysical.resource_rating: Optional[int]` added. Computed at end of
+`generate_world_physical()` as `max(2, min(12, 2D − 7 + Size + density_DM))`.
+`density_DM`: +2 if density > 1.12 g/cm³, −2 if < 0.50. Always set for Size 1+
+worlds. Public helper `apply_biological_resource_dms(rr, biomass, biodiversity,
+compatibility)` applies deterministic DMs (no extra dice roll) inside
+`attach_detail()` after `_apply_biomass()`. Displayed in world card and
+`summary()` text output. `traveller_world_schema.json` updated with
+`resource_rating` property in `WorldPhysical` section. 1686 tests pass.
+
+## NHZ Atmospheres API Exposure (Session 87, issue #122)
+
+`parse_nhz_atmospheres()` added to `shared/helpers.py` (same pattern as
+`parse_orbital_eccentricity/inclination`). Wired into all five system
+endpoint handlers in `function_app.py` and `_map_system_response()`.
+`generate_system_from_world()` and `generate_system_from_map()` both gain
+`nhz_atmospheres: bool = False` parameter and store it on the returned
+`TravellerSystem`. Schema gains `$defs.system_generation_options` documenting
+the three boolean flags that, together with `seed`, allow byte-identical system
+reproduction. 9 new tests in `TestNhzAtmospheresOption`. Schema version bumped
+to v1.4.1.
+
+## Moon Ecc/Incl in Orbit Table (Session 87, issue #118)
+
+`TravellerSystem` orbit-row builder now populates `"ecc_incl"` on each moon
+dict. Non-ring moons with non-zero eccentricity or inclination show
+`f"{eccentricity:.3f}/{inclination:.1f}°"`; rings and zero-value moons show `""`.
+`system_card.html` moon sub-row `<td></td>` replaced with
+`<td class="mono">{{ moon.ecc_incl }}</td>`.
+
+## Gas Giant Mass/Density in Notes Column (Session 87, issue #119)
+
+Orbit-row builder computes `gg_density = (gg_mass_earth / (gg_diam_km/12742)³) × 5.515`
+when `gg_mass_earth` is set. Appended to `note_parts` as
+`f"{gg_mass_earth:.0f} M⊕ · {gg_density:.2f} g/cm³"`. Notes column header
+renamed from blank `<th></th>` to `<th>Notes</th>`.
+
+## Gen-UI Onboarding Card (Session 87, issue #84)
+
+`_show_placeholder()` replaced single dim label with `QFrame#onboard-card`
+containing title, description, three-step workflow instructions, keyboard hint,
+and TravellerMap note. `QFrame#onboard-card` added to both `_CSS` and `_CSS_DARK`.
+Window resized to 1100×700 with minimum 780×500; `_apply_theme()` now substitutes
+the actual system monospace font family name via
+`QFontDatabase.systemFont(FixedFont).family()`.
 
 ## Injectable RNG for Deterministic Generation (Session 86, issue #42)
 
