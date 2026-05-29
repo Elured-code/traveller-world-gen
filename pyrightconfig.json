@@ -2,5 +2,5 @@
   "pythonVersion": "3.11",
   "extraPaths": ["."],
   "typeCheckingMode": "basic",
-  "exclude": [".venv", "tests", "gen-ui", "**/node_modules", "**/__pycache__", "**/.*"]
+  "exclude": [".venv", "tests", "conftest.py", "gen-ui", "**/node_modules", "**/__pycache__", "**/.*"]
 }
