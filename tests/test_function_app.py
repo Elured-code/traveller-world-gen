@@ -1068,7 +1068,7 @@ class TestMainworldDetailInResponse:
 _WORLD_PHYSICAL_KEYS = {
     "composition", "diameter_km", "density_g_cm3", "mass_earth",
     "gravity_g", "escape_velocity_km_s", "axial_tilt_deg",
-    "day_length_hours", "tidal_status",
+    "day_length_hours", "tidal_status", "resource_rating",
 }
 _VALID_COMPOSITIONS = {
     "Heavy Iron Core", "Dense Core", "Standard", "Low Density", "Icy",
@@ -1150,3 +1150,69 @@ class TestMainworldPhysicalInResponse:
         mw = body["mainworld"]
         if "size_detail" in mw:
             assert mw["size_detail"]["tidal_status"] in _VALID_TIDAL_STATUSES
+
+
+# ===========================================================================
+# TestNhzAtmospheresOption
+# ===========================================================================
+
+class TestNhzAtmospheresOption:
+    """Tests for parse_nhz_atmospheres() and its wiring into system endpoints."""
+
+    def test_absent_nhz_returns_false(self):
+        from shared.helpers import parse_nhz_atmospheres
+        req = make_request()
+        assert parse_nhz_atmospheres(req) is False
+
+    def test_query_string_true(self):
+        from shared.helpers import parse_nhz_atmospheres
+        for val in ("true", "1", "yes"):
+            req = make_request(params={"nhz_atmospheres": val})
+            assert parse_nhz_atmospheres(req) is True
+
+    def test_query_string_false(self):
+        from shared.helpers import parse_nhz_atmospheres
+        req = make_request(params={"nhz_atmospheres": "false"})
+        assert parse_nhz_atmospheres(req) is False
+
+    def test_json_body_bool_true(self):
+        from shared.helpers import parse_nhz_atmospheres
+        req = make_request(method="POST", body={"nhz_atmospheres": True})
+        assert parse_nhz_atmospheres(req) is True
+
+    def test_json_body_bool_false(self):
+        from shared.helpers import parse_nhz_atmospheres
+        req = make_request(method="POST", body={"nhz_atmospheres": False})
+        assert parse_nhz_atmospheres(req) is False
+
+    def test_system_response_includes_all_option_flags(self):
+        from function_app import generate_single_system
+        req = make_request(params={"seed": "7"})
+        body = response_json(generate_single_system(req))
+        assert "nhz_atmospheres" in body
+        assert "orbital_eccentricity" in body
+        assert "orbital_inclination" in body
+        assert "seed" in body
+
+    def test_system_nhz_false_by_default(self):
+        from function_app import generate_single_system
+        req = make_request(params={"seed": "7"})
+        body = response_json(generate_single_system(req))
+        assert body["nhz_atmospheres"] is False
+
+    def test_system_nhz_true_when_requested(self):
+        from function_app import generate_single_system
+        req = make_request(params={"seed": "7", "nhz_atmospheres": "true"})
+        body = response_json(generate_single_system(req))
+        assert body["nhz_atmospheres"] is True
+
+    def test_system_orbital_flags_reflected(self):
+        from function_app import generate_single_system
+        req = make_request(params={
+            "seed": "7",
+            "orbital_eccentricity": "true",
+            "orbital_inclination": "true",
+        })
+        body = response_json(generate_single_system(req))
+        assert body["orbital_eccentricity"] is True
+        assert body["orbital_inclination"] is True

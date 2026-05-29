@@ -329,6 +329,32 @@ def parse_orbital_inclination(req: func.HttpRequest) -> bool:
     return raw in ("true", "1", "yes")
 
 
+def parse_nhz_atmospheres(req: func.HttpRequest) -> bool:
+    """Extract the optional 'nhz_atmospheres' flag.
+
+    When True, the caller should pass nhz_atmospheres=True to
+    generate_full_system() so that worlds outside the habitable zone use
+    WBH Non-Habitable Zone atmosphere tables (WBH pp.42-48).
+    Accepts ?nhz_atmospheres=true/1/yes or {"nhz_atmospheres": true}
+    in the body. Defaults to False.
+
+    Returns:
+        True if NHZ atmospheres was requested, False otherwise.
+    """
+    raw = req.params.get("nhz_atmospheres", "").strip().lower()
+    if not raw:
+        try:
+            body = req.get_json()
+            if isinstance(body, dict):
+                val = body.get("nhz_atmospheres")
+                if isinstance(val, bool):
+                    return val
+                raw = str(val).strip().lower() if val is not None else ""
+        except (ValueError, TypeError):
+            pass
+    return raw in ("true", "1", "yes")
+
+
 def parse_format(req: func.HttpRequest) -> str:
     """Extract the optional 'format' parameter.
 

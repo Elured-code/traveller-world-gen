@@ -38,7 +38,9 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtCore import Qt, QSettings, QThread, QUrl, Signal  # noqa: E402
-from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut  # noqa: E402
+from PySide6.QtGui import (  # noqa: E402
+    QAction, QDesktopServices, QFontDatabase, QKeySequence, QShortcut,
+)
 from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
@@ -124,6 +126,7 @@ QLabel#table-mw     { font-size: 10pt; font-weight: bold; }
 QLabel#table-dim    { font-size: 10pt; color: #9BA3AD; }
 QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
+QFrame#onboard-card { border: 1px solid #cccccc; border-radius: 8px; }
 """
 
 _CSS_DARK = """
@@ -154,6 +157,7 @@ QLabel#table-mw     { font-size: 10pt; font-weight: bold; }
 QLabel#table-dim    { font-size: 10pt; color: #6b7280; }
 QLabel#table-moon   { font-size: 9pt; color: #aaaaaa; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
+QFrame#onboard-card { border: 1px solid #444444; border-radius: 8px; }
 """
 
 # ---------------------------------------------------------------------------
@@ -334,7 +338,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Traveller World Generator")
-        self.resize(800, 620)
+        self.resize(1100, 700)
+        self.setMinimumSize(780, 500)
         self._current_world: object | None = None
         self._current_system: object | None = None
         self._detail_attached: bool = False
@@ -362,7 +367,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _apply_theme(self) -> None:
         app = QApplication.instance()
         if isinstance(app, QApplication):
-            app.setStyleSheet(_CSS_DARK if self._dark_mode else _CSS)
+            mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
+            css = _CSS_DARK if self._dark_mode else _CSS
+            app.setStyleSheet(css.replace("font-family: monospace", f'font-family: "{mono}"'))
 
     def _themed_html(self, html: str) -> str:
         if self._dark_mode:
@@ -380,6 +387,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setMinimumWidth(740)
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
         root.setContentsMargins(12, 12, 12, 12)
@@ -729,10 +737,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         _gg_sat = det.moons[0] if det.moons else None
                         _gg_sah = getattr(mw_orbit, "gg_sah", "")
                         _stored = getattr(mw_orbit, "gg_mass_earth", None)
+                        _gg_diam = gg_diameter_from_sah(_gg_sah)  # type: ignore[attr-defined]
                         _gg_m_e = (
                             float(_stored) if _stored is not None
-                            else float(gg_diameter_from_sah(_gg_sah) ** 2)  # type: ignore[attr-defined]
-                            if _gg_sah else 0.0
+                            else float(_gg_diam ** 2) if _gg_sah else 0.0
                         )
                     else:
                         moons = det.moons or []
@@ -932,14 +940,54 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 if widget is not None:
                     widget.deleteLater()
 
-    def _show_placeholder(self) -> None:
+    def _show_placeholder(self) -> None:  # pylint: disable=too-many-statements
         self._clear_status()
         self._act_save.setEnabled(False)
-        lbl = QLabel("Enter a name and click Generate.")
-        lbl.setObjectName("dim-label")
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        card = QFrame()
+        card.setObjectName("onboard-card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(8)
+        card_layout.setContentsMargins(24, 18, 24, 18)
+
+        title = QLabel("Traveller World Generator")
+        title.setObjectName("world-name")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(title)
+
+        desc = QLabel(
+            "Generates star systems and worlds"
+            " using the World Builder's Handbook rules."
+        )
+        desc.setObjectName("dim-label")
+        desc.setWordWrap(True)
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(desc)
+
+        card_layout.addSpacing(4)
+
+        steps = QLabel("① Enter a name  →  ② Choose options  →  ③ Click Generate")
+        steps.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(steps)
+
+        hint = QLabel("Press Return in any field to generate.")
+        hint.setObjectName("hint-label")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(hint)
+
+        card_layout.addSpacing(4)
+
+        tm_note = QLabel(
+            "In TravellerMap mode, look up real worlds"
+            " from the official Traveller universe."
+        )
+        tm_note.setObjectName("dim-label")
+        tm_note.setWordWrap(True)
+        tm_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(tm_note)
+
         self._status_layout.addStretch()
-        self._status_layout.addWidget(lbl)
+        self._status_layout.addWidget(card)
         self._status_layout.addStretch()
 
     def _show_error(self, message: str) -> None:

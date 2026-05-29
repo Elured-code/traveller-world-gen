@@ -2008,6 +2008,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                 lines.append(f"  Mass        : {p.mass:.4f} M⊕")
                 lines.append(f"  Gravity     : {p.gravity:.3f} G")
                 lines.append(f"  Esc. vel.   : {p.escape_velocity:.2f} km/s")
+                if p.resource_rating is not None:
+                    lines.append(f"  Resource    : {p.resource_rating}")
                 lines.append(f"  Axial tilt  : {p.axial_tilt}°")
                 lines.append(f"  Day length  : {p.day_length:.1f} h")
                 if p.stellar_day_hours is not None:
