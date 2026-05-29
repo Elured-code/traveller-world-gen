@@ -600,6 +600,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     hex_pos:              Optional[str] = None,
     seed:                 Optional[int] = None,
     attach:               bool = False,
+    nhz_atmospheres:      bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination:  bool = False,
 ) -> TravellerSystem:
@@ -618,6 +619,8 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     hex_pos              4-digit hex position, e.g. '1910'.  Alternative to name.
     seed                 RNG seed for reproducible orbital generation.
     attach               If True, generate all secondary world and moon profiles.
+    nhz_atmospheres      Stored in TravellerSystem for deterministic recreation;
+                         does not affect canonical atmosphere (fixed UWP).
     orbital_eccentricity When True, roll eccentricity for each orbit (WBH p.27).
     orbital_inclination  When True, roll inclination for each orbit (WBH p.28).
 
@@ -714,6 +717,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
         system_orbits        = orbits,
         mainworld            = world,
         mainworld_orbit      = mw_orbit,
+        nhz_atmospheres      = nhz_atmospheres,
         orbital_eccentricity = orbital_eccentricity,
         orbital_inclination  = orbital_inclination,
         seed                 = seed,

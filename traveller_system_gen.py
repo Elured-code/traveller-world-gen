@@ -335,6 +335,15 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 note_parts.append("← mainworld")
             if o.notes:
                 note_parts.append(o.notes)
+            if o.world_type == "gas_giant" and o.gg_mass_earth is not None:
+                gg_diam_km = _gg_diameter(o.gg_sah or "") * 12800.0
+                if gg_diam_km > 0:
+                    gg_density = (
+                        o.gg_mass_earth / (gg_diam_km / 12742.0) ** 3
+                    ) * 5.515
+                    note_parts.append(
+                        f"{o.gg_mass_earth:.0f} M⊕ · {gg_density:.2f} g/cm³"
+                    )
 
             if o.is_mainworld_candidate and mw:
                 orbit_codes = list(mw.trade_codes)
@@ -367,6 +376,14 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                         mc = moon.detail.biocomplexity_rating
                         if mb is not None and mb > 0 and mc is not None:
                             moon_biosphere = f"{to_hex(mb)}, {to_hex(mc)}"
+                    moon_ecc_incl = (
+                        f"{moon.orbit_eccentricity:.3f}"
+                        f"/{moon.orbit_inclination:.1f}°"
+                        if not moon.is_ring
+                        and (moon.orbit_eccentricity > 0
+                             or moon.orbit_inclination > 0)
+                        else ""
+                    )
                     moons.append({
                         "idx": mi,
                         "pd_str": (f"{moon.orbit_pd:.1f} PD"
@@ -380,6 +397,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                         "range_str": (moon.orbit_range.capitalize()
                                       if moon.orbit_range else ""),
                         "biosphere_str": moon_biosphere,
+                        "ecc_incl": moon_ecc_incl,
                     })
 
             # Biosphere: biomass, biocomplexity for terrestrial worlds
@@ -704,9 +722,10 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
     )
 
 
-def generate_system_from_world(
+def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     world: World,
     seed: Optional[int] = None,
+    nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
     rng: Optional[random.Random] = None,
@@ -795,6 +814,7 @@ def generate_system_from_world(
         system_orbits=orbits,
         mainworld=world,
         mainworld_orbit=mw_orbit,
+        nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
         seed=seed,

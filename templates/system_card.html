@@ -102,7 +102,7 @@ pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
   <div class="section-title">Orbital survey{% if detail_attached %}  ·  detail included{% endif %}</div>
   <div class="table-scroll"><table>
     <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th><th>e/i</th>
-    <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th>Biosphere</th><th></th></tr></thead>
+    <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th>Biosphere</th><th>Notes</th></tr></thead>
     <tbody>
     {% for o in orbit_rows %}
     <tr class="{{ o.row_cls }}">
@@ -124,7 +124,7 @@ pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
       <td class="mono moon-idx">↳ m{{ moon.idx }}</td>
       <td class="mono">{{ moon.pd_str }}</td>
       <td class="mono">{{ moon.km_str }}</td>
-      <td></td>
+      <td class="mono">{{ moon.ecc_incl }}</td>
       <td class="moon-type">{{ moon.type_str }}</td>
       <td class="mono profile">{{ moon.profile }}</td>
       <td class="codes-cell">{% for tc in moon.codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}</td>

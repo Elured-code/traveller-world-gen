@@ -46,9 +46,11 @@ from traveller_world_physical import (
     _star_tidal_effect_m,
     _tidal_lock_dm,
     apply_moon_tidal_effects,
+    apply_biological_resource_dms,
     check_runaway_greenhouse,
     generate_advanced_mean_temperature,
     generate_world_physical,
+    _density_resource_dm,
 )
 
 
@@ -2279,4 +2281,98 @@ class TestCheckRunawayGreenhouse:
         with patch("random.randint", return_value=3):
             wp = generate_world_physical(w)
         assert wp is not None
+
+
+# ---------------------------------------------------------------------------
+# Resource rating — WBH p.131
+# ---------------------------------------------------------------------------
+
+class TestDensityResourceDm:
+    def test_high_density_gives_plus2(self):
+        assert _density_resource_dm(1.13) == 2
+
+    def test_exactly_1_12_gives_zero(self):
+        assert _density_resource_dm(1.12) == 0
+
+    def test_low_density_gives_minus2(self):
+        assert _density_resource_dm(0.49) == -2
+
+    def test_exactly_0_5_gives_zero(self):
+        assert _density_resource_dm(0.5) == 0
+
+    def test_mid_density_gives_zero(self):
+        assert _density_resource_dm(0.8) == 0
+
+
+class TestApplyBiologicalResourceDms:
+    def test_no_life_no_change(self):
+        assert apply_biological_resource_dms(5, None, None, None) == 5
+
+    def test_biomass_3_plus2(self):
+        assert apply_biological_resource_dms(5, 3, None, None) == 7
+
+    def test_biomass_2_no_dm(self):
+        assert apply_biological_resource_dms(5, 2, None, None) == 5
+
+    def test_biodiversity_8_to_a_plus1(self):
+        assert apply_biological_resource_dms(5, None, 9, None) == 6
+
+    def test_biodiversity_b_plus_plus2(self):
+        assert apply_biological_resource_dms(5, None, 11, None) == 7
+
+    def test_compatibility_8_plus_plus2(self):
+        assert apply_biological_resource_dms(5, None, None, 8) == 7
+
+    def test_compatibility_low_with_biomass_minus1(self):
+        assert apply_biological_resource_dms(5, 1, None, 3) == 4
+
+    def test_compatibility_low_without_biomass_no_dm(self):
+        # DM-1 only applies when biomass >= 1
+        assert apply_biological_resource_dms(5, 0, None, 3) == 5
+
+    def test_clamped_to_max_12(self):
+        assert apply_biological_resource_dms(11, 5, 12, 9) == 12
+
+    def test_clamped_to_min_2(self):
+        assert apply_biological_resource_dms(2, 1, None, 2) == 2
+
+
+class TestWorldResourceRating:
+    def test_always_set_after_generate_world_physical(self):
+        w = _World(size=6)
+        with patch("random.randint", return_value=4):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        assert wp.resource_rating is not None
+
+    def test_always_in_valid_range(self):
+        import random as _random
+        rng = _random.Random(42)
+        for size in range(1, 11):
+            w = _World(size=size)
+            wp = generate_world_physical(w, rng=rng)
+            assert wp is not None
+            assert 2 <= wp.resource_rating <= 12
+
+    def test_size_0_returns_none(self):
+        w = _World(size=0)
+        with patch("random.randint", return_value=4):
+            result = generate_world_physical(w)
+        assert result is None
+
+    def test_to_dict_emits_resource_rating(self):
+        w = _World(size=5)
+        with patch("random.randint", return_value=4):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        assert "resource_rating" in wp.to_dict()
+        assert isinstance(wp.to_dict()["resource_rating"], int)
+
+    def test_from_dict_round_trips(self):
+        w = _World(size=5)
+        with patch("random.randint", return_value=4):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        restored = WorldPhysical.from_dict(wp.to_dict())
+        assert restored.resource_rating == wp.resource_rating
         assert "runaway_greenhouse" not in wp.to_dict()

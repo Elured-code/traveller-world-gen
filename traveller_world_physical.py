@@ -946,6 +946,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     low_temperature_k: Optional[int] = field(default=None, init=False)
     stellar_day_hours: Optional[float] = field(default=None, init=False)
     runaway_greenhouse: Optional[bool] = field(default=None, init=False)
+    resource_rating:    Optional[int]  = field(default=None, init=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> "WorldPhysical":
@@ -982,6 +983,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
         obj.runaway_greenhouse = (
             bool(d["runaway_greenhouse"]) if d.get("runaway_greenhouse") is not None else None
         )
+        obj.resource_rating = _ii("resource_rating")
         return obj
 
     def to_dict(self) -> dict:  # pylint: disable=too-many-branches
@@ -1027,7 +1029,50 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["stellar_day_hours"] = self.stellar_day_hours
         if self.runaway_greenhouse is not None:
             d["runaway_greenhouse"] = self.runaway_greenhouse
+        if self.resource_rating is not None:
+            d["resource_rating"] = self.resource_rating
         return d
+
+
+# ---------------------------------------------------------------------------
+# Resource rating helpers (WBH p.131)
+# ---------------------------------------------------------------------------
+
+def _density_resource_dm(density: float) -> int:
+    """Return the density DM for the terrestrial resource rating roll."""
+    if density > 1.12:
+        return 2
+    if density < 0.5:
+        return -2
+    return 0
+
+
+def apply_biological_resource_dms(
+    resource_rating: int,
+    biomass: Optional[int],
+    biodiversity: Optional[int],
+    compatibility: Optional[int],
+) -> int:
+    """Apply biological DMs to a base resource rating and re-clamp to [2, 12].
+
+    Called from attach_detail() after biomass/biodiversity/compatibility are
+    known.  No dice are rolled; all adjustments are deterministic.
+    """
+    rr = resource_rating
+    bio = biomass or 0
+    if bio >= 3:
+        rr += 2
+    if biodiversity is not None:
+        if biodiversity >= 11:      # B+
+            rr += 2
+        elif biodiversity >= 8:     # 8–A
+            rr += 1
+    if compatibility is not None:
+        if compatibility >= 8:
+            rr += 2
+        elif compatibility <= 3 and bio >= 1:
+            rr -= 1
+    return max(2, min(12, rr))
 
 
 # ---------------------------------------------------------------------------
@@ -1132,6 +1177,9 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
     if orbit_au is not None and star_mass is not None:
         period_h = _orbital_period_hours(orbit_au, star_mass)
         wp.stellar_day_hours = _compute_stellar_day(wp.day_length, period_h, wp.tidal_status)
+    wp.resource_rating = max(2, min(12,
+        _roll(2, -7 + world.size + _density_resource_dm(density))
+    ))
     return wp
 
 

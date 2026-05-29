@@ -1536,6 +1536,20 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
             f"{to_hex(mainworld.compatibility_rating)}"
         )
 
+    # Apply biological DMs to resource rating (deterministic — no new dice roll).
+    from traveller_world_physical import (  # pylint: disable=import-outside-toplevel
+        WorldPhysical as _WP,
+        apply_biological_resource_dms,
+    )
+    if (isinstance(mainworld.size_detail, _WP)
+            and mainworld.size_detail.resource_rating is not None):
+        mainworld.size_detail.resource_rating = apply_biological_resource_dms(
+            mainworld.size_detail.resource_rating,
+            mainworld.biomass_rating,
+            mainworld.biodiversity_rating,
+            mainworld.compatibility_rating,
+        )
+
     # Propagate to orbit.detail so the orbit table works uniformly.
     if mw_orbit.world_type == "gas_giant":
         # Mainworld is a satellite sub-row; propagate to that moon's detail.
