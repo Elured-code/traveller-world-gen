@@ -197,10 +197,16 @@ representations that `QSettings` may return on different platforms.
 
 ### `_apply_theme()`
 
-Calls `QApplication.setStyleSheet(_CSS_DARK if self._dark_mode else _CSS)`.
-`_CSS_DARK` is a module-level constant covering `QWidget`, `QGroupBox`, and all
+Calls `QApplication.setStyleSheet(css)` where the raw CSS string has
+`"font-family: monospace"` replaced with the actual system monospace font returned by
+`QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()`. This ensures
+the correct monospace font is used on all platforms (previously `"monospace"` was used
+verbatim). `_CSS_DARK` is a module-level constant covering `QWidget`, `QGroupBox`, and all
 named `QLabel#` selectors in the same structure as `_CSS`. The `QWidget` rule sets
 `background-color: #1e1e1e; color: #e0e0e0` to colour the main window background.
+
+`QFrame#onboard-card` is defined in both `_CSS` and `_CSS_DARK` with a light/dark
+border and rounded corners. Used by `_show_placeholder()` for the startup onboarding card.
 
 ### `_themed_html(html)`
 
@@ -223,6 +229,14 @@ preserved for API / browser export use.
 Saves the preference to `QSettings`, calls `_apply_theme()`, then live-refreshes
 the currently displayed result by re-calling `_show_system_summary(_current_system)`
 or `_show_summary(_current_world)` when one is set.
+
+### `_show_placeholder()` — onboarding card (Session 87, issue #84)
+
+Builds a styled `QFrame(objectName="onboard-card")` card in the result area.
+Contains four `QLabel` widgets reusing existing object names (`world-name`,
+`dim-label`, `hint-label`) so they inherit the correct font/colour from the CSS
+theme automatically. Displays: title, description, three-step workflow instruction,
+keyboard shortcut hint, and TravellerMap mode note.
 
 ---
 

@@ -22,7 +22,10 @@ it:
 
 4. **Biological detail** — if the mainworld has a biomass-supporting atmosphere and
    temperature, rolls biomass rating, biocomplexity, sophont presence, biodiversity,
-   and compatibility ratings. Sets these on `World` (not on `WorldDetail`).
+   and compatibility ratings. Sets these on `World` (not on `WorldDetail`). After
+   this step, `apply_biological_resource_dms()` is called to apply biomass,
+   biodiversity, and compatibility DMs to the world's `resource_rating`
+   (deterministic — no new dice roll).
 
 5. **Habitability rating** — after biological detail, computes the WBH p.131
    Habitability Rating for the mainworld (base 10 + DMs for size, atmosphere,

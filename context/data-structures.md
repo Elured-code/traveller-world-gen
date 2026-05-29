@@ -345,6 +345,12 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     #   retrograde: (T_sid × T_orb) / (T_orb + T_sid)
     # None for 1:1_lock (star is stationary in sky) and when orbital data absent.
     # Set in generate_world_physical() and recomputed in apply_moon_tidal_effects().
+    resource_rating: Optional[int] = field(default=None, init=False)
+    # Terrestrial resource rating (WBH p.131, Session 87). Always set for Size 1+ worlds.
+    # Base roll: 2D − 7 + Size + density_DM (density_DM: +2 if > 1.12 g/cm³, −2 if < 0.50).
+    # Clamped to [2, 12]. Biological DMs (biomass, biodiversity, compatibility) applied
+    # deterministically by attach_detail() after _apply_biomass() runs — no extra dice roll.
+    # Public helper: apply_biological_resource_dms(rr, biomass, biodiversity, compatibility).
 
     # method: .to_dict()
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
@@ -355,7 +361,7 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     #       [, total_seismic_stress][, seismic_temperature_k]
     #       [, albedo][, greenhouse_factor][, advanced_mean_temperature_k]
     #       [, high_temperature_k][, low_temperature_k]
-    #       [, stellar_day_hours]  ← all only when not None
+    #       [, stellar_day_hours][, resource_rating]  ← all only when not None
 ```
 
 ---

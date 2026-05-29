@@ -109,6 +109,9 @@ Parameters:
 - `hex_pos` — alternative to name; the 4-digit hex coordinate in the sector grid
 - `seed` — controls the procedural generation; same seed = same orbits and secondary worlds
 - `attach` — if `True`, runs `attach_detail()` before returning
+- `nhz_atmospheres` — stored in `TravellerSystem.nhz_atmospheres` for deterministic
+  recreation; does not re-roll the canonical mainworld atmosphere (fixed UWP)
+- `orbital_eccentricity`, `orbital_inclination` — gate eccentricity/inclination rolls
 
 Returns a `TravellerSystem` with the canonical mainworld UWP but procedurally
 generated everything else.

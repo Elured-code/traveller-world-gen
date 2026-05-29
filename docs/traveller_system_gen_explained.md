@@ -101,6 +101,7 @@ seed that produced it.
 | `.summary()` | `TravellerSystem` | Human-readable multi-line text |
 | `.from_dict(d)` | `TravellerSystem` | Reconstructs the full system from a saved dict |
 | `generate_full_system(...)` | module | Procedural entry point |
+| `generate_system_from_world(world, ...)` | module | Procedural entry point around an existing World |
 | `generate_system_from_canonical(...)` | module | TravellerMap entry point |
 
 ---
@@ -117,7 +118,10 @@ Rolls everything from scratch using the WBH procedures. The `seed` string contro
 the random sequence — the same seed always produces the same system.
 
 Optional flags:
-- `nhz_atmospheres=True` — allow non-habitable-zone atmospheres for secondary worlds
+- `nhz_atmospheres=True` — allow non-habitable-zone atmospheres for secondary worlds.
+  Also accepted by `generate_system_from_world()` and `generate_system_from_map()`;
+  stored in `TravellerSystem.nhz_atmospheres` in all cases so it appears in the JSON
+  and can be passed back to reproduce the system.
 - `orbital_eccentricity=True` — roll orbital eccentricities and inclinations
 - `orbital_inclination=True` — roll inclinations separately
 - `rng` — an existing `random.Random` instance to use instead of creating a new one
