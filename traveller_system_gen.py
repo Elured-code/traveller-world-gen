@@ -61,11 +61,9 @@ from typing import Optional
 
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
-from traveller_belt_physical import BeltPhysical
-from traveller_world_physical import WorldPhysical
-from tables import TIDAL_STATUS_LABELS, BIOCOMPLEXITY_DESC
 from traveller_hydro_detail import generate_hydrographic_detail
 from html_render import render
+from world_codes import APP_VERSION
 from traveller_world_gen import (
     World,
     generate_size,
@@ -88,11 +86,7 @@ from traveller_world_gen import (
     to_hex,
     ATMOSPHERE_MIN_TL,
     ATMOSPHERE_NAMES,
-    GOVERNMENT_NAMES,
-    HYDROGRAPHIC_NAMES,
-    STARPORT_QUALITY_LABEL,
     TEMPERATURE_DM,
-    format_atmosphere_profile,
 )
 
 
@@ -178,7 +172,7 @@ def generate_temperature_from_orbit(
 # ---------------------------------------------------------------------------
 
 @dataclass
-class TravellerSystem:
+class TravellerSystem:  # pylint: disable=too-many-instance-attributes
     """A fully generated Traveller star system with mainworld."""
 
     stellar_system: StarSystem
@@ -188,17 +182,46 @@ class TravellerSystem:
     nhz_atmospheres: bool = False
     orbital_eccentricity: bool = False
     orbital_inclination: bool = False
+    seed: Optional[int] = None
 
     def to_dict(self) -> dict:
         """Serialise this system to a JSON-compatible dict."""
         d = self.stellar_system.to_dict()
         d["orbits"] = self.system_orbits.to_dict()
         d["mainworld"] = self.mainworld.to_dict() if self.mainworld else None
+        d["nhz_atmospheres"] = self.nhz_atmospheres
+        d["orbital_eccentricity"] = self.orbital_eccentricity
+        d["orbital_inclination"] = self.orbital_inclination
+        if self.seed is not None:
+            d["seed"] = self.seed
+        d["_app_version"] = APP_VERSION
         return d
 
     def to_json(self, indent: int = 2) -> str:
         """Serialise this system to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "TravellerSystem":
+        """Reconstruct a TravellerSystem from a dict produced by to_dict().
+
+        OrbitSlot.detail is not restored (WorldDetail reconstruction is out of
+        scope); the loaded system displays with detail_attached=False.
+        """
+        stellar = StarSystem.from_dict(d)
+        orbits = SystemOrbits.from_dict(d.get("orbits", {}), stellar)
+        mw_d = d.get("mainworld")
+        mainworld = World.from_dict(mw_d) if mw_d else None
+        return cls(
+            stellar_system=stellar,
+            system_orbits=orbits,
+            mainworld=mainworld,
+            mainworld_orbit=orbits.mainworld_orbit,
+            nhz_atmospheres=bool(d.get("nhz_atmospheres", False)),
+            orbital_eccentricity=bool(d.get("orbital_eccentricity", False)),
+            orbital_inclination=bool(d.get("orbital_inclination", False)),
+            seed=int(d["seed"]) if "seed" in d else None,
+        )
 
     def summary(self) -> str:
         """
@@ -257,13 +280,22 @@ class TravellerSystem:
         for star in self.stellar_system.stars:
             orb = (f"Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)"
                    if star.orbit_number else "")
+            desig    = star.designation
+            mao_v    = self.system_orbits.star_mao.get(desig)
+            hzco_v   = self.system_orbits.star_hzco.get(desig)
+            hz_in_v  = self.system_orbits.star_hz_inner.get(desig)
+            hz_out_v = self.system_orbits.star_hz_outer.get(desig)
             star_rows.append({
-                "designation": star.designation,
+                "designation":    desig,
                 "classification": star.classification(),
-                "mass": f"{star.mass:.2f}",
-                "temperature": f"{star.temperature:,}",
-                "luminosity": f"{star.luminosity:.3g}",
-                "orbit": orb,
+                "mass":           f"{star.mass:.2f}",
+                "temperature":    f"{star.temperature:,}",
+                "luminosity":     f"{star.luminosity:.3g}",
+                "orbit":          orb,
+                "mao":      f"{mao_v:.2f}"    if mao_v    is not None else "—",
+                "hz_inner": f"{hz_in_v:.2f}"  if hz_in_v  is not None else "—",
+                "hzco":     f"{hzco_v:.2f}"   if hzco_v   is not None else "—",
+                "hz_outer": f"{hz_out_v:.2f}" if hz_out_v is not None else "—",
             })
 
         # ── Orbital rows ──────────────────────────────────────────────────
@@ -303,6 +335,15 @@ class TravellerSystem:
                 note_parts.append("← mainworld")
             if o.notes:
                 note_parts.append(o.notes)
+            if o.world_type == "gas_giant" and o.gg_mass_earth is not None:
+                gg_diam_km = _gg_diameter(o.gg_sah or "") * 12800.0
+                if gg_diam_km > 0:
+                    gg_density = (
+                        o.gg_mass_earth / (gg_diam_km / 12742.0) ** 3
+                    ) * 5.515
+                    note_parts.append(
+                        f"{o.gg_mass_earth:.0f} M⊕ · {gg_density:.2f} g/cm³"
+                    )
 
             if o.is_mainworld_candidate and mw:
                 orbit_codes = list(mw.trade_codes)
@@ -335,6 +376,14 @@ class TravellerSystem:
                         mc = moon.detail.biocomplexity_rating
                         if mb is not None and mb > 0 and mc is not None:
                             moon_biosphere = f"{to_hex(mb)}, {to_hex(mc)}"
+                    moon_ecc_incl = (
+                        f"{moon.orbit_eccentricity:.3f}"
+                        f"/{moon.orbit_inclination:.1f}°"
+                        if not moon.is_ring
+                        and (moon.orbit_eccentricity > 0
+                             or moon.orbit_inclination > 0)
+                        else ""
+                    )
                     moons.append({
                         "idx": mi,
                         "pd_str": (f"{moon.orbit_pd:.1f} PD"
@@ -348,6 +397,7 @@ class TravellerSystem:
                         "range_str": (moon.orbit_range.capitalize()
                                       if moon.orbit_range else ""),
                         "biosphere_str": moon_biosphere,
+                        "ecc_incl": moon_ecc_incl,
                     })
 
             # Biosphere: biomass, biocomplexity for terrestrial worlds
@@ -380,70 +430,6 @@ class TravellerSystem:
                 "biosphere_str": biosphere_str,
             })
 
-        # ── Mainworld panel data ──────────────────────────────────────────
-        mw_data = None
-        if mw:
-            mw_atm_profile = ""
-            mw_gas_parts = ""
-            if mw.atmosphere_detail is not None:
-                mw_atm_profile = format_atmosphere_profile(
-                    mw.atmosphere, mw.atmosphere_detail)
-                if mw.atmosphere_detail.gas_mix:
-                    mw_gas_parts = " · ".join(
-                        f"{c.gas_name} ({c.gas_code})"
-                        + (f" {c.percentage}%" if c.percentage is not None else "")
-                        for c in mw.atmosphere_detail.gas_mix
-                    )
-
-            phys_data = None
-            if isinstance(mw.size_detail, BeltPhysical):
-                phys_data = {"type": "belt", "data": mw.size_detail}
-            elif isinstance(mw.size_detail, WorldPhysical):
-                p = mw.size_detail
-                tidal_label = (TIDAL_STATUS_LABELS[p.tidal_status]
-                               if p.tidal_status != "none" else "")
-                phys_data = {"type": "world", "data": p,
-                             "tidal_label": tidal_label}
-
-            mw_data = {
-                "world": mw,
-                "uwp": mw.uwp(),
-                "zone_cls": {
-                    "Green": "zone-green",
-                    "Amber": "zone-amber",
-                    "Red": "zone-red",
-                }.get(mw.travel_zone, "zone-green"),
-                "trade_codes": list(mw.trade_codes),
-                "starport_quality": STARPORT_QUALITY_LABEL.get(mw.starport, "?"),
-                "size_hex": to_hex(mw.size),
-                "size_str": str(mw.size * 1600) + " km" if mw.size else "Belt",
-                "atm_hex": to_hex(mw.atmosphere),
-                "atm_name": ATMOSPHERE_NAMES.get(mw.atmosphere, "?"),
-                "hydro_hex": to_hex(mw.hydrographics),
-                "hydro_name": HYDROGRAPHIC_NAMES.get(mw.hydrographics, "?"),
-                "pop_hex": to_hex(mw.population),
-                "tl_hex": to_hex(mw.tech_level),
-                "gov_hex": to_hex(mw.government),
-                "gov_name": GOVERNMENT_NAMES.get(mw.government, "?"),
-                "law_hex": to_hex(mw.law_level),
-                "phys_data": phys_data,
-                "atm_detail": mw.atmosphere_detail,
-                "atm_profile": mw_atm_profile,
-                "gas_parts": mw_gas_parts,
-                "hydro_detail": mw.hydrographic_detail,
-                "notes": list(mw.notes),
-                "biomass_rating": mw.biomass_rating,
-                "biomass_str": (to_hex(mw.biomass_rating)
-                                if mw.biomass_rating is not None else None),
-                "biocomplexity_rating": mw.biocomplexity_rating,
-                "biocomplexity_str": (
-                    f"{to_hex(mw.biocomplexity_rating)} — "
-                    + BIOCOMPLEXITY_DESC.get(
-                        mw.biocomplexity_rating, "Ecosystem-wide superorganisms")
-                    if mw.biocomplexity_rating is not None else None
-                ),
-            }
-
         return render("system_card.html",
             title=(mw.name if mw else "Unknown") + " system",
             star_classes=" + ".join(
@@ -454,7 +440,6 @@ class TravellerSystem:
             star_rows=star_rows,
             orbit_rows=orbit_rows,
             detail_attached=detail_attached,
-            mw_data=mw_data,
             json_str=self.to_json(),
         )
 
@@ -477,6 +462,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     belt_count: int,
     system_age_gyr: Optional[float] = None,
     nhz_atmospheres: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> World:
     """
     Generate a mainworld whose temperature is constrained by its orbital
@@ -490,6 +476,9 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
       via ``generate_atmosphere_detail()``; *system_age_gyr* feeds the
       WBH p.80 DM+1 to oxygen fraction for systems older than 4 Gyr.
     """
+    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    if rng is not None:
+        _twg._rng = rng  # pylint: disable=protected-access
     world = World(name=name)
 
     # If the mainworld orbit is a belt, the physical characteristics are
@@ -664,12 +653,13 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     return world
 
 
-def generate_full_system(
+def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     name: str = "Unknown",
     seed: Optional[int] = None,
     nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system with stellar data, orbital
@@ -684,20 +674,23 @@ def generate_full_system(
                               worlds and companion stars (WBH p.27).
         orbital_inclination:  When True, roll orbital inclination for all
                               worlds and companion stars (WBH p.28).
+        rng:                  Optional pre-seeded random.Random instance.
+                              When provided, seed is ignored.
 
     Returns:
         A TravellerSystem containing stellar data, orbits, and mainworld.
     """
-    if seed is None:
-        seed = secrets.randbelow(2 ** 31)
-    random.seed(seed)
+    if rng is None:
+        if seed is None:
+            seed = secrets.randbelow(2 ** 31)
+        rng = random.Random(seed)
 
     # Step 1: Stars
-    stellar = generate_stellar_data()
+    stellar = generate_stellar_data(rng=rng)
 
     # Step 2: Orbits and mainworld orbit selection
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
-                             orbital_inclination=orbital_inclination)
+                             orbital_inclination=orbital_inclination, rng=rng)
 
     mw_orbit = orbits.mainworld_orbit
     mainworld = None
@@ -714,6 +707,7 @@ def generate_full_system(
             belt_count=orbits.belt_count,
             system_age_gyr=stellar.age_gyr,
             nhz_atmospheres=nhz_atmospheres,
+            rng=rng,
         )
 
     return TravellerSystem(
@@ -724,14 +718,17 @@ def generate_full_system(
         nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
+        seed=seed,
     )
 
 
-def generate_system_from_world(
+def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     world: World,
     seed: Optional[int] = None,
+    nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
+    rng: Optional[random.Random] = None,
 ) -> TravellerSystem:
     """
     Generate a complete Traveller star system around an existing mainworld.
@@ -753,13 +750,17 @@ def generate_system_from_world(
     Returns:
         A TravellerSystem with the supplied world placed as the mainworld.
     """
-    if seed is None:
-        seed = secrets.randbelow(2 ** 31)
-    random.seed(seed)
+    if rng is None:
+        if seed is None:
+            seed = secrets.randbelow(2 ** 31)
+        rng = random.Random(seed)
 
-    stellar = generate_stellar_data()
+    stellar = generate_stellar_data(rng=rng)
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
-                             orbital_inclination=orbital_inclination)
+                             orbital_inclination=orbital_inclination, rng=rng)
+
+    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    _twg._rng = rng  # pylint: disable=protected-access
 
     # Reconcile PBG: honour the world's canonical gas giant and belt counts
     # rather than the freshly generated orbit counts.
@@ -813,8 +814,10 @@ def generate_system_from_world(
         system_orbits=orbits,
         mainworld=world,
         mainworld_orbit=mw_orbit,
+        nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
+        seed=seed,
     )
 
 

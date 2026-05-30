@@ -17,13 +17,18 @@
   --txt1:#e8e6de;--txt2:#9c9a92;--txt3:#6b6a65;
   --bdr:rgba(255,255,255,0.10);
 }}
+[data-theme=dark]{
+  --bg1:#1e1e1c;--bg2:#2a2a28;--bg3:#323230;
+  --txt1:#e8e6de;--txt2:#9c9a92;--txt3:#6b6a65;
+  --bdr:rgba(255,255,255,0.10);
+}
 body{background:var(--bg3);margin:0;padding:1.5rem;color:var(--txt1)}
 .card{background:var(--bg1);border:0.5px solid var(--bdr);border-radius:var(--r12);
-  padding:1rem 1.25rem;max-width:900px;margin:0 auto 1rem}
+  padding:1rem 1.25rem;margin:0 auto 1rem}
 .header{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 h1{font-size:22px;font-weight:500;margin:0}
 .sub{font-size:14px;color:var(--txt2);margin:0}
-.badge{display:inline-block;font-size:11px;font-weight:500;padding:2px 9px;
+.badge{display:inline-block;font-size:12px;font-weight:500;padding:2px 9px;
   border-radius:var(--r8);margin:2px 2px 2px 0}
 .zone-green{background:#e1f5ee;color:#085041}
 .zone-amber{background:#faeeda;color:#633806}
@@ -32,11 +37,11 @@ h1{font-size:22px;font-weight:500;margin:0}
 .b-gray{background:#f1efe8;color:#444441}
 .section-title{font-size:13px;font-weight:500;color:var(--txt2);
   margin:16px 0 8px;text-transform:uppercase;letter-spacing:0.05em}
-table{width:100%;border-collapse:collapse;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13px}
 .table-scroll{overflow-x:auto}
 th{text-align:left;padding:4px 6px;color:var(--txt2);font-weight:500;
   border-bottom:1px solid var(--bdr);white-space:nowrap}
-td{padding:3px 6px;border-bottom:0.5px solid var(--bdr);vertical-align:middle}
+td{padding:3px 6px;border-bottom:0.5px solid var(--bdr);vertical-align:middle;white-space:nowrap}
 tr:last-child td{border-bottom:none}
 .mono{font-family:ui-monospace,"Cascadia Code","Fira Mono",monospace}
 .profile{color:var(--txt1)}
@@ -46,8 +51,8 @@ tr:last-child td{border-bottom:none}
 .type-belt{color:var(--txt3)}
 .type-empty{color:var(--txt3)}
 .mw-row td{background:var(--bg2);font-weight:500}
-.mw-note{font-size:11px;color:#085041}
-.moon-row td{color:var(--txt2);font-size:11px;background:var(--bg1)}
+.mw-note{font-size:12px;color:#085041}
+.moon-row td{color:var(--txt2);font-size:12px;background:var(--bg1)}
 .moon-type{padding-left:24px}
 .moon-idx{color:var(--txt3)}
 .zone-boiling{color:#791f1f;font-weight:500}
@@ -55,30 +60,13 @@ tr:last-child td{border-bottom:none}
 .zone-temperate{color:#085041;font-weight:500}
 .zone-cold{color:#0c447c}
 .zone-frozen{color:var(--txt3)}
-.mw-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
-@media(max-width:600px){.mw-grid{grid-template-columns:repeat(2,1fr)}}
-.stat{background:var(--bg2);border-radius:var(--r8);padding:10px 12px}
-.sl{font-size:11px;color:var(--txt2);margin:0 0 2px}
-.sv{font-size:14px;font-weight:500;margin:0}
-.ss{font-size:11px;color:var(--txt2);margin:2px 0 0}
-.trade-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px}
 .codes-cell{white-space:nowrap}
-.trade-lbl{font-size:12px;color:var(--txt2)}
-.no-val{font-size:13px;color:var(--txt2);margin:0}
-.inner-card{background:var(--bg1);border:0.5px solid var(--bdr);border-radius:var(--r8);
-  padding:10px 12px;margin-top:10px}
-.inner-lbl{font-size:11px;color:var(--txt2);margin:0 0 6px}
-.drow{display:flex;justify-content:space-between;align-items:baseline;
-  padding:4px 0;border-bottom:0.5px solid var(--bdr);font-size:12px}
-.drow:last-child{border-bottom:none}
-.dlbl{color:var(--txt2);flex-shrink:0;margin-right:8px}
-details summary{font-size:12px;color:var(--txt2);cursor:pointer;padding:4px 0;margin-top:12px}
-pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
+details summary{font-size:13px;color:var(--txt2);cursor:pointer;padding:4px 0;margin-top:12px}
+pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
   white-space:pre-wrap;line-height:1.6;margin:8px 0 0}
 </style>
 </head>
 <body>
-{% macro drow(label, value) %}<div class="drow"><span class="dlbl">{{ label }}</span><span>{{ value }}</span></div>{% endmacro %}
 <div class="card">
   <div class="header">
     <h1>{{ title }}</h1>
@@ -88,9 +76,9 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
   </div>
 
   <div class="section-title">Stars</div>
-  <table>
+  <div class="table-scroll"><table>
     <thead><tr><th>Desig</th><th>Class</th><th>Mass</th>
-    <th>Temp</th><th>Lum</th><th>Orbit</th></tr></thead>
+    <th>Temp</th><th>Lum</th><th>Orbit</th><th>MAO</th><th>HZ Orbit#</th></tr></thead>
     <tbody>
     {% for s in star_rows %}
     <tr>
@@ -100,15 +88,21 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
       <td class="mono">{{ s.temperature }} K</td>
       <td class="mono">{{ s.luminosity }} L☉</td>
       <td>{{ s.orbit }}</td>
+      <td class="mono">{{ s.mao }}</td>
+      <td class="mono" style="white-space:nowrap">
+        {%- if s.hzco != "—" -%}
+          {{ s.hz_inner }} – {{ s.hzco }} – {{ s.hz_outer }}
+        {%- else -%}—{%- endif -%}
+      </td>
     </tr>
     {% endfor %}
     </tbody>
-  </table>
+  </table></div>
 
   <div class="section-title">Orbital survey{% if detail_attached %}  ·  detail included{% endif %}</div>
   <div class="table-scroll"><table>
     <thead><tr><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th><th>e/i</th>
-    <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th>Biosphere</th><th></th></tr></thead>
+    <th>Type</th><th>Profile</th><th>Codes</th><th>Zone</th><th>Biosphere</th><th>Notes</th></tr></thead>
     <tbody>
     {% for o in orbit_rows %}
     <tr class="{{ o.row_cls }}">
@@ -121,7 +115,7 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
       <td class="mono profile">{{ o.profile }}</td>
       <td class="codes-cell">{% for tc in o.codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}</td>
       <td class="zone-{{ o.temp_zone }}">{{ o.temp_zone }}</td>
-      <td class="mono" style="font-size:11px;color:var(--txt2)">{{ o.biosphere_str }}</td>
+      <td class="mono" style="font-size:12px;color:var(--txt2)">{{ o.biosphere_str }}</td>
       <td class="mw-note">{{ o.mw_mark }}</td>
     </tr>
     {% for moon in o.moons %}
@@ -130,226 +124,18 @@ pre{font-family:ui-monospace,monospace;font-size:11px;color:var(--txt2);
       <td class="mono moon-idx">↳ m{{ moon.idx }}</td>
       <td class="mono">{{ moon.pd_str }}</td>
       <td class="mono">{{ moon.km_str }}</td>
-      <td></td>
+      <td class="mono">{{ moon.ecc_incl }}</td>
       <td class="moon-type">{{ moon.type_str }}</td>
       <td class="mono profile">{{ moon.profile }}</td>
       <td class="codes-cell">{% for tc in moon.codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}</td>
       <td>{{ moon.range_str }}</td>
-      <td class="mono" style="font-size:11px;color:var(--txt2)">{{ moon.biosphere_str }}</td>
+      <td class="mono" style="font-size:12px;color:var(--txt2)">{{ moon.biosphere_str }}</td>
       <td></td>
     </tr>
     {% endfor %}
     {% endfor %}
     </tbody>
   </table></div>
-
-  {% if mw_data is not none %}
-  {% set mw = mw_data %}
-  <div class="section-title">Mainworld — {{ mw.world.name }}</div>
-  <div class="mw-grid">
-    <div class="stat">
-      <p class="sl">UWP</p>
-      <p class="sv mono">{{ mw.uwp }}</p>
-      <p class="ss"><span class="badge {{ mw.zone_cls }}">{{ mw.world.travel_zone }} zone</span></p>
-    </div>
-    <div class="stat">
-      <p class="sl">Starport {{ mw.world.starport }}</p>
-      <p class="sv">{{ mw.starport_quality }}</p>
-    </div>
-    <div class="stat">
-      <p class="sl">Size {{ mw.size_hex }}</p>
-      <p class="sv">{{ mw.size_str }}</p>
-    </div>
-    <div class="stat">
-      <p class="sl">Atmosphere {{ mw.atm_hex }}</p>
-      <p class="sv">{{ mw.atm_name }}</p>
-    </div>
-    <div class="stat">
-      <p class="sl">Temperature</p>
-      <p class="sv">{{ mw.world.temperature }}</p>
-    </div>
-    <div class="stat">
-      <p class="sl">Hydrographics {{ mw.hydro_hex }}</p>
-      <p class="sv">{{ mw.hydro_name }}</p>
-    </div>
-    <div class="stat">
-      <p class="sl">Population {{ mw.pop_hex }}</p>
-      <p class="sv">TL {{ mw.tl_hex }}</p>
-    </div>
-    <div class="stat">
-      <p class="sl">Government {{ mw.gov_hex }}</p>
-      <p class="sv">{{ mw.gov_name }}</p>
-    </div>
-    <div class="stat">
-      <p class="sl">Law Level</p>
-      <p class="sv">{{ mw.law_hex }}</p>
-    </div>
-  </div>
-  <div class="trade-row">
-    <span class="trade-lbl">Trade codes</span>
-    {% if mw.trade_codes %}
-    {% for tc in mw.trade_codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}
-    {% else %}
-    <span class="no-val">None</span>
-    {% endif %}
-  </div>
-
-  {% if mw.phys_data is not none %}
-  {% if mw.phys_data.type == "belt" %}
-  {% set bp = mw.phys_data.data %}
-  <div class="section-title">Belt body</div>
-  <div class="mw-grid">
-    <div class="stat"><p class="sl">Belt span</p><p class="sv mono">{{ bp.inner_au }} – {{ bp.outer_au }} AU</p></div>
-    <div class="stat"><p class="sl">Bulk</p><p class="sv">{{ bp.bulk }}</p></div>
-    <div class="stat"><p class="sl">Resource rating</p><p class="sv">{{ bp.resource_rating }}</p></div>
-    <div class="stat"><p class="sl">Composition</p><p class="sv">M {{ bp.m_type_pct }}% / S {{ bp.s_type_pct }}% / C {{ bp.c_type_pct }}%</p></div>
-    <div class="stat"><p class="sl">Significant bodies</p><p class="sv">{{ bp.size_1_bodies }} × Sz 1, {{ bp.size_s_bodies }} × Sz S</p></div>
-    {% if bp.mean_temperature_k is defined %}<div class="stat"><p class="sl">Mean temperature</p><p class="sv">{{ bp.mean_temperature_k }} K</p></div>{% endif %}
-  </div>
-  {% elif mw.phys_data.type == "world" %}
-  {% set p = mw.phys_data.data %}
-  <div class="inner-card">
-    <p class="inner-lbl">World body</p>
-    {{ drow("Composition", p.composition) }}
-    {{ drow("Diameter", "{:,} km".format(p.diameter_km)) }}
-    {{ drow("Density", "%.2f g/cm³"|format(p.density)) }}
-    {{ drow("Mass", "%.4f M⊕"|format(p.mass)) }}
-    {{ drow("Surface gravity", "%.3f G"|format(p.gravity)) }}
-    {{ drow("Escape velocity", "%.2f km/s"|format(p.escape_velocity)) }}
-    {{ drow("Axial tilt", p.axial_tilt|string ~ "°") }}
-    {{ drow("Day length", "%.1f h"|format(p.day_length)) }}
-    {% if p.stellar_day_hours is not none %}
-    {{ drow("Stellar day", "%.1f h"|format(p.stellar_day_hours)) }}
-    {% endif %}
-    {% if p.mean_temperature_k is not none %}
-    {{ drow("Mean temperature", p.mean_temperature_k|string ~ " K") }}
-    {% endif %}
-    {% if p.advanced_mean_temperature_k is not none %}
-    {{ drow("Adv. mean temperature", p.advanced_mean_temperature_k|string ~ " K") }}
-    {% endif %}
-    {% if p.high_temperature_k is not none %}
-    {{ drow("High temperature", p.high_temperature_k|string ~ " K") }}
-    {% endif %}
-    {% if p.low_temperature_k is not none %}
-    {{ drow("Low temperature", p.low_temperature_k|string ~ " K") }}
-    {% endif %}
-    {% if p.albedo is not none %}
-    {{ drow("Albedo", "%.4f"|format(p.albedo)) }}
-    {% endif %}
-    {% if p.greenhouse_factor is not none %}
-    {{ drow("Greenhouse factor", "%.4f"|format(p.greenhouse_factor)) }}
-    {% endif %}
-    {% if p.runaway_greenhouse %}
-    {{ drow("Runaway greenhouse", "Yes") }}
-    {% endif %}
-    {% if mw.phys_data.tidal_label %}
-    {{ drow("Tidal status", mw.phys_data.tidal_label) }}
-    {% endif %}
-    {% if p.tidal_amplitude_m is not none %}
-    {{ drow("Tidal amplitude", "%.2f m"|format(p.tidal_amplitude_m)) }}
-    {% endif %}
-    {% if p.tidal_seismic_stress is not none and p.tidal_seismic_stress > 0 %}
-    {{ drow("Tidal seismic stress", p.tidal_seismic_stress|string) }}
-    {% endif %}
-    {% if p.tidal_stress_factor is not none and p.tidal_stress_factor > 0 %}
-    {{ drow("Tidal stress factor", p.tidal_stress_factor|string) }}
-    {% endif %}
-    {% if p.residual_seismic_stress is not none %}
-    {{ drow("Residual seismic stress", p.residual_seismic_stress|string) }}
-    {% endif %}
-    {% if p.total_seismic_stress is not none %}
-    {{ drow("Total seismic stress", p.total_seismic_stress|string) }}
-    {% endif %}
-    {% if p.seismic_temperature_k is not none %}
-    {{ drow("Seismic temperature", p.seismic_temperature_k|string ~ " K") }}
-    {% endif %}
-  </div>
-  {% endif %}
-  {% endif %}
-
-  {% if mw.atm_detail is not none %}
-  {% set ad = mw.atm_detail %}
-  <div class="inner-card">
-    <p class="inner-lbl">Atmosphere detail</p>
-    {{ drow("Profile", mw.atm_profile) }}
-    {% if ad.subtype_name is not none %}
-    {{ drow("Subtype", ad.subtype_name) }}
-    {% endif %}
-    {% if ad.pressure_bar is not none %}
-    {{ drow("Pressure", "%.3f bar"|format(ad.pressure_bar)) }}
-    {% elif ad.subtype_code in ("C", "D", "E") %}
-    {{ drow("Pressure", "> 10.0 bar (extremely dense)") }}
-    {% endif %}
-    {% if ad.oxygen_partial_pressure is not none %}
-    {{ drow("O₂ partial pressure", "%.3f bar"|format(ad.oxygen_partial_pressure)) }}
-    {% endif %}
-    {% if ad.scale_height_km is not none %}
-    {{ drow("Scale height", "%.1f km"|format(ad.scale_height_km)) }}
-    {% endif %}
-    {% if ad.no_safe_altitude %}
-    {{ drow("Safe altitude", "None (no breathable level)") }}
-    {% elif ad.min_safe_altitude_km is not none %}
-    {% if ad.min_safe_altitude_km >= 0 %}
-    {{ drow("Min safe altitude", "%.1f km above baseline"|format(ad.min_safe_altitude_km)) }}
-    {% else %}
-    {{ drow("Max safe depth", "%.1f km below baseline"|format(ad.min_safe_altitude_km|abs)) }}
-    {% endif %}
-    {% endif %}
-    {% for sub in ad.unusual_subtypes %}
-    {{ drow("Unusual subtype", sub.subtype_name ~ " (" ~ sub.subtype_code ~ ")") }}
-    {% endfor %}
-    {% for taint in ad.taints %}
-    {% if ad.taints|length > 1 %}
-    {{ drow("Taint " ~ loop.index|string, taint.subtype) }}
-    {% else %}
-    {{ drow("Taint", taint.subtype) }}
-    {% endif %}
-    {{ drow("  Severity", taint.severity) }}
-    {{ drow("  Persistence", taint.persistence) }}
-    {% endfor %}
-    {% for hazard in ad.hazards %}
-    {{ drow("Hazard", hazard.hazard) }}
-    {% if hazard.gases %}
-    {{ drow("  Gas mix", hazard.gases|join(", ")) }}
-    {% endif %}
-    {% endfor %}
-    {% if mw.gas_parts %}
-    {{ drow("Gas mix", mw.gas_parts) }}
-    {% endif %}
-  </div>
-  {% endif %}
-
-  {% if mw.hydro_detail is not none %}
-  <div class="inner-card">
-    <p class="inner-lbl">Hydrographic detail</p>
-    {{ drow("Surface liquid", mw.hydro_detail.surface_liquid_pct|string ~ "%") }}
-    {% if mw.hydro_detail.fluid_type is not none %}
-    {{ drow("Fluid type", mw.hydro_detail.fluid_type) }}
-    {% endif %}
-  </div>
-  {% endif %}
-  {% if mw.biomass_rating is not none and mw.biomass_rating > 0 %}
-  <div class="inner-card">
-    <p class="inner-lbl">Native life</p>
-    {{ drow("Biomass", mw.biomass_str) }}
-    {% if mw.biocomplexity_str is not none %}
-    {{ drow("Biocomplexity", mw.biocomplexity_str) }}
-    {% endif %}
-  </div>
-  {% endif %}
-
-  {% if mw.notes %}
-  <div class="inner-card">
-    <p class="inner-lbl">Notes</p>
-    <ul style="margin:4px 0 0;padding-left:18px;font-size:12px;color:var(--txt2);line-height:1.6">
-    {% for note in mw.notes %}<li>{{ note }}</li>{% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-
-  {% else %}
-  <p class="no-val">No mainworld determined.</p>
-  {% endif %}
 
   <details>
     <summary>Raw JSON</summary>

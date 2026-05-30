@@ -62,5 +62,5 @@ v13.md
 # Project context and session history — internal development notes not
 # intended for the public repository.
 .context/
-.claude/
-CLAUDE.md
+.claude/settings.local.json
+.claude/settings.json

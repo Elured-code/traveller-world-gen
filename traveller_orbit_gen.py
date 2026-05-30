@@ -36,11 +36,13 @@ This is an unofficial fan work, not affiliated with Mongoose Publishing.
 AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
+# pylint: disable=too-many-lines
 
 from __future__ import annotations
 import json
 import math
 import random
+_rng: random.Random = random  # type: ignore[assignment]
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
 from traveller_stellar_gen import Star, StarSystem, _orbit_to_au, ORBIT_AU
@@ -50,7 +52,7 @@ if TYPE_CHECKING:
 
 def roll(n: int, dm: int = 0) -> int:
     """Roll n six-sided dice and return the sum plus dm, minimum 0."""
-    return max(0, sum(random.randint(1, 6) for _ in range(n)) + dm)
+    return max(0, sum(_rng.randint(1, 6) for _ in range(n)) + dm)
 
 
 # ---------------------------------------------------------------------------
@@ -176,18 +178,33 @@ def _gg_sah_roll(spectral: str, lum_class: str) -> str:
     dm = 0
     if spectral == "BD" or lum_class == "VI" or (spectral == "M" and lum_class == "V"):
         dm = -1
-    cat = random.randint(1, 6) + dm
+    cat = _rng.randint(1, 6) + dm
     if cat <= 2:
-        d3a = (random.randint(1, 6) + 1) // 2
-        d3b = (random.randint(1, 6) + 1) // 2
+        d3a = (_rng.randint(1, 6) + 1) // 2
+        d3b = (_rng.randint(1, 6) + 1) // 2
         diameter = d3a + d3b            # 2-6
         return f"GS{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
     if cat <= 4:
-        diameter = random.randint(1, 6) + 6  # 7-12
+        diameter = _rng.randint(1, 6) + 6  # 7-12
         return f"GM{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
     # WBH p.55 GL: 2D+6 → 8-18
-    diameter = random.randint(1, 6) + random.randint(1, 6) + 6
+    diameter = _rng.randint(1, 6) + _rng.randint(1, 6) + 6
     return f"GL{_GG_EHEX[min(diameter, len(_GG_EHEX)-1)]}"
+
+
+def _roll_gg_mass(gg_category: str) -> float:
+    """Roll gas giant mass per WBH third roll table (M⊕).
+
+    GS: 5 × (1D+1)           →  10–35 M⊕
+    GM: 20 × (3D−1)           →  40–340 M⊕
+    GL: D3 × 50 × (3D+4)      → 350–3,300 M⊕
+    """
+    if gg_category == "GS":
+        return float(5 * (_rng.randint(1, 6) + 1))
+    if gg_category == "GM":
+        return float(20 * (roll(3) - 1))
+    # GL
+    return float(_rng.randint(1, 3) * 50 * (roll(3) + 4))
 
 
 # Eccentricity Values table (WBH p.27): (max_first_roll, base, n_dice, divisor)
@@ -216,8 +233,12 @@ def roll_eccentricity(  # pylint: disable=too-many-arguments,too-many-positional
         extra_stars: int = 0,
         is_belt: bool = False,
         is_star: bool = False,
-        anomaly_dm: int = 0) -> float:
+        anomaly_dm: int = 0,
+        rng: Optional[random.Random] = None) -> float:
     """Roll orbital eccentricity per WBH p.27 Eccentricity Values table."""
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     dm = 2 if is_star else 0
     dm += extra_stars
     dm += anomaly_dm
@@ -233,21 +254,24 @@ def roll_eccentricity(  # pylint: disable=too-many-arguments,too-many-positional
     return 0.0  # unreachable; satisfies type checker
 
 
-def roll_inclination() -> float:  # pylint: disable=too-many-return-statements
+def roll_inclination(rng: Optional[random.Random] = None) -> float:  # pylint: disable=too-many-return-statements
     """Roll orbital inclination per WBH p.28 Inclination table."""
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     first = roll(2)
     if first <= 6:
-        return random.randint(1, 6) / 2                                    # Very Low: 0.5–3°
+        return _rng.randint(1, 6) / 2                                    # Very Low: 0.5–3°
     if first == 7:
-        return float(random.randint(1, 6))                                 # Low: 1–6°
+        return float(_rng.randint(1, 6))                                 # Low: 1–6°
     if first == 8:
         return float(roll(2))                                              # Moderate: 2–12°
     if first == 9:
-        return float(roll(2) * 3 + random.randint(1, 6))                  # High: 7–42°
+        return float(roll(2) * 3 + _rng.randint(1, 6))                  # High: 7–42°
     if first == 10:
-        return float((random.randint(1, 6) + 1) * 5 + random.randint(1, 6))  # Very High: 11–41°
+        return float((_rng.randint(1, 6) + 1) * 5 + _rng.randint(1, 6))  # Very High: 11–41°
     if first == 11:
-        return float(roll(3) * 5 - random.randint(1, 6))                  # Extreme: 9–89°
+        return float(roll(3) * 5 - _rng.randint(1, 6))                  # Extreme: 9–89°
     return max(0.0, 180.0 - roll_inclination())                           # Retrograde: 12
 
 
@@ -272,6 +296,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     orbit_period_yr: Optional[float] = field(default=None, init=False)
     eccentricity: float = field(default=0.0, init=False)
     inclination: float = field(default=0.0, init=False)
+    gg_mass_earth: Optional[float] = field(default=None, init=False)
     detail: Optional["WorldDetail"] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
@@ -292,6 +317,8 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["canonical_profile"] = self.canonical_profile
         if self.gg_sah:
             d["gg_sah"] = self.gg_sah
+        if self.gg_mass_earth is not None:
+            d["gg_mass_earth"] = self.gg_mass_earth
         if self.anomaly_type:
             d["anomaly_type"] = self.anomaly_type
         if self.orbit_period_yr is not None:
@@ -306,6 +333,37 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "OrbitSlot":
+        """Reconstruct an OrbitSlot from a dict produced by to_dict().
+
+        detail is left as None — WorldDetail reconstruction is out of scope.
+        """
+        slot = cls(
+            star_designation=str(d["star"]),
+            orbit_number=float(d["orbit_number"]),
+            orbit_au=float(d["orbit_au"]),
+            slot_index=int(d["slot_index"]),
+            world_type=str(d["world_type"]),
+            is_habitable_zone=bool(d.get("is_habitable_zone", False)),
+            hz_deviation=float(d.get("hz_deviation", 0.0)),
+            temperature_zone=str(d.get("temperature_zone", "temperate")),
+            is_mainworld_candidate=bool(d.get("is_mainworld_candidate", False)),
+            notes=str(d.get("notes", "")),
+            canonical_profile=str(d.get("canonical_profile", "")),
+            gg_sah=str(d.get("gg_sah", "")),
+            anomaly_type=str(d.get("anomaly_type", "")),
+        )
+        slot.orbit_period_yr = d.get("orbit_period_yr")
+        slot.eccentricity = float(d.get("eccentricity", 0.0))
+        slot.inclination = float(d.get("inclination", 0.0))
+        slot.gg_mass_earth = float(d["gg_mass_earth"]) if "gg_mass_earth" in d else None
+        detail_d = d.get("detail")
+        if detail_d:
+            from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+            slot.detail = WorldDetail.from_dict(detail_d)
+        return slot
 
 
 @dataclass
@@ -348,6 +406,28 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
     def to_json(self, indent=2):
         """Serialise this system's orbits to a JSON string."""
         return json.dumps(self.to_dict(), indent=indent)
+
+    @classmethod
+    def from_dict(cls, d: dict, star_system: StarSystem) -> "SystemOrbits":
+        """Reconstruct a SystemOrbits from a dict produced by to_dict()."""
+        orbits = [OrbitSlot.from_dict(o) for o in d.get("orbits", [])]
+        mw_d = d.get("mainworld_orbit")
+        mainworld_orbit = OrbitSlot.from_dict(mw_d) if mw_d else None
+        zones = d.get("star_zones", {})
+        return cls(
+            stellar_system=star_system,
+            gas_giant_count=int(d.get("gas_giant_count", 0)),
+            belt_count=int(d.get("belt_count", 0)),
+            terrestrial_count=int(d.get("terrestrial_count", 0)),
+            total_worlds=int(d.get("total_worlds", 0)),
+            empty_orbits=int(d.get("empty_orbits", 0)),
+            orbits=orbits,
+            mainworld_orbit=mainworld_orbit,
+            star_mao={k: float(v["mao"]) for k, v in zones.items()},
+            star_hzco={k: float(v["hzco"]) for k, v in zones.items()},
+            star_hz_inner={k: float(v["hz_inner"]) for k, v in zones.items()},
+            star_hz_outer={k: float(v["hz_outer"]) for k, v in zones.items()},
+        )
 
     def summary(self) -> str:  # pylint: disable=too-many-locals,too-many-branches
         """
@@ -433,8 +513,12 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
 
 def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
                     orbital_eccentricity: bool = False,
-                    orbital_inclination: bool = False) -> SystemOrbits:
+                    orbital_inclination: bool = False,
+                    rng: Optional[random.Random] = None) -> SystemOrbits:
     """Generate all orbit slots for a star system (WBH pp.36-51)."""
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     result = SystemOrbits(stellar_system=system)
     primary_stars = [s for s in system.stars if s.role != "companion"]
     has_companion = any(s.role == "companion" for s in system.stars)
@@ -525,15 +609,15 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
             if i == len(primary_stars)-1:
                 alloc[star.designation] = remaining
             else:
-                rng = _avail_range(star)
-                n = round(result.total_worlds * rng / max(total_range, 0.01))
+                star_rng = _avail_range(star)
+                n = round(result.total_worlds * star_rng / max(total_range, 0.01))
                 n = max(0, min(n, remaining))
                 alloc[star.designation] = n
                 remaining -= n
 
     # World type pool
     pool = ["gas_giant"]*gg + ["belt"]*belts + ["terrestrial"]*tp
-    random.shuffle(pool)
+    _rng.shuffle(pool)
     pool_idx = 0
 
     for star in primary_stars:
@@ -666,7 +750,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                 current += spread + (roll(2)-7)*0.1*spread
 
             # Assign world types — pool_idx shared across all zones
-            empty_set = set(random.sample(range(len(slots)), min(zone_empty, len(slots))))
+            empty_set = set(_rng.sample(range(len(slots)), min(zone_empty, len(slots))))
             for si, on in enumerate(slots):
                 au = _orbit_to_au(on)
                 dev = on - hzco
@@ -683,12 +767,17 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                     _gg_sah_roll(star.spectral_type, star.lum_class)
                     if wtype == "gas_giant" else ""
                 )
+                slot_gg_mass = (
+                    _roll_gg_mass(slot_gg_sah[:2])
+                    if slot_gg_sah else None
+                )
                 result.orbits.append(OrbitSlot(
                     star_designation=d, orbit_number=on, orbit_au=au,
                     slot_index=si+1, world_type=wtype,
                     is_habitable_zone=in_hz, hz_deviation=round(dev,3),
                     temperature_zone=tz, gg_sah=slot_gg_sah,
                 ))
+                result.orbits[-1].gg_mass_earth = slot_gg_mass
 
     result.orbits.sort(key=lambda o: (o.star_designation, o.orbit_au))
 
@@ -714,7 +803,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
         for _ in range(anom_count):
             if not eligible:
                 break
-            anom_star = random.choice(eligible) if len(eligible) > 1 else eligible[0]
+            anom_star = _rng.choice(eligible) if len(eligible) > 1 else eligible[0]
             anom_d = anom_star.designation
             a_hzco = star_hzco.get(anom_d, 0.0)
 
@@ -743,7 +832,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                 if not host_slots:
                     anom_type = "random"
                 else:
-                    host = random.choice(host_slots)
+                    host = _rng.choice(host_slots)
                     anom_on = host.orbit_number
                     pos = "leading" if roll(1) <= 3 else "trailing"
                     anom_type = f"trojan_{pos}"
@@ -770,16 +859,16 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                 for _attempt in range(4):
                     candidate = max(
                         z_lo,
-                        min(roll(2, -2) + random.randint(0, 9) / 10.0, z_hi),
+                        min(roll(2, -2) + _rng.randint(0, 9) / 10.0, z_hi),
                     )
                     if round(candidate, 2) not in existing:
                         break
-                    adj = roll(1) * random.choice((-1, 1))
+                    adj = roll(1) * _rng.choice((-1, 1))
                     candidate = max(z_lo, min(candidate + adj, z_hi))
                 anom_on = round(candidate, 2)
 
             if anom_type == "inclined":
-                inc_deg = (roll(1, 2)) * 10 + random.randint(0, 9)
+                inc_deg = (roll(1, 2)) * 10 + _rng.randint(0, 9)
                 anom_notes = f"Inclined {inc_deg}°"
             elif anom_type == "retrograde":
                 anom_notes = "Retrograde"
@@ -904,10 +993,9 @@ def generate_full_system(seed=None, orbital_eccentricity: bool = False,
                          orbital_inclination: bool = False):
     """Generate a stellar system with orbits, optionally seeding the RNG."""
     from traveller_stellar_gen import generate_stellar_data  # pylint: disable=import-outside-toplevel
-    if seed is not None:
-        random.seed(seed)
-    system = generate_stellar_data()
-    orbits = generate_orbits(system, orbital_eccentricity=orbital_eccentricity,
+    rng = random.Random(seed) if seed is not None else None
+    system = generate_stellar_data(rng=rng)
+    orbits = generate_orbits(system, rng=rng, orbital_eccentricity=orbital_eccentricity,
                              orbital_inclination=orbital_inclination)
     return system, orbits
 

@@ -65,6 +65,21 @@ TIDAL_STATUS_LABELS: dict[str, str] = {
     "1:1_lock":   "1:1 tidal lock (synchronous)",
 }
 
+def habitability_description(rating: int) -> str:
+    """Return the descriptive label for a habitability rating (WBH p.131)."""
+    if rating <= 0:
+        return "Actively hostile world"
+    if rating <= 2:
+        return "Barely habitable world"
+    if rating <= 5:
+        return "Marginally survivable world"
+    if rating <= 7:
+        return "Regionally habitable world"
+    if rating <= 9:
+        return "Suitable for human habitation"
+    return "Terra-equivalent garden world"
+
+
 # Biocomplexity rating → descriptive label (WBH pp.127-131)
 BIOCOMPLEXITY_DESC: dict[int, str] = {
     1: "Primitive single-cell organisms",

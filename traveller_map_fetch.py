@@ -600,6 +600,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     hex_pos:              Optional[str] = None,
     seed:                 Optional[int] = None,
     attach:               bool = False,
+    nhz_atmospheres:      bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination:  bool = False,
 ) -> TravellerSystem:
@@ -618,6 +619,8 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     hex_pos              4-digit hex position, e.g. '1910'.  Alternative to name.
     seed                 RNG seed for reproducible orbital generation.
     attach               If True, generate all secondary world and moon profiles.
+    nhz_atmospheres      Stored in TravellerSystem for deterministic recreation;
+                         does not affect canonical atmosphere (fixed UWP).
     orbital_eccentricity When True, roll eccentricity for each orbit (WBH p.27).
     orbital_inclination  When True, roll inclination for each orbit (WBH p.28).
 
@@ -636,13 +639,13 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
 
     if seed is None:
         seed = secrets.randbelow(2 ** 31)
-    random.seed(seed)
+    rng = random.Random(seed)
 
     # Step 2: canonical stellar system (types fixed, orbit positions random)
     stellar = reconstruct_star_system(map_data.stars_str)
 
     # Step 3: procedural orbital layout
-    orbits  = generate_orbits(stellar,
+    orbits  = generate_orbits(stellar, rng=rng,
                               orbital_eccentricity=orbital_eccentricity,
                               orbital_inclination=orbital_inclination)
 
@@ -706,6 +709,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
         world.hydrographics, world.size,
         atmosphere=world.atmosphere,
         temperature=world.temperature,
+        rng=rng,
     )
 
     system = TravellerSystem(
@@ -713,12 +717,14 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
         system_orbits        = orbits,
         mainworld            = world,
         mainworld_orbit      = mw_orbit,
+        nhz_atmospheres      = nhz_atmospheres,
         orbital_eccentricity = orbital_eccentricity,
         orbital_inclination  = orbital_inclination,
+        seed                 = seed,
     )
 
     if attach:
-        attach_detail(system)
+        attach_detail(system, rng=rng)
 
     return system
 
