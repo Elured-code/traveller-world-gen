@@ -233,7 +233,7 @@ def _terrestrial_sah(
     if nhz_atmospheres and abs(orbit.hz_deviation) > 1.0:
         atmosphere, _ = generate_nhz_atmosphere(size, orbit.hz_deviation)
     else:
-        atmosphere = generate_atmosphere(min(size, 9))
+        atmosphere = min(generate_atmosphere(size), 15)
     temperature = generate_temperature_from_orbit(
         atmosphere=atmosphere,
         hz_deviation=orbit.hz_deviation,
@@ -286,13 +286,19 @@ def _secondary_government(mainworld_pop: int, mainworld_gov: int) -> int:
     return 6
 
 
-def _secondary_law_level(government: int, mainworld_law: int) -> int:
+def _independent_government(population: int) -> int:
+    """Case 2 independent government: 2D-7 + Population (WBH p.162)."""
+    return max(0, _roll(2, -7 + population))
+
+
+def _secondary_law_level(government: int, mainworld_law: int,
+                         independent: bool = False) -> int:
     """
     Law Level for a secondary world (WBH p.171).
-    For captive governments (6): 1D determines relationship to mainworld.
-    For others: standard 2D-7 + Government.
+    For captive governments (6) in Case 1: 1D determines relationship to mainworld.
+    For Case 2 (independent=True) or non-6 governments: standard 2D-7 + Government.
     """
-    if government == 6:
+    if not independent and government == 6:
         r = _rng.randint(1, 6)
         if r <= 2:
             return max(0, _roll(2, -7 + 6))       # rerolled for Gov 6
@@ -730,12 +736,14 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
 
     __slots__ = ("sah", "population", "government", "law_level",
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
-                 "biomass_rating", "biocomplexity_rating", "habitability_rating")
+                 "biomass_rating", "biocomplexity_rating", "habitability_rating",
+                 "is_independent_government")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
             law_level: int = 0, tech_level: int = 0, spaceport: str = "-",
-            moons: list[Moon] | None = None):
+            moons: list[Moon] | None = None,
+            is_independent_government: bool = False):
         self.sah        = sah
         self.population = population
         self.government = government
@@ -743,6 +751,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.tech_level = tech_level
         self.spaceport  = spaceport
         self.moons      = moons if moons is not None else []
+        self.is_independent_government = is_independent_government
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
@@ -811,6 +820,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             "moons":       [m.to_dict() for m in self.moons],
             "physical":    self.physical.to_dict() if self.physical is not None else None,
         }
+        if self.is_independent_government:
+            d["is_independent_government"] = True
         if self.biomass_rating is not None:
             d["biomass_rating"] = self.biomass_rating
         if self.biocomplexity_rating is not None:
@@ -840,6 +851,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             else:
                 from traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
                 obj.physical = WorldPhysical.from_dict(phys_d)
+        obj.is_independent_government = bool(d.get("is_independent_government", False))
         if d.get("biomass_rating") is not None:
             obj.biomass_rating = int(d["biomass_rating"])
         if d.get("biocomplexity_rating") is not None:
@@ -932,7 +944,7 @@ def _moons_for(  # pylint: disable=too-many-arguments,too-many-positional-argume
     )
 
 
-def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-return-statements
+def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals,too-many-return-statements,too-many-branches
     moon: Moon,
     hz_deviation: float,
     hzco: float,
@@ -943,6 +955,7 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
     mw_tl: int,
     max_secondary_pop: int,
     nhz_atmospheres: bool = False,
+    independent_government: bool = False,
 ) -> "WorldDetail":
     """
     Generate full WorldDetail for a significant moon (WBH pp.57, 78-99, 155-180).
@@ -985,18 +998,22 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
             pop = 0
         if pop == 0:
             return WorldDetail(sah=sah)
-        gov  = _secondary_government(mw_pop, mw_gov)
-        law  = _secondary_law_level(gov, mw_law)
+        if independent_government:
+            gov, is_indep = _independent_government(pop), True
+        else:
+            gov, is_indep = _secondary_government(mw_pop, mw_gov), False
+        law  = _secondary_law_level(gov, mw_law, independent=independent_government)
         tl   = _secondary_tech_level(0, mw_tl)
         port = _spaceport(pop)
         return WorldDetail(sah=sah, population=pop, government=gov,
-                           law_level=law, tech_level=tl, spaceport=port)
+                           law_level=law, tech_level=tl, spaceport=port,
+                           is_independent_government=is_indep)
 
     # Size 2+: generate atmosphere and hydrographics
     if nhz_atmospheres and abs(hz_deviation) > 1.0:
         atmosphere, _ = generate_nhz_atmosphere(sz, hz_deviation)
     else:
-        atmosphere = generate_atmosphere(min(sz, 9))
+        atmosphere = min(generate_atmosphere(sz), 15)
     temperature = generate_temperature_from_orbit(
         atmosphere=atmosphere,
         hz_deviation=hz_deviation,
@@ -1013,12 +1030,16 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
         pop = 0
     if pop == 0:
         return WorldDetail(sah=sah)
-    gov  = _secondary_government(mw_pop, mw_gov)
-    law  = _secondary_law_level(gov, mw_law)
+    if independent_government:
+        gov, is_indep = _independent_government(pop), True
+    else:
+        gov, is_indep = _secondary_government(mw_pop, mw_gov), False
+    law  = _secondary_law_level(gov, mw_law, independent=independent_government)
     tl   = _secondary_tech_level(atmosphere, mw_tl)
     port = _spaceport(pop)
     return WorldDetail(sah=sah, population=pop, government=gov,
-                       law_level=law, tech_level=tl, spaceport=port)
+                       law_level=law, tech_level=tl, spaceport=port,
+                       is_independent_government=is_indep)
 
 # ---------------------------------------------------------------------------
 # Main generation function
@@ -1027,6 +1048,7 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
 def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     system: TravellerSystem,
     nhz_atmospheres: bool = False,
+    independent_government: bool = False,
     rng: Optional[random.Random] = None,
 ) -> dict[str, WorldDetail]:
     """
@@ -1097,13 +1119,18 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
             if pop == 0:
                 result[key] = WorldDetail(sah="000")
             else:
-                gov  = _secondary_government(mw_pop, mw_gov)
-                law  = _secondary_law_level(gov, mw_law)
+                if independent_government:
+                    gov, is_indep = _independent_government(pop), True
+                else:
+                    gov, is_indep = _secondary_government(mw_pop, mw_gov), False
+                law  = _secondary_law_level(gov, mw_law,
+                                            independent=independent_government)
                 tl   = _secondary_tech_level(belt_atm, mw_tl)
                 port = _spaceport(pop)
                 result[key] = WorldDetail(
                     sah="000", population=pop, government=gov,
                     law_level=law, tech_level=tl, spaceport=port,
+                    is_independent_government=is_indep,
                 )
             # Belt physical detail (WBH pp.131-133)
             same_star_outward = sorted(
@@ -1151,13 +1178,18 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
             if pop == 0:
                 result[key] = WorldDetail(sah=sah)
             else:
-                gov  = _secondary_government(mw_pop, mw_gov)
-                law  = _secondary_law_level(gov, mw_law)
+                if independent_government:
+                    gov, is_indep = _independent_government(pop), True
+                else:
+                    gov, is_indep = _secondary_government(mw_pop, mw_gov), False
+                law  = _secondary_law_level(gov, mw_law,
+                                            independent=independent_government)
                 tl   = _secondary_tech_level(atm, mw_tl)
                 port = _spaceport(pop)
                 result[key] = WorldDetail(
                     sah=sah, population=pop, government=gov,
                     law_level=law, tech_level=tl, spaceport=port,
+                    is_independent_government=is_indep,
                 )
 
     # Attach moons and their full detail to every WorldDetail
@@ -1201,6 +1233,7 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
                     mw_tl=mw_tl,
                     max_secondary_pop=max_secondary_pop,
                     nhz_atmospheres=nhz_atmospheres,
+                    independent_government=independent_government,
                 )
 
     return result
@@ -1210,6 +1243,7 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
         system: TravellerSystem,
         optional_biomass_rule: bool = False,
         optional_inhospitable_rule: bool = False,
+        independent_government: bool = False,
         rng: Optional[random.Random] = None,
 ) -> None:
     """
@@ -1224,12 +1258,15 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
     Instead a single 2D is made for all such worlds; only on a natural 12 does
     one randomly chosen world receive a biomass roll — all others get 0 (WBH
     p.130 Suggested Usage).
+    independent_government: when True, secondary worlds use Case 2 (WBH p.162)
+    — 2D-7+Population — instead of the Case 1 dependent government table.
     """
     global _rng  # pylint: disable=global-statement
     if rng is not None:
         _rng = rng
     nhz = system.nhz_atmospheres
-    detail_map = generate_system_detail(system, nhz_atmospheres=nhz)
+    detail_map = generate_system_detail(system, nhz_atmospheres=nhz,
+                                        independent_government=independent_government)
     mainworld  = system.mainworld
 
     for orbit in system.system_orbits.orbits:

@@ -6162,3 +6162,170 @@ class TestGGMassRoll:
         with patch("random.randint", return_value=3), \
              patch("traveller_orbit_gen.roll", return_value=18):
             assert _roll_gg_mass("GL") == 3300.0
+
+
+class TestLargeSecondaryWorldAtmosphere:
+    """Secondary terrestrial worlds with size > 9 use the full 2D-7+Size formula.
+
+    Issue #113: the min(size, 9) cap was removed so that large worlds (Size A-F)
+    receive atmosphere codes appropriate to their actual size.  The result is still
+    clamped to 15 (F) because codes 16-17 are NHZ-only.
+
+    All tests patch ``traveller_world_gen.roll`` to inject deterministic dice
+    outcomes and patch ``_terrestrial_size`` to force a specific size without
+    consuming RNG.  The module _rng state is managed by the autouse conftest
+    fixture which resets it to the global ``random`` module before each test.
+    """
+
+    def _hz_slot(self):
+        """Minimal HZ terrestrial OrbitSlot for calling _terrestrial_sah()."""
+        from traveller_orbit_gen import OrbitSlot  # pylint: disable=import-outside-toplevel
+        return OrbitSlot(
+            star_designation="A", orbit_number=3.0, orbit_au=1.0,
+            slot_index=0, world_type="terrestrial", is_habitable_zone=True,
+            hz_deviation=0.0, temperature_zone="Temperate",
+            is_mainworld_candidate=False,
+        )
+
+    def test_size10_atmosphere_reaches_15(self):
+        # Size 10: formula is 2D+3, max=15.  Old cap (min(10,9)=9 → 2D+2, max=14)
+        # made atmosphere=15 unreachable.  Force roll to return 15 and verify.
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_world_detail._terrestrial_size", return_value=10), \
+             patch("traveller_world_gen.roll", side_effect=[15, 5]):
+            # side_effect order: atmosphere roll, then hydrographics roll
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), 3.0)
+        assert atm == 15
+
+    @pytest.mark.parametrize("size,max_formula_result", [
+        (11, 16), (12, 17), (13, 18), (14, 19), (15, 20),
+    ])
+    def test_large_size_atmosphere_clamped_to_15(self, size, max_formula_result):
+        # Sizes 11-15 use 2D+(size-7); the formula can yield 16-20 with all-6 dice.
+        # The result must always be clamped to ≤ 15 (codes 16-17 are NHZ-only).
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_world_detail._terrestrial_size", return_value=size), \
+             patch("traveller_world_gen.roll", side_effect=[max_formula_result, 5]):
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), 3.0)
+        assert atm == 15, (
+            f"size={size}: formula yields {max_formula_result} but must clamp to 15"
+        )
+
+    @pytest.mark.parametrize("size", [11, 12, 13, 14, 15])
+    def test_large_size_atmosphere_exceeds_old_size9_max(self, size):
+        # Old cap: generate_atmosphere(9) → 2D+2, absolute max = 14.
+        # New formula for sizes 11-15: 2D+(size-7), so atm=15 must now be reachable.
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_world_detail._terrestrial_size", return_value=size), \
+             patch("traveller_world_gen.roll", side_effect=[15, 5]):
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), 3.0)
+        assert atm == 15, (
+            f"size={size}: forced roll=15 should give atm=15 (old cap gave max 14)"
+        )
+
+    def test_large_moon_atmosphere_clamped_to_15(self):
+        # _moon_detail() had the same cap.  For a size-11 moon, force roll > 15
+        # and verify it is clamped to 15.
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        from traveller_moon_gen import Moon  # pylint: disable=import-outside-toplevel
+        moon = Moon(size_code=11)
+        # roll calls in _moon_detail: atmosphere then hydrographics.
+        # Social dice go through _rng.randint() directly and are not intercepted.
+        random.seed(1)
+        with patch("traveller_world_gen.roll", side_effect=[17, 5]):
+            detail = _twd._moon_detail(
+                moon=moon, hz_deviation=0.0, hzco=3.0, orbit_number=3.0,
+                mw_pop=8, mw_gov=5, mw_law=5, mw_tl=10, max_secondary_pop=6,
+            )
+        atm = _ehex_to_int(detail.sah[1]) if len(detail.sah) >= 2 else -1
+        assert atm == 15, f"size-11 moon: forced roll=17 should clamp to 15, got {atm}"
+
+    def test_large_secondary_atmosphere_always_valid_over_seeds(self):
+        # Over 300 seeds with forced size-11, atmosphere must always be in [0,15].
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        slot = self._hz_slot()
+        for seed in range(300):
+            random.seed(seed)
+            with patch("traveller_world_detail._terrestrial_size", return_value=11):
+                _, atm, _ = _twd._terrestrial_sah(slot, 3.0)
+            assert 0 <= atm <= 15, (
+                f"seed={seed}: size-11 secondary produced atmosphere {atm} outside [0,15]"
+            )
+
+
+class TestIndependentGovernment:
+    """Tests for Case 2 independent government (WBH p.162, issue #17)."""
+
+    def test_independent_government_range(self):
+        """_independent_government(pop) returns max(0, 2D-7+pop) which is always ≥ 0."""
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        for pop in range(0, 10):
+            for seed in range(50):
+                random.seed(seed)
+                gov = _twd._independent_government(pop)
+                assert gov >= 0
+                assert gov <= 14  # max: 2×6 - 7 + 9 = 14
+
+    def test_default_case1_government_codes(self):
+        """Without independent_government, _secondary_government only produces {0,1,2,3,6}."""
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        codes_seen: set = set()
+        for seed in range(200):
+            random.seed(seed)
+            gov = _twd._secondary_government(mainworld_pop=6, mainworld_gov=3)
+            codes_seen.add(gov)
+        assert codes_seen <= {0, 1, 2, 3, 6}, (
+            f"Case 1 should only produce {{0,1,2,3,6}}, got {codes_seen}"
+        )
+
+    def test_worlddetail_flag_stored_when_true(self):
+        """WorldDetail(is_independent_government=True).to_dict() contains the key."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="473", population=3, government=5,
+                         is_independent_government=True)
+        d = wd.to_dict()
+        assert d.get("is_independent_government") is True
+
+    def test_worlddetail_flag_absent_when_false(self):
+        """WorldDetail().to_dict() does NOT emit is_independent_government."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="473")
+        assert "is_independent_government" not in wd.to_dict()
+
+    def test_worlddetail_flag_round_trip(self):
+        """from_dict(wd.to_dict()) preserves is_independent_government=True."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="473", population=3, government=5,
+                         is_independent_government=True)
+        wd2 = WorldDetail.from_dict(wd.to_dict())
+        assert wd2.is_independent_government is True
+
+    def test_generate_system_detail_propagates_flag(self):
+        """With independent_government=True, inhabited secondaries carry the flag."""
+        from traveller_world_detail import generate_system_detail  # pylint: disable=import-outside-toplevel
+        found_inhabited = False
+        for seed in range(500):
+            system = generate_full_system(seed=seed)
+            detail_map = generate_system_detail(
+                system, independent_government=True, rng=random.Random(seed + 99999)
+            )
+            for wd in detail_map.values():
+                if wd.inhabited and not wd.is_gas_giant:
+                    assert wd.is_independent_government is True
+                    found_inhabited = True
+            if found_inhabited:
+                break
+        assert found_inhabited, "No inhabited secondary found in 500 seeds"
+
+    def test_law_level_independent_skips_captive_table(self):
+        """With independent=True, gov==6 uses 2D-7+6 = max(0, 2D-1), not captive table."""
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        # With mainworld_law=99, the captive table would produce ~99 or higher.
+        # The independent formula must stay in [0, 11] (max 2D-1 = 12-1 = 11).
+        mainworld_law = 99
+        for seed in range(100):
+            random.seed(seed)
+            law = _twd._secondary_law_level(6, mainworld_law, independent=True)
+            assert 0 <= law <= 11, (
+                f"seed={seed}: independent law for gov 6 should be in [0,11], got {law}"
+            )

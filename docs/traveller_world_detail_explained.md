@@ -62,7 +62,8 @@ decorator can not express concisely.
 ```python
 class WorldDetail:
     def __init__(self, sah, population, government, law_level,
-                 tech_level, spaceport, moons):
+                 tech_level, spaceport, moons,
+                 is_independent_government=False):
         self.sah = sah               # "000", "GM9", "560", ...
         self.population = population
         self.government = government
@@ -70,6 +71,7 @@ class WorldDetail:
         self.tech_level = tech_level
         self.spaceport  = spaceport
         self.moons      = moons      # list of Moon objects
+        self.is_independent_government = is_independent_government
         self.trade_codes: list[str] = []
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
@@ -77,8 +79,10 @@ class WorldDetail:
         self.habitability_rating: Optional[int] = None
 ```
 
-`trade_codes`, `physical`, and the rating fields are set after construction by
-separate steps.
+`trade_codes`, `physical`, the rating fields, and `is_independent_government`
+are set at construction time or by separate steps. `is_independent_government`
+is `True` when the world was generated with the Case 2 (independent) government
+option and is emitted in `to_dict()` only when `True`.
 
 ---
 
@@ -101,6 +105,48 @@ Pyright evaluates it as `True` when doing static analysis. This gives Pyright th
 type information it needs without affecting how the program behaves when it runs.
 The actual runtime import of `WorldPhysical` happens as a local import inside
 `from_dict()`, where it is needed.
+
+---
+
+## Secondary world government: Case 1 vs Case 2
+
+WBH p.162 defines two ways to determine a secondary world's government, and the
+code supports both.
+
+**Case 1 — Dependent/Captive (default):** The secondary world is under direct
+control of the mainworld's government. Roll 1D on the Secondary World Government
+table with DMs based on the mainworld's government code. This produces only
+government codes 0, 1, 2, 3, or 6.
+
+```python
+def _secondary_government(mainworld_pop, mainworld_gov):
+    r = _rng.randint(1, 6)
+    if mainworld_gov == 0: r = max(1, r - 2)
+    elif mainworld_gov == 6: r += mainworld_pop
+    if r <= 1: return 0
+    if r <= 2: return 1
+    ...
+    return 6  # captive government
+```
+
+**Case 2 — Independent:** The secondary world governs itself. Roll `2D − 7 +
+Population`, the same formula used for a mainworld. This can produce any
+government code from 0 upwards.
+
+```python
+def _independent_government(population):
+    return max(0, _roll(2, -7 + population))
+```
+
+The Case 2 path is activated by passing `independent_government=True` to
+`attach_detail()`. When this is enabled, the law-level calculation for government
+code 6 also changes: Case 1 uses a captive-relationship table (is the secondary
+world more or less lawful than the mainworld?), but Case 2 treats government 6 as
+an ordinary Feudal Technocracy and uses the standard `2D − 7 + Government`
+formula.
+
+The `WorldDetail.is_independent_government` flag records which path was used so
+the information is preserved in saved JSON files.
 
 ---
 
@@ -197,11 +243,14 @@ No dice are rolled; the rating is purely deterministic from world characteristic
 TravellerSystem
         │
         ▼
-attach_detail(system, nhz=False, use_oxygen=False, advanced_temp=False)
+attach_detail(system, nhz=False, use_oxygen=False, advanced_temp=False,
+              independent_government=False)
         │
         ├─ For each non-empty OrbitSlot:
         │       _generate_sah()   →  WorldDetail.sah
         │       social rolls      →  WorldDetail.population / government / law / tech
+        │       (Case 1 or Case 2 per independent_government flag)
+        │       WorldDetail.is_independent_government set accordingly
         │       _moons_for()      →  passes OrbitSlot.gg_mass_earth to generate_moons()
         │       generate_moons()  →  WorldDetail.moons
         │       OrbitSlot.detail  = WorldDetail

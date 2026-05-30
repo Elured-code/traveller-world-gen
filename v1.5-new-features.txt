@@ -1,0 +1,50 @@
+Traveller World & System Generator — What's New in v1.5.0
+==========================================================
+
+INDEPENDENT GOVERNMENT FOR SECONDARY WORLDS
+--------------------------------------------
+- A new "Independent government" option is available in the Options dialog
+  (under System detail).
+
+- When enabled, secondary terrestrial worlds, belts, and moons generate their
+  government code using the same formula as a mainworld: 2D - 7 + Population.
+  This is WBH p.162 Case 2. When disabled (the default), the existing Case 1
+  dependent government table is used, which produces only captive/subject
+  government types.
+
+- Case 1 (default, off) reflects the most common situation in Traveller: most
+  secondary bodies in a system are directly administered by the mainworld
+  government and tend toward captive or client-state arrangements. Case 2
+  represents systems where secondary worlds have developed enough independence
+  to govern themselves — appropriate for older, more established systems with
+  high populations.
+
+- The option is saved between sessions. When saved to JSON, worlds generated
+  with independent government carry the "is_independent_government" flag in their
+  detail record so the information is preserved when the file is reopened.
+
+
+LARGER SECONDARY WORLDS — CORRECT ATMOSPHERE FOR SIZE A–F
+-----------------------------------------------------------
+- Secondary terrestrial worlds with size codes A through F (Size 10–15,
+  "super-Earths") now receive atmospheres appropriate to their actual size.
+
+- Previously, the atmosphere formula for secondary and moon bodies was capped
+  at size 9, so a size-C world 19,200 km across rolled the same atmosphere
+  dice as a size-9 world. Large secondary worlds were systematically
+  under-represented in thick and exotic atmospheres.
+
+- The cap has been removed. The WBH formula (2D-7+Size) is now applied in
+  full. Because the formula can theoretically produce values above the highest
+  standard atmosphere code (F — Unusual Atmosphere), results are clamped to
+  code F so that only the NHZ-specific Gas Helium and Gas Hydrogen codes (G
+  and H) remain exclusive to non-habitable zone generation. In practice this
+  means large secondary worlds will frequently have dense, exotic, corrosive,
+  or unusual atmospheres — which is physically expected for massive rocky bodies.
+
+- The fix applies to both secondary worlds in orbit and to large moons. A
+  size-A moon of a gas giant, for example, now correctly rolls a thick
+  atmosphere rather than inheriting the thinner roll of a size-9 moon.
+
+- World profiles (SAH strings) for size A–F bodies were already encoded
+  correctly in eHex; no display or JSON changes were needed.

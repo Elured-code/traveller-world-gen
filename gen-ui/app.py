@@ -328,6 +328,101 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
 
 
 # ---------------------------------------------------------------------------
+# Options dialog
+# ---------------------------------------------------------------------------
+
+
+class _OptionsDialog(QDialog):
+    """Modal dialog for configuring generation options."""
+    # pylint: disable=missing-function-docstring
+
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        self,
+        parent: QWidget,
+        *,
+        full_system: bool,
+        nhz: bool,
+        oxygen_biomass: bool,
+        advanced_temp: bool,
+        runaway_greenhouse: bool,
+        independent_government: bool,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Generation Options")
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        self._system_group = QGroupBox("System detail")
+        self._system_group.setCheckable(True)
+        self._system_group.setChecked(full_system)
+
+        checks_layout = QVBoxLayout(self._system_group)
+        checks_layout.setSpacing(6)
+        self._check_nhz = QCheckBox("NHZ Atmospheres")
+        self._check_nhz.setChecked(nhz)
+        self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
+        self._check_oxygen_biomass.setChecked(oxygen_biomass)
+        self._check_advanced_temp = QCheckBox("Advanced temperature")
+        self._check_advanced_temp.setChecked(advanced_temp)
+        self._check_runaway_greenhouse = QCheckBox("Runaway greenhouse")
+        self._check_runaway_greenhouse.setChecked(runaway_greenhouse)
+        self._check_independent_gov = QCheckBox("Independent government")
+        self._check_independent_gov.setChecked(independent_government)
+        checks_layout.addWidget(self._check_nhz)
+        checks_layout.addWidget(self._check_oxygen_biomass)
+        checks_layout.addWidget(self._check_advanced_temp)
+        checks_layout.addWidget(self._check_runaway_greenhouse)
+        checks_layout.addWidget(self._check_independent_gov)
+        layout.addWidget(self._system_group)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._system_group.toggled.connect(self._on_group_toggled)
+        self._on_group_toggled(full_system)
+
+    def _on_group_toggled(self, checked: bool) -> None:
+        for cb in (
+            self._check_nhz, self._check_oxygen_biomass,
+            self._check_advanced_temp, self._check_runaway_greenhouse,
+            self._check_independent_gov,
+        ):
+            cb.setEnabled(checked)
+            if not checked:
+                cb.setChecked(False)
+
+    @property
+    def full_system(self) -> bool:
+        return self._system_group.isChecked()
+
+    @property
+    def nhz(self) -> bool:
+        return self._check_nhz.isChecked()
+
+    @property
+    def oxygen_biomass(self) -> bool:
+        return self._check_oxygen_biomass.isChecked()
+
+    @property
+    def advanced_temp(self) -> bool:
+        return self._check_advanced_temp.isChecked()
+
+    @property
+    def runaway_greenhouse(self) -> bool:
+        return self._check_runaway_greenhouse.isChecked()
+
+    @property
+    def independent_government(self) -> bool:
+        return self._check_independent_gov.isChecked()
+
+
+# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -351,8 +446,23 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._pending_full_system: bool = False
         self._pending_attach_detail: bool = False
         self._pending_seed: int = 0
-        raw = QSettings("traveller-world-gen", "AppWindow").value("dark_mode", False)
+        _s = QSettings("traveller-world-gen", "AppWindow")
+        raw = _s.value("dark_mode", False)
         self._dark_mode: bool = str(raw).lower() == "true"
+        self._opt_full_system: bool = str(_s.value("opt_full_system", False)).lower() == "true"
+        self._opt_nhz: bool = str(_s.value("opt_nhz", False)).lower() == "true"
+        self._opt_oxygen_biomass: bool = (
+            str(_s.value("opt_oxygen_biomass", False)).lower() == "true"
+        )
+        self._opt_advanced_temp: bool = (
+            str(_s.value("opt_advanced_temp", False)).lower() == "true"
+        )
+        self._opt_runaway_greenhouse: bool = (
+            str(_s.value("opt_runaway_greenhouse", False)).lower() == "true"
+        )
+        self._opt_independent_gov: bool = (
+            str(_s.value("opt_independent_gov", False)).lower() == "true"
+        )
         self._apply_theme()
         self._build_menu_bar()
         self._build_ui()
@@ -488,22 +598,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         radio_layout.addWidget(self._radio_travellermap)
         left_layout.addWidget(radio_row)
 
-        self._check_nhz = QCheckBox("NHZ Atmospheres")
-        self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
-        self._check_advanced_temp = QCheckBox("Advanced temperature")
-        self._check_runaway_greenhouse = QCheckBox("Runaway greenhouse")
-
-        self._system_group = QGroupBox("System detail")
-        self._system_group.setCheckable(True)
-        self._system_group.setChecked(False)
-        self._system_group.toggled.connect(self._on_detail_toggled)
-        checks_layout = QHBoxLayout(self._system_group)
-        checks_layout.setSpacing(12)
-        checks_layout.addWidget(self._check_nhz)
-        checks_layout.addWidget(self._check_oxygen_biomass)
-        checks_layout.addWidget(self._check_advanced_temp)
-        checks_layout.addWidget(self._check_runaway_greenhouse)
-        left_layout.addWidget(self._system_group)
+        options_btn = QPushButton("Options…")
+        options_btn.clicked.connect(self._on_options_clicked)
+        left_layout.addWidget(options_btn)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -569,11 +666,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto = False
 
     def _on_detail_toggled(self, checked: bool) -> None:
-        if not checked:
-            self._check_nhz.setChecked(False)
-            self._check_oxygen_biomass.setChecked(False)
-            self._check_advanced_temp.setChecked(False)
-            self._check_runaway_greenhouse.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -581,6 +673,33 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         procedural = self._radio_procedural.isChecked()
         self._tm_panel.setVisible(not procedural)
         self._tm_vsep.setVisible(not procedural)
+
+    def _on_options_clicked(self) -> None:
+        dialog = _OptionsDialog(
+            self,
+            full_system=self._opt_full_system,
+            nhz=self._opt_nhz,
+            oxygen_biomass=self._opt_oxygen_biomass,
+            advanced_temp=self._opt_advanced_temp,
+            runaway_greenhouse=self._opt_runaway_greenhouse,
+            independent_government=self._opt_independent_gov,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._opt_full_system = dialog.full_system
+        self._opt_nhz = dialog.nhz
+        self._opt_oxygen_biomass = dialog.oxygen_biomass
+        self._opt_advanced_temp = dialog.advanced_temp
+        self._opt_runaway_greenhouse = dialog.runaway_greenhouse
+        self._opt_independent_gov = dialog.independent_government
+        _s = QSettings("traveller-world-gen", "AppWindow")
+        _s.setValue("opt_full_system", self._opt_full_system)
+        _s.setValue("opt_nhz", self._opt_nhz)
+        _s.setValue("opt_oxygen_biomass", self._opt_oxygen_biomass)
+        _s.setValue("opt_advanced_temp", self._opt_advanced_temp)
+        _s.setValue("opt_runaway_greenhouse", self._opt_runaway_greenhouse)
+        _s.setValue("opt_independent_gov", self._opt_independent_gov)
+        self._on_detail_toggled(self._opt_full_system)
 
     def _on_generate(self) -> None:
         name = self._name_entry.text().strip() or "Unknown"
@@ -601,7 +720,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_entry.blockSignals(False)
         self._seed_auto = True
 
-        full_system = self._system_group.isChecked()
+        full_system = self._opt_full_system
         attach_detail_flag = full_system
 
         if self._radio_travellermap.isChecked():
@@ -622,7 +741,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             if full_system:
                 system = generate_full_system(
                     name, seed=seed,
-                    nhz_atmospheres=self._check_nhz.isChecked(),
+                    nhz_atmospheres=self._opt_nhz,
                     orbital_eccentricity=True,
                     orbital_inclination=True,
                 )
@@ -700,7 +819,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 # Advanced temperature computed before attach_detail so that
                 # high_temp_k and advanced_mean_temperature_k are available to
                 # the biomass DM calculation inside _apply_biomass().
-                if (self._check_advanced_temp.isChecked()
+                if (self._opt_advanced_temp
                         and world.size_detail is not None
                         and mw_orbit is not None):
                     mw_au = mw_orbit.orbit_au
@@ -725,7 +844,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     )
             _attach_detail(  # type: ignore[arg-type]
                 system,
-                optional_biomass_rule=self._check_oxygen_biomass.isChecked(),
+                optional_biomass_rule=self._opt_oxygen_biomass,
+                independent_government=self._opt_independent_gov,
             )
             if world is not None and world.size_detail is not None and mw_orbit is not None:
                 det = mw_orbit.detail
@@ -1130,7 +1250,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         map_btn = QPushButton("System Map")
         map_btn.clicked.connect(self._on_map_clicked)
-        map_btn.setEnabled(self._system_group.isChecked())
+        map_btn.setEnabled(self._opt_full_system)
         self._map_btn = map_btn
         layout.addWidget(map_btn)
 
@@ -1169,7 +1289,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             mw_orbit: object, interior_lum: float, mw_au: float,
     ) -> None:
         """Apply optional runaway greenhouse mutations (WBH p.79)."""
-        if not self._check_runaway_greenhouse.isChecked():
+        if not self._opt_runaway_greenhouse:
             return
         if (world.size_detail is None  # type: ignore[attr-defined]
                 or world.size_detail.advanced_mean_temperature_k is None):  # type: ignore

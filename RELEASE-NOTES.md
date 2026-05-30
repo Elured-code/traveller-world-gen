@@ -1,3 +1,40 @@
+# Release Notes — v1.5.0 (draft)
+
+**Branch:** `v1.5.0` → `main`
+**Sessions:** 88–
+**Tests:** 1706
+
+---
+
+## Secondary World Independent Government (Session 89, issue #17)
+
+Secondary worlds can now be generated as independently governed (WBH p.162
+Case 2) instead of always using the captive/dependent government table (Case 1).
+When the new **Independent government** option is enabled in the Options dialog,
+every inhabited secondary world (terrestrial, belt, and moon) rolls government as
+`2D − 7 + Population` — the same formula as a mainworld — instead of the 1D
+captive table. The law level for Case 2 worlds with government 6 uses the
+standard `2D − 7 + 6` formula instead of the captive-government relationship
+table. `WorldDetail` gains an `is_independent_government` boolean field emitted
+in JSON when `True`. The option is disabled by default and persisted in
+QSettings.
+
+---
+
+## Larger Worlds for Non-Mainworld Terrestrial Bodies (Session 88, issue #113)
+
+Secondary terrestrial worlds with size 10–15 (eHex A–F) now use the full WBH
+`2D-7+Size` atmosphere formula. Previously both `_terrestrial_sah()` and
+`_moon_detail()` in `traveller_world_detail.py` capped the size at 9 when
+calling `generate_atmosphere()`, meaning a size-12 super-Earth got the same
+thin atmosphere roll as a size-9 world. The cap is replaced with
+`min(generate_atmosphere(size), 15)`, applying the correct size DM while
+clamping to code 15 (F — Unusual Atmosphere) to exclude NHZ-only codes 16–17.
+SAH encoding (`to_hex()`) and `WorldDetail.profile` parsing already handled
+sizes A–F correctly; no other changes required.
+
+---
+
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
