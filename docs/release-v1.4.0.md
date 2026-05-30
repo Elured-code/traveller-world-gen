@@ -1,6 +1,117 @@
 # Traveller World Generator — v1.4.0 Release Notes
 
-**1449 tests pass. Pylint 10.00/10.**
+**1686 tests pass. Pylint 10.00/10.**
+
+---
+
+## Injectable RNG for Deterministic Generation (Session 86, issue #42)
+
+All generation modules now use injectable `random.Random` instances instead of the
+global `random` module. This eliminates shared-state hazards on warm Azure Function
+instances and enables fully isolated unit tests. Public entry-point functions accept
+`rng: Optional[random.Random] = None`; `generate_full_system()` always creates a fresh
+`random.Random(seed)` and propagates it through the entire pipeline. Seed reproducibility
+is preserved — `random.Random(N)` uses the same Mersenne Twister as `random.seed(N)`.
+`TravellerSystem` and `World` both gain a `seed` field emitted to JSON automatically,
+removing the need for manual injection in API handlers.
+
+---
+
+## GG Moons Near the Roche Limit (Session 85, issue #120)
+
+Four related bugs in the gas-giant satellite tidal-stress pipeline, exposed by seed
+253115564 (which previously produced TSF 644, TSS 1,256,530 — physically impossible).
+
+- **GG mass table:** New `_roll_gg_mass(gg_category)` rolls the WBH three-tier mass
+  table (GS: 10–35 M⊕; GM: 40–340 M⊕; GL: 350–3,300 M⊕) and stores the result in
+  `OrbitSlot.gg_mass_earth`. All five call sites updated; legacy files fall back to the
+  old `diameter²` estimate.
+- **TSS formula removed for GG satellites:** `_compute_tidal_ss` is calibrated for
+  AU-scale distances; at moon distances it amplified results by ~10¹⁵×. The formula is
+  no longer called for GG-satellite mainworlds; tidal amplitude contribution is kept.
+- **TSF capped at 500:** Prevents overflow at the display layer and enforces a physical
+  liquefaction ceiling on dissipation.
+- **Perigee Roche limit check:** Any significant moon whose `orbit_pd × (1 − e) < 2.0`
+  is tidally disrupted and converted to ring material after eccentricity rolls.
+
+Seed result for 253115564: TSF 644 → 8; TSS 1,256,530 → 0; total SS 1,257,174 → 8.
+**This is a seed-breaking change** — `_roll_gg_mass()` adds 1–2 dice rolls per gas
+giant before the eccentricity block.
+
+---
+
+## gen-ui Dark Mode (Session 84, issue #81)
+
+The **View › Dark Mode** menu item toggles a dark colour scheme for all native Qt
+controls (main window, group boxes, labels, badges). The preference persists across
+launches via `QSettings`. HTML world and system cards follow the in-app toggle
+rather than the OS dark-mode setting, so the card and native UI always match.
+
+---
+
+## System Card Improvements (Session 83)
+
+### MAO and HZ Orbit# in Stars Table (issue #115)
+
+The Stars table now shows the **Minimum Armistice Orbit** (MAO) and **Habitable
+Zone Orbit#** (inner – centre – outer) for each star. These values are pre-computed
+at orbit-generation time and are now surfaced directly in the system HTML output.
+
+### Mainworld Detail Removed from System Tab (issue #114)
+
+The System tab no longer duplicates the mainworld's full world card content. UWP
+statistics, atmosphere, hydrographic, biological, habitability, and notes now appear
+exclusively on the Mainworld tab.
+
+### Ammonia Fluid Type Fix (issue #116)
+
+Cold worlds with standard breathable atmospheres no longer incorrectly display
+Ammonia as the surface fluid. Ammonia oceans are now restricted to worlds with
+exotic, corrosive, insidious, or unusual atmosphere codes (10–15), matching the
+WBH pp.91–92 specification.
+
+---
+
+## Native Life (continued)
+
+### Habitability Rating (WBH p.131, Sessions 80–82)
+
+Every mainworld now receives a **Habitability Rating** — a deterministic score on a
+0–10+ scale indicating how suitable the world is for unprotected human habitation.
+
+- **Base 10** + DMs for size, atmosphere code, hydrographics, tidal lock, surface
+  temperature, and gravity
+- **Temperature path**: uses `advanced_mean_temperature_k` / `high_temperature_k`
+  when advanced temperature is enabled; falls back to the CRB temperature category
+  string ("Frozen", "Cold", "Hot", "Boiling") otherwise
+- **Gravity DM** resolves WBH boundary ambiguity using a monotonic non-overlapping
+  table; boundary values always take the worst (most negative) DM
+- **Result clamped** to a minimum of 0
+- Stored on both `World.habitability_rating` and `WorldDetail.habitability_rating`;
+  emitted in JSON; displayed on the world card with a descriptive label
+
+| Rating | Description |
+|--------|-------------|
+| 0 | Actively hostile world |
+| 1–2 | Barely habitable world |
+| 3–5 | Marginally survivable world |
+| 6–7 | Regionally habitable world |
+| 8–9 | Suitable for human habitation |
+| 10+ | Terra-equivalent garden world |
+
+### Seismic Heating Baked into Temperature (WBH pp.125–128, Session 80)
+
+The `advanced_seismic_temperature_k` display field has been removed. Instead,
+`_apply_seismic_stress()` updates `advanced_mean_temperature_k`, `high_temperature_k`,
+and `low_temperature_k` **in place** using Stefan-Boltzmann superposition
+(`T_total = ⁴√(T₁⁴ + T₂⁴)`). The seismic contribution is already included in the
+temperatures shown on the world card.
+
+### Very Cold World Temperature Fix (WBH p.47, Session 81)
+
+The WBH p.47 footnote specifies that extrapolated mean temperatures below 10 K
+should use `1D+5` (6–11 K) rather than the linear extrapolation. This edge case is
+now correctly implemented in `_compute_mean_temperature()`.
 
 ---
 
@@ -203,6 +314,10 @@ New and updated fields in `traveller_world_schema.json`:
 | `native_sophont` | boolean | `World` |
 | `extinct_sophont` | boolean | `World` |
 | `fluid_type` | string | `HydrographicDetail` |
+| `habitability_rating` | integer | `World` |
+
+Removed field: `advanced_seismic_temperature_k` (seismic heating now baked into
+`advanced_mean_temperature_k` / `high_temperature_k` / `low_temperature_k`).
 
 ---
 
@@ -211,9 +326,10 @@ New and updated fields in `traveller_world_schema.json`:
 | Version | Tests |
 |---|---|
 | v1.2.0 baseline | 1146 |
-| v1.4.0 | **1449** |
+| v1.4.0 (Sessions 55–79) | 1449 |
+| v1.4.0 (Sessions 80–82) | **1644** |
 
-All 1449 tests pass.
+All 1644 tests pass.
 
 ---
 

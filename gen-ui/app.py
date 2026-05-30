@@ -27,6 +27,7 @@ The human author reviewed, directed, and is responsible for the code.
 
 # pylint: disable=wrong-import-position,no-name-in-module,import-error,too-many-lines
 
+import json
 import os
 import random
 import secrets
@@ -36,14 +37,15 @@ import tempfile
 # Allow importing from the project root when run directly from any directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import Qt, QThread, QUrl, Signal  # noqa: E402
-from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut  # noqa: E402
+from PySide6.QtCore import Qt, QSettings, QThread, QUrl, Signal  # noqa: E402
+from PySide6.QtGui import (  # noqa: E402
+    QAction, QDesktopServices, QFontDatabase, QKeySequence, QShortcut,
+)
 from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QButtonGroup,
     QCheckBox,
-    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -73,11 +75,12 @@ except ImportError:
     _HAS_SVG_WIDGET = False
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
-from traveller_system_gen import generate_full_system  # noqa: E402
+from traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
 from traveller_world_detail import (  # noqa: E402
     attach_detail as _attach_detail, gg_diameter_from_sah,
 )
 from traveller_world_gen import (  # noqa: E402
+    World,
     generate_atmosphere_detail,
     generate_gas_mix,
     generate_hydrographics,
@@ -91,6 +94,7 @@ from traveller_world_physical import (  # noqa: E402
 )
 from tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
+from world_codes import APP_VERSION  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -122,14 +126,39 @@ QLabel#table-mw     { font-size: 10pt; font-weight: bold; }
 QLabel#table-dim    { font-size: 10pt; color: #9BA3AD; }
 QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
+QFrame#onboard-card { border: 1px solid #cccccc; border-radius: 8px; }
 """
 
-# Save format definitions: (label, file extension)
-_FORMATS = [
-    ("JSON",  "json"),
-    ("Text",  "txt"),
-    ("HTML",  "html"),
-]
+_CSS_DARK = """
+QWidget { background-color: #1e1e1e; color: #e0e0e0; }
+QGroupBox { background-color: #2b2b2b; color: #e0e0e0; }
+QLabel#zone-green   { background-color: #27ae60; color: white;
+                      padding: 2px 10px; border-radius: 4px; }
+QLabel#zone-amber   { background-color: #e67e22; color: white;
+                      padding: 2px 10px; border-radius: 4px; }
+QLabel#zone-red     { background-color: #c0392b; color: white;
+                      padding: 2px 10px; border-radius: 4px; }
+QLabel#uwp-label    { font-family: monospace; font-size: 18pt; font-weight: bold; }
+QLabel#world-name   { font-size: 16pt; font-weight: bold; }
+QLabel#error-label  { color: #ff6b6b; font-weight: bold; }
+QLabel#hint-label   { font-style: italic; }
+QLabel#dim-label    { color: #aaaaaa; }
+QLabel#stat-value   { font-size: 13pt; font-weight: bold; }
+QLabel#stat-sub     { font-size: 9pt; }
+QLabel#section-label { font-size: 9pt; font-weight: bold; }
+QLabel#row-label    { font-size: 10pt; }
+QLabel#row-value    { font-size: 10pt; font-weight: bold; }
+QLabel#danger-value { font-size: 10pt; font-weight: bold; color: #ff6b6b; }
+QLabel#tc-badge     { background-color: #3d1f17; color: #f5a78a;
+                      padding: 2px 8px; border-radius: 4px; font-size: 10pt; }
+QLabel#table-header { font-size: 9pt; font-weight: bold; }
+QLabel#table-cell   { font-size: 10pt; color: #e0e0e0; }
+QLabel#table-mw     { font-size: 10pt; font-weight: bold; }
+QLabel#table-dim    { font-size: 10pt; color: #6b7280; }
+QLabel#table-moon   { font-size: 9pt; color: #aaaaaa; }
+QPushButton#suggested-action { background-color: #3584e4; color: white; }
+QFrame#onboard-card { border: 1px solid #444444; border-radius: 8px; }
+"""
 
 # ---------------------------------------------------------------------------
 # Module-level helpers
@@ -309,8 +338,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Traveller World Generator")
-        self.resize(800, 620)
-        self._html_path: str | None = None
+        self.resize(1100, 700)
+        self.setMinimumSize(780, 500)
         self._current_world: object | None = None
         self._current_system: object | None = None
         self._detail_attached: bool = False
@@ -322,9 +351,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._pending_full_system: bool = False
         self._pending_attach_detail: bool = False
         self._pending_seed: int = 0
-        app = QApplication.instance()
-        if isinstance(app, QApplication):
-            app.setStyleSheet(_CSS)
+        raw = QSettings("traveller-world-gen", "AppWindow").value("dark_mode", False)
+        self._dark_mode: bool = str(raw).lower() == "true"
+        self._apply_theme()
+        self._build_menu_bar()
         self._build_ui()
         self._setup_shortcuts()
 
@@ -334,8 +364,30 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         QShortcut(QKeySequence.StandardKey.Close, self).activated.connect(self.close)
 
+    def _apply_theme(self) -> None:
+        app = QApplication.instance()
+        if isinstance(app, QApplication):
+            mono = QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()
+            css = _CSS_DARK if self._dark_mode else _CSS
+            app.setStyleSheet(css.replace("font-family: monospace", f'font-family: "{mono}"'))
+
+    def _themed_html(self, html: str) -> str:
+        if self._dark_mode:
+            return html.replace('<html lang="en">', '<html lang="en" data-theme="dark">', 1)
+        return html
+
+    def _on_toggle_dark_mode(self, checked: bool) -> None:
+        self._dark_mode = checked
+        self._apply_theme()
+        QSettings("traveller-world-gen", "AppWindow").setValue("dark_mode", checked)
+        if self._current_system is not None:
+            self._show_system_summary(self._current_system)
+        elif self._current_world is not None:
+            self._show_summary(self._current_world)
+
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setMinimumWidth(740)
         self.setCentralWidget(central)
         root = QVBoxLayout(central)
         root.setContentsMargins(12, 12, 12, 12)
@@ -356,41 +408,56 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _build_controls(self) -> QWidget:
         # pylint: disable=attribute-defined-outside-init
-        row = QWidget()
-        layout = QHBoxLayout(row)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
+        container = QWidget()
+        vbox = QVBoxLayout(container)
+        vbox.setSpacing(4)
+        vbox.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(QLabel("Name:"))
+        # ── Row 1: Name + Generate ──────────────────────────────────
+        row1 = QWidget()
+        r1 = QHBoxLayout(row1)
+        r1.setSpacing(8)
+        r1.setContentsMargins(0, 0, 0, 0)
 
+        r1.addWidget(QLabel("Name:"))
         self._name_entry = QLineEdit()
         self._name_entry.setPlaceholderText("World name (optional)")
         self._name_entry.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
         self._name_entry.returnPressed.connect(self._on_generate)
-        layout.addWidget(self._name_entry)
+        r1.addWidget(self._name_entry)
 
-        layout.addWidget(QLabel("Seed:"))
+        self._generate_btn = QPushButton("Generate")
+        self._generate_btn.setObjectName("suggested-action")
+        self._generate_btn.clicked.connect(self._on_generate)
+        r1.addWidget(self._generate_btn)
 
+        vbox.addWidget(row1)
+
+        # ── Row 2: Seed (secondary) ─────────────────────────────────
+        row2 = QWidget()
+        r2 = QHBoxLayout(row2)
+        r2.setSpacing(8)
+        r2.setContentsMargins(0, 0, 0, 0)
+
+        r2.addWidget(QLabel("Seed:"))
         self._seed_entry = QLineEdit()
         self._seed_entry.setPlaceholderText("Integer (optional)")
         self._seed_entry.setFixedWidth(140)
         self._seed_entry.returnPressed.connect(self._on_generate)
         self._seed_entry.textChanged.connect(lambda _: self._on_seed_changed())
-        layout.addWidget(self._seed_entry)
+        r2.addWidget(self._seed_entry)
 
         clear_btn = QPushButton("New Seed")
         clear_btn.clicked.connect(self._on_clear_seed)
-        layout.addWidget(clear_btn)
+        r2.addWidget(clear_btn)
 
-        btn = QPushButton("Generate")
-        btn.setObjectName("suggested-action")
-        btn.clicked.connect(self._on_generate)
-        layout.addWidget(btn)
-        self._generate_btn = btn
+        r2.addStretch()
 
-        return row
+        vbox.addWidget(row2)
+
+        return container
 
     def _build_source_row(self) -> QWidget:  # pylint: disable=too-many-locals,too-many-statements
         # pylint: disable=attribute-defined-outside-init
@@ -588,9 +655,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 atmosphere=world.atmosphere,  # type: ignore[attr-defined]
                 temperature=world.temperature,  # type: ignore[attr-defined]
             )
-        path = self._write_html(world.to_html())  # type: ignore[attr-defined]
-        if path is not None:
-            self._html_path = path
+        self._act_save.setEnabled(True)
         self._show_summary(world)
 
     def _finish_system_generation(  # pylint: disable=too-many-locals
@@ -670,11 +735,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         first = det.moons[0] if det.moons else None
                         moons = first.detail.moons if first and first.detail else []
                         _gg_sat = det.moons[0] if det.moons else None
-                        _gg_m_e = float(
-                            gg_diameter_from_sah(  # type: ignore[attr-defined]
-                                getattr(mw_orbit, "gg_sah", "")
-                            ) ** 2
-                        ) if getattr(mw_orbit, "gg_sah", "") else 0.0
+                        _gg_sah = getattr(mw_orbit, "gg_sah", "")
+                        _stored = getattr(mw_orbit, "gg_mass_earth", None)
+                        _gg_diam = gg_diameter_from_sah(_gg_sah)  # type: ignore[attr-defined]
+                        _gg_m_e = (
+                            float(_stored) if _stored is not None
+                            else float(_gg_diam ** 2) if _gg_sah else 0.0
+                        )
                     else:
                         moons = det.moons or []
                         _gg_sat = None
@@ -695,12 +762,17 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         gg_satellite_moon=_gg_sat,
                     )
         self._detail_attached = attach_detail_flag
-        path = self._write_html(
-            system.to_html(detail_attached=attach_detail_flag)  # type: ignore[attr-defined]
-        )
-        if path is not None:
-            self._html_path = path
+        self._act_save.setEnabled(True)
         self._show_system_summary(system)
+
+    def _load_system_from_json(self, system: object) -> None:
+        self._current_system = system
+        self._current_world = system.mainworld  # type: ignore[attr-defined]
+        self._detail_attached = False
+        self._act_save.setEnabled(True)
+        self._show_system_summary(system)
+        if self._map_btn is not None:
+            self._map_btn.setEnabled(True)
 
     def _show_disambiguation_dialog(  # pylint: disable=too-many-locals
         self,
@@ -751,13 +823,74 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_windows.append(win)
         win.show()
 
+    def _build_menu_bar(self) -> None:
+        # pylint: disable=attribute-defined-outside-init
+        file_menu = self.menuBar().addMenu("&File")
+
+        self._act_open_json = QAction("Open JSON…", self)
+        self._act_open_json.triggered.connect(self._on_open_json)
+        file_menu.addAction(self._act_open_json)
+
+        file_menu.addSeparator()
+
+        self._act_save = QAction("Save As…", self)
+        self._act_save.setShortcut(QKeySequence.StandardKey.Save)
+        self._act_save.setEnabled(False)
+        self._act_save.triggered.connect(self._on_save_clicked)
+        file_menu.addAction(self._act_save)
+
+        view_menu = self.menuBar().addMenu("&View")
+        self._act_dark_mode = QAction("Dark Mode", self)
+        self._act_dark_mode.setCheckable(True)
+        self._act_dark_mode.setChecked(self._dark_mode)
+        self._act_dark_mode.triggered.connect(self._on_toggle_dark_mode)
+        view_menu.addAction(self._act_dark_mode)
+
+    def _on_open_json(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open JSON", "", "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, json.JSONDecodeError) as exc:
+            self._show_error(f"Could not read file: {exc}")
+            return
+
+        file_ver = data.get("_app_version")
+        if file_ver != APP_VERSION:
+            QMessageBox.critical(
+                self,
+                "Version mismatch",
+                f"This file was saved with app version {file_ver!r}.\n"
+                f"Current version is {APP_VERSION!r}.\n"
+                "Open is only supported for files from the same version.",
+            )
+            return
+
+        if "stars" in data:
+            try:
+                system = TravellerSystem.from_dict(data)
+            except (ValueError, KeyError) as exc:
+                self._show_error(f"Invalid system JSON: {exc}")
+                return
+            self._load_system_from_json(system)
+            return
+
+        try:
+            world = World.from_dict(data)
+        except (ValueError, KeyError) as exc:
+            self._show_error(f"Invalid world JSON: {exc}")
+            return
+
+        self._finish_generation(world)
+
     def _on_save_clicked(self) -> None:
         obj = self._current_system or self._current_world
         if obj is None:
             return
-
-        idx = self._format_dropdown.currentIndex()
-        label, ext = _FORMATS[idx]
 
         base_name = getattr(self._current_world, "name", None) or "world"
         if self._current_system is not None:
@@ -766,17 +899,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         path, _ = QFileDialog.getSaveFileName(
             self,
-            f"Save World Data as {label}",
-            f"{safe_name}.{ext}",
-            f"{label} files (*.{ext})",
+            "Save World Data",
+            f"{safe_name}.html",
+            "HTML (*.html);;JSON (*.json)",
         )
         if not path:
             return
 
+        ext = os.path.splitext(path)[1].lstrip(".")
         if ext == "json":
             content = obj.to_json()  # type: ignore[attr-defined]
-        elif ext == "txt":
-            content = obj.summary()  # type: ignore[attr-defined]
         else:
             if self._current_system is not None:
                 content = obj.to_html(  # type: ignore[attr-defined]
@@ -795,25 +927,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     # HTML file management
     # ------------------------------------------------------------------
 
-    def _write_html(self, html: str) -> str | None:
-        if self._html_path and os.path.exists(self._html_path):
-            try:
-                os.unlink(self._html_path)
-            except OSError:
-                pass
-        try:
-            fd, path = tempfile.mkstemp(suffix=".html", prefix="traveller-world-")
-            os.close(fd)
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(html)
-            return path
-        except OSError:
-            return None
-
-    @staticmethod
-    def _open_in_browser(path: str) -> None:
-        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-
     # ------------------------------------------------------------------
     # Status panel
     # ------------------------------------------------------------------
@@ -827,13 +940,54 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 if widget is not None:
                     widget.deleteLater()
 
-    def _show_placeholder(self) -> None:
+    def _show_placeholder(self) -> None:  # pylint: disable=too-many-statements
         self._clear_status()
-        lbl = QLabel("Enter a name and click Generate.")
-        lbl.setObjectName("dim-label")
-        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._act_save.setEnabled(False)
+
+        card = QFrame()
+        card.setObjectName("onboard-card")
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(8)
+        card_layout.setContentsMargins(24, 18, 24, 18)
+
+        title = QLabel("Traveller World Generator")
+        title.setObjectName("world-name")
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(title)
+
+        desc = QLabel(
+            "Generates star systems and worlds"
+            " using the World Builder's Handbook rules."
+        )
+        desc.setObjectName("dim-label")
+        desc.setWordWrap(True)
+        desc.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(desc)
+
+        card_layout.addSpacing(4)
+
+        steps = QLabel("① Enter a name  →  ② Choose options  →  ③ Click Generate")
+        steps.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(steps)
+
+        hint = QLabel("Press Return in any field to generate.")
+        hint.setObjectName("hint-label")
+        hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(hint)
+
+        card_layout.addSpacing(4)
+
+        tm_note = QLabel(
+            "In TravellerMap mode, look up real worlds"
+            " from the official Traveller universe."
+        )
+        tm_note.setObjectName("dim-label")
+        tm_note.setWordWrap(True)
+        tm_note.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(tm_note)
+
         self._status_layout.addStretch()
-        self._status_layout.addWidget(lbl)
+        self._status_layout.addWidget(card)
         self._status_layout.addStretch()
 
     def _show_error(self, message: str) -> None:
@@ -900,7 +1054,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.addWidget(self._build_summary_header(world))
         self._status_layout.addWidget(_make_hsep(margin_v=6))
         view = QWebEngineView()
-        view.setHtml(world.to_html())  # type: ignore[attr-defined]
+        view.setHtml(self._themed_html(world.to_html()))  # type: ignore[attr-defined]
         view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -921,9 +1075,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         # Tab 1 — System: HTML view via system.to_html()
         system_view = QWebEngineView()
-        system_view.setHtml(
+        system_view.setHtml(self._themed_html(
             system.to_html(detail_attached=self._detail_attached)  # type: ignore[attr-defined]
-        )
+        ))
         system_view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
@@ -932,7 +1086,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         # Tab 2 — Mainworld: world card HTML view
         if mw is not None:
             mw_view = QWebEngineView()
-            mw_view.setHtml(mw.to_html())  # type: ignore[attr-defined]
+            mw_view.setHtml(self._themed_html(mw.to_html()))  # type: ignore[attr-defined]
             mw_view.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
             )
@@ -980,44 +1134,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_btn = map_btn
         layout.addWidget(map_btn)
 
-        vsep = _make_vsep()
-        vsep.setContentsMargins(6, 0, 6, 0)
-        layout.addWidget(vsep)
-
-        layout.addWidget(self._build_action_buttons())
         return header
-
-    def _build_action_buttons(self) -> QWidget:
-        # pylint: disable=attribute-defined-outside-init
-        box = QWidget()
-        layout = QHBoxLayout(box)
-        layout.setSpacing(8)
-        layout.setContentsMargins(0, 0, 0, 0)
-
-        open_btn = QPushButton("Open in Browser")
-        open_btn.clicked.connect(
-            lambda: self._open_in_browser(self._html_path)
-            if self._html_path
-            else None
-        )
-        layout.addWidget(open_btn)
-
-        vsep = _make_vsep()
-        vsep.setContentsMargins(4, 0, 4, 0)
-        layout.addWidget(vsep)
-
-        layout.addWidget(QLabel("Save as:"))
-
-        self._format_dropdown = QComboBox()
-        for lbl, _ in _FORMATS:
-            self._format_dropdown.addItem(lbl)
-        layout.addWidget(self._format_dropdown)
-
-        save_btn = QPushButton("Save…")
-        save_btn.clicked.connect(self._on_save_clicked)
-        layout.addWidget(save_btn)
-
-        return box
 
     def _build_summary_header(self, world: object) -> QWidget:
         header = QWidget()
@@ -1045,7 +1162,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         layout.addWidget(spacer)
 
-        layout.addWidget(self._build_action_buttons())
         return header
 
     def _maybe_apply_runaway_greenhouse(  # pylint: disable=too-many-arguments,too-many-positional-arguments

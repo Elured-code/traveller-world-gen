@@ -29,7 +29,8 @@ Key instance state:
 | `_current_world` | `object \| None` | Last generated `World` |
 | `_current_system` | `object \| None` | Last generated `TravellerSystem` |
 | `_detail_attached` | `bool` | Whether `attach_detail()` was called on `_current_system` |
-| `_html_path` | `str \| None` | Temp file path of last HTML card (for "Open in Browser") |
+| `_act_open_json` | `QAction` | File > Open JSON… — always enabled; opens a saved world JSON and re-renders it |
+| `_act_save` | `QAction` | File > Save As… (Ctrl+S / Cmd+S) — enabled only after generation |
 | `_map_btn` | `QPushButton \| None` | Active "System Map" button; `None` when no system result |
 | `_map_windows` | `list[object]` | Open `SystemMapWindow` instances — list keeps them alive against GC |
 
@@ -78,7 +79,7 @@ system_scroll.setWidget(system_widget)
 tabs.addTab(system_scroll, "System")
 # Tab 2 — Mainworld (default when mw is not None)
 mw_view = QWebEngineView()
-mw_view.setHtml(mw.to_html())
+mw_view.setHtml(self._themed_html(mw.to_html()))
 tabs.addTab(mw_view, "Mainworld")
 tabs.setCurrentIndex(1)
 ```
@@ -166,6 +167,103 @@ class SystemMapWindow(QMainWindow):
 `_render()` is called at construction and on every theme toggle. `QSvgWidget`
 is sized to exact SVG canvas dimensions (`_CANVAS_W × canvas_h`) so
 `QScrollArea` provides correct scrollbars for large maps.
+
+---
+
+## View menu — Dark Mode (Session 84, issue #81)
+
+`_build_menu_bar()` adds a **View** menu after the File menu containing a single
+checkable `QAction("Dark Mode")`:
+
+```python
+view_menu = self.menuBar().addMenu("&View")
+self._act_dark_mode = QAction("Dark Mode", self)
+self._act_dark_mode.setCheckable(True)
+self._act_dark_mode.setChecked(self._dark_mode)
+self._act_dark_mode.triggered.connect(self._on_toggle_dark_mode)
+view_menu.addAction(self._act_dark_mode)
+```
+
+`self._dark_mode: bool` is set in `__init__` by reading from
+`QSettings("traveller-world-gen", "AppWindow")`:
+
+```python
+raw = QSettings("traveller-world-gen", "AppWindow").value("dark_mode", False)
+self._dark_mode: bool = str(raw).lower() == "true"
+```
+
+`str(raw).lower() == "true"` safely handles both Python `bool` and `str`
+representations that `QSettings` may return on different platforms.
+
+### `_apply_theme()`
+
+Calls `QApplication.setStyleSheet(css)` where the raw CSS string has
+`"font-family: monospace"` replaced with the actual system monospace font returned by
+`QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family()`. This ensures
+the correct monospace font is used on all platforms (previously `"monospace"` was used
+verbatim). `_CSS_DARK` is a module-level constant covering `QWidget`, `QGroupBox`, and all
+named `QLabel#` selectors in the same structure as `_CSS`. The `QWidget` rule sets
+`background-color: #1e1e1e; color: #e0e0e0` to colour the main window background.
+
+`QFrame#onboard-card` is defined in both `_CSS` and `_CSS_DARK` with a light/dark
+border and rounded corners. Used by `_show_placeholder()` for the startup onboarding card.
+
+### `_themed_html(html)`
+
+```python
+def _themed_html(self, html: str) -> str:
+    if self._dark_mode:
+        return html.replace('<html lang="en">', '<html lang="en" data-theme="dark">', 1)
+    return html
+```
+
+Applied at all three `setHtml()` call sites (`_show_summary` for world cards;
+`_show_system_summary` for system card and mainworld tab). The HTML templates carry
+a `[data-theme=dark]` CSS block that overrides all custom properties when the
+attribute is present, so the web views follow the in-app toggle rather than the OS
+`prefers-color-scheme` setting. The `@media(prefers-color-scheme:dark)` blocks are
+preserved for API / browser export use.
+
+### `_on_toggle_dark_mode(checked)`
+
+Saves the preference to `QSettings`, calls `_apply_theme()`, then live-refreshes
+the currently displayed result by re-calling `_show_system_summary(_current_system)`
+or `_show_summary(_current_world)` when one is set.
+
+### `_show_placeholder()` — onboarding card (Session 87, issue #84)
+
+Builds a styled `QFrame(objectName="onboard-card")` card in the result area.
+Contains four `QLabel` widgets reusing existing object names (`world-name`,
+`dim-label`, `hint-label`) so they inherit the correct font/colour from the CSS
+theme automatically. Displays: title, description, three-step workflow instruction,
+keyboard shortcut hint, and TravellerMap mode note.
+
+---
+
+## File menu (Session 72)
+
+`_build_menu_bar()` is called from `__init__` before `_build_ui()`. It creates a
+standard `QMenuBar` with a single **File** menu containing:
+
+| Action | Shortcut | Enabled | Behaviour |
+|--------|----------|---------|-----------|
+| Open JSON… | — | Always | `QFileDialog.getOpenFileName` → parse → version check → `World.from_dict()` → `_finish_generation()` |
+| Save As… | Ctrl+S / Cmd+S | After generation | `QFileDialog.getSaveFileName` (HTML or JSON); JSON output includes `"_app_version"` key |
+
+`APP_VERSION = "1.4.0"` is a module-level constant. When saving JSON the dict
+is enriched with `"_app_version": APP_VERSION` before serialisation. When
+opening, `data.get("_app_version") != APP_VERSION` → `QMessageBox.critical()`
+error dialog and abort.
+
+System JSONs (detected by presence of `"stars"` key) are fully reconstructed
+via `TravellerSystem.from_dict()` (Session 73) and then loaded via
+`_load_system_from_json()`. `OrbitSlot.detail` is now also restored from the
+`"detail"` key when present (Session 75, issue #109), so secondary world
+profiles appear in the system card after loading.
+
+The previous **Open in Browser** button, **format dropdown**, and **Save** button
+in the result header are removed. `_write_html()`, `_open_in_browser()`, and
+`self._html_path` are deleted; the webview already uses `setHtml()` directly.
 
 ---
 

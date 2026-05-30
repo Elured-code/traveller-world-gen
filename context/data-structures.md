@@ -57,6 +57,9 @@ class OrbitSlot:
                                 # takes display priority over detail.profile
     gg_sah: str                 # Gas giant SAH rolled at orbit-gen time (e.g. "GM9");
                                 # empty string for non-gas-giant slots
+    gg_mass_earth: Optional[float]  # field(default=None, init=False); WBH third-roll mass
+                                    # in Earth masses (GS:10–35, GM:40–340, GL:350–3300);
+                                    # None for non-GG slots and legacy saved systems
     anomaly_type: str           # ""|"random"|"eccentric"|"inclined"|"retrograde"
                                 # |"trojan_leading"|"trojan_trailing"; "" for normal orbits
     orbit_period_yr: Optional[float]  # field(default=None, init=False); orbital period
@@ -104,6 +107,7 @@ class TravellerSystem:
     nhz_atmospheres: bool = False   # set by generate_full_system(); read by attach_detail()
     orbital_eccentricity: bool = False  # set by generate_full_system()
     orbital_inclination: bool = False   # set by generate_full_system()
+    seed: Optional[int] = None          # RNG seed used; emitted by to_dict(); restored by from_dict()
     # methods: .to_dict(), .to_json(), .to_html(detail_attached), .summary()
 ```
 
@@ -143,6 +147,29 @@ class World:
     extinct_sophont: bool = field(default=False, init=False)
                                     # True when evidence of extinct sophont (WBH p.131);
                                     # only checked when current sophont roll fails
+    biodiversity_rating:  Optional[int] = field(default=None, init=False)
+                                    # set by _apply_biomass() after biocomplexity;
+                                    # formula: max(0, 2D−7 + biomass + ⌈biocomplexity/2⌉)
+    compatibility_rating: Optional[int] = field(default=None, init=False)
+                                    # set by _apply_biomass() after biocomplexity;
+                                    # formula: max(0, 2D − biocomplexity//2 + DMs)
+                                    # DMs: atmosphere code (_ATM_COMPAT_DM), age>8Gyr −2,
+                                    # "otherwise tainted" (taint on non-{2,4,7,9} code) −2
+    lifeform_profile: Optional[str] = field(default=None, init=False)
+                                    # 4-char eHex: MXDC
+                                    # (Biomass)(Biocomplexity)(Biodiversity)(Compatibility)
+                                    # None when biomass_rating is 0 or None
+    habitability_rating: Optional[int] = field(default=None, init=False)
+                                    # set by _apply_habitability() in attach_detail() (Session 82).
+                                    # base 10 + DMs: size, atmosphere, hydrographics, tidal lock,
+                                    # temperature, gravity. Clamped to min 0.
+                                    # Full temp path when WorldPhysical available; fallback to
+                                    # temperature_category string otherwise.
+                                    # Gravity: defined G value OR undefined formula (1 − |6−size|).
+    seed: Optional[int] = None         # RNG seed used; emitted by to_dict() only when not None;
+                                    # set by generate_world(seed=N) or generate_world(rng=rng);
+                                    # None when world generated with no explicit seed (tests, CLI
+                                    # without seed flag)
 
     # methods: .uwp(), .to_dict(), .to_json(), .to_html(), .summary()
     # classmethod: .from_dict(d) — reconstruct from to_dict() output
@@ -277,13 +304,14 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     # Basic Mean Temperature in Kelvin (WBH p.47). Set when hz_deviation is passed
     # to generate_world_physical(). Computed from orbital DM + atmosphere DM applied
     # to base roll 7; extrapolates below 0 (-5K/step) and above 12 (+50K/step); min 3K.
+    # When extrapolated result < 10K (modified roll ≤ -34), rolls 1D+5 instead (WBH footnote).
     residual_seismic_stress: Optional[int] = field(default=None, init=False)
     tidal_seismic_stress: Optional[int] = field(default=None, init=False)
     tidal_stress_factor: Optional[int] = field(default=None, init=False)
     total_seismic_stress: Optional[int] = field(default=None, init=False)
     seismic_temperature_k: Optional[int] = field(default=None, init=False)
     tidal_amplitude_m: Optional[float] = field(default=None, init=False)
-    # Seismic and tidal fields set by apply_moon_tidal_effects() (Sessions 56–60).
+    # Seismic and tidal fields set by apply_moon_tidal_effects() (Sessions 56–60, 79).
     # residual_seismic_stress: floor(Size - Age_Gyr + DMs)² — DMs: is_moon +1;
     #   density > 1.0 +2; density < 0.5 -1; sum of Size 1+ moon sizes capped at +12.
     # tidal_seismic_stress: PrimaryMass⊕² × (diam/1600)⁵ × e² /
@@ -303,10 +331,13 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     # greenhouse_factor: 0.5×√bar × atmosphere-type multiplier (WBH p.48).
     # advanced_mean_temperature_k: 279 × ⁴√(L × (1-A) × (1+G) / AU²); min 3K.
     #   L = luminosity of all stars interior to world's orbit.
+    #   If apply_moon_tidal_effects() produces TSS>0, updated in-place to
+    #   ⁴√(T⁴ + TSS⁴) when the rounded value changes (Session 79).
     # high_temperature_k / low_temperature_k: seasonal extremes (WBH pp.48-50).
     #   Steps 1-4: axial tilt factor + rotation factor + geographic factor → variance.
     #   Steps 5-6: atmospheric factor = 1+bar; luminosity modifier = variance / atm_factor.
     #   Steps 7-9: high/low luminosity → high/low AU (near/far periastron) → T = 279×⁴√(...)
+    #   Also updated in-place by apply_moon_tidal_effects() using ⁴√(T⁴ + TSS⁴) (Session 79).
     stellar_day_hours: Optional[float] = field(default=None, init=False)
     # Stellar (solar) day in hours — time between successive sunrises (WBH p.106, Session 66).
     # Derived from day_length (sidereal) and orbital period:
@@ -314,6 +345,12 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     #   retrograde: (T_sid × T_orb) / (T_orb + T_sid)
     # None for 1:1_lock (star is stationary in sky) and when orbital data absent.
     # Set in generate_world_physical() and recomputed in apply_moon_tidal_effects().
+    resource_rating: Optional[int] = field(default=None, init=False)
+    # Terrestrial resource rating (WBH p.131, Session 87). Always set for Size 1+ worlds.
+    # Base roll: 2D − 7 + Size + density_DM (density_DM: +2 if > 1.12 g/cm³, −2 if < 0.50).
+    # Clamped to [2, 12]. Biological DMs (biomass, biodiversity, compatibility) applied
+    # deterministically by attach_detail() after _apply_biomass() runs — no extra dice roll.
+    # Public helper: apply_biological_resource_dms(rr, biomass, biodiversity, compatibility).
 
     # method: .to_dict()
     # keys: composition, diameter_km, density_g_cm3, mass_earth,
@@ -324,7 +361,7 @@ class WorldPhysical:    # pylint: disable=too-many-instance-attributes
     #       [, total_seismic_stress][, seismic_temperature_k]
     #       [, albedo][, greenhouse_factor][, advanced_mean_temperature_k]
     #       [, high_temperature_k][, low_temperature_k]
-    #       [, stellar_day_hours]  ← all only when not None
+    #       [, stellar_day_hours][, resource_rating]  ← all only when not None
 ```
 
 ---

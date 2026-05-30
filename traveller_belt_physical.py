@@ -62,8 +62,11 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
+from typing import Optional
 
 from traveller_world_physical import _compute_mean_temperature
+
+_rng: random.Random = random  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -72,15 +75,15 @@ from traveller_world_physical import _compute_mean_temperature
 
 def _roll(n: int, dm: int = 0) -> int:
     """Sum of n d6 rolls plus dm, minimum 0."""
-    return max(0, sum(random.randint(1, 6) for _ in range(n)) + dm)
+    return max(0, sum(_rng.randint(1, 6) for _ in range(n)) + dm)
 
 
 def _d2() -> int:
-    return random.randint(1, 2)
+    return _rng.randint(1, 2)
 
 
 def _d3() -> int:
-    return (random.randint(1, 6) + 1) // 2
+    return (_rng.randint(1, 6) + 1) // 2
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +115,7 @@ def _roll_pct(base: int, mult: int, use_d3: bool) -> int:
     """Roll one composition percentage: base + die × mult."""
     if mult == 0:
         return base
-    die = _d3() if use_d3 else random.randint(1, 6)
+    die = _d3() if use_d3 else _rng.randint(1, 6)
     return base + die * mult
 
 
@@ -187,7 +190,7 @@ def _roll_resource_rating(
     dm = bulk + int(m_pct / 10) + math.floor(-c_pct / 10)
     result = _roll(2, -7 + dm)
     if is_exploited:
-        result -= random.randint(1, 6)
+        result -= _rng.randint(1, 6)
     return max(2, min(12, result))
 
 
@@ -220,7 +223,7 @@ def _roll_size_s_bodies(
     if span_au > 1.0:
         dm += 1
 
-    roll = random.randint(1, 6) + random.randint(1, 6)
+    roll = _rng.randint(1, 6) + _rng.randint(1, 6)
     count = max(0, (roll - 9 + dm) * (bulk + 1))
 
     if span_au < 0.1:
@@ -228,8 +231,8 @@ def _roll_size_s_bodies(
 
     # Optional variance: >50 bodies in outermost orbit
     if count > 50 and is_outermost:
-        multiplier = random.randint(1, 6) / _d3()
-        count = round(count * multiplier + random.randint(1, 6))
+        multiplier = _rng.randint(1, 6) / _d3()
+        count = round(count * multiplier + _rng.randint(1, 6))
         count = max(0, count)
 
     return count
@@ -271,6 +274,23 @@ class BeltPhysical:  # pylint: disable=too-many-instance-attributes
             "mean_temperature_k": self.mean_temperature_k,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "BeltPhysical":
+        """Reconstruct a BeltPhysical from a dict produced by to_dict()."""
+        return cls(
+            inner_au=float(d["inner_au"]),
+            outer_au=float(d["outer_au"]),
+            m_type_pct=int(d["m_type_pct"]),
+            s_type_pct=int(d["s_type_pct"]),
+            c_type_pct=int(d["c_type_pct"]),
+            other_pct=int(d["other_pct"]),
+            bulk=int(d["bulk"]),
+            resource_rating=int(d["resource_rating"]),
+            size_1_bodies=int(d["size_1_bodies"]),
+            size_s_bodies=int(d["size_s_bodies"]),
+            mean_temperature_k=int(d["mean_temperature_k"]),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -284,6 +304,7 @@ def generate_belt_physical(  # pylint: disable=too-many-arguments,too-many-posit
         next_is_gas_giant: bool,
         is_outermost: bool,
         is_exploited: bool,
+        rng: Optional[random.Random] = None,
 ) -> BeltPhysical:
     """Generate physical characteristics for an asteroid belt (WBH pp.131-133).
 
@@ -306,6 +327,9 @@ def generate_belt_physical(  # pylint: disable=too-many-arguments,too-many-posit
         True if the mainworld has the Industrial trade code and TL >= 8
         (resource rating reduction).
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     span_au = _roll_belt_span(orbit_spread, next_is_gas_giant, is_outermost)
     inner_au = round(max(0.0, orbit_au - span_au / 2), 3)
     outer_au = round(orbit_au + span_au / 2, 3)

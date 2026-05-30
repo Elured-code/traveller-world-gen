@@ -58,6 +58,14 @@ generate_sophont_checks(biocomplexity: int, age_gyr: float) -> tuple[bool, bool]
     # Extinct: same + DM+1 if age > 5 Gyr; only rolled when current fails.
     # Returns (native_sophont, extinct_sophont).
 
+obj: WorldDetail = WorldDetail.from_dict(d: dict) -> "WorldDetail"
+    # Reconstruct a WorldDetail from a dict produced by to_dict() (Session 75).
+    # Calls __init__ with constructor params (sah, population, government,
+    # law_level, tech_level, spaceport, moons); overrides trade_codes from saved
+    # list; dispatches physical to BeltPhysical.from_dict() or WorldPhysical.from_dict()
+    # based on "inner_au" key presence; restores biomass_rating and biocomplexity_rating.
+    # Uses local import of WorldPhysical to avoid circular imports.
+
 table: str = system_body_table(system: TravellerSystem) -> str
     # Formatted text table of all orbits and their moon sub-rows.
 
@@ -125,6 +133,16 @@ law, or tech level.
 ## traveller_moon_gen.py — WBH pp. 55–57, 74–77
 
 ### Public API
+
+```python
+moon: Moon = Moon.from_dict(d: dict) -> "Moon"
+    # Reconstruct a Moon from a dict produced by to_dict() (Session 75).
+    # Parses size string: "R" → ring, "S" → small, else _EHEX.index(size.upper()).
+    # Sets post-init orbit fields (orbit_pd, orbit_km, orbit_range,
+    # orbit_period_hours, orbit_eccentricity, orbit_inclination) when present.
+    # Calls WorldDetail.from_dict(d["detail"]) for nested moon detail via local
+    # import (to avoid circular imports).
+```
 
 ```python
 moons: List[Moon] = generate_moons(
@@ -227,16 +245,24 @@ Inner edge clamped: if `centre − span/2 < 0.55`, centre is shifted outward.
 |------|------------|------------|
 | Size S | 800 | (800/12742)³ |
 | Terrestrial size N | N × 1600 | (N × 1600 / 12742)³ |
-| Gas giant diam D | D × 12800 | D² |
+| Gas giant diam D | D × 12800 | `OrbitSlot.gg_mass_earth` (WBH roll); fallback `D²` for legacy |
 
 For the mainworld, `WorldPhysical.diameter_km` and `WorldPhysical.mass` are used
-directly (accessed via `mainworld.size_detail`).
+directly (accessed via `mainworld.size_detail`). `_moons_for()` accepts
+`gg_mass_earth: float = 0.0` and passes it as `planet_mass_earth` to
+`generate_moons()`, overriding the diameter² estimate for gas giant slots.
 
 **Eccentricity and inclination** (WBH p.76) — rolled for each significant moon
 when orbit data is provided. `roll_eccentricity(orbit_number=2.0, system_age_gyr=0.0)`
 (no world-specific DMs) and `roll_inclination()` are called from `traveller_orbit_gen`.
 Inclination > 90° implies retrograde. Emitted to JSON as `orbit_eccentricity` (4 d.p.)
 and `orbit_inclination` (2 d.p.) when > 0.
+
+**Perigee Roche limit check** (Session 85, issue #120) — after eccentricity/inclination
+rolls, any significant moon whose perigee `orbit_pd × (1 − e) < 2.0` is tidally
+disrupted and converted to ring material. `ring_count` is incremented on the existing
+consolidated ring, or a new ring is created if none exists. This check only runs when
+orbit placement has been performed (`orbit_au > 0` and `star_mass_solar > 0`).
 
 ### Belt physical detail (WBH pp.131-133)
 

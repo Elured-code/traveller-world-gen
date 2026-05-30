@@ -1,8 +1,419 @@
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`
-**Sessions:** 55–70
-**Tests:** 1449
+**Sessions:** 55–87
+**Tests:** 1686
+
+---
+
+## Terrestrial Resource Rating (Session 87, issue #105)
+
+`WorldPhysical.resource_rating: Optional[int]` added. Computed at end of
+`generate_world_physical()` as `max(2, min(12, 2D − 7 + Size + density_DM))`.
+`density_DM`: +2 if density > 1.12 g/cm³, −2 if < 0.50. Always set for Size 1+
+worlds. Public helper `apply_biological_resource_dms(rr, biomass, biodiversity,
+compatibility)` applies deterministic DMs (no extra dice roll) inside
+`attach_detail()` after `_apply_biomass()`. Displayed in world card and
+`summary()` text output. `traveller_world_schema.json` updated with
+`resource_rating` property in `WorldPhysical` section. 1686 tests pass.
+
+## NHZ Atmospheres API Exposure (Session 87, issue #122)
+
+`parse_nhz_atmospheres()` added to `shared/helpers.py` (same pattern as
+`parse_orbital_eccentricity/inclination`). Wired into all five system
+endpoint handlers in `function_app.py` and `_map_system_response()`.
+`generate_system_from_world()` and `generate_system_from_map()` both gain
+`nhz_atmospheres: bool = False` parameter and store it on the returned
+`TravellerSystem`. Schema gains `$defs.system_generation_options` documenting
+the three boolean flags that, together with `seed`, allow byte-identical system
+reproduction. 9 new tests in `TestNhzAtmospheresOption`. Schema version bumped
+to v1.4.1.
+
+## Moon Ecc/Incl in Orbit Table (Session 87, issue #118)
+
+`TravellerSystem` orbit-row builder now populates `"ecc_incl"` on each moon
+dict. Non-ring moons with non-zero eccentricity or inclination show
+`f"{eccentricity:.3f}/{inclination:.1f}°"`; rings and zero-value moons show `""`.
+`system_card.html` moon sub-row `<td></td>` replaced with
+`<td class="mono">{{ moon.ecc_incl }}</td>`.
+
+## Gas Giant Mass/Density in Notes Column (Session 87, issue #119)
+
+Orbit-row builder computes `gg_density = (gg_mass_earth / (gg_diam_km/12742)³) × 5.515`
+when `gg_mass_earth` is set. Appended to `note_parts` as
+`f"{gg_mass_earth:.0f} M⊕ · {gg_density:.2f} g/cm³"`. Notes column header
+renamed from blank `<th></th>` to `<th>Notes</th>`.
+
+## Gen-UI Onboarding Card (Session 87, issue #84)
+
+`_show_placeholder()` replaced single dim label with `QFrame#onboard-card`
+containing title, description, three-step workflow instructions, keyboard hint,
+and TravellerMap note. `QFrame#onboard-card` added to both `_CSS` and `_CSS_DARK`.
+Window resized to 1100×700 with minimum 780×500; `_apply_theme()` now substitutes
+the actual system monospace font family name via
+`QFontDatabase.systemFont(FixedFont).family()`.
+
+## Injectable RNG for Deterministic Generation (Session 86, issue #42)
+
+All generation modules now use injectable `random.Random` instances instead of
+the global `random` module, eliminating shared-state hazards on warm Azure
+Function instances and enabling isolated unit tests.
+
+- **Module-level `_rng` pattern:** Each of the 8 generation modules
+  (`traveller_hydro_detail`, `traveller_belt_physical`, `traveller_world_physical`,
+  `traveller_world_gen`, `traveller_stellar_gen`, `traveller_orbit_gen`,
+  `traveller_moon_gen`, `traveller_world_detail`) has a module-level
+  `_rng: random.Random = random` sentinel. All `random.XXX()` calls replaced
+  with `_rng.XXX()`. Public entry-point functions accept `rng: Optional[random.Random]
+  = None`; when provided, they set `_rng = rng`.
+- **`generate_world()` is seed-agnostic by default:** Only replaces `_rng` when
+  an explicit `seed` or `rng` argument is given, preserving `random.seed()`
+  behaviour for callers that rely on global state.
+- **`generate_full_system()` always creates a fresh RNG:** `random.seed()` removed;
+  replaced with `rng = random.Random(seed)` propagated to all sub-calls.
+- **`TravellerSystem.seed` and `World.seed` fields added:** Both `to_dict()` emit
+  `"seed"` when set; `from_dict()` restores it. Handlers in `function_app.py` no
+  longer inject `d["seed"] = seed` manually — the seed comes from the object.
+- **`apply_seed()` return type changed** from `int` to `Tuple[int, random.Random]`.
+  All 13 handler call sites updated: `seed, rng = apply_seed(seed)`.
+- **Cross-module propagation:** `traveller_map_fetch.generate_system_from_map()`
+  uses `random.Random(seed)` and passes `rng` to `generate_orbits()`,
+  `generate_hydrographic_detail()`, and `attach_detail()`.
+- **`conftest.py` autouse fixture:** Resets every module's `_rng` to the global
+  `random` module before/after each test, preventing order-dependent failures.
+
+This is **not a seed-breaking change** — `random.Random(seed)` uses the same
+Mersenne Twister as `random.seed(seed)`, producing identical sequences.
+
+---
+
+## GG Moons Near the Roche Limit (Session 85, issue #120)
+
+Four related bugs in the gas-giant satellite tidal-stress pipeline, exposed by
+seed 253115564 (TSF 644, TSS 1,256,530, total SS 1,257,174 — physically impossible).
+
+- **TSS formula removed from GG block:** `_compute_tidal_ss` is calibrated for
+  AU-scale star→planet distances; at moon distances (~0.1–0.8 Mkm) it amplifies
+  results by ~10¹⁵×. The formula is no longer called for GG-satellite mainworlds;
+  the `tidal_amp +=` amplitude contribution (already correct at all distances) is
+  kept. Seed result: TSS drops from 1,256,530 to 0.
+- **TSF capped at 500:** `tsf = min(math.floor(tidal_amp / 10), 500)`. Beyond
+  ~500K-equivalent, material liquefaction limits further tidal dissipation. Seed
+  result: TSF drops from 644 to 8.
+- **Perigee Roche limit check:** After eccentricity/inclination rolls, any
+  significant moon whose `orbit_pd × (1 − e) < 2.0` is tidally disrupted and
+  converted to ring material. `ring_count` is incremented on the existing ring
+  or a new ring created if none exists.
+- **WBH GG mass roll:** New `_roll_gg_mass(gg_category)` in `traveller_orbit_gen.py`
+  implements the WBH third-roll mass table (GS: 5×(1D+1)=10–35 M⊕; GM:
+  20×(3D−1)=40–340 M⊕; GL: D3×50×(3D+4)=350–3,300 M⊕). Result stored as
+  `OrbitSlot.gg_mass_earth` (Optional[float], serialised). Replaces the incorrect
+  `gg_diameter ** 2` formula at all five call sites with a legacy-safe fallback
+  (`orbit.gg_mass_earth if not None else float(diam ** 2)`). **This is a
+  seed-breaking change** — adds 1–2 dice rolls per gas giant before the
+  eccentricity block.
+
+---
+
+## gen-ui Dark Mode (Session 84, issue #81)
+
+The desktop UI now supports a **dark mode** toggled via **View › Dark Mode**.
+
+- `_CSS_DARK` stylesheet covers `QWidget` (main window background), `QGroupBox`,
+  and all named `QLabel#` selectors with dark equivalents.
+- Preference persisted across sessions via `QSettings("traveller-world-gen",
+  "AppWindow")` key `dark_mode`.
+- `_themed_html()` injects `data-theme="dark"` on the `<html>` tag at all three
+  `setHtml()` call sites (world card, system card, mainworld tab), so HTML cards
+  follow the in-app toggle rather than the OS `prefers-color-scheme` setting.
+  `@media(prefers-color-scheme:dark)` blocks are preserved for API / browser export.
+- `[data-theme=dark]` CSS blocks added to `system_card.html` (shorthand variables)
+  and `world_card.html` (semantic variables).
+- Toggling while a result is displayed live-refreshes the card without regenerating.
+
+---
+
+## System Card — MAO and HZ Columns (Session 83, issue #115)
+
+The Stars table in the system HTML card now shows two additional columns:
+
+- **MAO** — Minimum Armistice Orbit (Orbit# at stellar separation / 3). Populated
+  from `SystemOrbits.star_mao`; shown as a 2-decimal-places Orbit# value. The
+  primary star has no MAO and shows `—`.
+- **HZ Orbit#** — inner edge, centre (HZCO), and outer edge of the star's
+  Habitable Zone from `SystemOrbits.star_hz_inner`, `star_hzco`, `star_hz_outer`.
+  Formatted as `inner – hzco – outer`; stars without an HZ show `—`.
+
+`star_rows` in `TravellerSystem.to_html()` gains `mao`, `hz_inner`, `hzco`, and
+`hz_outer` keys. The Stars table header gains `<th>MAO</th><th>HZ Orbit#</th>`.
+No new tests needed — these fields are pre-computed at orbit-gen time and are
+already covered by orbit-gen tests.
+
+---
+
+## System Card — Mainworld Detail Removed (Session 83, issue #114)
+
+The `mw_data` construction block (~70 lines) has been removed from
+`TravellerSystem.to_html()`, and the corresponding mainworld HTML section
+(~200+ lines covering UWP stats, atmosphere, hydrographic, biological,
+habitability, and notes) has been removed from `system_card.html`.
+
+Mainworld detail now appears exclusively on the Mainworld tab in gen-ui via
+`World.to_html()`. The System tab shows stellar data and orbital survey only.
+Unused imports (`BeltPhysical`, `WorldPhysical`, `TIDAL_STATUS_LABELS`,
+`BIOCOMPLEXITY_DESC`, `GOVERNMENT_NAMES`, `HYDROGRAPHIC_NAMES`,
+`STARPORT_QUALITY_LABEL`, `format_atmosphere_profile`) were removed from
+`traveller_system_gen.py`. No test changes needed.
+
+---
+
+## Ammonia Fluid Type Bug Fix (Session 83, issue #116)
+
+`_fluid_type()` in `traveller_hydro_detail.py` incorrectly returned `"Ammonia"`
+for Cold worlds with standard breathable atmospheres (codes 0–9). The WBH
+specifies that ammonia oceans only form under exotic, corrosive, insidious, or
+unusual atmospheres (codes 10–15). Standard atmospheres at Cold temperatures
+should retain Water.
+
+Fix: added `_AMMONIA_ELIGIBLE_ATMS: frozenset[int] = frozenset({10, 11, 12, 13,
+14, 15})` and a guard in `_fluid_type()`:
+
+```python
+if temperature == "Cold" and atmosphere not in _AMMONIA_ELIGIBLE_ATMS:
+    return "Water"
+```
+
+6 new tests replace the previous single `test_cold_is_ammonia` test: separate
+parametrised checks over standard atmospheres (0–9 → Water) and exotic
+atmospheres (10–15 → Ammonia), plus integration tests covering both cases via
+`generate_hydrographic_detail()`.
+
+---
+
+## Habitability Rating (Session 82, issue #106)
+
+`generate_habitability_rating()` in `traveller_world_detail.py` computes the
+WBH p.131 habitability rating (base 10 + DMs) for all terrestrial worlds.
+DMs cover size, atmosphere (all codes including B/C/F+), hydrographics, solar
+tidal lock, temperature (full path when `WorldPhysical` is available; fallback
+to category string otherwise), and gravity (defined or undefined formula).
+Gravity boundaries apply the worst-DM rule. Result clamped to 0 minimum.
+
+`habitability_description()` added to `tables.py`. Field added to `WorldDetail`,
+`World`, `to_dict()` / `from_dict()`, JSON schema, and `world_card.html`.
+`_apply_habitability()` is called after `_apply_biomass()` in `attach_detail()`.
+81 new tests in `tests/test_habitability.py`.
+
+---
+
+## Basic Mean Temperature — 1D+5 for Extreme Cold (Session 81)
+
+`_compute_mean_temperature()` now rolls 1D+5 (giving 6–11K) when the
+extrapolated result would fall below 10K (modified roll ≤ −34), per the WBH
+p.47 footnote. Previously the code just clamped to 3K. This edge case only
+arises for worlds at hz_deviation ≥ ~18.5 (extremely distant orbits).
+
+---
+
+## Tidal Heating Baked into Advanced Mean Temperature (Sessions 79–80)
+
+`_apply_seismic_stress()` (called via `apply_moon_tidal_effects()`) now updates
+`advanced_mean_temperature_k`, `high_temperature_k`, and `low_temperature_k`
+in-place using ⁴√(T⁴ + TSS⁴) when TSS > 0 and the rounded value changes. The
+former separate `advanced_seismic_temperature_k` display field has been removed;
+the tidal heating correction is now reflected in the canonical temperature fields
+used downstream.
+
+9 new tests cover the `optional_inhospitable_rule` flag added in Session 78:
+rule disabled (individual rolls), group roll < 12 (all NHZ worlds zeroed),
+natural 12 (winner gets biomass roll; loser and its moons get 0), in-HZ worlds
+unaffected, no group roll when no NHZ worlds, and the `attach_detail`
+flag pass-through.
+
+---
+
+## Biological Pipeline — Edge-Case Test Coverage (Session 78, issue #112)
+
+WBH p.130 Suggested Usage confirmed: limiting the full biological pipeline
+(biodiversity, compatibility, lifeform profile) to the mainworld is correct; secondary
+worlds receive only biomass + biocomplexity per rulebook intent.
+
+32 new targeted tests verify:
+
+- **NHZ codes 16 (G) and 17 (H):** biomass clamped to code 15 (F) via `min(atm, 15)`;
+  biocomplexity DM-2 applies (not in [4–9]); compatibility DM-8 (same as vacuum) confirmed
+  in `_ATM_COMPAT_DM` and exercised end-to-end.
+- **Extreme HZ deviation worlds (|hz_dev| ≥ 3):** frozen/boiling worlds with atmosphere 0,
+  1, 16, or 17 always produce `biomass_rating = 0` — demonstrated on both the simplified
+  temperature-zone path and the K-temperature (WorldPhysical) path.
+- **`atmosphere_detail = None` guard:** all three taint checks (`biologic`, `has_low_o`,
+  `has_taint`) default to `False` when `atmosphere_detail` is `None`; `_apply_biomass`
+  runs without error.
+- **Biomass=0 short-circuit:** biodiversity, compatibility, and lifeform_profile remain
+  `None` when the world is lifeless.
+
+---
+
+## System Map — World Marker Position (Session 77)
+
+World glyphs on the orbit arc diagram now appear **one third of the way down
+the arc** from the top endpoint rather than at the top endpoint. The change
+improves visual clarity: markers no longer cluster at the very tip of short
+arcs and sit closer to the horizontal centreline of the diagram.
+
+Implemented as a one-line change to `_marker_xy()` in `system_map.py`:
+angle changed from `half_deg` to `half_deg / 3`.
+
+---
+
+## Biodiversity, Compatibility, and Lifeform Profile (Session 76, issue #104)
+
+Mainworlds with `biomass_rating ≥ 1` now receive two additional ratings and a
+four-character eHex lifeform profile. All three are computed at the end of
+`_apply_biomass()`, after biocomplexity and sophont checks, so they add exactly
+four dice rolls per inhabited mainworld with no seed disruption for uninhabited
+worlds.
+
+### Biodiversity Rating
+
+```
+max(0, 2D − 7 + Biomass + ⌈Biocomplexity / 2⌉)
+```
+
+Higher scores indicate a richer variety of distinct species. No maximum.
+
+### Compatibility Rating
+
+```
+max(0, 2D − ⌊Biocomplexity / 2⌋ + DMs)
+```
+
+DMs from WBH p.130: atmosphere code (vacuum/corrosive DM−8 through standard
+DM+2), system age > 8 Gyrs (DM−2), "otherwise tainted" atmosphere (DM−2 for a
+taint on a non-inherently-tainted code such as D or E). Full table in
+`_ATM_COMPAT_DM` in `traveller_world_detail.py`. A rating of A (10) equals full
+Terran compatibility.
+
+### Lifeform Profile
+
+Four-character eHex string `MXDC`: Biomass, Biocomplexity, Biodiversity,
+Compatibility. Displayed in the Biological detail card below Biocomplexity.
+
+### Data structures
+
+New fields on `World` (all `Optional`, `None` when biomass = 0):
+`biodiversity_rating`, `compatibility_rating`, `lifeform_profile`.
+Emitted in `World.to_dict()`, restored by `World.from_dict()`,
+added to JSON schema, and displayed in `templates/world_card.html`.
+
+New public functions in `traveller_world_detail.py`:
+`generate_biodiversity_rating(biomass, biocomplexity) -> int` and
+`generate_compatibility_rating(biocomplexity, atm, age_gyr, has_taint) -> int`.
+
+17 new tests in `TestBiodiversityRating` and `TestCompatibilityRating`
+in `tests/test_biomass.py`.
+
+---
+
+## WorldDetail Round-Trip — Secondary World Detail Restored on Load (Session 75, issue #109)
+
+`OrbitSlot.from_dict()` now fully reconstructs the `WorldDetail` block for
+every orbit slot when a saved system JSON is opened. Previously the `"detail"`
+key was silently discarded, so secondary world profiles (SAH, social data,
+moons, physical) were absent after loading.
+
+Three new `from_dict()` classmethods implement the reconstruction chain:
+
+- **`Moon.from_dict(d)`** in `traveller_moon_gen.py` — parses the `"size"`
+  string back to a size code (`_EHEX.index()`), restores all post-init orbit
+  fields (`orbit_pd`, `orbit_km`, `orbit_period_hours`, `orbit_eccentricity`,
+  `orbit_inclination`), and recursively calls `WorldDetail.from_dict()` for
+  nested moon detail via a local import.
+- **`WorldDetail.from_dict(d)`** in `traveller_world_detail.py` — calls
+  `__init__` with the constructor params, overrides `trade_codes` from the
+  saved list, reconstructs `physical` (dispatching to `BeltPhysical.from_dict()`
+  or `WorldPhysical.from_dict()` based on the `"inner_au"` key presence), and
+  restores `biomass_rating` and `biocomplexity_rating`.
+- **`OrbitSlot.from_dict()`** updated — when a `"detail"` key is present, the
+  slot's `detail` attribute is populated by `WorldDetail.from_dict()` via a
+  local import; `detail_attached` is treated as `True` by the HTML renderer.
+
+Circular imports are handled with local imports (the same `# pylint: disable=import-outside-toplevel` pattern used elsewhere in the codebase).
+
+19 new tests across `TestMoonFromDict`, `TestWorldDetailFromDict`, and
+`TestOrbitDetailRoundtrip` in `tests/test_system_roundtrip.py`.
+
+---
+
+## Bug Fix — `has_gas_giant` Preserved in World JSON Round-Trip (Session 74, issue #110)
+
+`World.from_dict()` was re-deriving `has_gas_giant` as `gas_giant_count > 0`
+instead of reading the saved boolean directly. This produced incorrect results
+for any world where `has_gas_giant` and `gas_giant_count` disagreed (e.g., a
+world that never had a gas giant but for which the count was non-zero due to a
+data quirk, or vice versa).
+
+Fix: `has_gas_giant=bool(d.get("has_gas_giant", gas_giant_count > 0))` — reads
+the saved boolean when present, falls back to `gas_giant_count > 0` for legacy
+JSON files that predate the explicit field. Backward-compatible.
+
+3 new tests in `TestWorldDetailRoundtrip` covering: explicit `True` with count 0,
+explicit `False`, and absent key with count 3 (legacy fallback).
+
+---
+
+## Open System JSON (Session 73, issue #108)
+
+File > Open JSON… now fully supports system JSON files (previously showed "not
+yet supported"). The full reconstruction chain was added across three modules:
+
+- `Star.from_dict()` and `StarSystem.from_dict()` in `traveller_stellar_gen.py`
+- `OrbitSlot.from_dict()` and `SystemOrbits.from_dict()` in `traveller_orbit_gen.py`
+- `TravellerSystem.from_dict()` in `traveller_system_gen.py`
+
+On load the system renders in the two-tab view; Save As… and System Map are
+enabled. `OrbitSlot.detail` is not reconstructed — the system displays with
+`detail_attached=False` (secondary world profiles absent). 16 new tests in
+`tests/test_system_roundtrip.py`.
+
+---
+
+## File Menu: Save As and Open JSON (Session 72, issues #75 + #107)
+
+The result header action buttons (Open in Browser, format dropdown, Save) have
+been moved to a standard **File** menu in the menu bar, and the Open in Browser
+action has been replaced with **Open JSON**.
+
+- **File > Open JSON…** — always enabled; opens a JSON file saved by the app,
+  version-checks the embedded `_app_version` tag, and re-renders the world card.
+- **File > Save As…** (`Ctrl+S` / `Cmd+S`) — enabled after generation; saves as
+  HTML or JSON (Text format removed). JSON output includes `"_app_version": "1.4.0"`.
+- Version mismatch on open shows a `QMessageBox` error dialog; system JSONs show
+  a "not yet supported" informational dialog.
+- `APP_VERSION = "1.4.0"` module-level constant in `gen-ui/app.py`.
+- `_write_html()`, `_open_in_browser()`, and `self._html_path` removed (temp
+  file was only needed for the now-gone Open in Browser action).
+
+---
+
+## Biologic Taint (Session 71, WBH p.83, issue #28)
+
+Atmospheric taints can now produce a Biologic subtype. Previously subtype dice
+rolls of 4 and 9 (which map to Biologic per WBH p.83) were silently rerolled
+because native-life ratings did not yet exist. Now that biomass generation is
+fully implemented (Session 61), the reroll guard is removed and biologic taints
+are enabled.
+
+- `_BIOLOGIC_SUBTYPE_ROLLS` frozenset removed from `traveller_world_gen.py`.
+- Subtype entries `4: ("Biologic", "B")` and `9: ("Biologic", "B")` added to
+  `_TAINT_SUBTYPE_TABLE`.
+- Reroll guard removed from `_roll_single_taint()`.
+- When a biologic taint fires, `generate_biomass_rating()` enforces
+  `biomass ≥ 1` via the existing `has_biologic_taint=True` parameter
+  (already wired in Session 61 via `_apply_biomass()` in
+  `traveller_world_detail.py`).
+- Affected atmosphere codes: 2 (Reducing), 4 (Thick/Tainted), 7 (Standard
+  Tainted), 9 (Dense/Tainted).
 
 ---
 

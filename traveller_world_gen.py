@@ -37,6 +37,7 @@ The human author reviewed, directed, and is responsible for the code.
 import json
 import math
 import random
+_rng: random.Random = random  # type: ignore[assignment]
 import argparse
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, TYPE_CHECKING
@@ -44,11 +45,13 @@ from typing import List, Optional, Union, TYPE_CHECKING
 from traveller_belt_physical import BeltPhysical
 from traveller_hydro_detail import HydrographicDetail
 from html_render import render
-from world_codes import AtmosphereCode, StarportCode, TemperatureCategory, TradeCode, TravelZone
+from world_codes import (
+    APP_VERSION, AtmosphereCode, StarportCode, TemperatureCategory, TradeCode, TravelZone,
+)
 from tables import (
     SIZE_DIAMETER_LABEL, SIZE_GRAVITY_LABEL, POPULATION_RANGE,
     TRADE_CODE_FULL, BASE_FULL, ZONE_CSS_CLASS, TIDAL_STATUS_LABELS,
-    BIOCOMPLEXITY_DESC,
+    BIOCOMPLEXITY_DESC, habitability_description,
 )
 
 if TYPE_CHECKING:
@@ -65,7 +68,7 @@ def roll(num_dice: int, modifier: int = 0) -> int:
     The result is clamped to a minimum of 0 because many Traveller tables
     treat negative totals as zero (e.g. Atmosphere, Hydrographics).
     """
-    total = sum(random.randint(1, 6) for _ in range(num_dice))
+    total = sum(_rng.randint(1, 6) for _ in range(num_dice))
     return max(0, total + modifier)
 
 
@@ -333,7 +336,7 @@ def _dice(num: int) -> int:
     WBH formulas where a negative variance term is legitimate
     (e.g. the (2D-7)/100 term in the oxygen-fraction formula).
     """
-    return sum(random.randint(1, 6) for _ in range(num))
+    return sum(_rng.randint(1, 6) for _ in range(num))
 
 
 def _atmosphere_pressure_bar(code: int) -> Optional[float]:
@@ -348,7 +351,7 @@ def _atmosphere_pressure_bar(code: int) -> Optional[float]:
         return None
     minimum, width = span
     variance = (
-        (random.randint(1, 6) - 1) * 5 + (random.randint(1, 6) - 1)
+        (_rng.randint(1, 6) - 1) * 5 + (_rng.randint(1, 6) - 1)
     ) / 30
     return round(minimum + width * variance, 3)
 
@@ -365,7 +368,7 @@ def _subtype_pressure_bar(
     if span_bar is None:
         return None
     variance = (
-        (random.randint(1, 6) - 1) * 5 + (random.randint(1, 6) - 1)
+        (_rng.randint(1, 6) - 1) * 5 + (_rng.randint(1, 6) - 1)
     ) / 30
     return round(max(0.0, min_bar + span_bar * variance), 3)
 
@@ -387,9 +390,9 @@ def _oxygen_partial_pressure(
     if code not in _PPO_CODES or total_pressure_bar is None:
         return None
     dm = 1 if (system_age_gyr is not None and system_age_gyr > 4.0) else 0
-    fraction = (random.randint(1, 6) + dm) / 20 + (_dice(2) - 7) / 100
+    fraction = (_rng.randint(1, 6) + dm) / 20 + (_dice(2) - 7) / 100
     if fraction <= 0:
-        fraction = random.randint(1, 6) * 0.01
+        fraction = _rng.randint(1, 6) * 0.01
     return round(fraction * total_pressure_bar, 3)
 
 
@@ -752,21 +755,21 @@ _TAINTED_CODES = frozenset({2, 4, 7, 9})
 # Single-char profile codes that identify O2-driven subtypes.
 _O2_TAINT_CODES = frozenset({"L", "H"})
 
-# Subtype rolls that map to Biologic — rerolled per issue #28.
-_BIOLOGIC_SUBTYPE_ROLLS = frozenset({4, 9})
-
 # DM applied to the subtype 2D roll by atmosphere code (others: 0).
 _TAINT_SUBTYPE_DM = {4: -2, 9: 2}
 
 # 2D+DM → (subtype name, single-char profile code).
-# Entries 4 and 9 (Biologic) are absent — the roll function rerolls them.
+# Result 10: Particulates + roll again (needs_second_roll = True).
+# Biologic (B): forces biomass_rating ≥ 1 via generate_biomass_rating() (issue #28).
 _TAINT_SUBTYPE_TABLE = {
     2:  ("Low Oxygen",        "L"),
     3:  ("Radioactivity",     "R"),
+    4:  ("Biologic",          "B"),
     5:  ("Gas Mix",           "G"),
     6:  ("Particulates",      "P"),
     7:  ("Gas Mix",           "G"),
     8:  ("Sulphur Compounds", "S"),
+    9:  ("Biologic",          "B"),
     10: ("Particulates",      "P"),   # result 10: Particulates + roll again
     11: ("Radioactivity",     "R"),
     12: ("High Oxygen",       "H"),
@@ -812,9 +815,7 @@ def _roll_single_taint(atm_code: int, ppo: Optional[float] = None) -> tuple:
     """Roll one taint for a tainted atmosphere (WBH pp.82-83).
 
     Returns ``(Taint, needs_second_roll)``.  ``needs_second_roll`` is
-    ``True`` only when the subtype roll is 10 (Particulates and roll
-    again).  Biologic results (subtype rolls 4 and 9) are rerolled
-    until a non-Biologic subtype is obtained (issue #28).
+    ``True`` only when the subtype roll is 10 (Particulates and roll again).
 
     ``ppo`` constrains H/L subtypes to physically valid ranges (issue #55):
     High Oxygen (H) is only accepted when ppo > 0.5 bar; Low Oxygen (L)
@@ -828,8 +829,6 @@ def _roll_single_taint(atm_code: int, ppo: Optional[float] = None) -> tuple:
     dm = _TAINT_SUBTYPE_DM.get(atm_code, 0)
     while True:
         raw_sub = max(2, min(12, roll(2) + dm))
-        if raw_sub in _BIOLOGIC_SUBTYPE_ROLLS:
-            continue
         subtype_name, subtype_code = _TAINT_SUBTYPE_TABLE[raw_sub]
         if subtype_code == "H" and ppo is not None and ppo <= 0.5:
             continue
@@ -869,15 +868,27 @@ class Taint:
     persistence:      str   # e.g. "Irregular"
 
     def to_dict(self) -> dict:
-        """Return a JSON-friendly dict.  ``subtype_code`` is omitted
-        as it is derivable from ``subtype``."""
+        """Return a JSON-friendly dict."""
         return {
             "subtype":          self.subtype,
+            "subtype_code":     self.subtype_code,
             "severity_code":    self.severity_code,
             "severity":         self.severity,
             "persistence_code": self.persistence_code,
             "persistence":      self.persistence,
         }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Taint":
+        """Reconstruct a Taint from a dict produced by to_dict()."""
+        return cls(
+            subtype=str(d["subtype"]),
+            subtype_code=str(d.get("subtype_code", "")),
+            severity_code=int(d["severity_code"]),
+            severity=str(d["severity"]),
+            persistence_code=int(d["persistence_code"]),
+            persistence=str(d["persistence"]),
+        )
 
 
 @dataclass
@@ -898,6 +909,15 @@ class InsidiousHazard:
         if self.gases:
             d["gases"] = self.gases
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "InsidiousHazard":
+        """Reconstruct an InsidiousHazard from a dict produced by to_dict()."""
+        return cls(
+            hazard_code=str(d["hazard_code"]),
+            hazard=str(d["hazard"]),
+            gases=list(d.get("gases", [])),
+        )
 
 
 def _roll_exotic_subtype(
@@ -969,7 +989,7 @@ def _roll_insidious_hazard(subtype_code: str) -> list:
     if h_code == "G":
         n_roll = _dice(1)
         n = 1 if n_roll <= 2 else (2 if n_roll <= 4 else 3)
-        gases = random.sample(_HAZARDOUS_GASES, n)
+        gases = _rng.sample(_HAZARDOUS_GASES, n)
     hazards.append(InsidiousHazard(hazard_code=h_code, hazard=h_name, gases=gases))
     return hazards
 
@@ -991,6 +1011,15 @@ class GasMixComponent:
         if self.percentage is not None:
             d["percentage"] = self.percentage
         return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "GasMixComponent":
+        """Reconstruct a GasMixComponent from a dict produced by to_dict()."""
+        return cls(
+            gas_name=str(d["gas_name"]),
+            gas_code=str(d["gas_code"]),
+            percentage=int(d["percentage"]) if d.get("percentage") is not None else None,
+        )
 
 
 @dataclass
@@ -1047,6 +1076,25 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
         if self.unusual_subtypes:
             out["unusual_subtypes"] = [s.to_dict() for s in self.unusual_subtypes]
         return out
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "AtmosphereDetail":
+        """Reconstruct an AtmosphereDetail from a dict produced by to_dict()."""
+        def _f(k):
+            return float(d[k]) if d.get(k) is not None else None
+        return cls(
+            pressure_bar=_f("pressure_bar"),
+            oxygen_partial_pressure=_f("oxygen_partial_pressure_bar"),
+            scale_height_km=_f("scale_height_km"),
+            taints=[Taint.from_dict(t) for t in d.get("taints", [])],
+            subtype_code=d.get("subtype_code"),
+            subtype_name=d.get("subtype_name"),
+            hazards=[InsidiousHazard.from_dict(h) for h in d.get("hazards", [])],
+            gas_mix=[GasMixComponent.from_dict(c) for c in d.get("gas_mix", [])],
+            min_safe_altitude_km=_f("min_safe_altitude_km"),
+            no_safe_altitude=bool(d.get("no_safe_altitude", False)),
+            unusual_subtypes=[UnusualSubtype.from_dict(s) for s in d.get("unusual_subtypes", [])],
+        )
 
 
 def _select_gas_mix_table(  # pylint: disable=too-many-return-statements
@@ -1247,7 +1295,7 @@ def generate_atmosphere_detail(  # pylint: disable=too-many-locals,too-many-bran
         if needs_second:
             second, _ = _roll_single_taint(code, ppo)
             taints.append(second)
-    if code in (13, 14) and random.randint(1, 6) >= 4:
+    if code in (13, 14) and _rng.randint(1, 6) >= 4:
         taint, needs_second = _roll_single_taint(code, ppo)
         taints.append(taint)
         if needs_second:
@@ -1314,8 +1362,17 @@ class UnusualSubtype:
             "description":  self.description,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "UnusualSubtype":
+        """Reconstruct an UnusualSubtype from a dict produced by to_dict()."""
+        return cls(
+            subtype_code=str(d["subtype_code"]),
+            subtype_name=str(d["subtype_name"]),
+            description=str(d["description"]),
+        )
 
-# D26 table (roll random.randint(1,2)*10 + random.randint(1,6) → 11–26).
+
+# D26 table (roll _rng.randint(1,2)*10 + _rng.randint(1,6) → 11–26).
 # Entries: (subtype_code, subtype_name, atmospheric_conditions_description)
 _UNUSUAL_SUBTYPE_TABLE: dict = {
     11: ("1", "Dense, Extreme",
@@ -1346,7 +1403,7 @@ _UNUSUAL_SUBTYPE_TABLE: dict = {
 
 def _d26() -> int:
     """Roll D26 (1D2 × 10 + 1D6), giving results 11–26."""
-    return random.randint(1, 2) * 10 + random.randint(1, 6)
+    return _rng.randint(1, 2) * 10 + _rng.randint(1, 6)
 
 
 def _roll_unusual_subtype(
@@ -1474,11 +1531,16 @@ class World:  # pylint: disable=too-many-instance-attributes
     trade_codes:    List[str] = field(default_factory=list)
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
+    seed:           Optional[int] = None
     size_detail:    Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
     biomass_rating:        Optional[int] = field(default=None, init=False)
     biocomplexity_rating:  Optional[int] = field(default=None, init=False)
     native_sophont:  bool = field(default=False, init=False)
     extinct_sophont: bool = field(default=False, init=False)
+    biodiversity_rating:  Optional[int] = field(default=None, init=False)
+    compatibility_rating: Optional[int] = field(default=None, init=False)
+    lifeform_profile:     Optional[str] = field(default=None, init=False)
+    habitability_rating:  Optional[int] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1581,6 +1643,15 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.biocomplexity_rating is not None else {}),
             **({"native_sophont": True}  if self.native_sophont  else {}),
             **({"extinct_sophont": True} if self.extinct_sophont else {}),
+            **({"biodiversity_rating": self.biodiversity_rating}
+               if self.biodiversity_rating is not None else {}),
+            **({"compatibility_rating": self.compatibility_rating}
+               if self.compatibility_rating is not None else {}),
+            **({"lifeform_profile": self.lifeform_profile}
+               if self.lifeform_profile is not None else {}),
+            **({"habitability_rating": self.habitability_rating}
+               if self.habitability_rating is not None else {}),
+            **({"seed": self.seed} if self.seed is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1594,7 +1665,9 @@ class World:  # pylint: disable=too-many-instance-attributes
             A UTF-8–safe JSON string conforming to
             traveller_world_schema.json.
         """
-        return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
+        d = {"_app_version": APP_VERSION}
+        d.update(self.to_dict())
+        return json.dumps(d, indent=indent, ensure_ascii=False)
 
     @staticmethod
     def _validate_world_codes(d: dict) -> None:  # pylint: disable=too-many-branches
@@ -1672,13 +1745,18 @@ class World:  # pylint: disable=too-many-instance-attributes
                     )
 
     @classmethod
-    def from_dict(cls, d: dict) -> "World":
+    def from_dict(cls, d: dict) -> "World":  # pylint: disable=too-many-locals
         """Reconstruct a World from a dict produced by to_dict().
 
         Handles both the nested form produced by to_dict() (where 'starport',
         'size', 'atmosphere', 'hydrographics', 'population', and 'government'
         are sub-objects with a 'code' key) and flat forms where the value is
         the code directly.  Missing fields receive safe defaults.
+
+        All post-generation detail sub-objects (atmosphere_detail,
+        hydrographic_detail, size_detail, biomass_rating,
+        biocomplexity_rating, native_sophont, extinct_sophont) are restored
+        when present in the dict.
 
         Raises ValueError if any present field contains an invalid code or is
         out of range.
@@ -1697,7 +1775,7 @@ class World:  # pylint: disable=too-many-instance-attributes
 
         gas_giant_count = _int(_code(d.get("gas_giant_count", 0)))
 
-        return cls(
+        world = cls(
             name=str(d.get("name", "Unknown")),
             starport=str(_code(d.get("starport", "X")) or "X"),
             size=_int(_code(d.get("size", 0))),
@@ -1708,7 +1786,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             government=_int(_code(d.get("government", 0))),
             law_level=_int(d.get("law_level", 0)),
             tech_level=_int(d.get("tech_level", 0)),
-            has_gas_giant=gas_giant_count > 0,
+            has_gas_giant=bool(d.get("has_gas_giant", gas_giant_count > 0)),
             gas_giant_count=gas_giant_count,
             belt_count=_int(d.get("belt_count", 0)),
             population_multiplier=_int(d.get("population_multiplier", 0)),
@@ -1717,6 +1795,42 @@ class World:  # pylint: disable=too-many-instance-attributes
             travel_zone=str(d.get("travel_zone", "Green")),
             notes=list(d.get("notes", [])),
         )
+
+        atm_block = d.get("atmosphere", {})
+        atm_detail_d = atm_block.get("detail") if isinstance(atm_block, dict) else None
+        if atm_detail_d:
+            world.atmosphere_detail = AtmosphereDetail.from_dict(atm_detail_d)
+
+        hydro_block = d.get("hydrographics", {})
+        hydro_detail_d = hydro_block.get("detail") if isinstance(hydro_block, dict) else None
+        if hydro_detail_d:
+            world.hydrographic_detail = HydrographicDetail.from_dict(hydro_detail_d)
+
+        sd = d.get("size_detail")
+        if sd:
+            if "composition" in sd:
+                from traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
+                world.size_detail = WorldPhysical.from_dict(sd)
+            else:
+                world.size_detail = BeltPhysical.from_dict(sd)
+
+        if d.get("biomass_rating") is not None:
+            world.biomass_rating = int(d["biomass_rating"])
+        if d.get("biocomplexity_rating") is not None:
+            world.biocomplexity_rating = int(d["biocomplexity_rating"])
+        world.native_sophont = bool(d.get("native_sophont", False))
+        world.extinct_sophont = bool(d.get("extinct_sophont", False))
+        if d.get("biodiversity_rating") is not None:
+            world.biodiversity_rating = int(d["biodiversity_rating"])
+        if d.get("compatibility_rating") is not None:
+            world.compatibility_rating = int(d["compatibility_rating"])
+        world.lifeform_profile = d.get("lifeform_profile")
+        if d.get("habitability_rating") is not None:
+            world.habitability_rating = int(d["habitability_rating"])
+        if d.get("seed") is not None:
+            world.seed = int(d["seed"])
+
+        return world
 
     # ------------------------------------------------------------------
     # HTML display card
@@ -1894,6 +2008,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                 lines.append(f"  Mass        : {p.mass:.4f} M⊕")
                 lines.append(f"  Gravity     : {p.gravity:.3f} G")
                 lines.append(f"  Esc. vel.   : {p.escape_velocity:.2f} km/s")
+                if p.resource_rating is not None:
+                    lines.append(f"  Resource    : {p.resource_rating}")
                 lines.append(f"  Axial tilt  : {p.axial_tilt}°")
                 lines.append(f"  Day length  : {p.day_length:.1f} h")
                 if p.stellar_day_hours is not None:
@@ -1986,6 +2102,19 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         ),
         "native_sophont":  world.native_sophont,
         "extinct_sophont": world.extinct_sophont,
+        "biodiversity_rating": world.biodiversity_rating,
+        "biodiversity_str": (to_hex(world.biodiversity_rating)
+                             if world.biodiversity_rating is not None else None),
+        "compatibility_rating": world.compatibility_rating,
+        "compatibility_str": (to_hex(world.compatibility_rating)
+                              if world.compatibility_rating is not None else None),
+        "lifeform_profile": world.lifeform_profile,
+        "habitability_rating": world.habitability_rating,
+        "habitability_str": (
+            f"{world.habitability_rating} — "
+            + habitability_description(world.habitability_rating)
+            if world.habitability_rating is not None else None
+        ),
         "json_str": world.to_json(),
     }
 
@@ -2044,7 +2173,7 @@ def generate_nhz_atmosphere(size: int, hz_deviation: float) -> tuple:
     if atm_code == 10:
         if star:
             dm = 1 if (dagger and hz_deviation <= -3.0) else 0
-            exotic_key = irr_key if random.randint(1, 6) + dm >= 4 else base_key
+            exotic_key = irr_key if _rng.randint(1, 6) + dm >= 4 else base_key
         else:
             exotic_key = base_key
 
@@ -2287,7 +2416,7 @@ def generate_population_multiplier(population: int) -> int:
         return 0
     # D3 is simulated as ceil(1D/2)
     def d3() -> int:
-        return (random.randint(1, 6) + 1) // 2   # gives 1, 2 or 3
+        return (_rng.randint(1, 6) + 1) // 2   # gives 1, 2 or 3
 
     first  = d3()   # maps 1→0, 2→3, 3→6
     second = d3()   # maps 1→1, 2→2, 3→3
@@ -2489,13 +2618,24 @@ def assign_travel_zone(atmosphere: int, government: int,
 # Master generation function
 # ---------------------------------------------------------------------------
 
-def generate_world(name: str = "Unknown") -> World:
+def generate_world(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        name: str = "Unknown",
+        seed: Optional[int] = None,
+        rng: Optional[random.Random] = None,
+) -> World:
     """Generate a complete mainworld following the rulebook procedure.
 
     Steps 1-13 are performed in order, each using the results of
     previous steps exactly as the rulebook specifies.
     """
-    world = World(name=name)
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
+    elif seed is not None:
+        rng = random.Random(seed)
+        _rng = rng
+    # When neither is given, use current _rng as-is (preserves random.seed() behaviour)
+    world = World(name=name, seed=seed)
 
     # --- Step 1: Size ---
     world.size = generate_size()
@@ -2614,10 +2754,9 @@ def main():  # pylint: disable=too-many-branches
     if args.json and args.html:
         parser.error("--json and --html are mutually exclusive.")
 
-    if args.seed is not None:
-        random.seed(args.seed)
-        if not args.json and not args.html:
-            print(f"[Using random seed {args.seed}]\n")
+    rng = random.Random(args.seed) if args.seed is not None else None
+    if args.seed is not None and not args.json and not args.html:
+        print(f"[Using random seed {args.seed}]\n")
 
     worlds = []
     for i in range(args.count):
@@ -2628,7 +2767,7 @@ def main():  # pylint: disable=too-many-branches
         else:
             name = f"World-{i+1}"
 
-        world = generate_world(name=name)
+        world = generate_world(name=name, seed=args.seed, rng=rng)
         worlds.append(world)
 
     if args.json:

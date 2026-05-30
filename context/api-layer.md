@@ -47,6 +47,9 @@ exist in multiple sectors. Returns `400 MISSING_PARAM` if absent.
 | `name` | World name, max 64 chars |
 | `seed` | Integer RNG seed for deterministic output |
 | `detail` | Boolean; triggers `attach_detail()` on system endpoints |
+| `nhz_atmospheres` | Boolean; enables NHZ atmosphere tables on system endpoints |
+| `orbital_eccentricity` | Boolean; rolls eccentricities on system endpoints |
+| `orbital_inclination` | Boolean; rolls inclinations on system endpoints |
 | `format` | `json` (default) \| `html` \| `text` |
 | `sector` | Required on map endpoints |
 | `hex` | 4-digit hex position e.g. `1910`, must match `[0-9A-Fa-f]{4}` |
@@ -86,11 +89,12 @@ Error response shape:
 | `parse_world_json(req)` | `(dict\|None, err\|None)` | Body must contain `uwp` or characteristic sub-fields; returns `INVALID_BODY` if absent/malformed |
 | `parse_count(req)` | `(int, err\|None)` | 1 to `max_batch_size()` |
 | `parse_detail(req)` | `bool` | Accepts `true`, `1`, `yes` (case-insensitive) |
+| `parse_nhz_atmospheres(req)` | `bool` | Accepts `true`, `1`, `yes`; gates NHZ atmosphere tables (WBH pp.42-48) |
 | `parse_orbital_eccentricity(req)` | `bool` | Accepts `true`, `1`, `yes`; gates eccentricity rolls (WBH p.27) |
 | `parse_orbital_inclination(req)` | `bool` | Accepts `true`, `1`, `yes`; gates inclination rolls (WBH p.28) |
 | `parse_format(req)` | `str` | `"json"` \| `"html"` \| `"text"` |
 | `max_batch_size()` | `int` | Reads `TRAVELLER_MAX_BATCH_SIZE` env var; bounds-checked 1–1000; default 20 |
-| `apply_seed(seed)` | `None` | Calls `random.seed(seed)` if seed is not None |
+| `apply_seed(seed)` | `Tuple[int, random.Random]` | Creates `random.Random(seed)` (generates via `secrets` if None); returns `(seed, rng)`; does NOT call `random.seed()` |
 | `ok(body, status_code)` | `HttpResponse` | JSON 200 (or custom) response |
 | `error(message, code, status_code)` | `HttpResponse` | JSON error response |
 
@@ -107,7 +111,7 @@ calls `attach_detail()`. No `detail` parameter is accepted or needed. The
 `LookupError` (→ 404 `NOT_FOUND`), `urllib.error.URLError` (→ 502
 `UPSTREAM_ERROR`), general `Exception` (→ 500 `INTERNAL_ERROR`). The
 `URLError` handler logs the upstream detail server-side but returns only a
-generic message to the caller. Supports `detail`, `format`,
+generic message to the caller. Supports `detail`, `format`, `nhz_atmospheres`,
 `orbital_eccentricity`, and `orbital_inclination` identically to system
 endpoints. (Prior to Session 47 / issue #63, the orbital flags were silently
 ignored on both map endpoints.)

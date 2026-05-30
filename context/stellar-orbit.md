@@ -75,6 +75,26 @@ decision with two motivations:
 whenever `_gg_sah_roll()` is invoked. This was accepted as an unavoidable cost
 of correctness (Session 13).
 
+### Gas giant mass — `_roll_gg_mass()` and `OrbitSlot.gg_mass_earth`
+
+GG mass is rolled at orbit-gen time by `_roll_gg_mass(gg_category)` immediately
+after the SAH roll and stored in `OrbitSlot.gg_mass_earth` (Optional[float]):
+
+| Category | Formula | Range (M⊕) |
+|----------|---------|------------|
+| GS | 5 × (1D + 1) | 10–35 |
+| GM | 20 × (3D − 1) | 40–340 |
+| GL | D3 × 50 × (3D + 4) | 350–3,300 |
+
+This replaces the old `gg_diameter ** 2` proxy used at all five call sites
+(`function_app.py`, `gen-ui/app.py`, `traveller_world_detail.py` ×2,
+`traveller_moon_gen.py` via `planet_mass_earth`). All call sites use a
+legacy-safe fallback: `orbit.gg_mass_earth if not None else float(diam ** 2)`.
+
+**⚠ Seed-breaking:** `_roll_gg_mass()` adds 1–2 dice rolls per gas giant in
+`generate_orbits()`, before the eccentricity block. Seeds are not reproducible
+across the Session 85 boundary for systems containing gas giants.
+
 ### `OrbitSlot.detail` is a typed field
 
 `OrbitSlot.detail` is declared as `Optional["WorldDetail"] = field(default=None,

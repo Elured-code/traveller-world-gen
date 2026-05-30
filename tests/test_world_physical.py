@@ -46,9 +46,11 @@ from traveller_world_physical import (
     _star_tidal_effect_m,
     _tidal_lock_dm,
     apply_moon_tidal_effects,
+    apply_biological_resource_dms,
     check_runaway_greenhouse,
     generate_advanced_mean_temperature,
     generate_world_physical,
+    _density_resource_dm,
 )
 
 
@@ -840,11 +842,32 @@ class TestComputeMeanTemperature:
         # hz_deviation=-2.0 (DM+6), atm=11 (DM+6) → roll=7+6+6=19 → 388+(19-12)*50=738K
         assert _compute_mean_temperature(-2.0, 11) == 738
 
-    def test_minimum_temperature_3k(self):
-        """Temperature is clamped to 3K minimum for extreme outer orbits."""
-        # hz_deviation=20 → DM=-4-round(19*2)=-42, roll=7-42=-35
-        # → 178+(-35)*5=178-175=3K → max(3,3)=3K
-        assert _compute_mean_temperature(20.0, 0) == 3
+    def test_below_10k_triggers_1d5_roll(self):
+        """When extrapolated result < 10K (modified roll ≤ -34), returns 1D+5."""
+        # hz_deviation=20 → orbit_dm=-42, roll=7-42=-35 → T=178+(-35)*5=3K < 10K
+        with patch("traveller_world_physical.random.randint", return_value=4) as mock_roll:
+            result = _compute_mean_temperature(20.0, 0)
+        mock_roll.assert_called_once_with(1, 6)
+        assert result == 9  # 4 + 5
+
+    def test_1d5_result_range(self):
+        """1D+5 produces values 6–11K for die results 1–6."""
+        for die in range(1, 7):
+            with patch("traveller_world_physical.random.randint", return_value=die):
+                result = _compute_mean_temperature(20.0, 0)
+            assert result == die + 5
+
+    def test_threshold_roll_minus33_uses_extrapolation(self):
+        """Modified roll of -33 gives 13K via extrapolation, not 1D+5."""
+        # Need orbit_dm + atm_dm = -40 so that 7 + (-40) = -33
+        # hz_deviation=21 → orbit_dm = -4 - round(20*2) = -44
+        # atm=10 → DM+2 → modified_roll = 7 - 44 + 2 = -35 (too low)
+        # hz_deviation=19 → orbit_dm = -4 - round(18*2) = -40
+        # atm=0 → DM=0 → modified_roll = 7 - 40 = -33 → T = 178 + (-33)*5 = 13K
+        with patch("traveller_world_physical.random.randint") as mock_roll:
+            result = _compute_mean_temperature(19.0, 0)
+        mock_roll.assert_not_called()
+        assert result == 13  # 178 + (-33)*5 = 13K, no 1D+5
 
     def test_generate_world_physical_sets_mean_temperature(self):
         """mean_temperature_k is set when hz_deviation is provided."""
@@ -1048,6 +1071,56 @@ class TestApplySeismicStress:
         _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.0, 8766.0)
         assert wp.tidal_seismic_stress == 0
         assert "tidal_seismic_stress" not in wp.to_dict()
+
+    def test_advanced_mean_temperature_updated_in_place_by_seismic(self):
+        """_apply_seismic_stress() updates advanced_mean_temperature_k in-place
+        using ⁴√(T⁴ + TSS⁴) when tss > 0 and the rounded value changes."""
+        wp = self._make_wp(mean_temp=50)
+        wp.advanced_mean_temperature_k = 50
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        tss = wp.total_seismic_stress or 0
+        if tss > 0:
+            expected = max(50, round((50 ** 4 + tss ** 4) ** 0.25))
+            assert wp.advanced_mean_temperature_k == expected
+
+    def test_advanced_mean_temperature_unchanged_when_none(self):
+        """advanced_mean_temperature_k stays None when not set before seismic stress."""
+        wp = self._make_wp(mean_temp=50)
+        # advanced_mean_temperature_k left at None (default)
+        _apply_seismic_stress(wp, 6, 2.0, 1.0, 1.0, 0.1, 8766.0)
+        assert wp.advanced_mean_temperature_k is None
+
+    def test_high_low_temperature_updated_with_advanced_mean(self):
+        """high_temperature_k and low_temperature_k are also updated when
+        advanced_mean_temperature_k is adjusted for seismic heating."""
+        wp = self._make_wp(mean_temp=50)
+        wp.advanced_mean_temperature_k = 50
+        wp.high_temperature_k = 60
+        wp.low_temperature_k = 40
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        tss = wp.total_seismic_stress or 0
+        if tss > 0 and wp.advanced_mean_temperature_k != 50:
+            assert wp.high_temperature_k >= 60
+            assert wp.low_temperature_k >= 40
+            assert wp.high_temperature_k == max(60, round((60 ** 4 + tss ** 4) ** 0.25))
+            assert wp.low_temperature_k  == max(40, round((40 ** 4 + tss ** 4) ** 0.25))
+
+    def test_advanced_mean_temperature_roundtrips_from_dict_after_seismic(self):
+        """advanced_mean_temperature_k (after seismic adjustment) survives round-trip."""
+        wp = self._make_wp(mean_temp=50)
+        wp.advanced_mean_temperature_k = 50
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        d = wp.to_dict()
+        wp2 = WorldPhysical.from_dict(d)
+        assert wp2.advanced_mean_temperature_k == wp.advanced_mean_temperature_k
+
+    def test_advanced_mean_temperature_no_less_than_original_after_seismic(self):
+        """Seismic heating never reduces advanced_mean_temperature_k."""
+        original = 50
+        wp = self._make_wp(mean_temp=original)
+        wp.advanced_mean_temperature_k = original
+        _apply_seismic_stress(wp, 8, 0.1, 1.0, 0.05, 0.9, 200.0)
+        assert wp.advanced_mean_temperature_k >= original
 
 
 # ---------------------------------------------------------------------------
@@ -1424,15 +1497,21 @@ class TestGGSatelliteTidal:
         assert wp_gg.tidal_amplitude_m > wp_base.tidal_amplitude_m
         assert (wp_gg.tidal_stress_factor or 0) >= (wp_base.tidal_stress_factor or 0)
 
-    def test_gg_tidal_ss_increases_with_eccentricity(self):
-        """Non-zero satellite eccentricity around GG adds to tidal seismic stress."""
+    def test_gg_tidal_ss_unaffected_by_satellite_eccentricity(self):
+        """GG satellite eccentricity does not add to tidal seismic stress.
+
+        The _compute_tidal_ss formula is calibrated for star→planet distances and
+        produces nonsensical values at moon distances; it is not applied for GG
+        parent contributions. The GG tidal effect flows through TSF via amplitude.
+        """
         wp_base = self._make_wp()
         wp_gg   = self._make_wp()
         assert wp_base is not None and wp_gg is not None
         self._apply(wp_base)
         self._apply(wp_gg, gg_mass_earth=81.0,
                     gg_satellite_moon=self._sat_moon(orbit_km=500_000.0, ecc=0.3, period_h=48.0))
-        assert (wp_gg.tidal_seismic_stress or 0) > (wp_base.tidal_seismic_stress or 0)
+        assert (wp_gg.tidal_seismic_stress or 0) == (wp_base.tidal_seismic_stress or 0)
+        assert (wp_gg.tidal_amplitude_m or 0.0) > (wp_base.tidal_amplitude_m or 0.0)
         assert (wp_gg.total_seismic_stress or 0) > (wp_base.total_seismic_stress or 0)
 
     def test_gg_zero_mass_is_backward_compatible(self):
@@ -1446,6 +1525,16 @@ class TestGGSatelliteTidal:
         assert wp1.tidal_stress_factor == wp2.tidal_stress_factor
         assert wp1.tidal_seismic_stress == wp2.tidal_seismic_stress
         assert wp1.total_seismic_stress == wp2.total_seismic_stress
+
+    def test_tsf_capped_at_500(self):
+        """TSF is capped at 500 regardless of tidal amplitude (liquefaction limit)."""
+        wp = self._make_wp()
+        assert wp is not None
+        # A GG satellite at 50,000 km from an 81 ME giant produces amplitude >> 5,000 m
+        self._apply(wp, gg_mass_earth=81.0,
+                    gg_satellite_moon=self._sat_moon(orbit_km=50_000.0, ecc=0.0))
+        assert wp.tidal_stress_factor is not None
+        assert wp.tidal_stress_factor <= 500
 
 
 # ---------------------------------------------------------------------------
@@ -2192,4 +2281,98 @@ class TestCheckRunawayGreenhouse:
         with patch("random.randint", return_value=3):
             wp = generate_world_physical(w)
         assert wp is not None
+
+
+# ---------------------------------------------------------------------------
+# Resource rating — WBH p.131
+# ---------------------------------------------------------------------------
+
+class TestDensityResourceDm:
+    def test_high_density_gives_plus2(self):
+        assert _density_resource_dm(1.13) == 2
+
+    def test_exactly_1_12_gives_zero(self):
+        assert _density_resource_dm(1.12) == 0
+
+    def test_low_density_gives_minus2(self):
+        assert _density_resource_dm(0.49) == -2
+
+    def test_exactly_0_5_gives_zero(self):
+        assert _density_resource_dm(0.5) == 0
+
+    def test_mid_density_gives_zero(self):
+        assert _density_resource_dm(0.8) == 0
+
+
+class TestApplyBiologicalResourceDms:
+    def test_no_life_no_change(self):
+        assert apply_biological_resource_dms(5, None, None, None) == 5
+
+    def test_biomass_3_plus2(self):
+        assert apply_biological_resource_dms(5, 3, None, None) == 7
+
+    def test_biomass_2_no_dm(self):
+        assert apply_biological_resource_dms(5, 2, None, None) == 5
+
+    def test_biodiversity_8_to_a_plus1(self):
+        assert apply_biological_resource_dms(5, None, 9, None) == 6
+
+    def test_biodiversity_b_plus_plus2(self):
+        assert apply_biological_resource_dms(5, None, 11, None) == 7
+
+    def test_compatibility_8_plus_plus2(self):
+        assert apply_biological_resource_dms(5, None, None, 8) == 7
+
+    def test_compatibility_low_with_biomass_minus1(self):
+        assert apply_biological_resource_dms(5, 1, None, 3) == 4
+
+    def test_compatibility_low_without_biomass_no_dm(self):
+        # DM-1 only applies when biomass >= 1
+        assert apply_biological_resource_dms(5, 0, None, 3) == 5
+
+    def test_clamped_to_max_12(self):
+        assert apply_biological_resource_dms(11, 5, 12, 9) == 12
+
+    def test_clamped_to_min_2(self):
+        assert apply_biological_resource_dms(2, 1, None, 2) == 2
+
+
+class TestWorldResourceRating:
+    def test_always_set_after_generate_world_physical(self):
+        w = _World(size=6)
+        with patch("random.randint", return_value=4):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        assert wp.resource_rating is not None
+
+    def test_always_in_valid_range(self):
+        import random as _random
+        rng = _random.Random(42)
+        for size in range(1, 11):
+            w = _World(size=size)
+            wp = generate_world_physical(w, rng=rng)
+            assert wp is not None
+            assert 2 <= wp.resource_rating <= 12
+
+    def test_size_0_returns_none(self):
+        w = _World(size=0)
+        with patch("random.randint", return_value=4):
+            result = generate_world_physical(w)
+        assert result is None
+
+    def test_to_dict_emits_resource_rating(self):
+        w = _World(size=5)
+        with patch("random.randint", return_value=4):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        assert "resource_rating" in wp.to_dict()
+        assert isinstance(wp.to_dict()["resource_rating"], int)
+
+    def test_from_dict_round_trips(self):
+        w = _World(size=5)
+        with patch("random.randint", return_value=4):
+            wp = generate_world_physical(w)
+        assert wp is not None
+        restored = WorldPhysical.from_dict(wp.to_dict())
+        assert restored.resource_rating == wp.resource_rating
         assert "runaway_greenhouse" not in wp.to_dict()

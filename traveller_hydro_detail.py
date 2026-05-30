@@ -30,6 +30,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional
 
+_rng: random.Random = random  # type: ignore[assignment]
+
 
 # WBH p.93 Hydrographics Ranges table: code -> (low_pct, high_pct)
 _HYDRO_PCT_RANGE: dict[int, tuple[int, int]] = {
@@ -58,11 +60,19 @@ _FLUID_TYPE_BY_TEMP: dict[str, str] = {
 # Atmosphere codes with no surface liquid (gas giant / hydrogen atmospheres).
 _NO_SURFACE_LIQUID_ATMS: frozenset[int] = frozenset({16, 17})
 
+# Atmosphere codes where Cold → Ammonia applies (WBH pp.91-92).
+# Only exotic/corrosive/insidious/unusual atmospheres (10–15) can support an
+# ammonia ocean.  Standard breathable atmospheres (0–9) retain Water even at
+# Cold temperatures.
+_AMMONIA_ELIGIBLE_ATMS: frozenset[int] = frozenset({10, 11, 12, 13, 14, 15})
+
 
 def _fluid_type(atmosphere: int, temperature: str) -> Optional[str]:
     """Return the primary fluid type (WBH pp.91-92) or None for dry/gas worlds."""
     if atmosphere in _NO_SURFACE_LIQUID_ATMS:
         return None
+    if temperature == "Cold" and atmosphere not in _AMMONIA_ELIGIBLE_ATMS:
+        return "Water"
     return _FLUID_TYPE_BY_TEMP.get(temperature)
 
 
@@ -80,6 +90,14 @@ class HydrographicDetail:
             d["fluid_type"] = self.fluid_type
         return d
 
+    @classmethod
+    def from_dict(cls, d: dict) -> "HydrographicDetail":
+        """Reconstruct a HydrographicDetail from a dict produced by to_dict()."""
+        return cls(
+            surface_liquid_pct=int(d["surface_liquid_pct"]),
+            fluid_type=d.get("fluid_type"),
+        )
+
 
 def generate_hydrographic_detail(
     hydrographics: int,
@@ -87,6 +105,7 @@ def generate_hydrographic_detail(
     *,
     atmosphere: int = 0,
     temperature: str = "Temperate",
+    rng: Optional[random.Random] = None,
 ) -> Optional[HydrographicDetail]:
     """Return hydrographic detail for a mainworld.
 
@@ -113,6 +132,9 @@ def generate_hydrographic_detail(
     Returns:
         HydrographicDetail or None.
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     if size == 0:
         return None
     if hydrographics < 0 or hydrographics > 10:
@@ -122,7 +144,7 @@ def generate_hydrographic_detail(
         pct = 100
     else:
         low, high = _HYDRO_PCT_RANGE[hydrographics]
-        pct = random.randint(low, high)
+        pct = _rng.randint(low, high)
 
     fluid = _fluid_type(atmosphere, temperature) if hydrographics > 0 else None
 

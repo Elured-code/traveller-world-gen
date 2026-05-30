@@ -123,14 +123,12 @@ within the same module).
 
 **`requirements.txt`** gains `Jinja2>=3.1.0`.
 
-The system card still renders the same mainworld detail sections:
-- **`WorldPhysical`** — composition, diameter, density, mass, gravity, escape
-  velocity, axial tilt, day length, mean temperature (K, when hz_deviation available),
-  tidal status.
-- **Atmosphere detail** — profile, pressure, O₂ ppo, scale height, altitude,
-  unusual subtypes, taints, hazards, gas mix.
-- **Hydrographic detail** — surface liquid percentage.
-- **`BeltPhysical`** — belt span, composition, bulk, resource rating, bodies.
+The system card renders **stellar data and orbital survey only** (Session 83,
+issue #114). The mainworld detail sections (WorldPhysical, atmosphere, hydrographic,
+native life, habitability, notes) were removed from `system_card.html`; they appear
+exclusively on the Mainworld tab via `World.to_html()`. The Stars table was extended
+with MAO and HZ Orbit# columns (issue #115), sourced from `SystemOrbits.star_mao`,
+`star_hz_inner`, `star_hzco`, and `star_hz_outer` dicts keyed by star designation.
 
 ---
 
@@ -304,6 +302,11 @@ apply_moon_tidal_effects(
 ) -> None
 # Re-runs tidal lock check with moon data (skipped when moons is empty).
 # Always computes seismic stress (RSS + Tidal SS + TSF) and tidal amplitude.
+# Sets seismic_temperature_k (⁴√(T_mean⁴ + TSS⁴)) when mean_temperature_k is set
+# and the rounded value changes.
+# Updates advanced_mean_temperature_k, high_temperature_k, and low_temperature_k
+# in-place using ⁴√(T⁴ + TSS⁴) when those fields are set and the rounded value
+# changes (Session 79).
 # Returns immediately (no-op) when physical is not a WorldPhysical instance (BeltPhysical guard).
 # Mutates physical in-place. Must be called AFTER generate_moons() completes.
 # Call sites: function_app._apply_mainworld_moon_tidal(), gen-ui _finish_system_generation().
@@ -482,10 +485,16 @@ if want_detail:
 detail: Optional[HydrographicDetail] = generate_hydrographic_detail(
     hydrographics: int,
     size: int,
+    *,
+    atmosphere: int = 0,
+    temperature: str = "Temperate",
 ) -> Optional[HydrographicDetail]
 # Returns None for size 0 (belt mainworlds) or hydro out of range [0,10].
 # For hydro 10 with size > 9 (ocean world): always returns surface_liquid_pct=100.
 # Otherwise rolls uniformly over _HYDRO_PCT_RANGE[hydrographics].
+# fluid_type is None for desert worlds (hydro 0).
+# Cold + atmosphere 10–15 → Ammonia; Cold + atmosphere 0–9 → Water (Session 83 fix).
+# Atmosphere 16–17 (gas giant) → fluid_type None.
 ```
 
 Call site: `generate_mainworld_at_orbit()` in the shared section (after the
@@ -503,6 +512,8 @@ Exported constants:
 - `HydrographicDetail` — the dataclass
 - `generate_hydrographic_detail` — the public function
 - `_HYDRO_PCT_RANGE` — `{code: (low, high)}` for codes 0–10 (used by tests)
+- `_AMMONIA_ELIGIBLE_ATMS` — `frozenset({10, 11, 12, 13, 14, 15})` — atmosphere
+  codes where Cold temperature produces Ammonia (not Water); exported for tests
 
 ---
 

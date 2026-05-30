@@ -142,8 +142,8 @@ def _arc_path(cx: float, cy: float, r: float, half_deg: float) -> str:
 
 
 def _marker_xy(cx: float, cy: float, r: float, half_deg: float) -> tuple[float, float]:
-    """Marker sits at the top end of the arc (upper endpoint)."""
-    a = math.radians(half_deg)
+    """Marker sits one third of the way down the arc from the top endpoint."""
+    a = math.radians(half_deg / 3)
     return (cx + r * math.cos(a), cy - r * math.sin(a))
 
 

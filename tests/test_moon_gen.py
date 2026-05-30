@@ -460,3 +460,66 @@ class TestMoonEccentricityInclination:
             d = m.to_dict()
             assert "orbit_eccentricity" not in d
             assert "orbit_inclination" not in d
+
+
+# ---------------------------------------------------------------------------
+# TestPerigeeRocheCheck
+# ---------------------------------------------------------------------------
+
+class TestPerigeeRocheCheck:
+    """Moons whose eccentric perigee dips inside 2 PD are converted to rings."""
+
+    def test_moon_inside_roche_perigee_becomes_ring(self):
+        """A moon placed at 2.5 PD with ecc=0.4 has perigee 1.5 PD — converted to ring."""
+        # Use a GM gas giant which reliably generates significant moons.
+        # _roll_moon_pd returns (pd, range_label); mocked to place first moon at 2.5 PD.
+        # After collision resolution subsequent moons land at ≥3.5 PD; with ecc=0.4
+        # perigee = 3.5×0.6 = 2.1 PD > 2, so only the first moon is converted.
+        import random as _r
+        _r.seed(1)
+        with (
+            patch("traveller_moon_gen._roll_moon_pd", return_value=(2.5, "inner")),
+            patch("traveller_moon_gen.roll_eccentricity", return_value=0.4),
+            patch("traveller_moon_gen.roll_inclination", return_value=10.0),
+        ):
+            moons = generate_moons(
+                size_code=0, orbit_number=4.0,
+                is_gas_giant=True, gg_category="GM", gg_diameter=9,
+                orbit_au=2.0, star_mass_solar=1.0,
+            )
+        sig = [m for m in moons if not m.is_ring]
+        rings = [m for m in moons if m.is_ring]
+        # All surviving significant moons must have perigee >= 2 PD
+        for m in sig:
+            assert m.orbit_pd is not None
+            assert m.orbit_pd * (1.0 - m.orbit_eccentricity) >= 2.0
+        # At least one ring must exist (converted from the 2.5 PD victim)
+        assert rings, "expected at least one ring from perigee conversion"
+
+    def test_moon_outside_roche_perigee_survives(self):
+        """A moon placed at 4 PD with ecc=0.4 has perigee 2.4 PD — remains significant."""
+        import random as _r
+        _r.seed(1)
+        with (
+            patch("traveller_moon_gen._roll_moon_pd", return_value=(4.0, "inner")),
+            patch("traveller_moon_gen.roll_eccentricity", return_value=0.4),
+            patch("traveller_moon_gen.roll_inclination", return_value=5.0),
+        ):
+            moons = generate_moons(
+                size_code=0, orbit_number=4.0,
+                is_gas_giant=True, gg_category="GM", gg_diameter=9,
+                orbit_au=2.0, star_mass_solar=1.0,
+            )
+        sig = [m for m in moons if not m.is_ring]
+        # Perigee = 4.0 × (1−0.4) = 2.4 PD > 2; no moon should be demoted
+        assert sig, "expected at least one significant moon to survive"
+        for m in sig:
+            if m.orbit_pd is not None:
+                assert m.orbit_pd * (1.0 - m.orbit_eccentricity) >= 2.0
+
+    def test_perigee_check_skipped_without_orbit_data(self):
+        """No orbit placement, no eccentricity, no Roche conversion."""
+        moons = generate_moons(size_code=8, orbit_number=3.0)
+        # Without orbit data eccentricities are 0; no conversion can occur
+        for m in moons:
+            assert m.orbit_eccentricity == 0.0

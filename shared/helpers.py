@@ -329,6 +329,32 @@ def parse_orbital_inclination(req: func.HttpRequest) -> bool:
     return raw in ("true", "1", "yes")
 
 
+def parse_nhz_atmospheres(req: func.HttpRequest) -> bool:
+    """Extract the optional 'nhz_atmospheres' flag.
+
+    When True, the caller should pass nhz_atmospheres=True to
+    generate_full_system() so that worlds outside the habitable zone use
+    WBH Non-Habitable Zone atmosphere tables (WBH pp.42-48).
+    Accepts ?nhz_atmospheres=true/1/yes or {"nhz_atmospheres": true}
+    in the body. Defaults to False.
+
+    Returns:
+        True if NHZ atmospheres was requested, False otherwise.
+    """
+    raw = req.params.get("nhz_atmospheres", "").strip().lower()
+    if not raw:
+        try:
+            body = req.get_json()
+            if isinstance(body, dict):
+                val = body.get("nhz_atmospheres")
+                if isinstance(val, bool):
+                    return val
+                raw = str(val).strip().lower() if val is not None else ""
+        except (ValueError, TypeError):
+            pass
+    return raw in ("true", "1", "yes")
+
+
 def parse_format(req: func.HttpRequest) -> str:
     """Extract the optional 'format' parameter.
 
@@ -449,24 +475,19 @@ def parse_world_json(
     return data, None
 
 
-def apply_seed(seed: Optional[int]) -> int:
-    """Seed the global random state and return the seed used.
+def apply_seed(seed: Optional[int]) -> Tuple[int, random.Random]:
+    """Create a seeded random.Random instance and return (seed, rng).
 
     If *seed* is None a cryptographically random seed is generated via
     :mod:`secrets` so that results are always reproducible: callers can
-    record the returned value and pass it back to reproduce the same output.
-
-    Azure Functions runs one worker per invocation in the consumption plan,
-    so there is no cross-request state leak, but note that in a Premium/
-    Dedicated plan with warm instances the seed would affect all subsequent
-    calls on that instance.  For production use at scale, consider passing
-    the seed through to the generation logic rather than using global state.
+    record the returned seed and pass it back to reproduce the same output.
 
     Returns:
-        The integer seed that was applied to :func:`random.seed`.
+        A (seed, rng) tuple where seed is the integer used and rng is a
+        :class:`random.Random` instance initialised with that seed.
     """
     if seed is None:
         seed = secrets.randbelow(2 ** 31)
-    random.seed(seed)
+    rng = random.Random(seed)
     logger.debug("Random seed set to %d", seed)
-    return seed
+    return seed, rng
