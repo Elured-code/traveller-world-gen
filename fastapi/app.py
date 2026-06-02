@@ -112,7 +112,7 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter
-from slowapi.errors import RateLimitExceeded
+from slowapi.errors import RateLimitExceeded  # registered as exception handler key
 from slowapi.util import get_remote_address
 
 from helpers import (
@@ -149,7 +149,7 @@ _RATE_LIMIT = os.environ.get("RATE_LIMIT_PER_MINUTE", "100/minute")
 limiter = Limiter(key_func=get_remote_address)
 
 
-async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:  # pylint: disable=unused-argument
+async def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:  # pylint: disable=unused-argument
     """Return a project-standard error shape for 429 rate-limit responses."""
     return JSONResponse(
         content={"error": {"code": "RATE_LIMIT_EXCEEDED",
