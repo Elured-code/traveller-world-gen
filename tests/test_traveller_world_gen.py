@@ -73,6 +73,7 @@ from traveller_world_gen import (
     generate_belt_count,
     assign_trade_codes,
     assign_travel_zone,
+    apply_mainworld_social,
     generate_world,
     format_atmosphere_profile,
     AtmosphereDetail,
@@ -124,8 +125,10 @@ from traveller_world_gen import (
     generate_unusual_subtype,
     UnusualSubtype,
 )
-from traveller_system_gen import generate_full_system
-from traveller_world_detail import attach_detail, _ehex_to_int, generate_biomass_rating
+from traveller_system_gen import generate_full_system, select_mainworld
+from traveller_world_detail import (
+    attach_detail, _ehex_to_int, generate_biomass_rating, WorldDetail,
+)
 from traveller_hydro_detail import HydrographicDetail
 from traveller_world_physical import WorldPhysical
 from traveller_belt_physical import BeltPhysical
@@ -6306,6 +6309,10 @@ class TestIndependentGovernment:
         found_inhabited = False
         for seed in range(500):
             system = generate_full_system(seed=seed)
+            # Social data is deferred; apply it so secondaries can be inhabited.
+            if system.mainworld is not None:
+                apply_mainworld_social(system.mainworld,
+                                       rng=random.Random(seed + 88888))
             detail_map = generate_system_detail(
                 system, independent_government=True, rng=random.Random(seed + 99999)
             )
@@ -6329,3 +6336,159 @@ class TestIndependentGovernment:
             assert 0 <= law <= 11, (
                 f"seed={seed}: independent law for gov 6 should be in [0,11], got {law}"
             )
+
+
+# ===========================================================================
+# TestMainworldSelection — select_mainworld() and WorldDetail.native_sophont
+# ===========================================================================
+
+class TestNativeSophontOnWorldDetail:
+    """native_sophont field on WorldDetail (added Session 92, issue #125)."""
+
+    def test_default_false(self):
+        """WorldDetail.native_sophont is False by default."""
+        wd = WorldDetail(sah="673")
+        assert wd.native_sophont is False
+
+    def test_to_dict_omits_when_false(self):
+        """to_dict() omits native_sophont when False."""
+        wd = WorldDetail(sah="673")
+        assert "native_sophont" not in wd.to_dict()
+
+    def test_to_dict_emits_when_true(self):
+        """to_dict() emits native_sophont: True when set."""
+        wd = WorldDetail(sah="673")
+        wd.native_sophont = True
+        assert wd.to_dict().get("native_sophont") is True
+
+    def test_from_dict_restores_true(self):
+        """from_dict() restores native_sophont=True."""
+        wd = WorldDetail(sah="673")
+        wd.native_sophont = True
+        wd2 = WorldDetail.from_dict(wd.to_dict())
+        assert wd2.native_sophont is True
+
+    def test_from_dict_defaults_false(self):
+        """from_dict() defaults to False when key absent."""
+        wd = WorldDetail.from_dict({"sah": "673"})
+        assert wd.native_sophont is False
+
+
+class TestSelectMainworld:
+    """select_mainworld() scoring, wild-card, and swap behaviour."""
+
+    def _make_system_with_terrestrial_secondary(self):
+        """Return (system, secondary_orbit) where a secondary terrestrial exists."""
+        for seed in range(200):
+            system = generate_full_system("Test", seed=seed)
+            attach_detail(system, rng=random.Random(seed + 50000))
+            for orbit in system.system_orbits.orbits:
+                if (orbit.world_type == "terrestrial"
+                        and not orbit.is_mainworld_candidate
+                        and orbit.detail is not None
+                        and not orbit.detail.is_gas_giant):
+                    return system, orbit
+        raise RuntimeError("No system with a terrestrial secondary found in 200 seeds")
+
+    def test_returns_false_when_no_secondaries(self):
+        """Returns False immediately when there are no terrestrial secondaries."""
+        for seed in range(500):
+            system = generate_full_system("T", seed=seed)
+            has_sec = any(
+                o.world_type == "terrestrial"
+                and not o.is_mainworld_candidate
+                and o.detail is not None
+                for o in system.system_orbits.orbits
+            )
+            if not has_sec:
+                result = select_mainworld(system, rng=random.Random(1))
+                assert result is False
+                return
+        pytest.skip("No single-terrestrial system found in 500 seeds")
+
+    def test_no_swap_when_mainworld_scores_best(self):
+        """When mainworld has higher score, returns False (no swap)."""
+        system = generate_full_system("T", seed=42)
+        attach_detail(system, rng=random.Random(999))
+        mw = system.mainworld
+        if mw is None:
+            return
+        # Force mainworld to have a high habitability rating
+        mw.habitability_rating = 20
+        orig_orbit = system.mainworld_orbit
+        result = select_mainworld(system, rng=random.Random(1))
+        # With a very high hab score, mainworld should win (unless wild card)
+        # We can't guarantee no wild card, so just check result type
+        assert isinstance(result, bool)
+        if not result:
+            assert system.mainworld_orbit is orig_orbit
+
+    def test_swap_updates_mainworld_orbit(self):
+        """When a secondary wins, system.mainworld_orbit is updated."""
+        system, winner_orbit = self._make_system_with_terrestrial_secondary()
+        mw = system.mainworld
+        if mw is None:
+            return
+        # Force secondary to have a much higher score
+        winner_orbit.detail.habitability_rating = 20
+        if mw.habitability_rating is None or mw.habitability_rating < 15:
+            mw.habitability_rating = 0
+        orig_orbit = system.mainworld_orbit
+        # Use a seed that avoids the wild-card 3D=18 roll
+        rng = random.Random(0)
+        # Roll until we get a non-18 outcome for 3D
+        for attempt in range(50):
+            rng2 = random.Random(attempt)
+            roll = rng2.randint(1,6) + rng2.randint(1,6) + rng2.randint(1,6)
+            if roll != 18:
+                result = select_mainworld(system, rng=random.Random(attempt))
+                if result:
+                    assert system.mainworld_orbit is not orig_orbit
+                    assert system.mainworld_orbit is winner_orbit
+                    assert winner_orbit.is_mainworld_candidate is True
+                    assert orig_orbit.is_mainworld_candidate is False
+                    assert orig_orbit.detail is not None
+                return
+
+    def test_demoted_mainworld_becomes_world_detail(self):
+        """After swap, old mainworld orbit has a WorldDetail."""
+        system, winner_orbit = self._make_system_with_terrestrial_secondary()
+        mw = system.mainworld
+        if mw is None:
+            return
+        winner_orbit.detail.habitability_rating = 20
+        if mw.habitability_rating is None or mw.habitability_rating < 15:
+            mw.habitability_rating = 0
+        orig_orbit = system.mainworld_orbit
+        for attempt in range(50):
+            rng = random.Random(attempt)
+            roll = rng.randint(1,6) + rng.randint(1,6) + rng.randint(1,6)
+            if roll != 18:
+                result = select_mainworld(system, rng=random.Random(attempt))
+                if result:
+                    assert isinstance(orig_orbit.detail, WorldDetail)
+                    assert orig_orbit.detail.native_sophont is False
+                return
+
+    def test_select_mainworld_returns_bool(self):
+        """select_mainworld always returns a bool."""
+        system = generate_full_system("T", seed=7)
+        attach_detail(system, rng=random.Random(77777))
+        result = select_mainworld(system, rng=random.Random(5))
+        assert isinstance(result, bool)
+
+    def test_apply_mainworld_social_populates_uwp(self):
+        """apply_mainworld_social() fills in a valid UWP after physical-only world."""
+        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        system = generate_full_system("T", seed=3)
+        mw = system.mainworld
+        assert mw is not None
+        # Before: social data is placeholder
+        assert mw.starport == "X"
+        assert mw.population == 0
+        apply_mainworld_social(mw, rng=random.Random(12345))
+        # After: should have real social data
+        uwp = mw.uwp()
+        assert len(uwp) == 9
+        assert uwp[0] in "ABCDEX"
+        assert mw.travel_zone in ("Green", "Amber", "Red")

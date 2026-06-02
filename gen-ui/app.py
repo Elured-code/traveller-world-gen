@@ -75,9 +75,11 @@ except ImportError:
     _HAS_SVG_WIDGET = False
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
-from traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
+from traveller_system_gen import (  # noqa: E402
+    generate_full_system, TravellerSystem, select_mainworld as _select_mainworld,
+)
 from traveller_world_detail import (  # noqa: E402
-    attach_detail as _attach_detail, gg_diameter_from_sah,
+    attach_detail as _attach_detail, gg_diameter_from_sah, apply_secondary_social,
 )
 from traveller_world_gen import (  # noqa: E402
     World,
@@ -86,6 +88,7 @@ from traveller_world_gen import (  # noqa: E402
     generate_hydrographics,
     generate_unusual_subtype,
     generate_world,
+    apply_mainworld_social,
 )
 from traveller_world_physical import (  # noqa: E402
     generate_world_physical, apply_moon_tidal_effects,
@@ -777,7 +780,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._act_save.setEnabled(True)
         self._show_summary(world)
 
-    def _finish_system_generation(  # pylint: disable=too-many-locals
+    def _finish_system_generation(  # pylint: disable=too-many-locals,too-many-statements
         self, system: object, attach_detail_flag: bool = False
     ) -> None:
         self._current_system = system
@@ -881,6 +884,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         gg_mass_earth=_gg_m_e,
                         gg_satellite_moon=_gg_sat,
                     )
+        if attach_detail_flag:
+            _select_mainworld(system)   # type: ignore[arg-type]
+            self._current_world = system.mainworld   # type: ignore[attr-defined]
+        if system.mainworld is not None:  # type: ignore[attr-defined]
+            apply_mainworld_social(system.mainworld)  # type: ignore[attr-defined]
+        if attach_detail_flag:
+            apply_secondary_social(  # type: ignore[arg-type]
+                system,
+                independent_government=self._opt_independent_gov,
+            )
         self._detail_attached = attach_detail_flag
         self._act_save.setEnabled(True)
         self._show_system_summary(system)
@@ -1314,6 +1327,17 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             atmosphere=world.atmosphere,  # type: ignore
             temperature="Boiling",
         )
+        age_gyr = stars[0].age_gyr if stars else 0.0
+        world.atmosphere_detail = generate_atmosphere_detail(  # type: ignore[attr-defined]
+            world.atmosphere, world.size,  # type: ignore[attr-defined]
+            age_gyr, "Boiling",
+            hz_deviation=mw_orbit.hz_deviation,  # type: ignore[attr-defined]
+        )
+        generate_gas_mix(
+            world.atmosphere_detail,  # type: ignore[attr-defined]
+            world.atmosphere, world.size,  # type: ignore[attr-defined]
+            "Boiling", mw_orbit.hz_deviation, world.hydrographics,  # type: ignore[attr-defined]
+        )
         rg_pb = (
             world.atmosphere_detail.pressure_bar  # type: ignore
             if world.atmosphere_detail else None  # type: ignore
@@ -1338,6 +1362,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
 def main() -> None:
     """Launch the Traveller World Generator desktop application."""
+    # Suppress the harmless TASK_CATEGORY_POLICY stderr noise from the
+    # Chromium renderer subprocess (QtWebEngine on macOS, KERN_INVALID_ARGUMENT).
+    # Must be set before QApplication is constructed.
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--log-level=3")
     app = QApplication(sys.argv)
     app.setApplicationName("Traveller World Generator")
     window = AppWindow()

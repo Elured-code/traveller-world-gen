@@ -1,0 +1,7 @@
+{
+  "TRAVELLER_MAX_BATCH_SIZE": "20",
+  "_BATCH_NOTE": "Max worlds per /api/worlds batch request. Integer 1-1000; default 20.",
+
+  "RATE_LIMIT_PER_MINUTE": "100/minute",
+  "_RATE_LIMIT_NOTE": "SlowAPI per-IP rate limit string applied to every endpoint. Uses SlowAPI limit syntax e.g. '100/minute', '5/second'. Default 100/minute."
+}

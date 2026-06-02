@@ -1226,9 +1226,10 @@ class TestOptionalInhospitableRule:
         system = self._make_system([nhz, hz])
         # Loop processes nhz (→ _inhospitable), then hz (→ _roll_world_and_moons).
         # After the loop: group roll for _inhospitable.
-        # Call order: [hz_bio_d1, hz_bio_d2, hz_bc_d1, hz_bc_d2, group_d1, group_d2]
+        # bc=14≥8 → sophont check (6,6 → current_roll=14≥13 → 2 dice only)
+        # Order: [hz_bio*2, hz_bc*2, hz_sophont*2, group*2]
         with patch("traveller_world_detail.random.randint",
-                   side_effect=[6, 6, 6, 6, 1, 1]):
+                   side_effect=[6, 6, 6, 6, 6, 6, 1, 1]):
             _apply_biomass(system, optional_inhospitable_rule=True)
         assert nhz.detail.biomass_rating == 0
         # SAH "880" → atm=8(DM+2), hydro=0(DM-4), temperate(DM+2), net DM=0
@@ -1242,9 +1243,10 @@ class TestOptionalInhospitableRule:
         winner = self._make_orbit(sah="880", is_hz=False, temp_zone="temperate")
         loser  = self._make_orbit(sah="000", is_hz=False)
         system = self._make_system([winner, loser])
-        # [group_d1, group_d2, winner_bio_d1, winner_bio_d2, winner_bc_d1, winner_bc_d2]
+        # [group*2, winner_bio*2, winner_bc*2, winner_sophont*2]
+        # bc=14≥8 → sophont check (6,6 → current_roll=14≥13 → 2 dice only)
         with patch("traveller_world_detail.random.randint",
-                   side_effect=[6, 6, 6, 6, 6, 6]):
+                   side_effect=[6, 6, 6, 6, 6, 6, 6, 6]):
             with patch("traveller_world_detail.random.randrange", return_value=0):
                 _apply_biomass(system, optional_inhospitable_rule=True)
         # SAH "880" → atm=8(DM+2), hydro=0(DM-4), temperate(DM+2), net DM=0 → biomass 12
@@ -1272,9 +1274,10 @@ class TestOptionalInhospitableRule:
         winner.detail.moons = [moon]
         loser  = self._make_orbit(sah="000", is_hz=False)
         system = self._make_system([winner, loser])
-        # [group*2, winner_bio*2, winner_bc*2, moon_bio*2, moon_bc*2]
+        # [group*2, winner_bio*2, winner_bc*2, winner_sophont*2, moon_bio*2, moon_bc*2, moon_sophont*2]
+        # bc=14≥8 for both winner and moon → sophont check (6,6 → 2 dice each)
         with patch("traveller_world_detail.random.randint",
-                   side_effect=[6, 6, 6, 6, 6, 6, 6, 6, 6, 6]):
+                   side_effect=[6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6]):
             with patch("traveller_world_detail.random.randrange", return_value=0):
                 _apply_biomass(system, optional_inhospitable_rule=True)
         # moon SAH "880" → atm=8(DM+2), hydro=0(DM-4), temperate(DM+2), net DM=0 → biomass 12
@@ -1300,12 +1303,13 @@ class TestOptionalInhospitableRule:
         """With no out-of-HZ secondary worlds the group roll is never made."""
         in_hz = self._make_orbit(sah="880", is_hz=True, temp_zone="temperate")
         system = self._make_system([in_hz])
-        # In-HZ world rolls normally: bio (2) + biocomplexity (2) = 4 calls.
+        # In-HZ world: bio (2) + biocomplexity (2) + sophont check (2) = 6 calls.
+        # bc=14≥8 → sophont check with (6,6 → current_roll=14≥13 → 2 dice only).
         # If a group roll were wrongly made it would consume 2 extra calls.
         with patch("traveller_world_detail.random.randint",
-                   side_effect=[6, 6, 6, 6]) as mock_roll:
+                   side_effect=[6, 6, 6, 6, 6, 6]) as mock_roll:
             _apply_biomass(system, optional_inhospitable_rule=True)
-        assert mock_roll.call_count == 4
+        assert mock_roll.call_count == 6
         # SAH "880" temperate: net DM=0, dice 6+6=12 → biomass 12
         assert in_hz.detail.biomass_rating == 12
 

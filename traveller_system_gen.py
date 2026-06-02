@@ -74,18 +74,7 @@ from traveller_world_gen import (
     generate_unusual_subtype,
     temperature_category,
     generate_hydrographics,
-    generate_population,
-    generate_government,
-    generate_law_level,
-    generate_starport,
-    generate_tech_level,
-    generate_bases,
-    generate_population_multiplier,
-    assign_trade_codes,
-    assign_travel_zone,
     to_hex,
-    ATMOSPHERE_MIN_TL,
-    ATMOSPHERE_NAMES,
     TEMPERATURE_DM,
 )
 
@@ -468,13 +457,16 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     Generate a mainworld whose temperature is constrained by its orbital
     position, following the WBH Habitable Zones Regions table (p.46-47).
 
-    All steps follow the CRB generation procedure (pp.248-261) except:
-    - Temperature uses the orbital HZ deviation instead of a random roll
-    - gas_giant_count, belt_count, and population_multiplier come from
-      the orbit generation rather than being re-rolled independently
-    - WBH atmosphere detail (pressure, ppo, scale height) is attached
-      via ``generate_atmosphere_detail()``; *system_age_gyr* feeds the
-      WBH p.80 DM+1 to oxygen fraction for systems older than 4 Gyr.
+    Generates physical characteristics only (steps 1–4, atmosphere detail,
+    hydrographic detail, gas giant / belt counts).  Social steps (5–10,
+    12–13: population, government, law, starport, TL, bases, trade codes,
+    travel zone) are deferred — the returned world carries placeholder
+    values (starport='X', pop/gov/law/tl=0, bases=[], trade_codes=[],
+    travel_zone='Green').  Call ``apply_mainworld_social()`` after
+    mainworld selection to complete the world.
+
+    WBH atmosphere detail is attached via ``generate_atmosphere_detail()``;
+    *system_age_gyr* feeds the WBH p.80 DM+1 for systems older than 4 Gyr.
     """
     import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     if rng is not None:
@@ -483,9 +475,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
 
     # If the mainworld orbit is a belt, the physical characteristics are
     # fixed: size=0, atmosphere=0, hydrographics=0 (WBH p.53 — "Size 0 world
-    # is a special case… a belt of planetoids").  Social codes (population,
-    # government, law, starport, TL) are still rolled normally, and the
-    # Asteroid (As) trade code will be assigned automatically.
+    # is a special case… a belt of planetoids").
     # Temperature is set to the orbital zone value but has no physical meaning
     # for a diffuse belt.
     if orbit.world_type == "belt":
@@ -591,58 +581,13 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         temperature=world.temperature,
     )
 
-    # Steps 5-7: Population, Government, Law Level
-    world.population = generate_population()
-    world.government = generate_government(world.population)
-    world.law_level = (
-        0 if world.population == 0
-        else generate_law_level(world.government)
-    )
-
-    # Step 8: Starport
-    world.starport = generate_starport(world.population)
-
-    # Step 9: Tech Level
-    world.tech_level = (
-        0 if world.population == 0
-        else generate_tech_level(
-            world.starport, world.size, world.atmosphere,
-            world.hydrographics, world.population, world.government,
-        )
-    )
-
-    # Step 9 supplementary: minimum TL note
-    min_tl = ATMOSPHERE_MIN_TL.get(world.atmosphere, 0)
-    if world.population > 0 and world.tech_level < min_tl:
-        world.notes.append(
-            f"TL {world.tech_level} is below the minimum TL {min_tl} "
-            f"needed to maintain Atmosphere {world.atmosphere} "
-            f"({ATMOSPHERE_NAMES.get(world.atmosphere, '?')}). "
-            "Population may be doomed."
-        )
-
-    # Step 10: Bases
-    world.bases = generate_bases(
-        world.starport, world.tech_level, world.population, world.law_level
-    )
-
-    # Step 11: Gas giants and belts — use orbit generation counts
+    # Step 11: Gas giants and belts — use orbit generation counts (no dice)
     world.has_gas_giant = gas_giant_count > 0
     world.gas_giant_count = gas_giant_count
     world.belt_count = belt_count
-    world.population_multiplier = generate_population_multiplier(world.population)
 
-    # Step 12: Trade Codes
-    world.trade_codes = assign_trade_codes(
-        world.size, world.atmosphere, world.hydrographics,
-        world.population, world.government, world.law_level,
-        world.tech_level,
-    )
-
-    # Step 13: Travel Zone
-    world.travel_zone = assign_travel_zone(
-        world.atmosphere, world.government, world.law_level, world.starport
-    )
+    # Steps 5–10, 12–13 (social/starport/TL/bases/trade codes/travel zone) are
+    # deferred until after mainworld selection — see apply_mainworld_social().
 
     # Record orbital context in notes
     world.notes.append(
@@ -819,6 +764,147 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
         orbital_inclination=orbital_inclination,
         seed=seed,
     )
+
+
+# ---------------------------------------------------------------------------
+# Mainworld selection (WBH pp.155-156)
+# ---------------------------------------------------------------------------
+
+def _refuel_score(hydro: int, orbit: "OrbitSlot") -> int:
+    """Return 0-2 refuelling score: 2=GG satellite, 1=hydro≥5, 0=dry."""
+    if orbit.world_type == "gas_giant":
+        return 2
+    return 1 if hydro >= 5 else 0
+
+
+def _candidate_score(
+    hab: int, sophont: bool, resource: int, refuel: int,
+) -> int:
+    """WBH weighted score for one mainworld candidate."""
+    return hab * 50 + (50 if sophont else 0) + resource * 30 + refuel * 10
+
+
+def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    system: TravellerSystem,
+    rng: Optional[random.Random] = None,
+) -> bool:
+    """Score all terrestrial candidates and promote the winner to mainworld.
+
+    Scoring (WBH pp.155-156):
+      habitability_rating × 50 + native_sophont × 50
+      + resource_rating × 30 + refuelling_score × 10
+
+    On a 3D roll of 18 a candidate is chosen randomly instead.
+    Requires ``attach_detail()`` and ``_attach_mainworld_physical()`` to have
+    run first so that habitability, sophont, and resource data are available.
+
+    Returns ``True`` when the mainworld orbit changed (swap occurred).  When
+    ``True``, the caller must re-run ``_attach_mainworld_physical()`` and
+    ``_apply_mainworld_moon_tidal()`` for the new mainworld, then call
+    ``apply_mainworld_social()``.  Returns ``False`` when the pre-selected
+    mainworld was confirmed as the winner (no structural change).
+    """
+    from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+
+    r = rng if rng is not None else random
+
+    mw        = system.mainworld
+    mw_orbit  = system.mainworld_orbit
+
+    if mw is None or mw_orbit is None:
+        return False
+
+    # ------------------------------------------------------------------ #
+    # Build candidate list: (orbit_or_None, WorldDetail_or_None, score)  #
+    # orbit=None means the entry represents the current mainworld (World) #
+    # ------------------------------------------------------------------ #
+    candidates: list = []
+
+    # Current mainworld candidate
+    mw_hab      = mw.habitability_rating or 0
+    mw_sophont  = mw.native_sophont
+    mw_resource = (
+        int(getattr(mw.size_detail, "resource_rating", 0) or 0)
+        if mw.size_detail is not None else 0
+    )
+    mw_refuel   = _refuel_score(mw.hydrographics, mw_orbit)
+    mw_score    = _candidate_score(mw_hab, mw_sophont, mw_resource, mw_refuel)
+    candidates.append((None, mw_score))   # None → current mainworld
+
+    # Secondary terrestrial candidates
+    for orbit in system.system_orbits.orbits:
+        if orbit.world_type != "terrestrial":
+            continue
+        if orbit.is_mainworld_candidate:
+            continue
+        det = orbit.detail
+        if det is None or det.is_gas_giant:
+            continue
+        hab     = det.habitability_rating or 0
+        sophont = det.native_sophont
+        # Secondaries have no WorldPhysical → resource_rating = 0
+        hydro   = int(det.sah[2], 16) if len(det.sah) > 2 else 0
+        refuel  = _refuel_score(hydro, orbit)
+        score   = _candidate_score(hab, sophont, 0, refuel)
+        candidates.append((orbit, score))
+
+    if len(candidates) <= 1:
+        return False   # only the mainworld — nothing to compare
+
+    # ------------------------------------------------------------------ #
+    # Wild-card: 3D=18 → random selection                                #
+    # ------------------------------------------------------------------ #
+    wild = r.randint(1, 6) + r.randint(1, 6) + r.randint(1, 6)
+    if wild == 18:
+        winner_orbit, _ = candidates[r.randrange(len(candidates))]
+    else:
+        winner_orbit, _ = max(candidates, key=lambda c: c[1])
+
+    # winner_orbit=None means the current mainworld won → no change
+    if winner_orbit is None:
+        return False
+
+    # ------------------------------------------------------------------ #
+    # Swap: promote winner_orbit to mainworld                             #
+    # ------------------------------------------------------------------ #
+    # a. Update orbit flags
+    mw_orbit.is_mainworld_candidate        = False
+    winner_orbit.is_mainworld_candidate    = True
+
+    # b. Regenerate winner as a full World
+    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    hzco    = system.system_orbits.star_hzco.get(winner_orbit.star_designation, 1.0)
+    age_gyr = system.stellar_system.primary.age_gyr
+    new_mw  = generate_mainworld_at_orbit(
+        name=mw.name,
+        orbit=winner_orbit,
+        hzco=hzco,
+        gas_giant_count=system.system_orbits.gas_giant_count,
+        belt_count=system.system_orbits.belt_count,
+        system_age_gyr=age_gyr,
+        nhz_atmospheres=system.nhz_atmospheres,
+        rng=rng,
+    )
+
+    # c. Demote old mainworld to WorldDetail (physical data only)
+    old_sah    = (f"{to_hex(mw.size)}"
+                  f"{to_hex(mw.atmosphere)}"
+                  f"{to_hex(mw.hydrographics)}")
+    old_detail = WorldDetail(sah=old_sah)
+    old_detail.biomass_rating       = mw.biomass_rating
+    old_detail.biocomplexity_rating = mw.biocomplexity_rating
+    old_detail.habitability_rating  = mw.habitability_rating
+    old_detail.native_sophont       = mw.native_sophont
+    mw_orbit.detail                 = old_detail
+
+    # d. Clear the winner's secondary WorldDetail
+    winner_orbit.detail = None
+
+    # e. Commit to system
+    _twg._rng           = rng if rng is not None else _twg._rng  # pylint: disable=protected-access
+    system.mainworld       = new_mw
+    system.mainworld_orbit = winner_orbit
+    return True
 
 
 # ---------------------------------------------------------------------------

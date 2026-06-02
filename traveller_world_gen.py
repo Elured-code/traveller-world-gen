@@ -2615,6 +2615,66 @@ def assign_travel_zone(atmosphere: int, government: int,
 
 
 # ---------------------------------------------------------------------------
+# Social application — called after mainworld selection
+# ---------------------------------------------------------------------------
+
+def apply_mainworld_social(
+    world: World,
+    rng: Optional[random.Random] = None,
+) -> None:
+    """Apply social steps to a physically-complete mainworld (CRB pp.248-261).
+
+    Performs steps 5–10 and 12–13: population, government, law level,
+    starport, tech level, minimum-TL advisory, bases, population multiplier,
+    trade codes, and travel zone.  Call this after mainworld selection in
+    the WBH workflow, passing the same ``rng`` instance used for system
+    generation to continue the RNG sequence correctly.
+    """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
+
+    world.population = generate_population()
+    world.government = generate_government(world.population)
+    world.law_level = (
+        0 if world.population == 0
+        else generate_law_level(world.government)
+    )
+
+    world.starport = generate_starport(world.population)
+
+    world.tech_level = (
+        0 if world.population == 0
+        else generate_tech_level(
+            world.starport, world.size, world.atmosphere,
+            world.hydrographics, world.population, world.government,
+        )
+    )
+
+    min_tl = ATMOSPHERE_MIN_TL.get(world.atmosphere, 0)
+    if world.population > 0 and world.tech_level < min_tl:
+        world.notes.append(
+            f"TL {world.tech_level} is below the minimum TL {min_tl} "
+            f"needed to maintain Atmosphere {world.atmosphere} "
+            f"({ATMOSPHERE_NAMES.get(world.atmosphere, '?')}). "
+            "Population may be doomed."
+        )
+
+    world.bases = generate_bases(
+        world.starport, world.tech_level, world.population, world.law_level,
+    )
+    world.population_multiplier = generate_population_multiplier(world.population)
+    world.trade_codes = assign_trade_codes(
+        world.size, world.atmosphere, world.hydrographics,
+        world.population, world.government, world.law_level,
+        world.tech_level,
+    )
+    world.travel_zone = assign_travel_zone(
+        world.atmosphere, world.government, world.law_level, world.starport,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Master generation function
 # ---------------------------------------------------------------------------
 

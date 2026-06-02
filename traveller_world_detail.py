@@ -737,7 +737,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
     __slots__ = ("sah", "population", "government", "law_level",
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
-                 "is_independent_government")
+                 "is_independent_government", "native_sophont")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -756,6 +756,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
         self.habitability_rating: Optional[int] = None
+        self.native_sophont: bool = False
         # Gas giants and rings carry no trade codes
         if (len(sah) == 3 and sah[0] == "G" and sah[1] in ("S", "M", "L")) \
                 or (len(sah) >= 1 and sah[0] == "R"):
@@ -822,6 +823,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         }
         if self.is_independent_government:
             d["is_independent_government"] = True
+        if self.native_sophont:
+            d["native_sophont"] = True
         if self.biomass_rating is not None:
             d["biomass_rating"] = self.biomass_rating
         if self.biocomplexity_rating is not None:
@@ -852,6 +855,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                 from traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
                 obj.physical = WorldPhysical.from_dict(phys_d)
         obj.is_independent_government = bool(d.get("is_independent_government", False))
+        obj.native_sophont = bool(d.get("native_sophont", False))
         if d.get("biomass_rating") is not None:
             obj.biomass_rating = int(d["biomass_rating"])
         if d.get("biocomplexity_rating") is not None:
@@ -1412,14 +1416,131 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
     _apply_habitability(system)
 
 
+def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statements
+        system: TravellerSystem,
+        independent_government: bool = False,
+        rng: Optional[random.Random] = None,
+) -> None:
+    """Re-apply social steps to all secondary WorldDetail objects.
+
+    Call AFTER ``apply_mainworld_social()`` so the mainworld's population,
+    government, law level, and TL are correct. Re-rolls the secondary
+    population cap, then regenerates population, government, law level, TL,
+    spaceport, and trade codes for every secondary orbit slot and moon.
+    Physical data (SAH, physical attribute, biomass, habitability) is
+    untouched.
+
+    Also syncs the mainworld's updated social data back to the satellite
+    ``WorldDetail`` that ``attach_detail()`` created from the placeholder UWP.
+    """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
+
+    mainworld = system.mainworld
+    if mainworld is None:
+        return
+
+    mw_pop = mainworld.population
+    mw_gov = mainworld.government
+    mw_law = mainworld.law_level
+    mw_tl  = mainworld.tech_level
+
+    max_pop = max(0, mw_pop - _rng.randint(1, 6))
+
+    def _social(det: "WorldDetail", atm: int) -> None:
+        """Re-apply social data to a single non-mainworld WorldDetail."""
+        pop = _secondary_population(max_pop)
+        if pop > 0 and _minimal_tl(atm) > mw_tl:
+            pop = 0
+        det.population = pop
+        if pop == 0:
+            det.government = 0
+            det.law_level  = 0
+            det.tech_level = 0
+            det.spaceport  = "-"
+            det.is_independent_government = False
+        else:
+            if independent_government:
+                gov, is_indep = _independent_government(pop), True
+            else:
+                gov, is_indep = _secondary_government(mw_pop, mw_gov), False
+            det.government = gov
+            det.law_level  = _secondary_law_level(gov, mw_law,
+                                                   independent=independent_government)
+            det.tech_level = _secondary_tech_level(atm, mw_tl)
+            det.spaceport  = _spaceport(pop)
+            det.is_independent_government = is_indep
+        sz  = _ehex_to_int(det.sah[0]) if len(det.sah) > 0 else 0
+        hyd = _ehex_to_int(det.sah[2]) if len(det.sah) > 2 else 0
+        det.trade_codes = assign_trade_codes(
+            sz, atm, hyd,
+            det.population, det.government, det.law_level, det.tech_level,
+        )
+
+    def _sync_mw(det: "WorldDetail") -> None:
+        """Sync mainworld social data into a satellite WorldDetail."""
+        det.population  = mainworld.population
+        det.government  = mainworld.government
+        det.law_level   = mainworld.law_level
+        det.tech_level  = mainworld.tech_level
+        det.spaceport   = mainworld.starport
+        det.trade_codes = list(mainworld.trade_codes)
+
+    def _moons_social(moons: list) -> None:
+        """Re-apply social to a list of Moon objects' detail."""
+        for moon in moons:
+            if moon.is_ring or moon.detail is None:
+                continue
+            m_det = moon.detail
+            m_atm = _ehex_to_int(m_det.sah[1]) if len(m_det.sah) > 1 else 0
+            _social(m_det, m_atm)
+
+    # ── Mainworld orbit ───────────────────────────────────────────────────
+    mw_orbit = system.mainworld_orbit
+    if mw_orbit is not None and mw_orbit.detail is not None:
+        if mw_orbit.world_type == "gas_giant":
+            # moons[0] is the mainworld satellite; sync its social data
+            sat_moon = (mw_orbit.detail.moons[0]
+                        if mw_orbit.detail.moons else None)
+            if sat_moon is not None and sat_moon.detail is not None:
+                _sync_mw(sat_moon.detail)
+                _moons_social(sat_moon.detail.moons)
+            # moons[1:] are secondary moons of the same GG
+            _moons_social(mw_orbit.detail.moons[1:])
+        else:
+            # Terrestrial/belt mainworld: orbit.detail IS the satellite WorldDetail
+            _sync_mw(mw_orbit.detail)
+            _moons_social(mw_orbit.detail.moons)
+
+    # ── Non-mainworld secondary orbits ────────────────────────────────────
+    for orbit in system.system_orbits.orbits:
+        if orbit.is_mainworld_candidate or orbit.world_type == "empty":
+            continue
+        det = orbit.detail
+        if det is None:
+            continue
+        if det.is_gas_giant:
+            # GG itself has no social; re-apply to all its moons
+            _moons_social(det.moons)
+            continue
+        # Terrestrial or belt
+        atm = _ehex_to_int(det.sah[1]) if len(det.sah) > 1 else 0
+        _social(det, atm)
+        _moons_social(det.moons)
+
+
 def _set_biocomplexity(
         detail: "WorldDetail", atm: int, age_gyr: float, has_lo: bool = False,
 ) -> None:
-    """Compute and attach biocomplexity to a WorldDetail when biomass > 0."""
+    """Compute and attach biocomplexity and native sophont check to a WorldDetail."""
     if detail.biomass_rating and detail.biomass_rating > 0:
         detail.biocomplexity_rating = generate_biocomplexity_rating(
             detail.biomass_rating, atm, age_gyr, has_lo,
         )
+        if detail.biocomplexity_rating >= 8:
+            native, _ = generate_sophont_checks(detail.biocomplexity_rating, age_gyr)
+            detail.native_sophont = native
 
 
 def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements

@@ -355,6 +355,92 @@ def parse_nhz_atmospheres(req: func.HttpRequest) -> bool:
     return raw in ("true", "1", "yes")
 
 
+def parse_runaway_greenhouse(req: func.HttpRequest) -> bool:
+    """Extract the optional 'runaway_greenhouse' flag (WBH p.79).
+
+    When True, the caller should check for runaway greenhouse after computing
+    advanced mean temperature.  Accepts ?runaway_greenhouse=true/1/yes or
+    {"runaway_greenhouse": true} in the body.  Defaults to False.
+    """
+    raw = req.params.get("runaway_greenhouse", "").strip().lower()
+    if not raw:
+        try:
+            body = req.get_json()
+            if isinstance(body, dict):
+                val = body.get("runaway_greenhouse")
+                if isinstance(val, bool):
+                    return val
+                raw = str(val).strip().lower() if val is not None else ""
+        except (ValueError, TypeError):
+            pass
+    return raw in ("true", "1", "yes")
+
+
+def parse_independent_government(req: func.HttpRequest) -> bool:
+    """Extract the optional 'independent_government' flag (WBH p.162 Case 2).
+
+    When True, secondary worlds use the independent government procedure
+    (2D-7+Population) instead of the dependent table.
+    Accepts ?independent_government=true/1/yes or {"independent_government": true}
+    in the body.  Defaults to False.
+    """
+    raw = req.params.get("independent_government", "").strip().lower()
+    if not raw:
+        try:
+            body = req.get_json()
+            if isinstance(body, dict):
+                val = body.get("independent_government")
+                if isinstance(val, bool):
+                    return val
+                raw = str(val).strip().lower() if val is not None else ""
+        except (ValueError, TypeError):
+            pass
+    return raw in ("true", "1", "yes")
+
+
+def parse_optional_biomass(req: func.HttpRequest) -> bool:
+    """Extract the optional 'optional_biomass_rule' flag (WBH p.131).
+
+    When True, oxygenated-atmosphere worlds that roll a biomass of 0 have
+    their biomass raised to 1.  Accepts ?optional_biomass_rule=true/1/yes or
+    {"optional_biomass_rule": true} in the body.  Defaults to False.
+    """
+    raw = req.params.get("optional_biomass_rule", "").strip().lower()
+    if not raw:
+        try:
+            body = req.get_json()
+            if isinstance(body, dict):
+                val = body.get("optional_biomass_rule")
+                if isinstance(val, bool):
+                    return val
+                raw = str(val).strip().lower() if val is not None else ""
+        except (ValueError, TypeError):
+            pass
+    return raw in ("true", "1", "yes")
+
+
+def parse_optional_inhospitable(req: func.HttpRequest) -> bool:
+    """Extract the optional 'optional_inhospitable_rule' flag (WBH p.130).
+
+    When True, a single 2D roll is made for all non-HZ secondary worlds;
+    only on a natural 12 does one randomly chosen world receive a biomass
+    roll — all others get 0.  Accepts ?optional_inhospitable_rule=true/1/yes
+    or {"optional_inhospitable_rule": true} in the body.  Defaults to False.
+    """
+    raw = req.params.get("optional_inhospitable_rule", "").strip().lower()
+    if not raw:
+        try:
+            body = req.get_json()
+            if isinstance(body, dict):
+                val = body.get("optional_inhospitable_rule")
+                if isinstance(val, bool):
+                    return val
+                raw = str(val).strip().lower() if val is not None else ""
+        except (ValueError, TypeError):
+            pass
+    return raw in ("true", "1", "yes")
+
+
 def parse_format(req: func.HttpRequest) -> str:
     """Extract the optional 'format' parameter.
 

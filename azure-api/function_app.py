@@ -26,24 +26,38 @@ System endpoints  (WBH stellar + orbit + mainworld generation)
 ----------------
 GET  /api/system
 POST /api/system
-    Generate a full star system.  Parameters: name, seed, detail.
+    Generate a full star system.
+    Parameters: name, seed, detail, nhz_atmospheres, orbital_eccentricity,
+                orbital_inclination, runaway_greenhouse, independent_government,
+                optional_biomass_rule, optional_inhospitable_rule.
 
 GET  /api/system/{name}
     Generate a full star system from a URL path name.
-    Parameters: seed, detail.
+    Parameters: seed, detail, nhz_atmospheres, orbital_eccentricity,
+                orbital_inclination, runaway_greenhouse, independent_government,
+                optional_biomass_rule, optional_inhospitable_rule.
 
 GET  /api/system/{name}/card
-    Full system HTML card.  Parameters: seed, detail.
+    Full system HTML card.
+    Parameters: seed, detail, nhz_atmospheres, orbital_eccentricity,
+                orbital_inclination, runaway_greenhouse, independent_government,
+                optional_biomass_rule, optional_inhospitable_rule.
 
 GET/POST /api/system/full
     Complete system generation with ALL secondary world and moon profiles
-    always attached.  Parameters: name, seed, format.
+    always attached.
+    Parameters: name, seed, format, nhz_atmospheres, orbital_eccentricity,
+                orbital_inclination, runaway_greenhouse, independent_government,
+                optional_biomass_rule, optional_inhospitable_rule.
     format=json (default) | html | text
 
 GET/POST /api/map/system
     Fetch canonical UWP + stellar data from TravellerMap, then generate a
     full system with procedural orbital structure.
-    Parameters: name OR (sector + hex), seed, detail, format.
+    Parameters: name OR (sector + hex), seed, detail, format,
+                nhz_atmospheres, orbital_eccentricity, orbital_inclination,
+                runaway_greenhouse, independent_government,
+                optional_biomass_rule, optional_inhospitable_rule.
 
 GET  /api/map/system/{name}
     Same as above; world name from URL path.
@@ -53,16 +67,32 @@ POST /api/system/from-world
     The world's UWP and PBG are preserved; stellar data and orbital structure
     are generated procedurally. Temperature is recalculated from orbital position.
     Body: mainworld JSON (from any world or system endpoint).
-    Parameters: seed, detail, format.
+    Parameters: seed, detail, format, runaway_greenhouse, independent_government,
+                optional_biomass_rule, optional_inhospitable_rule.
 
-The 'detail' parameter
-----------------------
-All system endpoints accept an optional boolean 'detail' parameter
-(?detail=true or {"detail": true} in the request body).  When true,
-attach_detail() is called after generation, populating secondary world
-SAH/social profiles and satellite data for every orbit slot and moon.
-Omitting 'detail' (or setting it to false) returns a faster response
-with orbital structure and the mainworld only.
+Optional system parameters
+--------------------------
+All system endpoints accept boolean flags as query params or JSON body fields.
+Accepted values: true / 1 / yes (case-insensitive) or JSON boolean true.
+
+detail                    — attach secondary world SAH/social profiles and
+                            satellite data for every orbit slot and moon.
+nhz_atmospheres           — use WBH Non-Habitable Zone atmosphere tables for
+                            worlds outside the habitable zone.
+orbital_eccentricity      — roll orbital eccentricities (WBH p.27).
+orbital_inclination       — roll orbital inclinations (WBH p.28).
+runaway_greenhouse        — apply the optional runaway greenhouse check
+                            (WBH p.79) after computing advanced mean temperature;
+                            may change the mainworld's atmosphere, temperature,
+                            and hydrographics.
+independent_government    — secondary worlds use Case 2 government (2D-7+Pop)
+                            instead of the dependent table (WBH p.162); requires
+                            detail=true.
+optional_biomass_rule     — raise oxygenated-atmosphere biomass from 0 to 1
+                            (WBH p.131 optional rule); requires detail=true.
+optional_inhospitable_rule — single 2D for all non-HZ secondaries; only on a
+                            natural 12 does one world get a biomass roll (WBH
+                            p.130 Suggested Usage); requires detail=true.
 
 Response formats
 ----------------
@@ -83,7 +113,7 @@ Error:
 
 Local development
 -----------------
-    func start
+    cd azure-api && func start
 
     # Mainworld
     curl "http://localhost:7071/api/world?name=Cogri&seed=42"
@@ -131,40 +161,59 @@ The human author reviewed, directed, and is responsible for the code.
 """
 
 import logging
+import os
+import sys
 import urllib.error
 from typing import Optional
 
+# Make project-root generation modules importable when Azure loads this file
+# from within the azure-api/ subdirectory.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # All endpoint handlers deliberately catch Exception broadly so that any
 # unexpected generation error returns a structured 500 rather than crashing.
-# pylint: disable=broad-exception-caught
+# The sys.path.insert above must precede the generation-module imports;
+# pylint cannot resolve those imports from within azure-api/ without it.
+# pylint: disable=broad-exception-caught,wrong-import-position,import-error
+# pylint: disable=too-many-lines,locally-disabled,suppressed-message
 
 import azure.functions as func
-
-from traveller_world_gen import (
-    World, generate_world, generate_atmosphere_detail, generate_gas_mix,
-    generate_unusual_subtype,
-)
-from traveller_world_physical import generate_world_physical, apply_moon_tidal_effects
-from traveller_hydro_detail import generate_hydrographic_detail
-from traveller_system_gen import generate_full_system, generate_system_from_world
-from traveller_world_detail import attach_detail, gg_diameter_from_sah
-from traveller_map_fetch import generate_system_from_map
 
 from shared.helpers import (
     ok, error,
     ERR_INVALID_BODY, ERR_INTERNAL, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
     apply_seed, parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
     parse_nhz_atmospheres, parse_orbital_eccentricity, parse_orbital_inclination,
+    parse_runaway_greenhouse, parse_independent_government,
+    parse_optional_biomass, parse_optional_inhospitable,
     parse_seed, parse_sector, parse_world_json,
 )
+
+from traveller_world_gen import (
+    World, generate_world, generate_atmosphere_detail, generate_gas_mix,
+    generate_unusual_subtype, generate_hydrographics, apply_mainworld_social,
+)
+from traveller_world_physical import (
+    generate_world_physical, apply_moon_tidal_effects,
+    generate_advanced_mean_temperature, check_runaway_greenhouse,
+)
+from traveller_hydro_detail import generate_hydrographic_detail
+from traveller_system_gen import generate_full_system, generate_system_from_world, select_mainworld
+from traveller_world_detail import attach_detail, gg_diameter_from_sah, apply_secondary_social
+from traveller_map_fetch import generate_system_from_map
 
 logger = logging.getLogger(__name__)
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
-def _attach_mainworld_physical(system) -> None:
-    """Populate size_detail on the system mainworld using full orbital parameters."""
+def _attach_mainworld_physical(  # pylint: disable=too-many-branches
+        system, runaway_greenhouse: bool = False) -> None:
+    """Populate size_detail on the system mainworld using full orbital parameters.
+
+    Also computes advanced mean temperature (WBH pp.47-50) and optionally
+    applies the runaway greenhouse check (WBH p.79).
+    """
     mw = system.mainworld
     if mw is None:
         return
@@ -183,6 +232,82 @@ def _attach_mainworld_physical(system) -> None:
         adj = mw.size_detail.eccentricity_adjusted
         if adj is not None:
             mw_orbit.eccentricity = adj
+
+    if mw_orbit is None or mw.size_detail is None:
+        return
+
+    # Advanced mean temperature (WBH pp.47-50)
+    mw_au = mw_orbit.orbit_au
+    stars = system.stellar_system.stars
+    interior_lum = sum(
+        s.luminosity for s in stars
+        if s.orbit_au <= 0.0 or s.orbit_au < mw_au
+    )
+    pressure_bar = (
+        mw.atmosphere_detail.pressure_bar
+        if mw.atmosphere_detail is not None else None
+    )
+    generate_advanced_mean_temperature(
+        mw.size_detail,
+        atmosphere=mw.atmosphere,
+        hydrographics=mw.hydrographics,
+        pressure_bar=pressure_bar,
+        luminosity=interior_lum,
+        orbit_au=mw_au,
+        hz_deviation=mw_orbit.hz_deviation,
+        orbit_eccentricity=orbit_ecc,
+        star_mass=stars[0].mass if stars else 1.0,
+    )
+
+    if not runaway_greenhouse:
+        return
+    if mw.size_detail.advanced_mean_temperature_k is None:
+        return
+
+    # Optional runaway greenhouse check (WBH p.79)
+    rg = check_runaway_greenhouse(
+        atmosphere=mw.atmosphere,
+        temp_k=mw.size_detail.advanced_mean_temperature_k,
+        age_gyr=system.stellar_system.primary.age_gyr,
+        size=mw.size,
+    )
+    if rg is None:
+        return
+    mw.size_detail.runaway_greenhouse = True
+    if rg.new_atmosphere is not None:
+        mw.atmosphere = rg.new_atmosphere
+    mw.temperature = "Boiling"
+    mw.hydrographics = generate_hydrographics(mw.size, mw.atmosphere, "Boiling")
+    mw.hydrographic_detail = generate_hydrographic_detail(
+        mw.hydrographics, mw.size,
+        atmosphere=mw.atmosphere,
+        temperature="Boiling",
+    )
+    mw.atmosphere_detail = generate_atmosphere_detail(
+        mw.atmosphere, mw.size,
+        system.stellar_system.primary.age_gyr,
+        "Boiling",
+        hz_deviation=mw_orbit.hz_deviation,
+    )
+    generate_gas_mix(
+        mw.atmosphere_detail, mw.atmosphere, mw.size,
+        "Boiling", mw_orbit.hz_deviation, mw.hydrographics,
+    )
+    pressure_bar = (
+        mw.atmosphere_detail.pressure_bar
+        if mw.atmosphere_detail is not None else None
+    )
+    generate_advanced_mean_temperature(
+        mw.size_detail,
+        atmosphere=mw.atmosphere,
+        hydrographics=mw.hydrographics,
+        pressure_bar=pressure_bar,
+        luminosity=interior_lum,
+        orbit_au=mw_au,
+        hz_deviation=mw_orbit.hz_deviation,
+        orbit_eccentricity=orbit_ecc,
+        star_mass=stars[0].mass if stars else 1.0,
+    )
 
 
 def _get_mainworld_moons(system) -> list:
@@ -457,12 +582,30 @@ def generate_world_card(req: func.HttpRequest) -> func.HttpResponse:
                              mimetype="text/html", charset="utf-8")
 
 
+def _run_select_mainworld(
+    system, rng, want_rg: bool, want_detail: bool,
+    independent_government: bool = False,
+) -> None:
+    """Run mainworld selection, social generation, and secondary social update."""
+    swapped = select_mainworld(system, rng=rng)
+    if swapped:
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
+        if want_detail:
+            _apply_mainworld_moon_tidal(system)
+    if system.mainworld is not None:
+        apply_mainworld_social(system.mainworld, rng=rng)
+    if want_detail:
+        apply_secondary_social(system,
+                               independent_government=independent_government,
+                               rng=rng)
+
+
 # ===========================================================================
 # Endpoint 6 & 7:  GET /api/system   and   POST /api/system
 # ===========================================================================
 
 @app.route(route="system", methods=["GET", "POST"])
-def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
+def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:  # pylint: disable=too-many-locals
     """Generate a full Traveller star system (WBH stellar + orbit + CRB mainworld).
 
     Parameters
@@ -491,6 +634,10 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
     want_nhz = parse_nhz_atmospheres(req)
     want_ecc = parse_orbital_eccentricity(req)
     want_incl = parse_orbital_inclination(req)
+    want_rg = parse_runaway_greenhouse(req)
+    want_indep = parse_independent_government(req)
+    want_bio = parse_optional_biomass(req)
+    want_inhospitable = parse_optional_inhospitable(req)
     try:
         seed, rng = apply_seed(seed)
         system = generate_full_system(name=name or "World-1",
@@ -499,10 +646,14 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
                                       orbital_eccentricity=want_ecc,
                                       orbital_inclination=want_incl)
         if want_detail:
-            attach_detail(system, rng=rng)
-        _attach_mainworld_physical(system)
+            attach_detail(system, rng=rng,
+                          independent_government=want_indep,
+                          optional_biomass_rule=want_bio,
+                          optional_inhospitable_rule=want_inhospitable)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
+        _run_select_mainworld(system, rng, want_rg, want_detail, want_indep)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -521,7 +672,7 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:
 # ===========================================================================
 
 @app.route(route="system/{name}", methods=["GET"])
-def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
+def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:  # pylint: disable=too-many-locals
     """Generate a full star system; mainworld name from URL path.
 
     Parameters: seed (int, opt), detail (bool, opt).
@@ -539,6 +690,10 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
     want_nhz = parse_nhz_atmospheres(req)
     want_ecc = parse_orbital_eccentricity(req)
     want_incl = parse_orbital_inclination(req)
+    want_rg = parse_runaway_greenhouse(req)
+    want_indep = parse_independent_government(req)
+    want_bio = parse_optional_biomass(req)
+    want_inhospitable = parse_optional_inhospitable(req)
     try:
         seed, rng = apply_seed(seed)
         system = generate_full_system(name=name or "World-1",
@@ -547,10 +702,14 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
                                       orbital_eccentricity=want_ecc,
                                       orbital_inclination=want_incl)
         if want_detail:
-            attach_detail(system, rng=rng)
-        _attach_mainworld_physical(system)
+            attach_detail(system, rng=rng,
+                          independent_government=want_indep,
+                          optional_biomass_rule=want_bio,
+                          optional_inhospitable_rule=want_inhospitable)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
+        _run_select_mainworld(system, rng, want_rg, want_detail, want_indep)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -573,7 +732,7 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:
 # ===========================================================================
 
 @app.route(route="system/full", methods=["GET", "POST"])
-def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
+def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:  # pylint: disable=too-many-locals
     """Generate a complete star system with all secondary world and moon profiles.
 
     Always runs attach_detail() — every orbit slot and moon receives its full
@@ -604,6 +763,10 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
     want_nhz = parse_nhz_atmospheres(req)
     want_ecc = parse_orbital_eccentricity(req)
     want_incl = parse_orbital_inclination(req)
+    want_rg = parse_runaway_greenhouse(req)
+    want_indep = parse_independent_government(req)
+    want_bio = parse_optional_biomass(req)
+    want_inhospitable = parse_optional_inhospitable(req)
     try:
         seed, rng = apply_seed(seed)
         system = generate_full_system(name=name or "World-1",
@@ -611,9 +774,13 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
                                       orbital_inclination=want_incl)
-        attach_detail(system, rng=rng)
-        _attach_mainworld_physical(system)
+        attach_detail(system, rng=rng,
+                      independent_government=want_indep,
+                      optional_biomass_rule=want_bio,
+                      optional_inhospitable_rule=want_inhospitable)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         _apply_mainworld_moon_tidal(system)
+        _run_select_mainworld(system, rng, want_rg, True, want_indep)
     except Exception as exc:
         logger.exception("Error generating full system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -644,7 +811,7 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:
 
 
 @app.route(route="system/{name}/card", methods=["GET"])
-def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
+def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:  # pylint: disable=too-many-locals
     """Return a standalone HTML system display card.
 
     Shows stellar summary, full orbital table (with secondary profiles and
@@ -665,6 +832,10 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
     want_nhz = parse_nhz_atmospheres(req)
     want_ecc = parse_orbital_eccentricity(req)
     want_incl = parse_orbital_inclination(req)
+    want_rg = parse_runaway_greenhouse(req)
+    want_indep = parse_independent_government(req)
+    want_bio = parse_optional_biomass(req)
+    want_inhospitable = parse_optional_inhospitable(req)
     try:
         seed, rng = apply_seed(seed)
         system = generate_full_system(name=name or "World-1",
@@ -673,10 +844,14 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
                                       orbital_eccentricity=want_ecc,
                                       orbital_inclination=want_incl)
         if want_detail:
-            attach_detail(system, rng=rng)
-        _attach_mainworld_physical(system)
+            attach_detail(system, rng=rng,
+                          independent_government=want_indep,
+                          optional_biomass_rule=want_bio,
+                          optional_inhospitable_rule=want_inhospitable)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
+        _run_select_mainworld(system, rng, want_rg, want_detail, want_indep)
         html = system.to_html(detail_attached=want_detail)
     except Exception as exc:
         logger.exception("Error generating system card: %s", exc)
@@ -693,7 +868,7 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:
 # Endpoints 12 & 13:  GET/POST /api/map/system   and   GET /api/map/system/{name}
 # ===========================================================================
 
-def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     name: Optional[str],
     sector: Optional[str],
     hex_pos: Optional[str],
@@ -703,13 +878,17 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
     want_nhz: bool = False,
     want_ecc: bool = False,
     want_incl: bool = False,
+    want_rg: bool = False,
+    want_indep: bool = False,
+    want_bio: bool = False,
+    want_inhospitable: bool = False,
 ) -> func.HttpResponse:
     """Shared implementation for both map/system endpoint variants."""
     seed, _ = apply_seed(seed)
     try:
         system = generate_system_from_map(
             name=name, sector=sector, hex_pos=hex_pos,
-            seed=seed, attach=want_detail,
+            seed=seed, attach=False,
             nhz_atmospheres=want_nhz,
             orbital_eccentricity=want_ecc,
             orbital_inclination=want_incl,
@@ -729,7 +908,12 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
             "An unexpected error occurred while generating the map system.",
             ERR_INTERNAL, status_code=500,
         )
-    _attach_mainworld_physical(system)
+    if want_detail:
+        attach_detail(system,
+                      independent_government=want_indep,
+                      optional_biomass_rule=want_bio,
+                      optional_inhospitable_rule=want_inhospitable)
+    _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
     if want_detail:
         _apply_mainworld_moon_tidal(system)
     mw = system.mainworld
@@ -764,7 +948,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
 # ===========================================================================
 
 @app.route(route="system/from-world", methods=["POST"])
-def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpResponse:
+def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpResponse:  # pylint: disable=too-many-locals
     """Generate a full star system around an existing mainworld.
 
     The request body must be a mainworld JSON object (as returned by any
@@ -798,6 +982,10 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
     want_nhz = parse_nhz_atmospheres(req)
     want_ecc = parse_orbital_eccentricity(req)
     want_incl = parse_orbital_inclination(req)
+    want_rg = parse_runaway_greenhouse(req)
+    want_indep = parse_independent_government(req)
+    want_bio = parse_optional_biomass(req)
+    want_inhospitable = parse_optional_inhospitable(req)
     try:
         seed, rng = apply_seed(seed)
         world = World.from_dict(world_dict)
@@ -806,8 +994,11 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
                                             orbital_eccentricity=want_ecc,
                                             orbital_inclination=want_incl)
         if want_detail:
-            attach_detail(system, rng=rng)
-        _attach_mainworld_physical(system)
+            attach_detail(system, rng=rng,
+                          independent_government=want_indep,
+                          optional_biomass_rule=want_bio,
+                          optional_inhospitable_rule=want_inhospitable)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
     except Exception as exc:
@@ -840,7 +1031,7 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
 
 
 @app.route(route="map/system", methods=["GET", "POST"])
-def generate_map_system(  # pylint: disable=too-many-return-statements
+def generate_map_system(  # pylint: disable=too-many-return-statements,too-many-locals
         req: func.HttpRequest) -> func.HttpResponse:
     """Fetch canonical data from TravellerMap, then generate a full system.
 
@@ -897,12 +1088,17 @@ def generate_map_system(  # pylint: disable=too-many-return-statements
     want_nhz = parse_nhz_atmospheres(req)
     want_ecc = parse_orbital_eccentricity(req)
     want_incl = parse_orbital_inclination(req)
+    want_rg = parse_runaway_greenhouse(req)
+    want_indep = parse_independent_government(req)
+    want_bio = parse_optional_biomass(req)
+    want_inhospitable = parse_optional_inhospitable(req)
     return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt,
-                                want_nhz, want_ecc, want_incl)
+                                want_nhz, want_ecc, want_incl,
+                                want_rg, want_indep, want_bio, want_inhospitable)
 
 
 @app.route(route="map/system/{name}", methods=["GET"])
-def generate_named_map_system(req: func.HttpRequest) -> func.HttpResponse:
+def generate_named_map_system(req: func.HttpRequest) -> func.HttpResponse:  # pylint: disable=too-many-locals
     """Fetch canonical data from TravellerMap; world name from URL path.
 
     Sector is always required as a query-string parameter.
@@ -946,5 +1142,10 @@ def generate_named_map_system(req: func.HttpRequest) -> func.HttpResponse:
     want_nhz = parse_nhz_atmospheres(req)
     want_ecc = parse_orbital_eccentricity(req)
     want_incl = parse_orbital_inclination(req)
+    want_rg = parse_runaway_greenhouse(req)
+    want_indep = parse_independent_government(req)
+    want_bio = parse_optional_biomass(req)
+    want_inhospitable = parse_optional_inhospitable(req)
     return _map_system_response(name, sector, hex_pos, seed, want_detail, fmt,
-                                want_nhz, want_ecc, want_incl)
+                                want_nhz, want_ecc, want_incl,
+                                want_rg, want_indep, want_bio, want_inhospitable)

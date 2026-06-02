@@ -33,7 +33,8 @@ HTML display card.
 - Verified TL era labels (Primitive → High Stellar) against pp. 6–7
 - Three output formats: text summary, JSON, standalone HTML card
 - **SVG system maps** — visual orbit diagrams with arc zones per star, log-scale AU radii, and orbit data tables
-- REST API via Azure Functions (13 endpoints: 5 mainworld + 6 system + 2 TravellerMap, JSON + HTML + plain-text responses)
+- REST API via **Azure Functions** (11 route handlers, JSON + HTML + plain-text responses)
+- REST API via **FastAPI + uvicorn** — identical endpoints, no auth, per-IP rate limiting; designed to run behind a gateway
 - TravellerMap integration — fetch canonical UWP + stellar data from travellermap.com and generate a full procedural system
 - `World.from_dict()` deserialiser — reconstruct a World from a previous JSON response and feed it into a new system generation
 - JSON Schema for the world output format (`traveller_world_schema.json`)
@@ -78,14 +79,23 @@ traveller-world-gen/
 ├── traveller_world_schema.json     # JSON Schema (draft 2020-12) for World.to_dict()
 │
 │  Azure Functions API
-├── function_app.py                 # All HTTP endpoints (13 routes, v2 model)
-├── shared/
-│   └── helpers.py                  # Request parsing & response helpers
-├── host.json                       # Azure Functions host configuration
-├── requirements.txt                # Python dependencies (Azure + Jinja2)
-├── requirements-dev.txt            # Dev dependencies (pytest, pylint, pyright)
-├── local.settings.json.example     # Local development settings template
+├── azure-api/                      # Azure Functions deployment root
+│   ├── function_app.py             # All HTTP endpoints (v2 model)
+│   ├── shared/
+│   │   └── helpers.py              # Request parsing & response helpers
+│   ├── host.json                   # Azure Functions host configuration
+│   ├── requirements.txt            # Python dependencies (Azure + Jinja2)
+│   └── local.settings.json.example # Local development settings template
 │                                   # (copy to local.settings.json — not committed)
+│
+│  FastAPI server
+├── fastapi/                        # FastAPI + uvicorn server (same endpoints, no auth)
+│   ├── app.py                      # All HTTP endpoints + SlowAPI rate limiting
+│   ├── helpers.py                  # Request parsing & response helpers
+│   ├── requirements.txt            # Python dependencies (FastAPI + uvicorn + slowapi)
+│   └── local.settings.json.example # Local development settings template
+│
+├── requirements-dev.txt            # Dev dependencies (pytest, pylint, pyright, httpx2)
 │
 │  Qt Desktop UI (PySide6)
 ├── gen-ui/
@@ -225,8 +235,9 @@ python -m venv .venv
 |---|---|---|
 | CLI scripts only | _(nothing)_ | Pure stdlib — no install needed |
 | Desktop UI | `pip install "PySide6>=6.4.0"` | Bundles Qt — no system packages required |
-| Test suite | `pip install pytest jsonschema` | `jsonschema` needed for schema-validation tests only |
-| Azure Functions API | `pip install -r requirements.txt` | Also requires [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) |
+| Test suite | `pip install pytest jsonschema httpx2` | `jsonschema` for schema tests; `httpx2` for FastAPI TestClient |
+| Azure Functions API | `pip install -r azure-api/requirements.txt` | Also requires [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) |
+| FastAPI server | `pip install -r fastapi/requirements.txt` | Includes uvicorn; no extra tooling needed |
 
 **3. Run the desktop UI**
 
@@ -242,11 +253,22 @@ pytest tests/ -q
 
 **5. Start the API server locally**
 
-```bash
-# Copy the example settings file first (one-time)
-cp local.settings.json.example local.settings.json
+Two server implementations are available; both expose the same endpoints.
 
-func start
+**Azure Functions** (port 7071, requires [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local)):
+
+```bash
+pip install -r azure-api/requirements.txt
+cp azure-api/local.settings.json.example azure-api/local.settings.json
+cd azure-api && func start
+```
+
+**FastAPI + uvicorn** (port 8000, no extra tooling):
+
+```bash
+pip install -r fastapi/requirements.txt
+cp fastapi/local.settings.json.example fastapi/local.settings.json
+cd fastapi && uvicorn app:app --reload
 ```
 
 ### Generate a system from TravellerMap canonical data
@@ -561,11 +583,14 @@ object with physical and social data.
 Without `detail`, the system response contains only stellar data, orbital
 structure, and the mainworld — no secondary world or satellite information.
 
-### Quick start — local development
+### Quick start — Azure Functions (local)
+
+Requires [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local).
 
 ```bash
-pip install -r requirements.txt
-func start   # Azure Functions Core Tools v4 required
+pip install -r azure-api/requirements.txt
+cp azure-api/local.settings.json.example azure-api/local.settings.json
+cd azure-api && func start
 ```
 
 ```bash
@@ -580,8 +605,7 @@ curl "http://localhost:7071/api/system?name=Ardenne&seed=1000"
 curl "http://localhost:7071/api/system/Ardenne?seed=1000&detail=true"
 
 # System HTML card with full detail
-curl "http://localhost:7071/api/system/Ardenne/card?seed=1000&detail=true" \
-     -o system.html
+curl "http://localhost:7071/api/system/Ardenne/card?seed=1000&detail=true" -o system.html
 
 # Complete system — always includes all worlds and moons
 curl "http://localhost:7071/api/system/full?name=Ardenne&seed=1000"
@@ -606,9 +630,62 @@ curl -X POST "http://localhost:7071/api/worlds" \
      -d '{"count": 5, "prefix": "Spinward-", "seed": 1}'
 ```
 
-For the full API reference including all parameters, response schemas,
-error codes, authentication, and deployment instructions see
-[`docs/AZURE_DEPLOYMENT.md`](docs/AZURE_DEPLOYMENT.md).
+For the full Azure API reference including authentication, deployment, and
+environment variables see [`docs/AZURE_DEPLOYMENT.md`](docs/AZURE_DEPLOYMENT.md).
+
+### Quick start — FastAPI server (local)
+
+No extra tooling required — just uvicorn.
+
+```bash
+pip install -r fastapi/requirements.txt
+cp fastapi/local.settings.json.example fastapi/local.settings.json
+cd fastapi && uvicorn app:app --reload
+```
+
+The server starts on **port 8000**. All endpoints are identical to the Azure
+version; substitute `http://localhost:8000` for `http://localhost:7071` and
+drop the `?code=<key>` authentication suffix (the FastAPI server has no auth).
+
+```bash
+# Mainworld
+curl "http://localhost:8000/api/world?name=Mora&seed=7"
+curl "http://localhost:8000/api/world/Regina/card" -o world.html
+
+# System — orbital structure only
+curl "http://localhost:8000/api/system?name=Ardenne&seed=1000"
+
+# System — with secondary worlds and satellites
+curl "http://localhost:8000/api/system/Ardenne?seed=1000&detail=true"
+
+# Complete system — always includes all worlds and moons; three output formats
+curl "http://localhost:8000/api/system/full?name=Ardenne&seed=1000"
+curl "http://localhost:8000/api/system/full?name=Ardenne&seed=1000&format=html" -o ardenne.html
+curl "http://localhost:8000/api/system/full?name=Ardenne&seed=1000&format=text"
+
+# TravellerMap — sector always required
+curl "http://localhost:8000/api/map/system?name=Regina&sector=Spinward+Marches&seed=42"
+curl "http://localhost:8000/api/map/system?sector=Spinward+Marches&hex=1910"
+
+# Optional WBH rules
+curl "http://localhost:8000/api/system/full?seed=42&runaway_greenhouse=true"
+curl "http://localhost:8000/api/system?seed=1&detail=true&independent_government=true"
+
+# Batch of worlds
+curl -X POST "http://localhost:8000/api/worlds" \
+     -H "Content-Type: application/json" \
+     -d '{"count": 5, "prefix": "Spinward-", "seed": 1}'
+```
+
+**Environment variables** (set in `fastapi/local.settings.json` or shell):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRAVELLER_MAX_BATCH_SIZE` | `20` | Maximum worlds per `/api/worlds` batch request (1–1000) |
+| `RATE_LIMIT_PER_MINUTE` | `100/minute` | SlowAPI per-IP rate limit; uses SlowAPI limit syntax |
+
+**OpenAPI docs** — FastAPI auto-generates interactive API docs at
+`http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc`.
 
 ### Deployment
 

@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traveller World Generator</title>
+  <style>
+    :root {
+      --bg:       #12151e;
+      --surface:  #1a1f2e;
+      --panel:    #1e2436;
+      --border:   #2d3553;
+      --accent:   #5b8dee;
+      --accent2:  #e06c75;
+      --text:     #cdd6f4;
+      --muted:    #6c7086;
+      --input-bg: #111420;
+      --error-bg: rgba(224,108,117,0.10);
+      --error-fg: #e06c75;
+      --ok-fg:    #a6e3a1;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    header h1 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+    }
+    .badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 3px;
+      padding: 0.15rem 0.45rem;
+    }
+    .server-status {
+      margin-left: auto;
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .dot.ok { background: var(--ok-fg); }
+
+    /* ── Layout ─────────────────────────────────────── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border);
+      height: calc(100vh - 45px);
+    }
+    @media (max-width: 800px) {
+      .layout { grid-template-columns: 1fr; height: auto; }
+    }
+
+    .pane {
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Pane header ─────────────────────────────────── */
+    .pane-header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 0.65rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-shrink: 0;
+    }
+    .pane-title {
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    /* ── Controls ────────────────────────────────────── */
+    .controls {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: flex-end;
+      flex-shrink: 0;
+      background: var(--surface);
+    }
+
+    .field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .field label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      padding: 0.42rem 0.65rem;
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus { border-color: var(--accent); }
+    input[type="text"] { width: 170px; }
+    input[type="number"] { width: 110px; }
+    select { cursor: pointer; }
+
+    .seed-row { display: flex; gap: 0.35rem; }
+
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 0.42rem 1rem;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-ghost {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.42rem 0.55rem;
+      font-size: 0.95rem;
+      line-height: 1;
+    }
+    .btn-ghost:hover { border-color: var(--accent); }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+      padding: 0.42rem 0;
+    }
+    .checkbox-label input[type="checkbox"] {
+      accent-color: var(--accent);
+      cursor: pointer;
+      width: 13px; height: 13px;
+    }
+    .checkbox-label:hover { color: var(--text); }
+
+    /* ── Status bar ──────────────────────────────────── */
+    .status-bar {
+      padding: 0.45rem 1rem;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+      display: none;
+    }
+    .status-bar.loading {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--muted);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .status-bar.error {
+      display: block;
+      color: var(--error-fg);
+      background: var(--error-bg);
+      border-bottom: 1px solid var(--accent2);
+    }
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Seed badge ──────────────────────────────────── */
+    .seed-badge {
+      padding: 0.35rem 1rem;
+      font-size: 0.76rem;
+      color: var(--muted);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: none;
+      align-items: center;
+      gap: 0.4rem;
+      flex-shrink: 0;
+    }
+    .seed-badge.visible { display: flex; }
+    .seed-code {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 0.1rem 0.4rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem;
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .seed-code:hover { border-color: var(--accent); }
+    .copy-hint { opacity: 0; transition: opacity 0.2s; font-size: 0.72rem; color: var(--ok-fg); }
+    .copy-hint.show { opacity: 1; }
+
+    /* ── Result area ─────────────────────────────────── */
+    .result {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .result-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      background: #fff;
+      display: none;
+    }
+    .result-frame.visible { display: block; }
+
+    .result-pre {
+      flex: 1;
+      padding: 1rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      overflow: auto;
+      white-space: pre;
+      display: none;
+    }
+    .result-pre.json { color: #a8c7fa; }
+    .result-pre.text { color: var(--text); }
+    .result-pre.visible { display: block; }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .empty-state .icon { font-size: 2rem; opacity: 0.3; }
+
+    /* ── Options row ─────────────────────────────────── */
+    .options-row {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      padding: 0.42rem 0;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Traveller World Generator</h1>
+  <span class="badge">FastAPI</span>
+  <div class="server-status">
+    <div class="dot" id="status-dot"></div>
+    <span id="status-text">checking…</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Mainworld pane ─────────────────────────────── -->
+  <div class="pane">
+    <div class="pane-header">
+      <span class="pane-title">Mainworld</span>
+    </div>
+    <div class="controls">
+      <div class="field">
+        <label for="w-name">Name</label>
+        <input type="text" id="w-name" placeholder="e.g. Mora" maxlength="64">
+      </div>
+      <div class="field">
+        <label for="w-seed">Seed</label>
+        <div class="seed-row">
+          <input type="number" id="w-seed" placeholder="random">
+          <button class="btn btn-ghost" id="w-rand" title="Pick random seed">⟳</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="w-format">Format</label>
+        <select id="w-format">
+          <option value="html">Card (HTML)</option>
+          <option value="json">JSON</option>
+        </select>
+      </div>
+      <button class="btn" id="w-gen">Generate</button>
+    </div>
+    <div class="status-bar" id="w-status"></div>
+    <div class="seed-badge" id="w-seed-badge">
+      Seed: <span class="seed-code" id="w-seed-val" title="Click to copy"></span>
+      <span class="copy-hint" id="w-copy-hint">copied</span>
+    </div>
+    <div class="result" id="w-result">
+      <div class="empty-state"><span class="icon">🌍</span>Generate a mainworld to see the card here</div>
+      <iframe class="result-frame" id="w-frame" title="World card"></iframe>
+      <pre class="result-pre json" id="w-json"></pre>
+    </div>
+  </div>
+
+  <!-- ── System pane ────────────────────────────────── -->
+  <div class="pane">
+    <div class="pane-header">
+      <span class="pane-title">Star System</span>
+    </div>
+    <div class="controls">
+      <div class="field">
+        <label for="s-name">Name</label>
+        <input type="text" id="s-name" placeholder="e.g. Ardenne" maxlength="64">
+      </div>
+      <div class="field">
+        <label for="s-seed">Seed</label>
+        <div class="seed-row">
+          <input type="number" id="s-seed" placeholder="random">
+          <button class="btn btn-ghost" id="s-rand" title="Pick random seed">⟳</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="s-format">Format</label>
+        <select id="s-format">
+          <option value="html">Card (HTML)</option>
+          <option value="text">Text</option>
+          <option value="json">JSON</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <div class="options-row">
+          <label class="checkbox-label" title="Attach secondary world and moon detail">
+            <input type="checkbox" id="s-detail"> Detail
+          </label>
+          <label class="checkbox-label" title="Always-full detail with /api/system/full">
+            <input type="checkbox" id="s-full"> Full
+          </label>
+        </div>
+      </div>
+      <button class="btn" id="s-gen">Generate</button>
+    </div>
+    <div class="status-bar" id="s-status"></div>
+    <div class="seed-badge" id="s-seed-badge">
+      Seed: <span class="seed-code" id="s-seed-val" title="Click to copy"></span>
+      <span class="copy-hint" id="s-copy-hint">copied</span>
+    </div>
+    <div class="result" id="s-result">
+      <div class="empty-state"><span class="icon">⭐</span>Generate a star system to see the card here</div>
+      <iframe class="result-frame" id="s-frame" title="System card"></iframe>
+      <pre class="result-pre json" id="s-json"></pre>
+      <pre class="result-pre text" id="s-text"></pre>
+    </div>
+  </div>
+
+</div><!-- /.layout -->
+
+<script>
+  "use strict";
+
+  // ── Utilities ───────────────────────────────────────────────────────────────
+
+  function randSeed() {
+    return Math.floor(Math.random() * 2_147_483_647);
+  }
+
+  function setStatus(prefix, msg, type) {
+    const el = document.getElementById(prefix + "-status");
+    el.className = "status-bar " + type;
+    if (type === "loading") {
+      el.innerHTML = `<div class="spinner"></div>${msg}`;
+    } else {
+      el.textContent = msg;
+    }
+  }
+
+  function clearStatus(prefix) {
+    const el = document.getElementById(prefix + "-status");
+    el.className = "status-bar";
+    el.textContent = "";
+  }
+
+  function showSeed(prefix, seed) {
+    const badge = document.getElementById(prefix + "-seed-badge");
+    const val = document.getElementById(prefix + "-seed-val");
+    val.textContent = seed;
+    badge.classList.add("visible");
+  }
+
+  function clearResult(prefix) {
+    document.getElementById(prefix + "-frame").classList.remove("visible");
+    const jsonEl = document.getElementById(prefix + "-json");
+    if (jsonEl) jsonEl.classList.remove("visible");
+    const textEl = document.getElementById(prefix + "-text");
+    if (textEl) textEl.classList.remove("visible");
+    document.getElementById(prefix + "-seed-badge").classList.remove("visible");
+    // Show empty state again
+    document.getElementById(prefix + "-result")
+      .querySelector(".empty-state").style.display = "";
+  }
+
+  function showFrame(prefix, html) {
+    const frame = document.getElementById(prefix + "-frame");
+    document.getElementById(prefix + "-result")
+      .querySelector(".empty-state").style.display = "none";
+    frame.srcdoc = html;
+    frame.classList.add("visible");
+    frame.onload = () => {
+      try {
+        const h = frame.contentDocument.documentElement.scrollHeight;
+        frame.style.height = h + "px";
+      } catch (_) { /* cross-origin guard */ }
+    };
+  }
+
+  function showJson(prefix, data) {
+    const el = document.getElementById(prefix + "-json");
+    document.getElementById(prefix + "-result")
+      .querySelector(".empty-state").style.display = "none";
+    el.textContent = JSON.stringify(data, null, 2);
+    el.classList.add("visible");
+  }
+
+  function showText(prefix, text) {
+    const el = document.getElementById(prefix + "-text");
+    document.getElementById(prefix + "-result")
+      .querySelector(".empty-state").style.display = "none";
+    el.textContent = text;
+    el.classList.add("visible");
+  }
+
+  // Seed copy-on-click
+  ["w", "s"].forEach(p => {
+    document.getElementById(p + "-seed-val").addEventListener("click", function () {
+      navigator.clipboard.writeText(this.textContent).then(() => {
+        const hint = document.getElementById(p + "-copy-hint");
+        hint.classList.add("show");
+        setTimeout(() => hint.classList.remove("show"), 1500);
+      }).catch(() => {});
+    });
+  });
+
+  // ── Server health check ─────────────────────────────────────────────────────
+
+  async function checkServer() {
+    const dot = document.getElementById("status-dot");
+    const txt = document.getElementById("status-text");
+    try {
+      const resp = await fetch("/api/world?seed=1", { signal: AbortSignal.timeout(3000) });
+      if (resp.ok) {
+        dot.className = "dot ok";
+        txt.textContent = "server online";
+      } else {
+        throw new Error("non-200");
+      }
+    } catch (_) {
+      dot.className = "dot";
+      txt.textContent = "server offline";
+    }
+  }
+  checkServer();
+
+  // ── Random seed buttons ─────────────────────────────────────────────────────
+
+  document.getElementById("w-rand").addEventListener("click", () => {
+    document.getElementById("w-seed").value = randSeed();
+  });
+  document.getElementById("s-rand").addEventListener("click", () => {
+    document.getElementById("s-seed").value = randSeed();
+  });
+
+  // ── System: disable Detail when Full is checked ─────────────────────────────
+
+  document.getElementById("s-full").addEventListener("change", function () {
+    const detail = document.getElementById("s-detail");
+    detail.disabled = this.checked;
+    if (this.checked) detail.checked = false;
+  });
+
+  // ── Mainworld generate ───────────────────────────────────────────────────────
+
+  document.getElementById("w-gen").addEventListener("click", generateWorld);
+  ["w-name", "w-seed"].forEach(id => {
+    document.getElementById(id).addEventListener("keydown", e => {
+      if (e.key === "Enter") generateWorld();
+    });
+  });
+
+  async function generateWorld() {
+    const name   = document.getElementById("w-name").value.trim();
+    const seedIn = document.getElementById("w-seed").value.trim();
+    const format = document.getElementById("w-format").value;
+    const btn    = document.getElementById("w-gen");
+
+    const seed = seedIn ? parseInt(seedIn, 10) : randSeed();
+
+    btn.disabled = true;
+    clearResult("w");
+    setStatus("w", "Generating…", "loading");
+
+    try {
+      if (format === "html") {
+        // Use the card endpoint (always pass an explicit seed so we know what was used)
+        const cardName = encodeURIComponent(name || "World-1");
+        const resp = await fetch(`/api/world/${cardName}/card?seed=${seed}`);
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error((err.error && err.error.message) || `HTTP ${resp.status}`);
+        }
+        showFrame("w", await resp.text());
+        showSeed("w", seed);
+        if (seedIn === "") document.getElementById("w-seed").value = seed;
+      } else {
+        const params = new URLSearchParams({ seed });
+        if (name) params.set("name", name);
+        const resp = await fetch(`/api/world?${params}`);
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error((err.error && err.error.message) || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        showJson("w", data);
+        showSeed("w", data.seed ?? seed);
+        if (seedIn === "") document.getElementById("w-seed").value = data.seed ?? seed;
+      }
+      clearStatus("w");
+    } catch (e) {
+      setStatus("w", "Error: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── System generate ──────────────────────────────────────────────────────────
+
+  document.getElementById("s-gen").addEventListener("click", generateSystem);
+  ["s-name", "s-seed"].forEach(id => {
+    document.getElementById(id).addEventListener("keydown", e => {
+      if (e.key === "Enter") generateSystem();
+    });
+  });
+
+  async function generateSystem() {
+    const name   = document.getElementById("s-name").value.trim();
+    const seedIn = document.getElementById("s-seed").value.trim();
+    const format = document.getElementById("s-format").value;
+    const detail = document.getElementById("s-detail").checked;
+    const full   = document.getElementById("s-full").checked;
+    const btn    = document.getElementById("s-gen");
+
+    const seed = seedIn ? parseInt(seedIn, 10) : randSeed();
+
+    btn.disabled = true;
+    clearResult("s");
+    setStatus("s", "Generating…", "loading");
+
+    try {
+      let url;
+      const cardName = encodeURIComponent(name || "World-1");
+
+      if (full) {
+        // /api/system/full always attaches all detail; supports all three formats
+        const params = new URLSearchParams({ seed, format });
+        if (name) params.set("name", name);
+        url = `/api/system/full?${params}`;
+      } else if (format === "html") {
+        // Card endpoint: name in path, detail as query param
+        const params = new URLSearchParams({ seed, detail: detail ? "true" : "false" });
+        url = `/api/system/${cardName}/card?${params}`;
+      } else {
+        // JSON endpoint (text format not available without full)
+        const params = new URLSearchParams({ seed, detail: detail ? "true" : "false" });
+        if (name) params.set("name", name);
+        url = `/api/system?${params}`;
+      }
+
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err.error && err.error.message) || `HTTP ${resp.status}`);
+      }
+
+      const contentType = resp.headers.get("content-type") || "";
+
+      if (contentType.includes("text/html")) {
+        showFrame("s", await resp.text());
+        showSeed("s", seed);
+        if (seedIn === "") document.getElementById("s-seed").value = seed;
+      } else if (contentType.includes("text/plain")) {
+        showText("s", await resp.text());
+        showSeed("s", seed);
+        if (seedIn === "") document.getElementById("s-seed").value = seed;
+      } else {
+        const data = await resp.json();
+        showJson("s", data);
+        showSeed("s", data.seed ?? seed);
+        if (seedIn === "") document.getElementById("s-seed").value = data.seed ?? seed;
+      }
+      clearStatus("s");
+    } catch (e) {
+      setStatus("s", "Error: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>

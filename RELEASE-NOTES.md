@@ -54,6 +54,22 @@ mainworld because the social dice rolls have been removed from the sequence.
 
 ---
 
+## FastAPI Web UI and gen-ui fixes (Session 93)
+
+- **FastAPI web UI** — `fastapi/static/index.html` served at `/` (uvicorn redirects
+  root to `/static/index.html`). Two-panel dark-themed page: Mainworld panel calls
+  `/api/world/{name}/card` or `/api/world` (JSON); System panel calls card, full,
+  or JSON endpoints with Detail/Full checkboxes. Seed badge is copyable. Server
+  status indicator pings `/api/world?seed=1` on load.
+- **gen-ui Chromium noise suppressed** — `QTWEBENGINE_CHROMIUM_FLAGS=--log-level=3`
+  set before `QApplication` construction in `gen-ui/app.py`; silences the harmless
+  `TASK_CATEGORY_POLICY: (os/kern) invalid argument` stderr line on macOS.
+- **CLI flowcharts** — four Mermaid flowcharts added to `docs/`:
+  `traveller_world_gen_flowchart.md`, `traveller_system_gen_flowchart.md`,
+  `traveller_map_fetch_flowchart.md`, `system_map_flowchart.md`.
+
+---
+
 ## FastAPI Server (Session 90)
 
 A parallel REST server (`fastapi/`) exposes all 11 endpoints of the Azure

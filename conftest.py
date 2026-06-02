@@ -13,14 +13,21 @@ import os
 
 import pytest
 
-# Insert the project root (the directory containing this file) at the
-# front of sys.path.  This makes the following imports work from any
-# test file regardless of the working directory pytest is invoked from:
+# Insert the project root, azure-api/, and fastapi/ into sys.path so that
+# test files in the tests/ subdirectory can import all layers without setup:
 #
-#   from traveller_world_gen import generate_world
-#   from shared.helpers import ok, error
+#   from traveller_world_gen import generate_world   # project root
+#   from function_app import generate_world_card     # azure-api/
+#   from shared.helpers import ok, error             # azure-api/shared/
+#   from app import app                              # fastapi/
+#   from helpers import ok, error                    # fastapi/ (flat module)
 #
-sys.path.insert(0, os.path.dirname(__file__))
+# Note: fastapi/ uses a flat helpers.py (not shared/) to avoid the
+# "from shared.helpers import" naming conflict with azure-api/shared/.
+_root = os.path.dirname(__file__)
+sys.path.insert(0, _root)
+sys.path.insert(0, os.path.join(_root, "azure-api"))
+sys.path.insert(0, os.path.join(_root, "fastapi"))
 
 
 @pytest.fixture(autouse=True)
