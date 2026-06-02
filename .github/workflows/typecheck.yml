@@ -22,7 +22,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pyright -r requirements.txt
+        run: pip install pyright -r azure-api/requirements.txt -r fastapi/requirements.txt
 
       - name: Run pyright
         run: pyright
