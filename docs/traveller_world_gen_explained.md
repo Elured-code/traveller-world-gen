@@ -18,6 +18,7 @@ dashed comment banners like `# -----`). Reading top-to-bottom, the sections are:
 | eHex helper | `to_hex()` — Traveller's unusual number encoding |
 | Lookup tables | Python dicts mapping codes → descriptions |
 | Atmosphere detail | Functions that compute pressure, oxygen, taints |
+| Social application | `apply_mainworld_social()` — deferred social steps |
 | `World` class | The main data structure |
 | Generator functions | One function per world characteristic |
 | `generate_world()` | Entry point that ties everything together |
@@ -370,9 +371,56 @@ follows the rulebook table.
 
 ---
 
-## Two-phase generation
+## Three-phase generation (WBH workflow)
 
-`generate_world()` produces the core UWP — size, atmosphere, population, and so on.
+When generating a full star system via the WBH procedure, world generation is split
+into **three separate phases**:
+
+**Phase 1 — Physical** (`generate_mainworld_at_orbit()` in `traveller_system_gen.py`)
+Rolls size, atmosphere, hydrographics, and temperature. Social data (population,
+government, starport, TL) is *not* rolled here. The world returns with placeholder
+values: `starport='X'`, all social codes 0, empty trade codes.
+
+**Phase 2 — Detail and mainworld selection** (`attach_detail()` + `select_mainworld()`)
+Generates secondary worlds and moons, runs biological and habitability ratings for
+all worlds, scores every terrestrial candidate, and promotes the highest-scoring
+world to mainworld. The scoring formula is:
+
+```
+score = habitability_rating × 50
+      + native_sophont × 50
+      + resource_rating × 30
+      + refuelling_score × 10
+```
+
+On a 3D roll of 18, the selection is random. If a secondary wins, it is regenerated
+as a full `World` and the old mainworld is demoted to a `WorldDetail`.
+
+**Phase 3 — Social** (`apply_mainworld_social()`)
+Rolls population, government, law, starport, TL, bases, trade codes, and travel zone
+for the selected mainworld. After that, `apply_secondary_social()` (in
+`traveller_world_detail.py`) re-applies social data to all secondary worlds and moons
+using the mainworld's real values.
+
+These three phases are always kept separate. `apply_mainworld_social()` is never
+called automatically inside `generate_mainworld_at_orbit()`. This matters for the
+random number sequence: dice in later phases extend the sequence from earlier phases,
+so running or skipping a phase changes the seed state for subsequent worlds.
+
+For the standalone CRB path (`generate_world()`), all three phases are rolled
+together in one call — that path has no system context for mainworld selection.
+
+`apply_mainworld_social()` can also be called directly:
+```python
+from traveller_world_gen import apply_mainworld_social
+world = generate_mainworld_at_orbit(...)   # physical only
+# ... selection logic ...
+apply_mainworld_social(world, rng=rng)     # adds social data
+```
+
+## Two-phase generation (standalone CRB path)
+
+`generate_world()` produces a complete UWP — size, atmosphere, population, and so on.
 The biological detail fields (`biomass_rating`, `biocomplexity_rating`,
 `native_sophont`, `extinct_sophont`, `biodiversity_rating`, `compatibility_rating`,
 `lifeform_profile`) and the physical detail (`size_detail`, `atmosphere_detail`,
@@ -453,47 +501,52 @@ python traveller_world_gen.py --seed 42     # reproducible
 
 ## Summary of the pipeline
 
+### Standalone CRB path (`generate_world()`)
+
 ```
 random seed (optional)
         │
         ▼
   generate_size()
-        │
-        ▼
-  generate_atmosphere(size)      ← also runs full AtmosphereDetail pipeline
-        │
-        ▼
+  generate_atmosphere(size)      ← AtmosphereDetail pipeline
   generate_temperature(atmosphere)
+  generate_hydrographics(...)    ← HydrographicDetail pipeline
+  generate_population()
+  generate_government(pop)
+  generate_law_level(gov)
+  generate_starport(pop)
+  generate_tech_level(...)
+  generate_bases(...)
+  assign_trade_codes(...)
+  assign_travel_zone(...)
         │
         ▼
-  generate_hydrographics(size, atmosphere, temperature)
-        │                        ← also runs HydrographicDetail pipeline
+    World(...)   ← complete UWP in one call
+        │
+  (optional second phase)
+        │
         ▼
-  generate_population()    generate_government(pop)
-        │                         │
-        └──────────┬──────────────┘
-                   ▼
-          generate_law_level(gov)
-          generate_starport(pop)
-          generate_tech_level(...)
-          generate_bases(...)
-          assign_trade_codes(...)
-          assign_travel_zone(...)
-                   │
-                   ▼
-              World(...)   ← all values assembled into the dataclass
-                   │
-        (optional second phase)
-                   │
-                   ▼
-          attach_detail()   ← from traveller_world_detail.py
-          ├─ generate_world_physical()       → World.size_detail (WorldPhysical)
-          ├─ generate_belt_physical()        → World.size_detail (BeltPhysical)
-          ├─ generate_biomass_rating()       → World.biomass_rating
-          ├─ generate_biocomplexity_rating() → World.biocomplexity_rating
-          ├─ generate_sophont_checks()       → World.native_sophont / extinct_sophont
-          ├─ generate_biodiversity_rating()  → World.biodiversity_rating
-          ├─ generate_compatibility_rating() → World.compatibility_rating
-          ├─ lifeform_profile                → World.lifeform_profile (eHex "MXDC")
-          └─ generate_habitability_rating()  → World.habitability_rating
+  attach_detail()   ← from traveller_world_detail.py
+  ├─ generate_world_physical()       → World.size_detail
+  ├─ generate_biomass_rating()       → World.biomass_rating
+  ├─ generate_sophont_checks()       → World.native_sophont
+  └─ generate_habitability_rating()  → World.habitability_rating
+```
+
+### WBH system path (`generate_mainworld_at_orbit()` + selection + social)
+
+```
+Phase 1 — Physical
+  generate_mainworld_at_orbit()   → World with SAH only (starport='X', social=0)
+        │
+Phase 2 — Detail and selection
+        ▼
+  attach_detail()               → secondary WorldDetails, biomass, habitability
+  _attach_mainworld_physical()  → World.size_detail (resource_rating)
+  select_mainworld()            → scores candidates; may swap mainworld
+        │
+Phase 3 — Social
+        ▼
+  apply_mainworld_social()      → pop, gov, law, starport, TL, bases, trade codes
+  apply_secondary_social()      → re-applies social to all secondary WorldDetails
 ```

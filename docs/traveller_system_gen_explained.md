@@ -14,9 +14,15 @@ each step receives the information it needs from the previous steps:
 
 1. Generate stars (`traveller_stellar_gen.py`)
 2. Place orbits (`traveller_orbit_gen.py`)
-3. Generate the mainworld UWP (`traveller_world_gen.py`) — using the orbit's
-   habitable zone position to set temperature, so the mainworld is physically
-   consistent with where it orbits
+3. Generate the mainworld **physical** characteristics (`traveller_world_gen.py`)
+   — size, atmosphere, hydrographics, using the orbit's habitable zone position to
+   set temperature
+
+Social characteristics (population, government, law, starport, TL, bases, trade
+codes, travel zone) are **deferred**. The world returned by
+`generate_mainworld_at_orbit()` carries placeholder values (`starport='X'`,
+all social codes 0) until `apply_mainworld_social()` is called after mainworld
+selection (a future step).
 
 The key integration: temperature is **not** rolled randomly here. Instead, the orbit's
 `hz_deviation` value is converted to the raw 2D roll that the temperature table
@@ -100,7 +106,8 @@ seed that produced it.
 | `.to_html()` | `TravellerSystem` | HTML system card (Jinja2 template) |
 | `.summary()` | `TravellerSystem` | Human-readable multi-line text |
 | `.from_dict(d)` | `TravellerSystem` | Reconstructs the full system from a saved dict |
-| `generate_full_system(...)` | module | Procedural entry point |
+| `generate_full_system(...)` | module | Procedural entry point — returns physical-only mainworld |
+| `select_mainworld(system, rng)` | module | Score all terrestrials and promote the winner; returns `True` if swapped |
 | `generate_system_from_world(world, ...)` | module | Procedural entry point around an existing World |
 | `generate_system_from_canonical(...)` | module | TravellerMap entry point |
 
@@ -141,20 +148,29 @@ and secondary worlds are generated procedurally from the canonical stellar data.
 ## How this fits in the pipeline
 
 ```
-generate_stellar_data()           →  StarSystem
+generate_stellar_data()                  →  StarSystem
         │
         ▼
-generate_orbits(star_system, ...) →  SystemOrbits
+generate_orbits(star_system, ...)        →  SystemOrbits
         │
         ▼
-generate_world(name, ...)         →  World (mainworld)
+generate_mainworld_at_orbit(name, ...)   →  World (physical only — SAH, no social)
         │  (temperature driven by hz_deviation, not a free dice roll)
         ▼
 TravellerSystem(stellar, orbits, mainworld, mainworld_orbit)
         │
-        (optional)
+        (when detail requested)
         ▼
-attach_detail(system, ...)        →  fills OrbitSlot.detail for each secondary world
+attach_detail(system, ...)               →  WorldDetail for each secondary; biomass; habitability
+_attach_mainworld_physical(system)       →  WorldPhysical for mainworld (resource_rating)
+_apply_mainworld_moon_tidal(system)      →  tidal effects on mainworld
+        │
+        ▼
+select_mainworld(system, rng)            →  scores all terrestrials; may swap mainworld
+        │
+        ▼
+apply_mainworld_social(mainworld, rng)   →  pop, gov, law, starport, TL, trade codes
+apply_secondary_social(system, ...)      →  re-applies social to all secondaries and moons
 ```
 
 ---

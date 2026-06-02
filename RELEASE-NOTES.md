@@ -2,7 +2,71 @@
 
 **Branch:** `v1.5.0` → `main`
 **Sessions:** 88–
-**Tests:** 1706
+**Tests:** 1847
+
+---
+
+## Secondary Social Generation After Mainworld Selection (Session 92 cont.)
+
+After mainworld selection gives the mainworld its real UWP, `apply_secondary_social()`
+re-applies social data to every secondary WorldDetail using the correct mainworld
+baseline. This includes re-rolling the population cap (`mw_pop − 1D`), and
+regenerating population, government, law level, TL, spaceport, and trade codes for
+all secondary orbit slots and their moons. The satellite WorldDetail created by
+`attach_detail()` (which used placeholder values) is also synced.
+
+---
+
+## Mainworld Selection (Session 92, issue #125)
+
+`select_mainworld(system, rng)` in `traveller_system_gen.py` scores all terrestrial
+candidates and promotes the highest-scoring world to mainworld (WBH pp.155-156).
+Scoring weights: Habitability ×50, Native sophonts ×50, Resource rating ×30,
+Best refuelling ×10 (GG satellite = 2, hydro ≥ 5 = 1, else 0). On a 3D roll of
+18 a candidate is selected randomly instead. When a secondary wins, the new
+mainworld is regenerated via `generate_mainworld_at_orbit()` and the old
+mainworld is demoted to a `WorldDetail`. Returns `True` when a swap occurred.
+
+`WorldDetail` gains `native_sophont: bool` (set by `_set_biocomplexity()` when
+biocomplexity ≥ 8; emitted in JSON only when `True`).
+
+Exposed on system endpoints as `select_mainworld=true`; wired in FastAPI UI as
+a "Select MW" checkbox. Not applied on TravellerMap or `from-world` paths.
+
+---
+
+## Deferred Social Generation — Physical-Only Worlds (Session 91, issue #124)
+
+`generate_mainworld_at_orbit()` now returns a **physical-only** world (SAH,
+atmosphere detail, hydrographic detail, gas giant/belt counts). Social steps
+(population, government, law, starport, TL, bases, trade codes, travel zone)
+are no longer rolled during system generation.
+
+The new `apply_mainworld_social(world, rng=None)` function in
+`traveller_world_gen.py` performs the deferred steps and must be called after
+mainworld selection (a future issue). Until then, system-generated worlds carry
+interim placeholder values: `starport='X'`, all social codes 0, empty bases and
+trade code lists, and `travel_zone='Green'`.
+
+**Note:** this is a seed-breaking change — any seed previously used with
+`generate_full_system()` will now produce a different social outcome for the
+mainworld because the social dice rolls have been removed from the sequence.
+
+---
+
+## FastAPI Server (Session 90)
+
+A parallel REST server (`fastapi/`) exposes all 11 endpoints of the Azure
+Functions API using FastAPI + uvicorn instead of Azure Functions.
+
+- **No authentication** — designed to run behind a gateway or reverse proxy.
+- **Rate limiting** — SlowAPI per-IP limiter; configurable via
+  `RATE_LIMIT_PER_MINUTE` env var (default `100/minute`).
+- **Run locally** — `cd fastapi && uvicorn app:app --reload` (port 8000).
+- **Test coverage** — 130 new tests in `tests/test_fastapi_app.py` using
+  FastAPI's `TestClient`; no Azure SDK stubs needed.
+- `fastapi/helpers.py` is a flat module (not `shared/`) to avoid import
+  namespace conflicts with `azure-api/shared/` when both are on `sys.path`.
 
 ---
 

@@ -222,6 +222,29 @@ RESOURCE RATING (WBH p.131)
 - The rating appears after Escape Velocity in the World Body detail section
   when World Physical detail has been generated.
 
+MAINWORLD SELECTION (WBH pp.155-156)
+-------------------------------------
+When generating a full star system, the generator now follows the World Builder's
+Handbook procedure for choosing the mainworld. All terrestrial bodies in the system
+are scored on four criteria and the highest-scoring world is chosen as the mainworld:
+
+- Habitability rating (most important)
+- Native sophonts present
+- Resource rating
+- Best refuelling access (gas giant satellite or liquid water)
+
+Occasionally (on an unlikely three-dice roll of 18), the selection is made at
+random from all candidates instead — representing the Referee's prerogative to
+surprise even the algorithm.
+
+If a secondary world outscores the orbital-generation candidate, it is promoted to
+mainworld. Social characteristics (population, government, law level, starport,
+and tech level) are then assigned to the selected mainworld and to all secondary
+worlds relative to it.
+
+This replaces the old behaviour where the mainworld was always whichever orbit
+happened to be closest to the habitable zone centre.
+
 BUG FIXES
 ---------
 - Fixed: Worlds orbiting a gas giant as a satellite displayed seismic stress

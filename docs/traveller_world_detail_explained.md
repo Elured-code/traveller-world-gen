@@ -77,12 +77,15 @@ class WorldDetail:
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
         self.habitability_rating: Optional[int] = None
+        self.native_sophont: bool = False
 ```
 
-`trade_codes`, `physical`, the rating fields, and `is_independent_government`
-are set at construction time or by separate steps. `is_independent_government`
-is `True` when the world was generated with the Case 2 (independent) government
-option and is emitted in `to_dict()` only when `True`.
+`trade_codes`, `physical`, the rating fields, `is_independent_government`, and
+`native_sophont` are set at construction time or by separate steps.
+`is_independent_government` is `True` when the world was generated with Case 2
+(independent) government; `native_sophont` is `True` when a native sophont was
+confirmed via `generate_sophont_checks()` during `_apply_biomass()`. Both fields
+are emitted in `to_dict()` only when `True`.
 
 ---
 
@@ -227,6 +230,7 @@ No dice are rolled; the rating is purely deterministic from world characteristic
 | `.to_dict()` | `WorldDetail` | Serialises the slot's detail to a plain dict |
 | `.from_dict(d)` | `WorldDetail` | Reconstructs from a dict, including nested Moon and physical objects |
 | `attach_detail(system, ..., rng=None)` | module | Entry point — populates every slot, mainworld biology, and habitability |
+| `apply_secondary_social(system, independent_government, rng)` | module | Re-applies social data to all secondary WorldDetails after `apply_mainworld_social()`. Re-rolls population cap; regenerates government, law, TL, spaceport, trade codes for every secondary and moon. Also syncs mainworld's real social data back to the satellite WorldDetail. |
 | `generate_system_detail(system, ..., rng=None)` | module | Alias / variant entry point; also accepts `rng` |
 | `generate_biomass_rating(...)` | module | WBH p.127 biomass roll with atmosphere/temperature DMs |
 | `generate_biocomplexity_rating(...)` | module | WBH p.129 biocomplexity roll |
@@ -240,19 +244,18 @@ No dice are rolled; the rating is purely deterministic from world characteristic
 ## How this fits in the pipeline
 
 ```
-TravellerSystem
+TravellerSystem (mainworld has placeholder social data: starport='X', pop=0)
         │
         ▼
-attach_detail(system, nhz=False, use_oxygen=False, advanced_temp=False,
-              independent_government=False)
+attach_detail(system, independent_government=False, ...)
         │
-        ├─ For each non-empty OrbitSlot:
+        ├─ For each non-empty OrbitSlot (secondaries):
         │       _generate_sah()   →  WorldDetail.sah
         │       social rolls      →  WorldDetail.population / government / law / tech
         │       (Case 1 or Case 2 per independent_government flag)
         │       WorldDetail.is_independent_government set accordingly
-        │       _moons_for()      →  passes OrbitSlot.gg_mass_earth to generate_moons()
-        │       generate_moons()  →  WorldDetail.moons
+        │       WorldDetail.native_sophont set by _set_biocomplexity() when bio ≥ 8
+        │       _moons_for()      →  generate_moons(), moon WorldDetails
         │       OrbitSlot.detail  = WorldDetail
         │
         └─ For mainworld:
@@ -261,4 +264,14 @@ attach_detail(system, nhz=False, use_oxygen=False, advanced_temp=False,
                 _apply_biomass()                     →  World.biomass_rating, etc.
                 _apply_habitability()                →  World.habitability_rating
                                                         WorldDetail.habitability_rating
+        │
+        ▼ (after select_mainworld() and apply_mainworld_social())
+        │
+apply_secondary_social(system, independent_government, rng)
+        ├─ Re-rolls population cap from mainworld's real population
+        ├─ For mainworld orbit satellite WorldDetail: syncs real social data back
+        ├─ For all secondary orbit WorldDetails and their moons:
+        │       _secondary_population() / government / law / TL / spaceport
+        │       assign_trade_codes()
+        └─ Physical data (SAH, biomass, habitability) is untouched
 ```
