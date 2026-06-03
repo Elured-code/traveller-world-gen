@@ -59,7 +59,16 @@ on the mainworld HTML display below the Habitability card.
 | `population_detail.cities` | World | array of City objects | Added |
 | `population_detail.population_profile` | World | string | Added |
 
+The Population detail card appears after Biological detail on the Mainworld tab.
+All card section headings are now rendered in bold.
+
 23 new tests in `TestPopulationDetail`. 1884 tests pass.
+
+### Bug fixes
+
+- Fixed `AttributeError: 'World' object has no attribute 'physical'` raised when
+  Population detail was enabled. The `attach_population_detail()` function was
+  referencing `mw.physical` instead of the correct `mw.size_detail` attribute.
 
 ---
 

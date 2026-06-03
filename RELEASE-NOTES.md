@@ -31,11 +31,15 @@ Case 5 total major pop: `(PCR/(1D+7)) × urban_pop`.
 `World.population_detail: Optional[PopulationDetail]` added (field, to_dict,
 from_dict). `WorldDetail.population_detail: Optional[object]` added similarly.
 `_world_html_ctx()` exposes `pop_detail` and pre-formatted population strings.
-`world_card.html` gains a "Population detail" card after Habitability.
+`world_card.html` gains a "Population detail" card positioned after Biological
+detail. All `.inner-label` card headings rendered in bold (`font-weight: 600`).
 `gen-ui/app.py` gains `_opt_population_detail` option (standalone checkbox in
 Options dialog, not nested under System detail), persisted in QSettings.
 `attach_population_detail()` called from both `_finish_generation()` and
 `_finish_system_generation()` when the option is enabled.
+
+**Bug fix:** `attach_population_detail()` was referencing `mw.physical` instead
+of `mw.size_detail`, causing `AttributeError` at runtime. Fixed.
 
 `traveller_world_schema.json` updated: `population_detail` object added (11
 sub-fields). `APP_VERSION` bumped `1.4.1` → `1.5.0`.
