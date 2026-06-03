@@ -80,6 +80,31 @@ LARGER SECONDARY WORLDS — CORRECT ATMOSPHERE FOR SIZE A–F
   correctly in eHex; no display or JSON changes were needed.
 
 
+FASTAPI WEB UI — TWO PAGES
+--------------------------
+The FastAPI web interface is now split into two separate pages reachable from
+the navigation bar at the top of each page:
+
+- Mainworld Only — generates a mainworld with its atmosphere and hydrographic
+  profile. No physical detail, no biological cards. Equivalent to using the
+  gen-ui app with all options unchecked.
+
+- Full System — generates a complete star system. The result is shown in two
+  tabs: the Mainworld tab shows the full world card (with all physical,
+  biological, and habitability detail); the System tab shows the stellar data
+  and orbital survey.
+
+The Full System page also has Detail, Full, and Select Mainworld options,
+matching the same controls available in the gen-ui app.
+
+GEN-UI OPTIONS DIALOG — SYSTEM DETAIL CHECKBOX
+-----------------------------------------------
+The "System detail" checkbox in the Options dialog now matches the size and
+appearance of the "Population detail" checkbox. Previously it was rendered as
+a group-box indicator, which displayed at a different size. The sub-options
+(NHZ Atmospheres, Oxygen requires biomass, etc.) are now hidden rather than
+grayed out when System detail is unchecked.
+
 FASTAPI SERVER
 --------------
 A second server backend (fastapi/) now mirrors the full Azure Functions REST

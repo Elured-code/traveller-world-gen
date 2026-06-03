@@ -6,6 +6,33 @@
 
 ---
 
+## FastAPI Web UI Split and World Card Detail Endpoint (Session 96)
+
+`fastapi/static/index.html` and `fastapi/static/system.html` are now two
+separate pages with nav links between them:
+
+- **Mainworld Only** (`index.html`) — single-page, full-width; calls
+  `/api/world/{name}/card` (no physical or biological detail). Output matches
+  gen-ui with System detail and Population detail both unchecked.
+- **Full System** (`system.html`) — calls two API endpoints in parallel when
+  format is HTML: `/api/world/{name}/card?detail=true` (Mainworld tab) and the
+  system card endpoint (System tab). Detail / Full / Select MW options available.
+
+`/api/world/{name}/card` gains a `detail` parameter (FastAPI only):
+
+- `detail=false` (default) — minimal path: atmosphere detail + hydrographic
+  detail only; no physical or biological cards. Matches gen-ui minimal output.
+- `detail=true` — full path: generates a complete system, runs
+  `attach_detail()`, and returns the mainworld HTML with all cards.
+
+`_OptionsDialog` in `gen-ui/app.py`: the checkable `QGroupBox("System detail")`
+replaced with a plain `QCheckBox` (matching the size and style of the
+"Population detail" checkbox) plus an indented `QWidget` for sub-options. The
+sub-options widget is hidden (not merely disabled) when System detail is
+unchecked. `QGroupBox` import and its `_CSS_DARK` rule removed.
+
+---
+
 ## Population Detail — PCR, Urbanisation, Major Cities (Session 95, issue #95)
 
 New module `traveller_world_social_detail.py`. Dataclasses `City` and

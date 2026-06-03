@@ -2,9 +2,39 @@
 
 **1884 tests pass. Pylint 10.00/10.**
 
-Sessions 88–95. Adds a FastAPI server, mainworld selection, secondary social
-pipeline, secondary world classifications, population detail, and assorted
-gen-ui and compliance fixes.
+Sessions 88–96. Adds a FastAPI server, mainworld selection, secondary social
+pipeline, secondary world classifications, population detail, FastAPI web UI
+split, and assorted gen-ui and compliance fixes.
+
+---
+
+## FastAPI Web UI — Two-Page Split (Session 96)
+
+The FastAPI web UI is now two separate full-width pages:
+
+- **Mainworld Only** (`/static/index.html`) — generates a mainworld with
+  atmosphere and hydrographic detail only (no physical or biological cards).
+  Output matches the gen-ui app with System detail and Population detail both
+  unchecked.
+- **Full System** (`/static/system.html`) — generates a star system with
+  tabbed results. The **Mainworld** tab shows the full world card (all detail
+  cards via `detail=true`); the **System** tab shows the orbital survey. Detail,
+  Full, and Select MW options are available.
+
+Both pages have nav links to each other in the header.
+
+`/api/world/{name}/card` (FastAPI) now accepts a `detail` query parameter:
+- `detail=false` (default) — minimal path; atmosphere and hydrographic detail
+  only.
+- `detail=true` — full path; generates the complete star system, runs
+  `attach_detail()`, and returns the mainworld card with all cards shown.
+
+### gen-ui Options dialog
+
+The "System detail" option is now a plain checkbox matching the size of all
+other options. Previously it was rendered as a `QGroupBox` title indicator,
+which was smaller and differently styled. The sub-options widget is hidden
+(not just disabled) when "System detail" is unchecked.
 
 ---
 

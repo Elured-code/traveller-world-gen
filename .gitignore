@@ -61,6 +61,9 @@ v13.md
 # ── Claude Code context ─────────────────────────────────────────────────────
 # Project context and session history — internal development notes not
 # intended for the public repository.
+context/
 .context/
+fetch-context.sh
+push-context.sh
 .claude/settings.local.json
 .claude/settings.json

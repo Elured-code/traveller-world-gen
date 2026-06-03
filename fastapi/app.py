@@ -469,7 +469,9 @@ async def generate_world_batch(request: Request) -> Response:  # pylint: disable
 async def generate_world_card(request: Request) -> Response:
     """Return a standalone HTML mainworld display card.
 
-    Parameters: seed (int, opt).
+    Parameters: seed (int, opt), detail (bool, opt).
+    When detail=true, generates a full system and returns the mainworld card
+    with all detail cards (physical, atmosphere, biological, habitability).
     """
     route_name = request.path_params.get("name", "").strip() or None
     logger.info("generate_world_card [name=%s]", route_name)
@@ -480,9 +482,37 @@ async def generate_world_card(request: Request) -> Response:
     seed_val, err = parse_seed(request, body)
     if err:
         return err
+    want_detail = parse_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
-        world = _build_world(name or "World-1", seed, rng)
+        if want_detail:
+            system = generate_full_system(name=name or "World-1", seed=seed, rng=rng)
+            apply_mainworld_social(system.mainworld, rng=rng)
+            _attach_mainworld_physical(system)
+            _apply_mainworld_moon_tidal(system)
+            attach_detail(system, rng=rng)
+            world = system.mainworld
+        else:
+            # Minimal path: matches gen-ui with system detail and population detail off.
+            # Atmosphere and hydrographic detail are always generated; physical is not.
+            world = generate_world(name=name or "World-1", seed=seed, rng=rng)
+            world.atmosphere_detail = generate_atmosphere_detail(
+                world.atmosphere, world.size, temperature=world.temperature,
+            )
+            generate_gas_mix(
+                world.atmosphere_detail, world.atmosphere, world.size,
+                world.temperature, None, world.hydrographics,
+            )
+            generate_unusual_subtype(
+                world.atmosphere_detail, world.atmosphere,
+                world.size, world.hydrographics,
+            )
+            world.hydrographic_detail = generate_hydrographic_detail(
+                world.hydrographics, world.size,
+                atmosphere=world.atmosphere,
+                temperature=world.temperature,
+                rng=rng,
+            )
         html = world.to_html()
     except Exception as exc:
         logger.exception("Error generating world card: %s", exc)
