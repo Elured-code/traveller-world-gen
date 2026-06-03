@@ -459,6 +459,80 @@
       "minimum": 0,
       "description": "The RNG seed used to generate this world. Pass this value as the 'seed' parameter to reproduce identical output. For system-endpoint responses, also pass the three boolean flags defined in $defs/system_generation_options."
     },
+    "population_detail": {
+      "type": "object",
+      "description": "WBH Social Characteristics population profile. Present only when population detail generation has been explicitly requested. Includes PCR, urbanisation %, urban population, and major city populations.",
+      "required": ["total_population", "p_value", "pcr", "pcr_label", "urbanisation_pct", "urban_population", "major_city_count", "major_city_total_population", "cities", "population_profile"],
+      "additionalProperties": false,
+      "properties": {
+        "total_population": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total world population: p_value × 10^pop_code."
+        },
+        "p_value": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9,
+          "description": "Population multiplier digit (1–9), same as population_multiplier."
+        },
+        "pcr": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "Population Concentration Rating (0 = extremely dispersed, 9 = extremely concentrated)."
+        },
+        "pcr_label": {
+          "type": "string",
+          "description": "Human-readable PCR label, e.g. 'Partially Dispersed'."
+        },
+        "urbanisation_pct": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage of the world population living in urban settlements."
+        },
+        "urban_population": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total world population × urbanisation_pct / 100."
+        },
+        "major_city_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of major cities (0–31)."
+        },
+        "major_city_total_population": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Combined population of all major cities."
+        },
+        "cities": {
+          "type": "array",
+          "description": "Individual major city entries, up to 10, sorted largest first.",
+          "items": {
+            "type": "object",
+            "required": ["population"],
+            "additionalProperties": false,
+            "properties": {
+              "population": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "codes": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "City designation codes, e.g. ['Cw'] for world capital."
+              }
+            }
+          }
+        },
+        "population_profile": {
+          "type": "string",
+          "description": "Compressed population profile string: P-p-C-%-M (pop code, P value, PCR, urbanisation %, major city count). Example: '6-5-3-39-7'."
+        }
+      }
+    },
     "size_detail": {
       "description": "Physical characteristics of the mainworld. Present only when physical detail has been generated. Exactly one of two shapes: WorldPhysical (terrestrial) or BeltPhysical (asteroid belt).",
       "oneOf": [
