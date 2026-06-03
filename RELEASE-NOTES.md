@@ -2,7 +2,35 @@
 
 **Branch:** `v1.5.0` → `main`
 **Sessions:** 88–
-**Tests:** 1884
+**Tests:** 1906
+
+---
+
+## Settlement Type Population Modifiers (Session 97, issue #128)
+
+Four optional settlement types now apply atmosphere-dependent DMs to the
+mainworld population roll, keeping the result within the 0–10 range.
+
+| Settlement type | Atm 5/6/8 | Atm 4/7/9 | Atm 0/1/2/3 | All other |
+|----------------|-----------|-----------|-------------|-----------|
+| Standard       |    +0     |    +0     |     +0      |    +0     |
+| Long-settled   |    +3     |    +2     |     +1      |    +0     |
+| Well-settled   |    +2     |    +1     |     —       |    −1     |
+| Backwater      |    +1     |    −1     |     −3      |    −5     |
+| Unsettled      |    −4     |    −5     |     —       |    −7     |
+
+Implementation: `_SETTLEMENT_DMS` and `_SETTLEMENT_DEFAULT_DM` module-level
+dicts; `_population_settlement_dm(settlement_type, atmosphere) → int` private
+helper; `generate_population(settlement_dm=0)` gains an optional DM parameter
+(result clamped `min(10, roll(2, -2 + dm))`); `generate_world()` and
+`apply_mainworld_social()` both gain `settlement_type: str = "standard"`.
+
+Gen-ui: `_OptionsDialog` gains a `QGroupBox("Settlement type")` with five
+`QRadioButton`s (Standard / Long-settled / Well-settled / Backwater / Unsettled).
+Standard is the default. Persisted as `opt_settlement_type` in `QSettings`.
+Not applied on TravellerMap paths.
+
+No schema change. 22 new tests in `TestSettlementType`. 1906 tests pass.
 
 ---
 

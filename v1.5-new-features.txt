@@ -1,6 +1,25 @@
 Traveller World & System Generator — What's New in v1.5.0
 ==========================================================
 
+SETTLEMENT TYPE POPULATION MODIFIERS
+------------------------------------
+The Options dialog now includes a "Settlement type" group with five radio
+buttons. Choosing a type shifts the mainworld population roll based on how
+developed the world's colonisation history is:
+
+- Standard: no change to the population roll (default).
+- Long-settled: worlds with long human presence; +1 to +3 bonus depending
+  on atmosphere quality (breathable atmospheres get the largest bonus).
+- Well-settled: established worlds; smaller positive bonus, with a penalty
+  on difficult atmospheres.
+- Backwater: frontier or neglected worlds; moderate penalty, especially
+  severe on thin or exotic atmospheres.
+- Unsettled: barely colonised or recently settled worlds; large penalty
+  on all but the most hospitable atmospheres.
+
+The result always stays within the standard population range (0–10). The
+setting has no effect on worlds looked up from TravellerMap.
+
 POPULATION DETAIL — PCR, URBANISATION, AND MAJOR CITIES
 ---------------------------------------------------------
 When "Population detail" is enabled in the Options dialog, inhabited worlds

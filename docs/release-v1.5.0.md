@@ -1,10 +1,29 @@
 # Traveller World Generator — v1.5.0 Release Notes
 
-**1884 tests pass. Pylint 10.00/10.**
+**1906 tests pass. Pylint 10.00/10.**
 
-Sessions 88–96. Adds a FastAPI server, mainworld selection, secondary social
+Sessions 88–97. Adds a FastAPI server, mainworld selection, secondary social
 pipeline, secondary world classifications, population detail, FastAPI web UI
-split, and assorted gen-ui and compliance fixes.
+split, settlement type population modifiers, and assorted gen-ui and compliance fixes.
+
+---
+
+## Settlement Type Population Modifiers (Session 97, issue #128)
+
+The gen-ui Options dialog now includes a **Settlement type** group with five
+radio buttons. Selecting a type shifts the mainworld population roll up or
+down based on the world's atmosphere:
+
+| Type | Effect |
+|------|--------|
+| Standard (default) | No modifier |
+| Long-settled | +1 to +3 (best on breathable atmospheres) |
+| Well-settled | −1 to +2 |
+| Backwater | −5 to +1 |
+| Unsettled | −7 to −4 |
+
+The result is always clamped to the standard 0–10 population range. Not
+applied to worlds fetched from TravellerMap. 22 new tests. 1906 tests pass.
 
 ---
 

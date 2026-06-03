@@ -203,20 +203,22 @@ lifeform_profile = (
 
 ## How a world is generated: `generate_world()`
 
-The entry point is `generate_world(name, seed=None, rng=None)` (line ~2466). It calls
-each characteristic's generator in rulebook order, passing earlier results as inputs
-to later ones. When `seed` or `rng` is provided, the module-level `_rng` instance is
-replaced with a seeded `random.Random` for that call; without either argument the
-existing `_rng` state is used unchanged.
+The entry point is `generate_world(name, seed=None, rng=None, settlement_type="standard")`.
+It calls each characteristic's generator in rulebook order, passing earlier results as
+inputs to later ones. When `seed` or `rng` is provided, the module-level `_rng` instance
+is replaced with a seeded `random.Random` for that call; without either argument the
+existing `_rng` state is used unchanged. `settlement_type` selects an optional
+atmosphere-dependent DM applied to the population roll (see Settlement type section below).
 
 ```python
-def generate_world(name: str = "Unknown", seed=None, rng=None) -> World:
+def generate_world(name="Unknown", seed=None, rng=None, settlement_type="standard") -> World:
     size         = generate_size()
     atmosphere   = generate_atmosphere(size)          # needs size
     temperature  = generate_temperature(atmosphere)   # needs atmosphere
     hydrographics = generate_hydrographics(
                        size, atmosphere, temperature)  # needs all three
-    population   = generate_population()
+    population   = generate_population(
+                       _population_settlement_dm(settlement_type, atmosphere))
     government   = generate_government(population)    # needs population
     law_level    = generate_law_level(government)     # needs government
     starport     = generate_starport(population)      # needs population
@@ -410,13 +412,35 @@ so running or skipping a phase changes the seed state for subsequent worlds.
 For the standalone CRB path (`generate_world()`), all three phases are rolled
 together in one call — that path has no system context for mainworld selection.
 
-`apply_mainworld_social()` can also be called directly:
+`apply_mainworld_social()` accepts an optional `settlement_type` parameter:
 ```python
 from traveller_world_gen import apply_mainworld_social
 world = generate_mainworld_at_orbit(...)   # physical only
 # ... selection logic ...
-apply_mainworld_social(world, rng=rng)     # adds social data
+apply_mainworld_social(world, rng=rng, settlement_type="backwater")
 ```
+
+## Settlement type population modifiers (issue #128)
+
+Five named types shift the mainworld population roll by an atmosphere-dependent DM.
+The result is clamped to the 0–10 range regardless of the DM.
+
+| Type | Atm 5/6/8 | Atm 4/7/9 | Atm 0–3 | All other |
+|------|-----------|-----------|---------|-----------|
+| `"standard"` (default) | 0 | 0 | 0 | 0 |
+| `"long_settled"` | +3 | +2 | +1 | 0 |
+| `"well_settled"` | +2 | +1 | — | −1 |
+| `"backwater"` | +1 | −1 | −3 | −5 |
+| `"unsettled"` | −4 | −5 | — | −7 |
+
+The lookup is performed by `_population_settlement_dm(settlement_type, atmosphere)`,
+which reads `_SETTLEMENT_DMS` (explicit per-atm DMs) and `_SETTLEMENT_DEFAULT_DM`
+(catch-all for atmospheres not listed). Both dicts are module-level constants.
+
+`generate_population(settlement_dm=0)` performs `min(10, roll(2, -2 + settlement_dm))`.
+`generate_world()` and `apply_mainworld_social()` both accept
+`settlement_type: str = "standard"` and compute the DM internally from the world's
+atmosphere code.
 
 ## Two-phase generation (standalone CRB path)
 
