@@ -1,0 +1,4 @@
+# Runtime dependencies for generation modules.
+# Used by the gen-ui binary build and the FastAPI server.
+# PySide6 is in gen-ui/requirements.txt; dev tools are in requirements-dev.txt.
+Jinja2>=3.1.0
