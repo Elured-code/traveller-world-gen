@@ -85,13 +85,13 @@ for readability while still working with numeric lookup tables that use integer 
 ## `APP_VERSION`
 
 ```python
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.0"
 ```
 
 When a world or system is saved to JSON, the file includes:
 
 ```json
-{ "_app_version": "1.4.0", ... }
+{ "_app_version": "1.5.0", ... }
 ```
 
 When a JSON is loaded, the GUI checks the saved version against `APP_VERSION` and

@@ -1,6 +1,42 @@
 Traveller World & System Generator — What's New in v1.5.0
 ==========================================================
 
+FASTAPI WEB UI — SAVE TO FILE
+-----------------------------
+Both the Mainworld Only and Full System web pages now have Save buttons. After
+generating a result, Save buttons appear in the seed bar at the top of the
+result area.
+
+- The Mainworld Only page can save as HTML (the world card) or JSON (the raw
+  data).
+- The Full System page can save as HTML (the full system card), Text (the plain
+  text system summary), or JSON (the raw system data).
+
+Files are named after the world: for example, generating a world called "Regina"
+produces "regina-world.html", "regina-system.txt", or "regina-system.json". The
+saved file always matches exactly what was generated — the same seed and the
+same options are replayed when you click Save.
+
+FASTAPI FULL SYSTEM PAGE — COMPLETE OPTIONS
+--------------------------------------------
+The Full System web page now has the same detailed generation options as the
+desktop application. A second row of controls appears below the main bar:
+
+- NHZ Atmospheres: use the World Builder's Handbook non-habitable zone
+  atmosphere tables for secondary worlds.
+- Biomass Rule: oxygenated atmospheres require biomass to sustain oxygen.
+- Runaway Greenhouse: apply the optional runaway greenhouse check.
+- Independent Government: secondary worlds generate their own government code
+  instead of a captive/subject government.
+- Population Detail: generate PCR, urbanisation, and major city data for all
+  inhabited worlds.
+- Settlement Type: choose Standard, Long-settled, Well-settled, Backwater, or
+  Unsettled to shift the mainworld population roll up or down.
+
+The first four options (NHZ, Biomass, Runaway GH, Independent Gov) are
+automatically grayed out when neither Detail nor Full is selected, since they
+only have an effect when secondary world profiles are generated.
+
 SETTLEMENT TYPE POPULATION MODIFIERS
 ------------------------------------
 The Options dialog now includes a "Settlement type" group with five radio

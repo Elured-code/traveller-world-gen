@@ -1,8 +1,57 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–
+**Sessions:** 88–98
 **Tests:** 1906
+
+---
+
+## FastAPI Web UI — Full Options Parity + Save (Session 98)
+
+### system.html — full options parity with gen-ui
+
+The Full System page now exposes every generation option available in the
+desktop app. Controls are reorganised into two rows:
+
+**Primary row:** Name, Seed, Format, Detail / Full / Select MW, Generate.
+
+**Sub-row (new):**
+- *System options* — NHZ Atm, Biomass Rule, Runaway GH, Indep Gov (disabled
+  when neither Detail nor Full is checked, since they only apply when secondary
+  world detail is generated).
+- *Population* — Pop Detail checkbox (standalone; always enabled).
+- *Settlement* — dropdown: Standard / Long-settled / Well-settled / Backwater /
+  Unsettled.
+
+Backend changes to `fastapi/helpers.py` and `fastapi/app.py`:
+- `parse_settlement_type(request, body) → str` — validates against 5 keys;
+  defaults to `"standard"`.
+- `parse_population_detail(request, body) → bool` — standard bool flag.
+- `_run_select_mainworld()` gains `settlement_type` param and passes it to
+  `apply_mainworld_social()`.
+- Endpoints 3 (`/api/world/{name}/card`), 5 (`/api/system/full`), 7
+  (`/api/system`), and 8 (`/api/system/{name}/card`) now parse and act on both
+  new params.
+
+### Save functionality (both pages)
+
+After each successful generation a **Save** group appears in the seed badge row:
+- **index.html** (Mainworld Only): `HTML` and `JSON` buttons.
+- **system.html** (Full System): `HTML`, `Text`, and `JSON` buttons.
+
+Each button re-fetches from the API using the same seed and generation options,
+then triggers a browser download with a meaningful filename
+(`{slug}-world.html`, `{slug}-system.json`, etc.). The save state is cleared
+whenever a new generation starts.
+
+### Timestamped console logging
+
+`fastapi/app.py` now calls `logging.config.dictConfig` at module level to
+apply `"%(asctime)s %(levelname)-8s %(name)s: %(message)s"` to all console
+output — both the app's own logger and uvicorn's access/error loggers.
+`uvicorn.error` is set to WARNING to suppress duplicate startup banners.
+
+1906 tests pass. No schema changes.
 
 ---
 

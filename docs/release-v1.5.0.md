@@ -2,9 +2,35 @@
 
 **1906 tests pass. Pylint 10.00/10.**
 
-Sessions 88–97. Adds a FastAPI server, mainworld selection, secondary social
+Sessions 88–98. Adds a FastAPI server, mainworld selection, secondary social
 pipeline, secondary world classifications, population detail, FastAPI web UI
-split, settlement type population modifiers, and assorted gen-ui and compliance fixes.
+split, settlement type population modifiers, full web UI options parity,
+save-to-file, and assorted gen-ui and compliance fixes.
+
+---
+
+## FastAPI Web UI — Full Options Parity + Save (Session 98)
+
+The Full System web page now matches every generation option in the desktop app.
+
+**New controls on system.html:**
+- NHZ Atmospheres, Biomass Rule, Runaway Greenhouse, Independent Government
+  checkboxes (enabled only when Detail or Full is checked).
+- Population Detail checkbox (standalone — always available).
+- Settlement Type dropdown (Standard / Long-settled / Well-settled / Backwater /
+  Unsettled).
+
+**Save functionality (both pages):** after generation a Save group appears in
+the seed badge row with download buttons. system.html offers HTML, Text, and
+JSON; index.html offers HTML and JSON. Downloads are re-fetched using the
+original seed and options, so the file exactly matches what was displayed.
+
+**Backend:** `fastapi/helpers.py` gains `parse_settlement_type()` and
+`parse_population_detail()`; system endpoints 3, 5, 7, and 8 in `fastapi/app.py`
+now accept and propagate both params. Console output gains timestamps via a
+`logging.config.dictConfig` call at module import.
+
+1906 tests pass. No schema changes.
 
 ---
 
