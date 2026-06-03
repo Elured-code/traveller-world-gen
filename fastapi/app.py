@@ -525,6 +525,9 @@ async def generate_world_card(request: Request) -> Response:
         seed, rng = apply_seed(seed_val)
         if want_detail:
             system = generate_full_system(name=name or "World-1", seed=seed, rng=rng)
+            if system.mainworld is None:
+                return error("No mainworld in generated system.",
+                             ERR_INTERNAL, status_code=500)
             apply_mainworld_social(system.mainworld, rng=rng, settlement_type=want_settlement)
             _attach_mainworld_physical(system)
             _apply_mainworld_moon_tidal(system)
