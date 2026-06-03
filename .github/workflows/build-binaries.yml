@@ -70,8 +70,8 @@ jobs:
       # requirements.txt for Jinja2 (imported via html_render.py → app.py).
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
 
       # The spec uses pathex=["."] and datas=[("templates", "templates")]
       # relative to the project root, so this must run from the repo root.
