@@ -85,6 +85,7 @@ The human author reviewed, directed, and is responsible for the code.
 """
 
 import logging
+import logging.config
 import os
 import sys
 import urllib.error
@@ -122,6 +123,7 @@ from helpers import (
     parse_nhz_atmospheres, parse_orbital_eccentricity, parse_orbital_inclination,
     parse_runaway_greenhouse, parse_independent_government,
     parse_optional_biomass, parse_optional_inhospitable,
+    parse_population_detail, parse_settlement_type,
     parse_seed, parse_sector, parse_world_json,
 )
 
@@ -136,9 +138,43 @@ from traveller_world_physical import (
 from traveller_hydro_detail import generate_hydrographic_detail
 from traveller_system_gen import generate_full_system, generate_system_from_world, select_mainworld
 from traveller_world_detail import attach_detail, gg_diameter_from_sah, apply_secondary_social
+from traveller_world_social_detail import attach_population_detail
 from traveller_map_fetch import generate_system_from_map
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Logging — apply timestamps to all console output.
+# This runs when the module is imported (after uvicorn has already configured
+# its own loggers), so it overrides the formatters on uvicorn's handlers too.
+# ---------------------------------------------------------------------------
+
+logging.config.dictConfig({
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "timestamped": {
+            "format": "%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        }
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "timestamped",
+            "stream": "ext://sys.stderr",
+        }
+    },
+    "root": {
+        "level": "INFO",
+        "handlers": ["console"],
+    },
+    "loggers": {
+        "uvicorn":        {"handlers": ["console"], "level": "INFO",    "propagate": False},
+        "uvicorn.access": {"handlers": ["console"], "level": "INFO",    "propagate": False},
+        "uvicorn.error":  {"handlers": ["console"], "level": "WARNING", "propagate": False},
+    },
+})
 
 # ---------------------------------------------------------------------------
 # Rate limiting
@@ -483,14 +519,18 @@ async def generate_world_card(request: Request) -> Response:
     if err:
         return err
     want_detail = parse_detail(request, body)
+    want_settlement = parse_settlement_type(request, body)
+    want_pop_detail = parse_population_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         if want_detail:
             system = generate_full_system(name=name or "World-1", seed=seed, rng=rng)
-            apply_mainworld_social(system.mainworld, rng=rng)
+            apply_mainworld_social(system.mainworld, rng=rng, settlement_type=want_settlement)
             _attach_mainworld_physical(system)
             _apply_mainworld_moon_tidal(system)
             attach_detail(system, rng=rng)
+            if want_pop_detail:
+                attach_population_detail(system, rng=rng)
             world = system.mainworld
         else:
             # Minimal path: matches gen-ui with system detail and population detail off.
@@ -553,9 +593,10 @@ async def generate_named_world(request: Request) -> Response:
     return ok(world.to_dict())
 
 
-def _run_select_mainworld(
+def _run_select_mainworld(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     system, rng, want_rg: bool, want_detail: bool,
     independent_government: bool = False,
+    settlement_type: str = "standard",
 ) -> None:
     """Run mainworld selection, social generation, and secondary social update."""
     swapped = select_mainworld(system, rng=rng)
@@ -564,7 +605,7 @@ def _run_select_mainworld(
         if want_detail:
             _apply_mainworld_moon_tidal(system)
     if system.mainworld is not None:
-        apply_mainworld_social(system.mainworld, rng=rng)
+        apply_mainworld_social(system.mainworld, rng=rng, settlement_type=settlement_type)
     if want_detail:
         apply_secondary_social(system,
                                independent_government=independent_government,
@@ -604,6 +645,8 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
     want_indep = parse_independent_government(request, body)
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
+    want_settlement = parse_settlement_type(request, body)
+    want_pop_detail = parse_population_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
@@ -617,7 +660,9 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
                       optional_inhospitable_rule=want_inhospitable)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         _apply_mainworld_moon_tidal(system)
-        _run_select_mainworld(system, rng, want_rg, True, want_indep)
+        _run_select_mainworld(system, rng, want_rg, True, want_indep, want_settlement)
+        if want_pop_detail:
+            attach_population_detail(system, rng=rng)
     except Exception as exc:
         logger.exception("Error generating full system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -747,6 +792,8 @@ async def generate_single_system(request: Request) -> Response:  # pylint: disab
     want_indep = parse_independent_government(request, body)
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
+    want_settlement = parse_settlement_type(request, body)
+    want_pop_detail = parse_population_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
@@ -762,7 +809,9 @@ async def generate_single_system(request: Request) -> Response:  # pylint: disab
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
-        _run_select_mainworld(system, rng, want_rg, want_detail, want_indep)
+        _run_select_mainworld(system, rng, want_rg, want_detail, want_indep, want_settlement)
+        if want_pop_detail and want_detail:
+            attach_population_detail(system, rng=rng)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -806,6 +855,8 @@ async def generate_system_card(request: Request) -> Response:  # pylint: disable
     want_indep = parse_independent_government(request, body)
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
+    want_settlement = parse_settlement_type(request, body)
+    want_pop_detail = parse_population_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
@@ -821,7 +872,9 @@ async def generate_system_card(request: Request) -> Response:  # pylint: disable
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
-        _run_select_mainworld(system, rng, want_rg, want_detail, want_indep)
+        _run_select_mainworld(system, rng, want_rg, want_detail, want_indep, want_settlement)
+        if want_pop_detail and want_detail:
+            attach_population_detail(system, rng=rng)
         html = system.to_html(detail_attached=want_detail)
     except Exception as exc:
         logger.exception("Error generating system card: %s", exc)

@@ -172,7 +172,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── Seed badge ──────────────────────────────────── */
+    /* ── Seed / save badge ───────────────────────────── */
     .seed-badge {
       padding: 0.35rem 1.5rem;
       font-size: 0.76rem;
@@ -199,6 +199,29 @@
     .seed-code:hover { border-color: var(--accent); }
     .copy-hint { opacity: 0; transition: opacity 0.2s; font-size: 0.72rem; color: var(--ok-fg); }
     .copy-hint.show { opacity: 1; }
+
+    .badge-divider {
+      width: 1px; height: 13px;
+      background: var(--border);
+      margin: 0 0.3rem;
+      flex-shrink: 0;
+    }
+    .save-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .btn-save {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 0.12rem 0.48rem;
+      font-size: 0.71rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-save:hover { border-color: var(--accent); color: var(--text); }
+    .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
 
     /* ── Result area ─────────────────────────────────── */
     .result {
@@ -281,9 +304,14 @@
 </div>
 
 <div class="status-bar" id="w-status"></div>
+
 <div class="seed-badge" id="w-seed-badge">
   Seed: <span class="seed-code" id="w-seed-val" title="Click to copy"></span>
   <span class="copy-hint" id="w-copy-hint">copied</span>
+  <div class="badge-divider"></div>
+  <span class="save-label">Save</span>
+  <button class="btn-save" id="w-save-html" title="Download world card as HTML">HTML</button>
+  <button class="btn-save" id="w-save-json" title="Download world data as JSON">JSON</button>
 </div>
 
 <div class="result" id="w-result">
@@ -299,6 +327,25 @@
   "use strict";
 
   function randSeed() { return Math.floor(Math.random() * 2_147_483_647); }
+
+  function slugName(name) {
+    return (name || "world").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "world";
+  }
+
+  function downloadBlob(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Tracks the last successful generation so save buttons can re-fetch.
+  let _lastGen = null;
 
   function setStatus(msg, type) {
     const el = document.getElementById("w-status");
@@ -326,6 +373,7 @@
     document.getElementById("w-json").classList.remove("visible");
     document.getElementById("w-seed-badge").classList.remove("visible");
     document.getElementById("w-result").querySelector(".empty-state").style.display = "";
+    _lastGen = null;
   }
 
   function showFrame(html) {
@@ -347,7 +395,45 @@
     el.classList.add("visible");
   }
 
-  // Seed copy-on-click
+  // ── Save handlers ────────────────────────────────────
+
+  async function saveAs(fmt) {
+    if (!_lastGen) return;
+    const { name, seed } = _lastGen;
+    const slug = slugName(name);
+    const btn = document.getElementById(`w-save-${fmt}`);
+    btn.disabled = true;
+    try {
+      let content, filename, mimeType;
+      if (fmt === "html") {
+        const cardName = encodeURIComponent(name || "World-1");
+        const resp = await fetch(`/api/world/${cardName}/card?seed=${seed}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        content  = await resp.text();
+        filename = `${slug}-world.html`;
+        mimeType = "text/html";
+      } else {
+        const p = new URLSearchParams({ seed });
+        if (name) p.set("name", name);
+        const resp = await fetch(`/api/world?${p}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        content  = JSON.stringify(await resp.json(), null, 2);
+        filename = `${slug}-world.json`;
+        mimeType = "application/json";
+      }
+      downloadBlob(content, filename, mimeType);
+    } catch (e) {
+      setStatus("Save failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById("w-save-html").addEventListener("click", () => saveAs("html"));
+  document.getElementById("w-save-json").addEventListener("click", () => saveAs("json"));
+
+  // ── Seed copy-on-click ───────────────────────────────
+
   document.getElementById("w-seed-val").addEventListener("click", function () {
     navigator.clipboard.writeText(this.textContent).then(() => {
       const hint = document.getElementById("w-copy-hint");
@@ -356,7 +442,8 @@
     }).catch(() => {});
   });
 
-  // Server health check
+  // ── Server health check ──────────────────────────────
+
   (async () => {
     const dot = document.getElementById("status-dot");
     const txt = document.getElementById("status-text");
@@ -415,6 +502,7 @@
         showSeed(data.seed ?? seed);
         if (!seedIn) document.getElementById("w-seed").value = data.seed ?? seed;
       }
+      _lastGen = { name: name || "World-1", seed };
       clearStatus();
     } catch (e) {
       setStatus("Error: " + e.message, "error");

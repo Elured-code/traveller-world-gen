@@ -58,11 +58,21 @@
 
     /* ── Controls ────────────────────────────────────── */
     .controls {
-      padding: 0.85rem 1.5rem;
+      padding: 0.75rem 1.5rem 0;
       border-bottom: 1px solid var(--border);
-      display: flex; flex-wrap: wrap; gap: 0.6rem;
-      align-items: flex-end; flex-shrink: 0;
+      display: flex; flex-direction: column; gap: 0;
+      flex-shrink: 0;
       background: var(--surface);
+    }
+    .controls-row {
+      display: flex; flex-wrap: wrap; gap: 0.6rem;
+      align-items: flex-end; padding-bottom: 0.75rem;
+    }
+    .controls-sub {
+      display: flex; flex-wrap: wrap; gap: 0.6rem;
+      align-items: center; padding-bottom: 0.65rem;
+      border-top: 1px solid var(--border);
+      padding-top: 0.55rem;
     }
     .field { display: flex; flex-direction: column; gap: 0.3rem; }
     .field label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
@@ -98,7 +108,16 @@
     .checkbox-label input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; width: 13px; height: 13px; }
     .checkbox-label:hover { color: var(--text); }
     .checkbox-label:has(input:disabled) { opacity: 0.4; cursor: not-allowed; }
-    .options-row { display: flex; gap: 1rem; align-items: center; padding: 0.42rem 0; }
+    .options-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; padding: 0.42rem 0; }
+
+    .sub-sep {
+      width: 1px; height: 18px; background: var(--border); margin: 0 0.25rem;
+      align-self: center;
+    }
+    .sub-label {
+      font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.05em; align-self: center; white-space: nowrap;
+    }
 
     /* ── Status / seed bars ──────────────────────────── */
     .status-bar { padding: 0.45rem 1.5rem; font-size: 0.8rem; flex-shrink: 0; display: none; }
@@ -132,6 +151,29 @@
     .seed-code:hover { border-color: var(--accent); }
     .copy-hint { opacity: 0; transition: opacity 0.2s; font-size: 0.72rem; color: var(--ok-fg); }
     .copy-hint.show { opacity: 1; }
+
+    .badge-divider {
+      width: 1px; height: 13px;
+      background: var(--border);
+      margin: 0 0.3rem;
+      flex-shrink: 0;
+    }
+    .save-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .btn-save {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 0.12rem 0.48rem;
+      font-size: 0.71rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-save:hover { border-color: var(--accent); color: var(--text); }
+    .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
 
     /* ── Result area ─────────────────────────────────── */
     .result { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
@@ -196,46 +238,89 @@
 </header>
 
 <div class="controls">
-  <div class="field">
-    <label for="s-name">Name</label>
-    <input type="text" id="s-name" placeholder="e.g. Ardenne" maxlength="64">
+  <!-- Primary controls row -->
+  <div class="controls-row">
+    <div class="field">
+      <label for="s-name">Name</label>
+      <input type="text" id="s-name" placeholder="e.g. Ardenne" maxlength="64">
+    </div>
+    <div class="field">
+      <label for="s-seed">Seed</label>
+      <div class="seed-row">
+        <input type="number" id="s-seed" placeholder="random">
+        <button class="btn btn-ghost" id="s-rand" title="Pick random seed">⟳</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="s-format">Format</label>
+      <select id="s-format">
+        <option value="html">Card (HTML)</option>
+        <option value="text">Text</option>
+        <option value="json">JSON</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>&nbsp;</label>
+      <div class="options-row">
+        <label class="checkbox-label" title="Attach secondary world and moon detail">
+          <input type="checkbox" id="s-detail"> Detail
+        </label>
+        <label class="checkbox-label" title="Always-full detail via /api/system/full">
+          <input type="checkbox" id="s-full"> Full
+        </label>
+        <label class="checkbox-label" title="Select best-scoring world as mainworld (WBH pp.155–156)">
+          <input type="checkbox" id="s-select-mw"> Select MW
+        </label>
+      </div>
+    </div>
+    <button class="btn" id="s-gen">Generate</button>
   </div>
-  <div class="field">
-    <label for="s-seed">Seed</label>
-    <div class="seed-row">
-      <input type="number" id="s-seed" placeholder="random">
-      <button class="btn btn-ghost" id="s-rand" title="Pick random seed">⟳</button>
+
+  <!-- Secondary options sub-row -->
+  <div class="controls-sub">
+    <span class="sub-label">System</span>
+    <label class="checkbox-label" id="lbl-nhz" title="Use WBH Non-Habitable Zone atmosphere tables (WBH pp.42–48)">
+      <input type="checkbox" id="s-nhz" disabled> NHZ Atm
+    </label>
+    <label class="checkbox-label" id="lbl-bio" title="Oxygenated atmospheres require biomass to sustain O₂ (WBH p.131)">
+      <input type="checkbox" id="s-bio" disabled> Biomass Rule
+    </label>
+    <label class="checkbox-label" id="lbl-rg" title="Optional runaway greenhouse check (WBH p.79)">
+      <input type="checkbox" id="s-rg" disabled> Runaway GH
+    </label>
+    <label class="checkbox-label" id="lbl-indep" title="Secondary worlds use independent government formula (WBH p.162 Case 2)">
+      <input type="checkbox" id="s-indep" disabled> Indep Gov
+    </label>
+
+    <div class="sub-sep"></div>
+    <span class="sub-label">Population</span>
+    <label class="checkbox-label" title="Generate PCR, urbanisation, and major city data for inhabited worlds">
+      <input type="checkbox" id="s-pop-detail"> Pop Detail
+    </label>
+
+    <div class="sub-sep"></div>
+    <span class="sub-label">Settlement</span>
+    <div class="field" style="margin: 0;">
+      <select id="s-settlement" title="Shift the mainworld population roll based on settlement history">
+        <option value="standard">Standard</option>
+        <option value="long_settled">Long-settled</option>
+        <option value="well_settled">Well-settled</option>
+        <option value="backwater">Backwater</option>
+        <option value="unsettled">Unsettled</option>
+      </select>
     </div>
   </div>
-  <div class="field">
-    <label for="s-format">Format</label>
-    <select id="s-format">
-      <option value="html">Card (HTML)</option>
-      <option value="text">Text</option>
-      <option value="json">JSON</option>
-    </select>
-  </div>
-  <div class="field">
-    <label>&nbsp;</label>
-    <div class="options-row">
-      <label class="checkbox-label" title="Attach secondary world and moon detail">
-        <input type="checkbox" id="s-detail"> Detail
-      </label>
-      <label class="checkbox-label" title="Always-full detail via /api/system/full">
-        <input type="checkbox" id="s-full"> Full
-      </label>
-      <label class="checkbox-label" title="Select best-scoring world as mainworld">
-        <input type="checkbox" id="s-select-mw"> Select MW
-      </label>
-    </div>
-  </div>
-  <button class="btn" id="s-gen">Generate</button>
 </div>
 
 <div class="status-bar" id="s-status"></div>
 <div class="seed-badge" id="s-seed-badge">
   Seed: <span class="seed-code" id="s-seed-val" title="Click to copy"></span>
   <span class="copy-hint" id="s-copy-hint">copied</span>
+  <div class="badge-divider"></div>
+  <span class="save-label">Save</span>
+  <button class="btn-save" id="s-save-html" title="Download system card as HTML">HTML</button>
+  <button class="btn-save" id="s-save-text" title="Download system summary as text">Text</button>
+  <button class="btn-save" id="s-save-json" title="Download system data as JSON">JSON</button>
 </div>
 
 <div class="result" id="s-result">
@@ -273,6 +358,25 @@
 
   function randSeed() { return Math.floor(Math.random() * 2_147_483_647); }
 
+  function slugName(name) {
+    return (name || "system").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "system";
+  }
+
+  function downloadBlob(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Tracks the last successful generation so save buttons can re-fetch.
+  let _lastGen = null;
+
   function setStatus(msg, type) {
     const el = document.getElementById("s-status");
     el.className = "status-bar " + type;
@@ -302,6 +406,7 @@
     document.getElementById("s-json").classList.remove("visible");
     document.getElementById("s-text").classList.remove("visible");
     document.getElementById("s-seed-badge").classList.remove("visible");
+    _lastGen = null;
   }
 
   function loadFrame(frameId, html) {
@@ -319,7 +424,6 @@
     document.getElementById("s-empty").style.display = "none";
     loadFrame("mw-frame", mwHtml);
     loadFrame("sys-frame", sysHtml);
-    // Activate first tab
     document.getElementById("tab-mw").classList.add("active");
     document.getElementById("tab-sys").classList.remove("active");
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "mw"));
@@ -340,7 +444,87 @@
     el.classList.add("visible");
   }
 
-  // Tab switching
+  // ── Save handlers ────────────────────────────────────
+
+  function buildSysUrl(seed, fmt) {
+    if (!_lastGen) return null;
+    const { name, full, detail, selectMw, nhz, bio, rg, indep, popDetail, settlement } = _lastGen;
+    const cardName = encodeURIComponent(name);
+    if (full) {
+      const p = new URLSearchParams({ seed, format: fmt });
+      if (name !== "World-1") p.set("name", name);
+      if (selectMw)   p.set("select_mainworld", "true");
+      if (nhz)        p.set("nhz_atmospheres", "true");
+      if (bio)        p.set("optional_biomass_rule", "true");
+      if (rg)         p.set("runaway_greenhouse", "true");
+      if (indep)      p.set("independent_government", "true");
+      if (popDetail)  p.set("population_detail", "true");
+      if (settlement !== "standard") p.set("settlement_type", settlement);
+      return `/api/system/full?${p}`;
+    }
+    if (fmt === "html") {
+      const p = new URLSearchParams({ seed, detail: detail ? "true" : "false" });
+      if (selectMw)   p.set("select_mainworld", "true");
+      if (nhz)        p.set("nhz_atmospheres", "true");
+      if (bio)        p.set("optional_biomass_rule", "true");
+      if (rg)         p.set("runaway_greenhouse", "true");
+      if (indep)      p.set("independent_government", "true");
+      if (popDetail)  p.set("population_detail", "true");
+      if (settlement !== "standard") p.set("settlement_type", settlement);
+      return `/api/system/${cardName}/card?${p}`;
+    }
+    // text / json via /api/system
+    const p = new URLSearchParams({ seed, format: fmt, detail: detail ? "true" : "false" });
+    if (name !== "World-1") p.set("name", name);
+    if (selectMw)   p.set("select_mainworld", "true");
+    if (nhz)        p.set("nhz_atmospheres", "true");
+    if (bio)        p.set("optional_biomass_rule", "true");
+    if (rg)         p.set("runaway_greenhouse", "true");
+    if (indep)      p.set("independent_government", "true");
+    if (popDetail)  p.set("population_detail", "true");
+    if (settlement !== "standard") p.set("settlement_type", settlement);
+    return `/api/system?${p}`;
+  }
+
+  async function saveAs(fmt) {
+    if (!_lastGen) return;
+    const { name, seed } = _lastGen;
+    const slug = slugName(name);
+    const btn = document.getElementById(`s-save-${fmt}`);
+    btn.disabled = true;
+    try {
+      const url = buildSysUrl(seed, fmt);
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      let content, filename, mimeType;
+      if (fmt === "html") {
+        content  = await resp.text();
+        filename = `${slug}-system.html`;
+        mimeType = "text/html";
+      } else if (fmt === "text") {
+        content  = await resp.text();
+        filename = `${slug}-system.txt`;
+        mimeType = "text/plain";
+      } else {
+        content  = JSON.stringify(await resp.json(), null, 2);
+        filename = `${slug}-system.json`;
+        mimeType = "application/json";
+      }
+      downloadBlob(content, filename, mimeType);
+    } catch (e) {
+      setStatus("Save failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById("s-save-html").addEventListener("click", () => saveAs("html"));
+  document.getElementById("s-save-text").addEventListener("click", () => saveAs("text"));
+  document.getElementById("s-save-json").addEventListener("click", () => saveAs("json"));
+
+  // ── Tab switching ────────────────────────────────────
+
   document.getElementById("s-tab-bar").addEventListener("click", e => {
     const btn = e.target.closest(".tab-btn");
     if (!btn) return;
@@ -350,7 +534,8 @@
     document.getElementById("tab-sys").classList.toggle("active", tab === "sys");
   });
 
-  // Seed copy-on-click
+  // ── Seed copy-on-click ───────────────────────────────
+
   document.getElementById("s-seed-val").addEventListener("click", function () {
     navigator.clipboard.writeText(this.textContent).then(() => {
       const hint = document.getElementById("s-copy-hint");
@@ -359,7 +544,8 @@
     }).catch(() => {});
   });
 
-  // Server health check
+  // ── Server health check ──────────────────────────────
+
   (async () => {
     const dot = document.getElementById("status-dot");
     const txt = document.getElementById("status-text");
@@ -374,12 +560,25 @@
     document.getElementById("s-seed").value = randSeed();
   });
 
-  // Disable Detail when Full is checked
+  // ── Sub-options enable/disable ───────────────────────
+
+  function updateSubOptions() {
+    const detail = document.getElementById("s-detail").checked;
+    const full   = document.getElementById("s-full").checked;
+    const enabled = detail || full;
+    ["s-nhz", "s-bio", "s-rg", "s-indep"].forEach(id => {
+      document.getElementById(id).disabled = !enabled;
+    });
+  }
+
   document.getElementById("s-full").addEventListener("change", function () {
     const detail = document.getElementById("s-detail");
     detail.disabled = this.checked;
     if (this.checked) detail.checked = false;
+    updateSubOptions();
   });
+
+  document.getElementById("s-detail").addEventListener("change", updateSubOptions);
 
   document.getElementById("s-gen").addEventListener("click", generateSystem);
   ["s-name", "s-seed"].forEach(id => {
@@ -388,40 +587,64 @@
     });
   });
 
+  // ── Main generation ──────────────────────────────────
+
   async function generateSystem() {
-    const name     = document.getElementById("s-name").value.trim();
-    const seedIn   = document.getElementById("s-seed").value.trim();
-    const format   = document.getElementById("s-format").value;
-    const detail   = document.getElementById("s-detail").checked;
-    const full     = document.getElementById("s-full").checked;
-    const selectMw = document.getElementById("s-select-mw").checked;
-    const btn      = document.getElementById("s-gen");
-    const seed     = seedIn ? parseInt(seedIn, 10) : randSeed();
+    const name       = document.getElementById("s-name").value.trim();
+    const seedIn     = document.getElementById("s-seed").value.trim();
+    const format     = document.getElementById("s-format").value;
+    const detail     = document.getElementById("s-detail").checked;
+    const full       = document.getElementById("s-full").checked;
+    const selectMw   = document.getElementById("s-select-mw").checked;
+    const nhz        = document.getElementById("s-nhz").checked;
+    const bio        = document.getElementById("s-bio").checked;
+    const rg         = document.getElementById("s-rg").checked;
+    const indep      = document.getElementById("s-indep").checked;
+    const popDetail  = document.getElementById("s-pop-detail").checked;
+    const settlement = document.getElementById("s-settlement").value;
+    const btn        = document.getElementById("s-gen");
+    const seed       = seedIn ? parseInt(seedIn, 10) : randSeed();
 
     btn.disabled = true;
     clearResult();
     setStatus("Generating…", "loading");
 
+    // Build shared optional-flag params for system endpoints
+    function sysParams(base) {
+      if (selectMw)   base.set("select_mainworld", "true");
+      if (nhz)        base.set("nhz_atmospheres", "true");
+      if (bio)        base.set("optional_biomass_rule", "true");
+      if (rg)         base.set("runaway_greenhouse", "true");
+      if (indep)      base.set("independent_government", "true");
+      if (popDetail)  base.set("population_detail", "true");
+      if (settlement !== "standard") base.set("settlement_type", settlement);
+      return base;
+    }
+
+    // Params to forward to the mainworld card endpoint
+    function mwCardParams(seed) {
+      const p = new URLSearchParams({ seed, detail: "true" });
+      if (popDetail)  p.set("population_detail", "true");
+      if (settlement !== "standard") p.set("settlement_type", settlement);
+      return p;
+    }
+
     try {
       if (format === "html") {
-        // Build system card URL
-        let sysUrl;
         const cardName = encodeURIComponent(name || "World-1");
+
+        let sysUrl;
         if (full) {
-          const p = new URLSearchParams({ seed, format: "html" });
+          const p = sysParams(new URLSearchParams({ seed, format: "html" }));
           if (name) p.set("name", name);
-          if (selectMw) p.set("select_mainworld", "true");
           sysUrl = `/api/system/full?${p}`;
         } else {
-          const p = new URLSearchParams({ seed, detail: detail ? "true" : "false" });
-          if (selectMw) p.set("select_mainworld", "true");
+          const p = sysParams(new URLSearchParams({ seed, detail: detail ? "true" : "false" }));
           sysUrl = `/api/system/${cardName}/card?${p}`;
         }
 
-        // Build mainworld card URL (same seed/name, detail=true for all cards)
-        const mwUrl = `/api/world/${encodeURIComponent(name || "World-1")}/card?seed=${seed}&detail=true`;
+        const mwUrl = `/api/world/${encodeURIComponent(name || "World-1")}/card?${mwCardParams(seed)}`;
 
-        // Fetch both in parallel
         const [sysResp, mwResp] = await Promise.all([fetch(sysUrl), fetch(mwUrl)]);
 
         if (!sysResp.ok) {
@@ -439,18 +662,15 @@
         if (!seedIn) document.getElementById("s-seed").value = seed;
 
       } else {
-        // Text / JSON — single request, no tabs
-        let url;
         const cardName = encodeURIComponent(name || "World-1");
+        let url;
         if (full) {
-          const p = new URLSearchParams({ seed, format });
+          const p = sysParams(new URLSearchParams({ seed, format }));
           if (name) p.set("name", name);
-          if (selectMw) p.set("select_mainworld", "true");
           url = `/api/system/full?${p}`;
         } else {
-          const p = new URLSearchParams({ seed, detail: detail ? "true" : "false" });
+          const p = sysParams(new URLSearchParams({ seed, detail: detail ? "true" : "false" }));
           if (name) p.set("name", name);
-          if (selectMw) p.set("select_mainworld", "true");
           url = `/api/system?${p}`;
         }
 
@@ -469,12 +689,14 @@
           if (!seedIn) document.getElementById("s-seed").value = data.seed ?? seed;
           clearStatus();
           btn.disabled = false;
+          _lastGen = { name: name || "World-1", seed: data.seed ?? seed, full, detail, selectMw, nhz, bio, rg, indep, popDetail, settlement };
           return;
         }
         showSeed(seed);
         if (!seedIn) document.getElementById("s-seed").value = seed;
       }
 
+      _lastGen = { name: name || "World-1", seed, full, detail, selectMw, nhz, bio, rg, indep, popDetail, settlement };
       clearStatus();
     } catch (e) {
       setStatus("Error: " + e.message, "error");

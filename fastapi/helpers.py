@@ -269,6 +269,32 @@ def parse_optional_inhospitable(request: Request, body: dict) -> bool:
     return _parse_bool_param(request, body, "optional_inhospitable_rule")
 
 
+_VALID_SETTLEMENT_TYPES = frozenset(
+    {"standard", "long_settled", "well_settled", "backwater", "unsettled"}
+)
+
+
+def parse_settlement_type(request: Request, body: dict) -> str:
+    """Extract the optional 'settlement_type' parameter.
+
+    Accepted values: 'standard' (default), 'long_settled', 'well_settled',
+    'backwater', 'unsettled'. Unknown values fall back to 'standard'.
+    """
+    raw = request.query_params.get("settlement_type", "").strip().lower()
+    if not raw:
+        raw = str(body.get("settlement_type", "")).strip().lower()
+    return raw if raw in _VALID_SETTLEMENT_TYPES else "standard"
+
+
+def parse_population_detail(request: Request, body: dict) -> bool:
+    """Extract the optional 'population_detail' flag.
+
+    When True, the caller should run attach_population_detail() to populate
+    PCR, urbanisation, and major-city data on all inhabited worlds.
+    """
+    return _parse_bool_param(request, body, "population_detail")
+
+
 def parse_format(request: Request, body: dict) -> str:
     """Extract the optional 'format' parameter.
 
