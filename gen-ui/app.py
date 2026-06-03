@@ -81,6 +81,7 @@ from traveller_system_gen import (  # noqa: E402
 from traveller_world_detail import (  # noqa: E402
     attach_detail as _attach_detail, gg_diameter_from_sah, apply_secondary_social,
 )
+from traveller_world_social_detail import attach_population_detail  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
     World,
     generate_atmosphere_detail,
@@ -349,6 +350,7 @@ class _OptionsDialog(QDialog):
         advanced_temp: bool,
         runaway_greenhouse: bool,
         independent_government: bool,
+        population_detail: bool,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Generation Options")
@@ -379,6 +381,10 @@ class _OptionsDialog(QDialog):
         checks_layout.addWidget(self._check_runaway_greenhouse)
         checks_layout.addWidget(self._check_independent_gov)
         layout.addWidget(self._system_group)
+
+        self._check_pop_detail = QCheckBox("Population detail")
+        self._check_pop_detail.setChecked(population_detail)
+        layout.addWidget(self._check_pop_detail)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -424,6 +430,10 @@ class _OptionsDialog(QDialog):
     def independent_government(self) -> bool:
         return self._check_independent_gov.isChecked()
 
+    @property
+    def population_detail(self) -> bool:
+        return self._check_pop_detail.isChecked()
+
 
 # ---------------------------------------------------------------------------
 # Main window
@@ -465,6 +475,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         self._opt_independent_gov: bool = (
             str(_s.value("opt_independent_gov", False)).lower() == "true"
+        )
+        self._opt_population_detail: bool = (
+            str(_s.value("opt_population_detail", False)).lower() == "true"
         )
         self._apply_theme()
         self._build_menu_bar()
@@ -686,6 +699,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             advanced_temp=self._opt_advanced_temp,
             runaway_greenhouse=self._opt_runaway_greenhouse,
             independent_government=self._opt_independent_gov,
+            population_detail=self._opt_population_detail,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -695,6 +709,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_advanced_temp = dialog.advanced_temp
         self._opt_runaway_greenhouse = dialog.runaway_greenhouse
         self._opt_independent_gov = dialog.independent_government
+        self._opt_population_detail = dialog.population_detail
         _s = QSettings("traveller-world-gen", "AppWindow")
         _s.setValue("opt_full_system", self._opt_full_system)
         _s.setValue("opt_nhz", self._opt_nhz)
@@ -702,6 +717,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_advanced_temp", self._opt_advanced_temp)
         _s.setValue("opt_runaway_greenhouse", self._opt_runaway_greenhouse)
         _s.setValue("opt_independent_gov", self._opt_independent_gov)
+        _s.setValue("opt_population_detail", self._opt_population_detail)
         self._on_detail_toggled(self._opt_full_system)
 
     def _on_generate(self) -> None:
@@ -777,10 +793,21 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 atmosphere=world.atmosphere,  # type: ignore[attr-defined]
                 temperature=world.temperature,  # type: ignore[attr-defined]
             )
+        if self._opt_population_detail:
+            from traveller_world_social_detail import generate_population_detail  # pylint: disable=import-outside-toplevel
+            if world.population > 0:  # type: ignore[attr-defined]
+                world.population_detail = generate_population_detail(  # type: ignore[attr-defined]
+                    world.population, world.population_multiplier,  # type: ignore[attr-defined]
+                    size=world.size, tl=world.tech_level,  # type: ignore[attr-defined]
+                    government=world.government,  # type: ignore[attr-defined]
+                    law_level=world.law_level,  # type: ignore[attr-defined]
+                    trade_codes=world.trade_codes,  # type: ignore[attr-defined]
+                    atm=world.atmosphere,  # type: ignore[attr-defined]
+                )
         self._act_save.setEnabled(True)
         self._show_summary(world)
 
-    def _finish_system_generation(  # pylint: disable=too-many-locals,too-many-statements
+    def _finish_system_generation(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
         self, system: object, attach_detail_flag: bool = False
     ) -> None:
         self._current_system = system
@@ -894,6 +921,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 system,
                 independent_government=self._opt_independent_gov,
             )
+        if self._opt_population_detail:
+            attach_population_detail(system)  # type: ignore[arg-type]
         self._detail_attached = attach_detail_flag
         self._act_save.setEnabled(True)
         self._show_system_summary(system)

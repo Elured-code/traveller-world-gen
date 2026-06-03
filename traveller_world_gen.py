@@ -56,6 +56,7 @@ from tables import (
 
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
+    from traveller_world_social_detail import PopulationDetail
 
 
 # ---------------------------------------------------------------------------
@@ -1541,6 +1542,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     compatibility_rating: Optional[int] = field(default=None, init=False)
     lifeform_profile:     Optional[str] = field(default=None, init=False)
     habitability_rating:  Optional[int] = field(default=None, init=False)
+    population_detail: Optional["PopulationDetail"] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1652,6 +1654,8 @@ class World:  # pylint: disable=too-many-instance-attributes
             **({"habitability_rating": self.habitability_rating}
                if self.habitability_rating is not None else {}),
             **({"seed": self.seed} if self.seed is not None else {}),
+            **({"population_detail": self.population_detail.to_dict()}
+               if self.population_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1829,6 +1833,9 @@ class World:  # pylint: disable=too-many-instance-attributes
             world.habitability_rating = int(d["habitability_rating"])
         if d.get("seed") is not None:
             world.seed = int(d["seed"])
+        if d.get("population_detail") is not None:
+            from traveller_world_social_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
+            world.population_detail = _PD.from_dict(d["population_detail"])
 
         return world
 
@@ -2116,6 +2123,20 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
             if world.habitability_rating is not None else None
         ),
         "json_str": world.to_json(),
+        "pop_detail": world.population_detail,
+        "pop_detail_total_str": (
+            f"{world.population_detail.total_population:,}"
+            if world.population_detail is not None else None),
+        "pop_detail_urban_str": (
+            f"{world.population_detail.urban_population:,}"
+            if world.population_detail is not None else None),
+        "pop_detail_major_total_str": (
+            f"{world.population_detail.major_city_total_population:,}"
+            if world.population_detail is not None else None),
+        "pop_detail_cities": (
+            [(i + 1, f"{c.population:,}")
+             for i, c in enumerate(world.population_detail.cities)]
+            if world.population_detail is not None else []),
     }
 
 

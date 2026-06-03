@@ -339,6 +339,92 @@ def _spaceport(population: int) -> str:
     return "F"
 
 
+def _secondary_classification(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-return-statements,too-many-branches,too-many-locals
+        pop: int, gov: int, tl: int, law_level: int, atm: int, hyd: int,
+        hz_deviation: float, is_belt: bool,
+        mw_pop: int, mw_tl: int, mw_law: int, mw_gov: int,
+        mw_trade_codes: list, mw_bases: list, mw_starport: str,
+) -> Optional[str]:
+    """Return the two-letter classification code for an inhabited secondary world or moon.
+
+    Checks WBH p.163 categorisation table in order; returns the first match or None.
+    Automatic classifications (Colony, Farming) need no dice roll.
+    All other classifications require a 2D roll vs. a threshold with DMs.
+    """
+    # Colony (Cy): secondary Pop 5+, Gov 6 — automatic
+    if pop >= 5 and gov == 6:
+        return "Cy"
+
+    # Farming (Fa): in habitable zone, Atm 4–9, Hyd 2+ — automatic; belts excluded
+    if (not is_belt
+            and abs(hz_deviation) <= 1.0
+            and 4 <= atm <= 9
+            and hyd >= 2):
+        return "Fa"
+
+    # Freeport (Fp): secondary Gov 0–5, TL 8+; roll 10+, DM−2 if mainworld starport A or B
+    if 0 <= gov <= 5 and tl >= 8:
+        dm = -2 if mw_starport in ("A", "B") else 0
+        if _roll(2, dm) >= 10:
+            return "Fp"
+
+    # Military Base (Mb): mainworld TL 8+, not Poor, Gov 6; roll 12+
+    if mw_tl >= 8 and "Po" not in mw_trade_codes and mw_gov == 6:
+        dm = (4 if mw_bases else 0) + (2 if gov == 6 else 0)
+        if _roll(2, dm) >= 12:
+            return "Mb"
+
+    # Mining Facility (Mi): mainworld Industrial, secondary Pop 2+; belt threshold 6+, else 10+
+    if "In" in mw_trade_codes and pop >= 2:
+        threshold = 6 if is_belt else 10
+        if _roll(2) >= threshold:
+            return "Mi"
+
+    # Penal Colony (Pe): mainworld TL 9+, LL 8+, Gov 6; roll 10+, DM+2 if secondary LL 8+
+    if mw_tl >= 9 and mw_law >= 8 and mw_gov == 6:
+        dm = 2 if law_level >= 8 else 0
+        if _roll(2, dm) >= 10:
+            return "Pe"
+
+    # Research Base (Rb): mainworld Pop 6+, TL 8+, not Poor; roll 10+, DM+2 if mainworld TL 12+
+    if mw_pop >= 6 and mw_tl >= 8 and "Po" not in mw_trade_codes:
+        dm = 2 if mw_tl >= 12 else 0
+        if _roll(2, dm) >= 10:
+            return "Rb"
+
+    return None
+
+
+def _apply_classification(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        det: "WorldDetail",
+        hz_deviation: float,
+        is_belt: bool,
+        mw_pop: int, mw_tl: int, mw_law: int, mw_gov: int,
+        mw_trade_codes: list, mw_bases: list, mw_starport: str,
+) -> None:
+    """Determine and attach the secondary world classification to det.
+
+    Sets det.classification and appends the two-letter code to det.trade_codes.
+    No-op when the world is uninhabited.
+    """
+    if not det.inhabited:
+        return
+    atm = _ehex_to_int(det.sah[1]) if len(det.sah) > 1 else 0
+    hyd = _ehex_to_int(det.sah[2]) if len(det.sah) > 2 else 0
+    code = _secondary_classification(
+        pop=det.population, gov=det.government, tl=det.tech_level,
+        law_level=det.law_level,
+        atm=atm, hyd=hyd,
+        hz_deviation=hz_deviation, is_belt=is_belt,
+        mw_pop=mw_pop, mw_tl=mw_tl, mw_law=mw_law, mw_gov=mw_gov,
+        mw_trade_codes=mw_trade_codes, mw_bases=mw_bases,
+        mw_starport=mw_starport,
+    )
+    det.classification = code
+    if code is not None and code not in det.trade_codes:
+        det.trade_codes.append(code)
+
+
 # ---------------------------------------------------------------------------
 # Biomass Rating (WBH pp.127-131)
 # ---------------------------------------------------------------------------
@@ -737,7 +823,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
     __slots__ = ("sah", "population", "government", "law_level",
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
-                 "is_independent_government", "native_sophont")
+                 "is_independent_government", "native_sophont", "classification",
+                 "population_detail")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -752,6 +839,9 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.spaceport  = spaceport
         self.moons      = moons if moons is not None else []
         self.is_independent_government = is_independent_government
+        self.classification: Optional[str] = None
+        # traveller_world_social_detail.PopulationDetail — set by attach_population_detail()
+        self.population_detail: Optional[object] = None
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
@@ -821,6 +911,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             "moons":       [m.to_dict() for m in self.moons],
             "physical":    self.physical.to_dict() if self.physical is not None else None,
         }
+        if self.classification is not None:
+            d["classification"] = self.classification
         if self.is_independent_government:
             d["is_independent_government"] = True
         if self.native_sophont:
@@ -831,6 +923,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["biocomplexity_rating"] = self.biocomplexity_rating
         if self.habitability_rating is not None:
             d["habitability_rating"] = self.habitability_rating
+        if self.population_detail is not None:
+            d["population_detail"] = self.population_detail.to_dict()  # type: ignore[attr-defined]
         return d
 
     @classmethod
@@ -854,6 +948,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             else:
                 from traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
                 obj.physical = WorldPhysical.from_dict(phys_d)
+        obj.classification = d.get("classification") or None
         obj.is_independent_government = bool(d.get("is_independent_government", False))
         obj.native_sophont = bool(d.get("native_sophont", False))
         if d.get("biomass_rating") is not None:
@@ -862,6 +957,9 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             obj.biocomplexity_rating = int(d["biocomplexity_rating"])
         if d.get("habitability_rating") is not None:
             obj.habitability_rating = int(d["habitability_rating"])
+        if d.get("population_detail") is not None:
+            from traveller_world_social_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
+            obj.population_detail = _PD.from_dict(d["population_detail"])
         return obj
 
 
@@ -960,6 +1058,9 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
     max_secondary_pop: int,
     nhz_atmospheres: bool = False,
     independent_government: bool = False,
+    mw_trade_codes: list | None = None,
+    mw_bases: list | None = None,
+    mw_starport: str = "X",
 ) -> "WorldDetail":
     """
     Generate full WorldDetail for a significant moon (WBH pp.57, 78-99, 155-180).
@@ -1009,9 +1110,16 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
         law  = _secondary_law_level(gov, mw_law, independent=independent_government)
         tl   = _secondary_tech_level(0, mw_tl)
         port = _spaceport(pop)
-        return WorldDetail(sah=sah, population=pop, government=gov,
-                           law_level=law, tech_level=tl, spaceport=port,
-                           is_independent_government=is_indep)
+        det = WorldDetail(sah=sah, population=pop, government=gov,
+                          law_level=law, tech_level=tl, spaceport=port,
+                          is_independent_government=is_indep)
+        _apply_classification(
+            det, hz_deviation, is_belt=False,
+            mw_pop=mw_pop, mw_tl=mw_tl, mw_law=mw_law, mw_gov=mw_gov,
+            mw_trade_codes=mw_trade_codes or [], mw_bases=mw_bases or [],
+            mw_starport=mw_starport,
+        )
+        return det
 
     # Size 2+: generate atmosphere and hydrographics
     if nhz_atmospheres and abs(hz_deviation) > 1.0:
@@ -1041,9 +1149,16 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
     law  = _secondary_law_level(gov, mw_law, independent=independent_government)
     tl   = _secondary_tech_level(atmosphere, mw_tl)
     port = _spaceport(pop)
-    return WorldDetail(sah=sah, population=pop, government=gov,
-                       law_level=law, tech_level=tl, spaceport=port,
-                       is_independent_government=is_indep)
+    det = WorldDetail(sah=sah, population=pop, government=gov,
+                      law_level=law, tech_level=tl, spaceport=port,
+                      is_independent_government=is_indep)
+    _apply_classification(
+        det, hz_deviation, is_belt=False,
+        mw_pop=mw_pop, mw_tl=mw_tl, mw_law=mw_law, mw_gov=mw_gov,
+        mw_trade_codes=mw_trade_codes or [], mw_bases=mw_bases or [],
+        mw_starport=mw_starport,
+    )
+    return det
 
 # ---------------------------------------------------------------------------
 # Main generation function
@@ -1067,10 +1182,13 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
     mainworld = system.mainworld
 
     # Determine system-wide secondary population cap (WBH p.155)
-    mw_pop  = mainworld.population if mainworld else 0
-    mw_gov  = mainworld.government if mainworld else 0
-    mw_law  = mainworld.law_level  if mainworld else 0
-    mw_tl   = mainworld.tech_level if mainworld else 0
+    mw_pop          = mainworld.population    if mainworld else 0
+    mw_gov          = mainworld.government    if mainworld else 0
+    mw_law          = mainworld.law_level     if mainworld else 0
+    mw_tl           = mainworld.tech_level    if mainworld else 0
+    mw_trade_codes  = mainworld.trade_codes   if mainworld else []
+    mw_bases        = mainworld.bases         if mainworld else []
+    mw_starport     = mainworld.starport      if mainworld else "X"
 
     max_secondary_pop = max(0, mw_pop - _rng.randint(1, 6))
 
@@ -1136,6 +1254,12 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
                     law_level=law, tech_level=tl, spaceport=port,
                     is_independent_government=is_indep,
                 )
+                _apply_classification(
+                    result[key], orbit.hz_deviation, is_belt=True,
+                    mw_pop=mw_pop, mw_tl=mw_tl, mw_law=mw_law, mw_gov=mw_gov,
+                    mw_trade_codes=mw_trade_codes, mw_bases=mw_bases,
+                    mw_starport=mw_starport,
+                )
             # Belt physical detail (WBH pp.131-133)
             same_star_outward = sorted(
                 [o for o in orbits.orbits
@@ -1195,6 +1319,12 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
                     law_level=law, tech_level=tl, spaceport=port,
                     is_independent_government=is_indep,
                 )
+                _apply_classification(
+                    result[key], orbit.hz_deviation, is_belt=False,
+                    mw_pop=mw_pop, mw_tl=mw_tl, mw_law=mw_law, mw_gov=mw_gov,
+                    mw_trade_codes=mw_trade_codes, mw_bases=mw_bases,
+                    mw_starport=mw_starport,
+                )
 
     # Attach moons and their full detail to every WorldDetail
     for key, world_detail in result.items():
@@ -1238,6 +1368,9 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
                     max_secondary_pop=max_secondary_pop,
                     nhz_atmospheres=nhz_atmospheres,
                     independent_government=independent_government,
+                    mw_trade_codes=mw_trade_codes,
+                    mw_bases=mw_bases,
+                    mw_starport=mw_starport,
                 )
 
     return result
@@ -1416,7 +1549,7 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
     _apply_habitability(system)
 
 
-def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statements
+def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statements,too-many-locals
         system: TravellerSystem,
         independent_government: bool = False,
         rng: Optional[random.Random] = None,
@@ -1441,10 +1574,13 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
     if mainworld is None:
         return
 
-    mw_pop = mainworld.population
-    mw_gov = mainworld.government
-    mw_law = mainworld.law_level
-    mw_tl  = mainworld.tech_level
+    mw_pop         = mainworld.population
+    mw_gov         = mainworld.government
+    mw_law         = mainworld.law_level
+    mw_tl          = mainworld.tech_level
+    mw_trade_codes = mainworld.trade_codes
+    mw_bases       = mainworld.bases
+    mw_starport    = mainworld.starport
 
     max_pop = max(0, mw_pop - _rng.randint(1, 6))
 
@@ -1455,11 +1591,12 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
             pop = 0
         det.population = pop
         if pop == 0:
-            det.government = 0
-            det.law_level  = 0
-            det.tech_level = 0
-            det.spaceport  = "-"
+            det.government  = 0
+            det.law_level   = 0
+            det.tech_level  = 0
+            det.spaceport   = "-"
             det.is_independent_government = False
+            det.classification = None
         else:
             if independent_government:
                 gov, is_indep = _independent_government(pop), True
@@ -1471,7 +1608,8 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
             det.tech_level = _secondary_tech_level(atm, mw_tl)
             det.spaceport  = _spaceport(pop)
             det.is_independent_government = is_indep
-        sz  = _ehex_to_int(det.sah[0]) if len(det.sah) > 0 else 0
+        sz_ch = det.sah[0] if len(det.sah) > 0 else "0"
+        sz  = 1 if sz_ch == "S" else _ehex_to_int(sz_ch)
         hyd = _ehex_to_int(det.sah[2]) if len(det.sah) > 2 else 0
         det.trade_codes = assign_trade_codes(
             sz, atm, hyd,
@@ -1487,7 +1625,7 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
         det.spaceport   = mainworld.starport
         det.trade_codes = list(mainworld.trade_codes)
 
-    def _moons_social(moons: list) -> None:
+    def _moons_social(moons: list, hz_deviation: float = 0.0) -> None:
         """Re-apply social to a list of Moon objects' detail."""
         for moon in moons:
             if moon.is_ring or moon.detail is None:
@@ -1495,23 +1633,30 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
             m_det = moon.detail
             m_atm = _ehex_to_int(m_det.sah[1]) if len(m_det.sah) > 1 else 0
             _social(m_det, m_atm)
+            _apply_classification(
+                m_det, hz_deviation, is_belt=False,
+                mw_pop=mw_pop, mw_tl=mw_tl, mw_law=mw_law, mw_gov=mw_gov,
+                mw_trade_codes=mw_trade_codes, mw_bases=mw_bases,
+                mw_starport=mw_starport,
+            )
 
     # ── Mainworld orbit ───────────────────────────────────────────────────
     mw_orbit = system.mainworld_orbit
     if mw_orbit is not None and mw_orbit.detail is not None:
+        mw_hz = mw_orbit.hz_deviation
         if mw_orbit.world_type == "gas_giant":
             # moons[0] is the mainworld satellite; sync its social data
             sat_moon = (mw_orbit.detail.moons[0]
                         if mw_orbit.detail.moons else None)
             if sat_moon is not None and sat_moon.detail is not None:
                 _sync_mw(sat_moon.detail)
-                _moons_social(sat_moon.detail.moons)
+                _moons_social(sat_moon.detail.moons, hz_deviation=mw_hz)
             # moons[1:] are secondary moons of the same GG
-            _moons_social(mw_orbit.detail.moons[1:])
+            _moons_social(mw_orbit.detail.moons[1:], hz_deviation=mw_hz)
         else:
             # Terrestrial/belt mainworld: orbit.detail IS the satellite WorldDetail
             _sync_mw(mw_orbit.detail)
-            _moons_social(mw_orbit.detail.moons)
+            _moons_social(mw_orbit.detail.moons, hz_deviation=mw_hz)
 
     # ── Non-mainworld secondary orbits ────────────────────────────────────
     for orbit in system.system_orbits.orbits:
@@ -1522,12 +1667,18 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
             continue
         if det.is_gas_giant:
             # GG itself has no social; re-apply to all its moons
-            _moons_social(det.moons)
+            _moons_social(det.moons, hz_deviation=orbit.hz_deviation)
             continue
         # Terrestrial or belt
         atm = _ehex_to_int(det.sah[1]) if len(det.sah) > 1 else 0
         _social(det, atm)
-        _moons_social(det.moons)
+        _apply_classification(
+            det, orbit.hz_deviation, is_belt=(orbit.world_type == "belt"),
+            mw_pop=mw_pop, mw_tl=mw_tl, mw_law=mw_law, mw_gov=mw_gov,
+            mw_trade_codes=mw_trade_codes, mw_bases=mw_bases,
+            mw_starport=mw_starport,
+        )
+        _moons_social(det.moons, hz_deviation=orbit.hz_deviation)
 
 
 def _set_biocomplexity(
@@ -1835,6 +1986,17 @@ def _apply_habitability(system: TravellerSystem) -> None:  # pylint: disable=too
         )
 
 
+_CLASSIFICATION_NAMES: dict[str, str] = {
+    "Cy": "Colony",
+    "Fa": "Farming",
+    "Fp": "Freeport",
+    "Mb": "Military Base",
+    "Mi": "Mining Facility",
+    "Pe": "Penal Colony",
+    "Rb": "Research Base",
+}
+
+
 def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-many-locals
     """
     Formatted table of all orbits with their physical and social profiles.
@@ -1866,13 +2028,19 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
 
         moon_list = (getattr(detail, "moons", None) or []) if detail else []
         moons_display = moons_str(moon_list)
+        cl_name = (
+            _CLASSIFICATION_NAMES.get(detail.classification, "")
+            if detail is not None and detail.classification
+            else ""
+        )
+        cl_suffix = f"  [{cl_name}]" if cl_name else ""
         lines.append(
             f"  {o.star_designation:<5} {o.slot_index:<4} "
             f"{o.orbit_number:<8.2f} {o.orbit_au:<9.3f} "
             f"{o.world_type:<14} {profile:<22} "
             f"{codes_str:<18} "
             f"{moons_display:<20} "
-            f"{o.temperature_zone}{mw_mark}"
+            f"{o.temperature_zone}{mw_mark}{cl_suffix}"
         )
         # Moon sub-rows: indented, showing SAH+social profile and trade codes
         for mi, moon in enumerate(moon_list, 1):
@@ -1885,7 +2053,12 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
                 d = moon.detail
                 moon_profile = d.profile
                 moon_codes_str = " ".join(d.trade_codes)
-                moon_sah_str = f"size {moon.size_str}"
+                moon_cl = (
+                    f"  [{_CLASSIFICATION_NAMES[d.classification]}]"
+                    if d.classification and d.classification in _CLASSIFICATION_NAMES
+                    else ""
+                )
+                moon_sah_str = f"size {moon.size_str}{moon_cl}"
             else:
                 moon_profile = f"size {moon.size_str}"
                 moon_codes_str = ""

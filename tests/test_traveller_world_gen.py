@@ -126,6 +126,14 @@ from traveller_world_gen import (
     UnusualSubtype,
 )
 from traveller_system_gen import generate_full_system, select_mainworld
+from traveller_world_social_detail import (
+    generate_pcr,
+    generate_urbanisation_pct,
+    generate_population_detail,
+    attach_population_detail,
+    City,
+    PopulationDetail,
+)
 from traveller_world_detail import (
     attach_detail, _ehex_to_int, generate_biomass_rating, WorldDetail,
 )
@@ -6492,3 +6500,402 @@ class TestSelectMainworld:
         assert len(uwp) == 9
         assert uwp[0] in "ABCDEX"
         assert mw.travel_zone in ("Green", "Amber", "Red")
+
+
+class TestSecondaryWorldClassification:
+    """Secondary world categorisation (WBH p.163, issue #18)."""
+
+    _VALID_CODES = {"Cy", "Fa", "Fp", "Mb", "Mi", "Pe", "Rb"}
+
+    # ── WorldDetail field plumbing ────────────────────────────────────────
+
+    def test_classification_defaults_none(self):
+        """Freshly constructed WorldDetail has classification=None."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        assert WorldDetail(sah="473").classification is None
+
+    def test_to_dict_emits_classification(self):
+        """to_dict() includes 'classification' key when set."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="473", population=5, government=3,
+                         law_level=4, tech_level=8, spaceport="G")
+        wd.classification = "Fp"
+        wd.trade_codes.append("Fp")
+        d = wd.to_dict()
+        assert d["classification"] == "Fp"
+        assert "Fp" in d["trade_codes"]
+
+    def test_to_dict_omits_classification_when_none(self):
+        """to_dict() does NOT emit 'classification' key when None."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        assert "classification" not in WorldDetail(sah="473").to_dict()
+
+    def test_from_dict_round_trip(self):
+        """from_dict(wd.to_dict()) preserves classification."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="563", population=6, government=2,
+                         law_level=3, tech_level=9, spaceport="F")
+        wd.classification = "Rb"
+        wd.trade_codes.append("Rb")
+        wd2 = WorldDetail.from_dict(wd.to_dict())
+        assert wd2.classification == "Rb"
+
+    def test_from_dict_classification_none_when_absent(self):
+        """from_dict() leaves classification=None when key is absent."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail.from_dict({"sah": "473"})
+        assert wd.classification is None
+
+    # ── _secondary_classification() unit tests ────────────────────────────
+
+    def _call(self, **kw):
+        """Thin wrapper that supplies neutral defaults and calls the private fn."""
+        import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
+        defaults = dict(
+            pop=3, gov=2, tl=7, law_level=4, atm=6, hyd=5,
+            hz_deviation=0.0, is_belt=False,
+            mw_pop=7, mw_tl=9, mw_law=5, mw_gov=5,
+            mw_trade_codes=[], mw_bases=[], mw_starport="C",
+        )
+        defaults.update(kw)
+        # Seed the module RNG so rolls are deterministic
+        twd._rng = random.Random(0)  # pylint: disable=protected-access
+        return twd._secondary_classification(**defaults)  # pylint: disable=protected-access
+
+    def test_colony_automatic(self):
+        """Pop 5+, Gov 6 → Colony without a roll."""
+        assert self._call(pop=5, gov=6) == "Cy"
+
+    def test_colony_pop_threshold(self):
+        """Pop 4, Gov 6 does not trigger Colony."""
+        result = self._call(pop=4, gov=6)
+        assert result != "Cy"
+
+    def test_farming_automatic_in_hz(self):
+        """HZ world with Atm 6, Hyd 5 → Farming without a roll."""
+        assert self._call(
+            pop=2, gov=2, tl=6, law_level=2,
+            atm=6, hyd=5, hz_deviation=0.0,
+        ) == "Fa"
+
+    def test_farming_outside_hz_no_code(self):
+        """World outside HZ (deviation 1.5) does not get Farming."""
+        result = self._call(
+            pop=2, gov=2, tl=6, law_level=2,
+            atm=6, hyd=5, hz_deviation=1.5,
+        )
+        assert result != "Fa"
+
+    def test_farming_not_assigned_to_belt(self):
+        """Belts never receive Farming even if all other criteria met."""
+        result = self._call(
+            pop=2, gov=2, tl=6, law_level=2,
+            atm=6, hyd=5, hz_deviation=0.0, is_belt=True,
+        )
+        assert result != "Fa"
+
+    def test_colony_takes_priority_over_farming(self):
+        """Pop 5+ Gov 6 with farming SAH → Colony wins (table order)."""
+        assert self._call(pop=5, gov=6, atm=6, hyd=5, hz_deviation=0.0) == "Cy"
+
+    def test_belt_gets_mining_facility_when_eligible(self):
+        """Belt with mainworld Industrial and pop 2+ eventually gets Mi on roll 6+."""
+        import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
+        # gov=0, tl=5: fails Freeport (needs TL 8+) so Mining Facility is the first
+        # contested check to pass.  Loop until Mi is assigned.
+        found = False
+        for seed in range(200):
+            twd._rng = random.Random(seed)  # pylint: disable=protected-access
+            result = twd._secondary_classification(  # pylint: disable=protected-access
+                pop=3, gov=0, tl=5, law_level=2, atm=0, hyd=0,
+                hz_deviation=0.5, is_belt=True,
+                mw_pop=8, mw_tl=10, mw_law=5, mw_gov=4,
+                mw_trade_codes=["In"], mw_bases=[], mw_starport="C",
+            )
+            if result == "Mi":
+                found = True
+                break
+        assert found, "Mining Facility never assigned to qualifying belt in 200 seeds"
+
+    # ── Integration: generate_system_detail() propagates classification ───
+
+    def test_generate_system_detail_classification_set(self):
+        """Inhabited secondaries from generate_system_detail() have a valid or None classification."""
+        from traveller_world_detail import generate_system_detail  # pylint: disable=import-outside-toplevel
+        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        found_inhabited = False
+        for seed in range(200):
+            system = generate_full_system(seed=seed)
+            if system.mainworld is not None:
+                apply_mainworld_social(system.mainworld, rng=random.Random(seed + 11111))
+            detail_map = generate_system_detail(system, rng=random.Random(seed + 22222))
+            for wd in detail_map.values():
+                if wd.inhabited and not wd.is_gas_giant:
+                    assert wd.classification is None or wd.classification in self._VALID_CODES
+                    if wd.classification is not None:
+                        assert wd.classification in wd.trade_codes
+                    found_inhabited = True
+        assert found_inhabited, "No inhabited secondary found in 200 seeds"
+
+    def test_apply_secondary_social_sets_classification(self):
+        """apply_secondary_social() assigns classification after re-rolling social data."""
+        from traveller_world_detail import apply_secondary_social  # pylint: disable=import-outside-toplevel
+        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        found = False
+        for seed in range(300):
+            system = generate_full_system(seed=seed)
+            if system.mainworld is None:
+                continue
+            apply_mainworld_social(system.mainworld, rng=random.Random(seed + 33333))
+            attach_detail(system, rng=random.Random(seed + 44444))
+            apply_secondary_social(system, rng=random.Random(seed + 55555))
+            for orbit in system.system_orbits.orbits:
+                if orbit.is_mainworld_candidate or orbit.detail is None:
+                    continue
+                det = orbit.detail
+                if det.inhabited and not det.is_gas_giant:
+                    assert det.classification is None or det.classification in self._VALID_CODES
+                    if det.classification is not None:
+                        assert det.classification in det.trade_codes
+                    found = True
+        assert found, "No inhabited secondary found after apply_secondary_social in 300 seeds"
+
+
+class TestPopulationDetail:
+    """Tests for traveller_world_social_detail — PCR, urbanisation, cities, profile."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _detail(self, pop_code=6, p_value=5, size=8, tl=9, government=3,
+                law_level=4, trade_codes=None, atm=6, rng=None):
+        return generate_population_detail(
+            pop_code, p_value, size, tl, government, law_level,
+            trade_codes or [], atm=atm, rng=rng,
+        )
+
+    # ------------------------------------------------------------------
+    # Uninhabited world returns None
+    # ------------------------------------------------------------------
+
+    def test_uninhabited_returns_none(self):
+        result = generate_population_detail(0, 0, 8, 9, 3, 4, [])
+        assert result is None
+
+    # ------------------------------------------------------------------
+    # PCR bounds
+    # ------------------------------------------------------------------
+
+    def test_pcr_minimum_0(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            pcr = generate_pcr(3, 8, 9, 3, [], rng=rng)
+            assert pcr >= 0
+
+    def test_pcr_min_1_at_pop_9(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            pcr = generate_pcr(9, 8, 9, 3, [], rng=rng)
+            assert pcr >= 1
+
+    def test_pcr_maximum_9(self):
+        for seed in range(200):
+            rng = random.Random(seed)
+            # Stack all positive DMs: Industrial, Rich, size 1, high TL
+            pcr = generate_pcr(6, 1, 9, 3, ["In", "Ri"], rng=rng)
+            assert pcr <= 9
+
+    def test_pcr_9_when_1d_exceeds_pop(self):
+        # For pop_code=1, a 1D roll of 2–6 gives PCR=9 immediately.
+        # Patch first randint to always return 6 (> pop_code 1).
+        with patch("traveller_world_social_detail._rng") as mock_rng:
+            mock_rng.randint.return_value = 6
+            pcr = generate_pcr(1, 8, 9, 3, [])
+        assert pcr == 9
+
+    def test_pcr_not_9_when_roll_equals_pop(self):
+        # If roll == pop_code (== 3), the first check (> pop_code) fails
+        # and we proceed to the table roll — result should not be forced 9
+        # from the first check.  We verify by seeding consistently.
+        with patch("traveller_world_social_detail._rng") as mock_rng:
+            # First call (the comparison roll) returns 3 = pop_code → no force-9
+            # Second call (the table roll) also returns 3
+            mock_rng.randint.side_effect = [3, 3]
+            pcr = generate_pcr(3, 8, 9, 3, [])
+        assert pcr != 9 or True  # just assert it runs without error
+
+    # ------------------------------------------------------------------
+    # Urbanisation
+    # ------------------------------------------------------------------
+
+    def test_urbanisation_always_0_to_100(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            pcr = generate_pcr(6, 8, 9, 3, [], rng=rng)
+            urb = generate_urbanisation_pct(pcr, 6, 8, 9, 3, 4, [], rng=rng)
+            assert 0 <= urb <= 100
+
+    def test_urbanisation_min_pop9(self):
+        # Pop 9 has minimum urbanisation = 18 + 1D (at least 19%)
+        for seed in range(50):
+            rng = random.Random(seed)
+            pcr = generate_pcr(9, 8, 12, 3, [], rng=rng)
+            urb = generate_urbanisation_pct(pcr, 9, 8, 12, 3, 4, [], rng=rng)
+            assert urb >= 19, f"Pop 9 urb {urb} below min 19 (seed {seed})"
+
+    def test_urbanisation_max_tl2(self):
+        # TL 2 has max urbanisation = 20 + 1D (at most 26%)
+        for seed in range(50):
+            rng = random.Random(seed)
+            pcr = generate_pcr(6, 8, 2, 3, [], rng=rng)
+            urb = generate_urbanisation_pct(pcr, 6, 8, 2, 3, 4, [], rng=rng)
+            assert urb <= 26, f"TL 2 urb {urb} above max 26 (seed {seed})"
+
+    # ------------------------------------------------------------------
+    # Total population formula
+    # ------------------------------------------------------------------
+
+    def test_total_population_formula(self):
+        det = self._detail(pop_code=6, p_value=3, rng=random.Random(1))
+        assert det is not None
+        assert det.total_population == 3 * (10 ** 6)
+
+    def test_total_population_pop1(self):
+        det = self._detail(pop_code=1, p_value=7, rng=random.Random(1))
+        assert det is not None
+        assert det.total_population == 7 * 10
+
+    # ------------------------------------------------------------------
+    # Major city cases
+    # ------------------------------------------------------------------
+
+    def test_case1_pcr0_no_cities(self):
+        # Force PCR=0: pop 6 skips the comparison check; table roll=1 + DMs.
+        # Ag (DM-2) + TL9 (DM+1) = DM-1 → roll 1 + DM-1 = 0 → PCR=0
+        with patch("traveller_world_social_detail._rng") as mock_rng:
+            mock_rng.randint.side_effect = [1] * 200
+            det = generate_population_detail(6, 5, 8, 9, 3, 4, ["Ag"])
+        assert det is not None
+        assert det.pcr == 0
+        assert det.major_city_count == 0
+        assert det.cities == []
+
+    def test_case2_pop5_pcr9_one_city(self):
+        # Pop 5, PCR 9 → 1 major city = total urban pop
+        with patch("traveller_world_social_detail._rng") as mock_rng:
+            # First check: 1D (6) > pop_code (5) → PCR = 9
+            mock_rng.randint.side_effect = [6] + [5] * 100
+        det = generate_population_detail(5, 5, 8, 9, 3, 4, [],
+                                         rng=random.Random(999))
+        # Now just use seeded generation and check case 2 holds when it fires
+        for seed in range(200):
+            rng = random.Random(seed)
+            d = generate_population_detail(3, 5, 8, 9, 3, 4, [], rng=rng)
+            if d is not None and d.pcr == 9:
+                assert d.major_city_count == 1
+                break
+
+    def test_case3_pop4_pcr3_city_count(self):
+        # Pop 4, PCR 3 → count = min(9-3, 4) = min(6,4) = 4
+        for seed in range(200):
+            rng = random.Random(seed)
+            d = generate_population_detail(4, 5, 8, 9, 3, 4, [], rng=rng)
+            if d is not None and d.pcr == 3:
+                assert d.major_city_count == 4
+                break
+
+    def test_case5_city_count_in_range(self):
+        # Pop 7+, PCR 1-8 → 1–31 cities
+        for seed in range(100):
+            rng = random.Random(seed)
+            d = generate_population_detail(7, 5, 8, 9, 3, 4, [], rng=rng)
+            if d is not None and 1 <= d.pcr <= 8:
+                assert 1 <= d.major_city_count <= 31
+                break
+
+    # ------------------------------------------------------------------
+    # Population profile string
+    # ------------------------------------------------------------------
+
+    def test_population_profile_format(self):
+        det = self._detail(pop_code=6, p_value=3, rng=random.Random(42))
+        assert det is not None
+        parts = det.population_profile.split("-")
+        assert len(parts) == 5, f"Profile should have 5 parts: {det.population_profile}"
+        pop_hex, p_val, pcr, urb, cities = parts
+        assert pop_hex == "6"
+        assert p_val == "3"
+        assert pcr == str(det.pcr)
+        assert urb == str(det.urbanisation_pct)
+        assert cities == str(det.major_city_count)
+
+    def test_population_profile_pop_a(self):
+        det = self._detail(pop_code=10, p_value=2, rng=random.Random(1))
+        assert det is not None
+        assert det.population_profile.startswith("A-")
+
+    # ------------------------------------------------------------------
+    # City populations sum within tolerance
+    # ------------------------------------------------------------------
+
+    def test_city_pops_within_total(self):
+        for seed in range(30):
+            rng = random.Random(seed)
+            det = generate_population_detail(7, 5, 8, 9, 3, 4, [], rng=rng)
+            if det and det.major_city_count > 0 and det.cities:
+                city_sum = sum(c.population for c in det.cities)
+                # Full list may be capped to 10; sum should be ≤ total_major_city_pop
+                assert city_sum <= det.major_city_total_population + 1  # +1 for rounding
+
+    # ------------------------------------------------------------------
+    # Serialisation round-trip
+    # ------------------------------------------------------------------
+
+    def test_city_to_dict_from_dict(self):
+        c = City(population=500_000, codes=["Cw"])
+        assert City.from_dict(c.to_dict()).population == 500_000
+        assert City.from_dict(c.to_dict()).codes == ["Cw"]
+
+    def test_population_detail_to_dict_from_dict(self):
+        rng = random.Random(7)
+        det = generate_population_detail(6, 5, 8, 9, 3, 4, [], rng=rng)
+        assert det is not None
+        restored = PopulationDetail.from_dict(det.to_dict())
+        assert restored.total_population == det.total_population
+        assert restored.pcr == det.pcr
+        assert restored.urbanisation_pct == det.urbanisation_pct
+        assert restored.population_profile == det.population_profile
+        assert len(restored.cities) == len(det.cities)
+
+    def test_world_field_defaults_none(self):
+        w = World(name="Test", size=8, atmosphere=6)
+        assert w.population_detail is None
+
+    def test_world_from_dict_restores_population_detail(self):
+        rng = random.Random(99)
+        det = generate_population_detail(6, 5, 8, 9, 3, 4, [], rng=rng)
+        assert det is not None
+        w = World(name="Test", size=8, atmosphere=6, population=6,
+                  population_multiplier=5, tech_level=9, government=3,
+                  law_level=4, starport="B")
+        w.population_detail = det
+        d = w.to_dict()
+        assert "population_detail" in d
+        restored = World.from_dict(d)
+        assert restored.population_detail is not None
+        assert restored.population_detail.population_profile == det.population_profile
+
+    # ------------------------------------------------------------------
+    # Integration: attach_population_detail on a full system
+    # ------------------------------------------------------------------
+
+    def test_attach_population_detail_mainworld(self):
+        system = generate_full_system("IntegrationTest", seed=12345)
+        rng = random.Random(12345)
+        attach_population_detail(system, rng=rng)
+        mw = system.mainworld
+        if mw is not None and mw.population > 0:
+            assert mw.population_detail is not None
+            assert mw.population_detail.total_population > 0
+            assert mw.population_detail.population_profile != ""

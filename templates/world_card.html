@@ -389,6 +389,26 @@
   </div>
   {% endif %}
 
+  {% if ctx.pop_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Population detail</p>
+    {{ drow("Population profile", ctx.pop_detail.population_profile) }}
+    {{ drow("Total population", ctx.pop_detail_total_str) }}
+    {{ drow("PCR", ctx.pop_detail.pcr|string ~ " — " ~ ctx.pop_detail.pcr_label) }}
+    {{ drow("Urbanisation", ctx.pop_detail.urbanisation_pct|string ~ "%") }}
+    {{ drow("Urban population", ctx.pop_detail_urban_str) }}
+    {% if ctx.pop_detail.major_city_count > 0 %}
+    {{ drow("Major cities", ctx.pop_detail.major_city_count|string
+            ~ " (total " ~ ctx.pop_detail_major_total_str ~ ")") }}
+    {% for num, pop_str in ctx.pop_detail_cities %}
+    {{ drow("City " ~ num|string, pop_str) }}
+    {% endfor %}
+    {% else %}
+    {{ drow("Major cities", "None (PCR 0 — dispersed settlement)") }}
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if ctx.biomass_rating is not none and ctx.biomass_rating > 0 %}
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Biological detail</p>
