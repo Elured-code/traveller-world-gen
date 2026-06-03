@@ -222,6 +222,29 @@ RESOURCE RATING (WBH p.131)
 - The rating appears after Escape Velocity in the World Body detail section
   when World Physical detail has been generated.
 
+SECONDARY WORLD CLASSIFICATIONS (WBH p.163)
+--------------------------------------------
+Inhabited secondary worlds and moons in a star system now receive a classification
+that describes the role they play in the wider system. There are seven possible
+classifications:
+
+- Colony (Cy) — a populous world under colonial government
+- Farming (Fa) — an agricultural world in the star's habitable zone
+- Freeport (Fp) — an independently governed trade hub
+- Military Base (Mb) — a garrison maintained by an authoritarian mainworld
+- Mining Facility (Mi) — an industrial extraction site
+- Penal Colony (Pe) — a prison world under a strict mainworld
+- Research Base (Rb) — a scientific installation funded by a developed mainworld
+
+Each classification has eligibility requirements based on the world's own
+characteristics and the mainworld's profile. Colony and Farming are assigned
+automatically when requirements are met; the others require a dice roll. Only the
+first qualifying classification in the above order is assigned — a world has at
+most one role.
+
+The two-letter classification code (e.g. "Mi") appears alongside the world's other
+trade codes in the system orbit table and in JSON output.
+
 MAINWORLD SELECTION (WBH pp.155-156)
 -------------------------------------
 When generating a full star system, the generator now follows the World Builder's

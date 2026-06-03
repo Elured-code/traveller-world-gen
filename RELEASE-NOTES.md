@@ -2,7 +2,33 @@
 
 **Branch:** `v1.5.0` → `main`
 **Sessions:** 88–
-**Tests:** 1847
+**Tests:** 1861
+
+---
+
+## Secondary World Classifications (Session 94, issue #18)
+
+WBH p.163 defines seven roles a secondary world can play in its system. The code
+now checks eligibility and rolls in table order, assigning at most one
+classification per inhabited secondary world or moon.
+
+| Classification | Code | Requirements | Roll |
+|---|---|---|---|
+| Colony | Cy | Secondary Pop 5+, Gov 6 | Automatic |
+| Farming | Fa | HZ, Atm 4–9, Hyd 2+ | Automatic |
+| Freeport | Fp | Secondary Gov 0–5, TL 8+ | 10+; DM−2 if MW starport A/B |
+| Military Base | Mb | MW TL 8+, not Poor, Gov 6 | 12+; DM+4 if MW has bases; DM+2 if secondary Gov 6 |
+| Mining Facility | Mi | MW Industrial, secondary Pop 2+ | Belt: 6+; Terrestrial: 10+ |
+| Penal Colony | Pe | MW TL 9+, LL 8+, Gov 6 | 10+; DM+2 if secondary LL 8+ |
+| Research Base | Rb | MW Pop 6+, TL 8+, not Poor | 10+; DM+2 if MW TL 12+ |
+
+`WorldDetail` gains `classification: Optional[str]` (emitted in JSON when set).
+The code is also appended to `WorldDetail.trade_codes` so it appears in profile
+displays. `_apply_classification()` is called from `generate_system_detail()`,
+`_moon_detail()`, and `apply_secondary_social()`. `system_body_table()` appends
+`[Classification Name]` to orbit and moon rows.
+
+14 new tests in `TestSecondaryWorldClassification`. 1861 tests pass.
 
 ---
 

@@ -72,6 +72,7 @@ class WorldDetail:
         self.spaceport  = spaceport
         self.moons      = moons      # list of Moon objects
         self.is_independent_government = is_independent_government
+        self.classification: Optional[str] = None  # e.g. "Cy", "Fa", "Mi"
         self.trade_codes: list[str] = []
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
@@ -80,12 +81,15 @@ class WorldDetail:
         self.native_sophont: bool = False
 ```
 
-`trade_codes`, `physical`, the rating fields, `is_independent_government`, and
-`native_sophont` are set at construction time or by separate steps.
-`is_independent_government` is `True` when the world was generated with Case 2
-(independent) government; `native_sophont` is `True` when a native sophont was
-confirmed via `generate_sophont_checks()` during `_apply_biomass()`. Both fields
-are emitted in `to_dict()` only when `True`.
+`trade_codes`, `physical`, the rating fields, `is_independent_government`,
+`native_sophont`, and `classification` are set at construction time or by separate
+steps. `is_independent_government` is `True` when the world was generated with
+Case 2 (independent) government; `native_sophont` is `True` when a native sophont
+was confirmed via `generate_sophont_checks()` during `_apply_biomass()`. Both
+fields are emitted in `to_dict()` only when `True`. `classification` is the
+WBH p.163 secondary world role code (e.g. `"Cy"` = Colony, `"Mi"` = Mining
+Facility); emitted in `to_dict()` only when not `None`, and the code is also
+appended to `trade_codes` so it appears in all profile displays.
 
 ---
 
@@ -108,6 +112,32 @@ Pyright evaluates it as `True` when doing static analysis. This gives Pyright th
 type information it needs without affecting how the program behaves when it runs.
 The actual runtime import of `WorldPhysical` happens as a local import inside
 `from_dict()`, where it is needed.
+
+---
+
+## Secondary world classification (WBH p.163)
+
+After a secondary world or moon is assigned its social codes, the code checks
+whether it qualifies for one of seven WBH p.163 classification roles. The first
+qualifying classification in table order is assigned — a world can only have one.
+
+| Role | Code | What it means | How it's assigned |
+|------|------|--------------|-----------------|
+| Colony | Cy | A population of 5+ under a colonial government | Automatic if Pop ≥ 5 and Gov = 6 |
+| Farming | Fa | An agricultural world in the habitable zone | Automatic if HZ, Atm 4–9, Hyd 2+ |
+| Freeport | Fp | An independently governed trading hub | Roll 10+ (DM−2 if mainworld starport A or B) |
+| Military Base | Mb | A garrison under an authoritarian mainworld | Roll 12+ (DM+4 if mainworld has bases) |
+| Mining Facility | Mi | An industrial extraction site | Belt: roll 6+; terrestrial: roll 10+ |
+| Penal Colony | Pe | A prison world under a strict mainworld | Roll 10+ (DM+2 if secondary LL ≥ 8) |
+| Research Base | Rb | A scientific installation | Roll 10+ (DM+2 if mainworld TL ≥ 12) |
+
+Colony and Farming are **automatic** — no dice roll needed if requirements are
+met. The rest are probabilistic. Belts can only qualify for Mining Facility.
+Gas giants and uninhabited worlds are never classified.
+
+The two-letter code (e.g. `"Cy"`) is stored in `WorldDetail.classification` and
+is also appended to `trade_codes`, so it appears alongside trade codes like `Ag`
+or `Ni` in the system body table and JSON output.
 
 ---
 
@@ -230,7 +260,7 @@ No dice are rolled; the rating is purely deterministic from world characteristic
 | `.to_dict()` | `WorldDetail` | Serialises the slot's detail to a plain dict |
 | `.from_dict(d)` | `WorldDetail` | Reconstructs from a dict, including nested Moon and physical objects |
 | `attach_detail(system, ..., rng=None)` | module | Entry point — populates every slot, mainworld biology, and habitability |
-| `apply_secondary_social(system, independent_government, rng)` | module | Re-applies social data to all secondary WorldDetails after `apply_mainworld_social()`. Re-rolls population cap; regenerates government, law, TL, spaceport, trade codes for every secondary and moon. Also syncs mainworld's real social data back to the satellite WorldDetail. |
+| `apply_secondary_social(system, independent_government, rng)` | module | Re-applies social data to all secondary WorldDetails after `apply_mainworld_social()`. Re-rolls population cap; regenerates government, law, TL, spaceport, trade codes, and classification for every secondary and moon. Also syncs mainworld's real social data back to the satellite WorldDetail. |
 | `generate_system_detail(system, ..., rng=None)` | module | Alias / variant entry point; also accepts `rng` |
 | `generate_biomass_rating(...)` | module | WBH p.127 biomass roll with atmosphere/temperature DMs |
 | `generate_biocomplexity_rating(...)` | module | WBH p.129 biocomplexity roll |
@@ -250,13 +280,14 @@ TravellerSystem (mainworld has placeholder social data: starport='X', pop=0)
 attach_detail(system, independent_government=False, ...)
         │
         ├─ For each non-empty OrbitSlot (secondaries):
-        │       _generate_sah()   →  WorldDetail.sah
-        │       social rolls      →  WorldDetail.population / government / law / tech
+        │       _generate_sah()        →  WorldDetail.sah
+        │       social rolls           →  WorldDetail.population / government / law / tech
         │       (Case 1 or Case 2 per independent_government flag)
         │       WorldDetail.is_independent_government set accordingly
+        │       _apply_classification() →  WorldDetail.classification + trade_codes
         │       WorldDetail.native_sophont set by _set_biocomplexity() when bio ≥ 8
-        │       _moons_for()      →  generate_moons(), moon WorldDetails
-        │       OrbitSlot.detail  = WorldDetail
+        │       _moons_for()           →  generate_moons(), moon WorldDetails
+        │       OrbitSlot.detail       = WorldDetail
         │
         └─ For mainworld:
                 generate_world_physical()            →  World.size_detail
@@ -273,5 +304,6 @@ apply_secondary_social(system, independent_government, rng)
         ├─ For all secondary orbit WorldDetails and their moons:
         │       _secondary_population() / government / law / TL / spaceport
         │       assign_trade_codes()
+        │       _apply_classification() →  WorldDetail.classification + trade_codes
         └─ Physical data (SAH, biomass, habitability) is untouched
 ```
