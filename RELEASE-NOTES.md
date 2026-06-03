@@ -2,7 +2,45 @@
 
 **Branch:** `v1.5.0` → `main`
 **Sessions:** 88–
-**Tests:** 1861
+**Tests:** 1884
+
+---
+
+## Population Detail — PCR, Urbanisation, Major Cities (Session 95, issue #95)
+
+New module `traveller_world_social_detail.py`. Dataclasses `City` and
+`PopulationDetail`. Public functions `generate_pcr()`, `generate_urbanisation_pct()`,
+`generate_population_detail()`, `attach_population_detail()`.
+
+**PCR** — 1D + DMs (size, TL, gov, trade codes, tidal lock, atm) → 0–9.
+Force-9 short-circuit when 1D > pop_code (pop < 6 only). Min PCR = 1 for pop ≥ 9.
+
+**Urbanisation %** — 2D + DMs → range table (inner dice for exact %). Some DMs
+carry hard min/max constraints (e.g. Pop 9 → min 18+1D%; TL 2 → max 20+1D%).
+Minimum supersedes conflicting maximum (WBH rule).
+
+**Major cities** — 5-case dispatch (PCR 0, pop≤5/PCR 9, pop≤5/PCR 1–8,
+pop≥6/PCR 9, pop≥6/PCR 1–8). Case 5 formula: `ceil(2D−PCR+urb×20/PCR)`.
+Case 5 total major pop: `(PCR/(1D+7)) × urban_pop`.
+
+**City population distribution** — 2–3 cities: `(1D+3)×10%` proportional split.
+4+ cities: chunk algorithm (remaining pool ÷ PCR chunks, cycled via 1D rolls).
+
+**Population profile** — `{pop_hex}-{p}-{pcr}-{urb%}-{city_count}`.
+
+`World.population_detail: Optional[PopulationDetail]` added (field, to_dict,
+from_dict). `WorldDetail.population_detail: Optional[object]` added similarly.
+`_world_html_ctx()` exposes `pop_detail` and pre-formatted population strings.
+`world_card.html` gains a "Population detail" card after Habitability.
+`gen-ui/app.py` gains `_opt_population_detail` option (standalone checkbox in
+Options dialog, not nested under System detail), persisted in QSettings.
+`attach_population_detail()` called from both `_finish_generation()` and
+`_finish_system_generation()` when the option is enabled.
+
+`traveller_world_schema.json` updated: `population_detail` object added (11
+sub-fields). `APP_VERSION` bumped `1.4.1` → `1.5.0`.
+
+23 new tests in `TestPopulationDetail`. 1884 total.
 
 ---
 

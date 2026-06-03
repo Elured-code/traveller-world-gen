@@ -1,6 +1,36 @@
 Traveller World & System Generator — What's New in v1.5.0
 ==========================================================
 
+POPULATION DETAIL — PCR, URBANISATION, AND MAJOR CITIES
+---------------------------------------------------------
+When "Population detail" is enabled in the Options dialog, inhabited worlds
+now receive a full WBH Social Characteristics population breakdown:
+
+- Population Concentration Rating (PCR, 0–9) — indicates how spread out or
+  concentrated the population is. PCR 0 means settlements are scattered across
+  the world with no dominant city. PCR 9 means essentially everyone lives in
+  one settlement or orbital habitat.
+
+- Urbanisation percentage — the share of the population living in towns and
+  cities of at least 10,000 people. Low-tech worlds urbanise less; high-tech
+  and industrialised worlds more. Some conditions impose hard floors or ceilings
+  (for example Population 9 worlds are always at least 19% urban).
+
+- Urban population — the total head-count of the urban population.
+
+- Major cities — the number of dominant population centres and the approximate
+  population of each, determined by the world's PCR and urbanisation level.
+  Results range from no major cities (PCR 0), to a single megacity containing
+  the entire urban population, to dozens of smaller city-centres spread across
+  the surface.
+
+- Population profile — a compact summary string in WBH format:
+  Population code – P value – PCR – Urbanisation % – Major city count.
+  Example: "6-5-3-39-7" = Population 6, P=5, PCR 3, 39% urban, 7 major cities.
+
+The card appears on the Mainworld tab below the Habitability section. The
+option is saved between sessions.
+
 INDEPENDENT GOVERNMENT FOR SECONDARY WORLDS
 --------------------------------------------
 - A new "Independent government" option is available in the Options dialog
@@ -48,3 +78,128 @@ LARGER SECONDARY WORLDS — CORRECT ATMOSPHERE FOR SIZE A–F
 
 - World profiles (SAH strings) for size A–F bodies were already encoded
   correctly in eHex; no display or JSON changes were needed.
+
+
+FASTAPI SERVER
+--------------
+A second server backend (fastapi/) now mirrors the full Azure Functions REST
+API using FastAPI + uvicorn. It requires no Azure account or Azure SDK.
+
+- Run locally with: cd fastapi && uvicorn app:app --reload   (port 8000 by default)
+- All 11 endpoints are available: world card, world JSON, world text, full system
+  card/JSON/text, system from world, system from TravellerMap, and batch world.
+- Rate limiting is built in via SlowAPI (default 100 requests per minute per IP).
+  Override with the RATE_LIMIT_PER_MINUTE environment variable.
+- No authentication — intended to run behind a reverse proxy for public deployment,
+  or used directly for local and development use.
+
+
+FASTAPI WEB UI
+--------------
+A browser-based UI is served at http://localhost:8000/ when the FastAPI server is
+running.
+
+- Two-panel layout: Mainworld and System, each with Card / JSON / Text tabs.
+- Options include World detail, Full detail, NHZ Atmospheres, and Select Mainworld.
+- A seed badge next to each result is clickable to copy the seed to the clipboard.
+- A server-status indicator in the corner confirms the server is reachable on load.
+
+
+DEFERRED SOCIAL GENERATION
+---------------------------
+Social characteristics (population, government, law level, starport, tech level,
+bases, trade codes, and travel zone) are now generated after the physical world
+survey is complete, rather than during orbit placement. This is the technical
+foundation for mainworld selection: the physical survey runs first so all worlds
+can be scored on physical criteria, then the winning mainworld receives its full
+social profile.
+
+In normal use this intermediate state is invisible — social generation runs
+immediately after selection and the result is always complete.
+
+Note: this is a seed-breaking change. Any seed previously used with full system
+generation will produce different social values because the social dice rolls now
+occur later in the sequence.
+
+
+MAINWORLD SELECTION (WBH pp.155–156)
+-------------------------------------
+When generating a full star system, the generator now follows the World Builder's
+Handbook procedure for choosing the mainworld. All terrestrial bodies in the system
+are scored on four criteria and the highest-scoring world is chosen as the mainworld:
+
+- Habitability rating (most important)
+- Native sophonts present
+- Resource rating
+- Best refuelling access (gas giant satellite or liquid water)
+
+Occasionally (on an unlikely three-dice roll of 18) the selection is made at
+random from all candidates — representing the Referee's prerogative to surprise
+even the algorithm.
+
+If a secondary world outscores the orbital-generation candidate, it is promoted to
+mainworld. Social characteristics (population, government, law level, starport, and
+tech level) are then assigned to the selected mainworld and to all secondary worlds
+relative to it.
+
+This is not applied on TravellerMap or from-world paths.
+
+
+SECONDARY SOCIAL GENERATION AFTER MAINWORLD SELECTION
+------------------------------------------------------
+When mainworld selection is enabled, all secondary worlds have their social data
+regenerated once the mainworld is known. This means population, government, law
+level, tech level, starport, and trade codes for every secondary orbit slot and
+moon are recalculated using the real (post-selection) mainworld as the baseline.
+In previous builds, secondary social data used a placeholder mainworld UWP.
+
+
+SECONDARY WORLD CLASSIFICATIONS (WBH p.163)
+--------------------------------------------
+Inhabited secondary worlds and moons in a star system now receive a classification
+that describes the role they play in the wider system. There are seven possible
+classifications:
+
+- Colony (Cy)         — a populous world under colonial government
+- Farming (Fa)        — an agricultural world in the star's habitable zone
+- Freeport (Fp)       — an independently governed trade hub
+- Military Base (Mb)  — a garrison maintained by an authoritarian mainworld
+- Mining Facility (Mi)— an industrial extraction site
+- Penal Colony (Pe)   — a prison world under a strict mainworld
+- Research Base (Rb)  — a scientific installation funded by a developed mainworld
+
+Each classification has eligibility requirements based on the world's own
+characteristics and the mainworld's profile. Colony and Farming are assigned
+automatically when requirements are met; the others require a dice roll. Only the
+first qualifying classification in the above order is assigned — a world has at
+most one role.
+
+The two-letter classification code (e.g. "Mi") appears alongside the world's other
+trade codes in the system orbit table and in JSON output.
+
+
+BUG FIXES
+---------
+- Fixed: worlds orbiting a gas giant as a satellite displayed seismic stress
+  values millions of times larger than physically possible. The tidal stress
+  formula (calibrated for AU-scale star-to-planet distances) was incorrectly
+  applied at moon distances (~0.1–0.8 Mkm), amplifying results by a factor of
+  10^15 or more. The formula is no longer called for GG-satellite mainworlds;
+  only the tidal amplitude contribution remains. The Tidal Stress Factor is also
+  now capped at 500 to prevent overflow at the display layer.
+
+- Fixed: Cold-temperature worlds with standard breathable atmospheres (vacuum,
+  trace, thin, standard, dense, etc.) were incorrectly shown as having an Ammonia
+  ocean instead of Water. Ammonia oceans only form in chemically exotic environments
+  — worlds with exotic, corrosive, insidious, or unusual atmospheres (codes A–F).
+  All other Cold worlds now correctly display Water as the surface fluid.
+
+- Fixed: the "has gas giant" flag was re-derived from the gas giant count when
+  loading a world JSON, so any JSON where the two values differed would produce
+  a wrong flag. The saved boolean is now read directly; the count is used only as
+  a fallback for legacy files that predate the explicit field.
+
+- Fixed: worlds at extreme orbital distances could display a mean temperature of
+  3 K due to unchecked formula extrapolation. The WBH footnote specifies that
+  results below 10 K should be replaced with a random 6–11 K roll (1D+5). This
+  is now correctly implemented.
