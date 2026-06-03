@@ -135,7 +135,6 @@ QFrame#onboard-card { border: 1px solid #cccccc; border-radius: 8px; }
 
 _CSS_DARK = """
 QWidget { background-color: #1e1e1e; color: #e0e0e0; }
-QGroupBox { background-color: #2b2b2b; color: #e0e0e0; }
 QLabel#zone-green   { background-color: #27ae60; color: white;
                       padding: 2px 10px; border-radius: 4px; }
 QLabel#zone-amber   { background-color: #e67e22; color: white;
@@ -338,9 +337,9 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
 
 class _OptionsDialog(QDialog):
     """Modal dialog for configuring generation options."""
-    # pylint: disable=missing-function-docstring
+    # pylint: disable=missing-function-docstring,too-many-instance-attributes
 
-    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements,too-many-locals
         self,
         parent: QWidget,
         *,
@@ -351,6 +350,7 @@ class _OptionsDialog(QDialog):
         runaway_greenhouse: bool,
         independent_government: bool,
         population_detail: bool,
+        settlement_type: str,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Generation Options")
@@ -359,12 +359,14 @@ class _OptionsDialog(QDialog):
         layout.setSpacing(12)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        self._system_group = QGroupBox("System detail")
-        self._system_group.setCheckable(True)
-        self._system_group.setChecked(full_system)
+        self._check_system = QCheckBox("System detail")
+        self._check_system.setChecked(full_system)
+        layout.addWidget(self._check_system)
 
-        checks_layout = QVBoxLayout(self._system_group)
+        self._sub_widget = QWidget()
+        checks_layout = QVBoxLayout(self._sub_widget)
         checks_layout.setSpacing(6)
+        checks_layout.setContentsMargins(20, 0, 0, 0)
         self._check_nhz = QCheckBox("NHZ Atmospheres")
         self._check_nhz.setChecked(nhz)
         self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
@@ -380,11 +382,32 @@ class _OptionsDialog(QDialog):
         checks_layout.addWidget(self._check_advanced_temp)
         checks_layout.addWidget(self._check_runaway_greenhouse)
         checks_layout.addWidget(self._check_independent_gov)
-        layout.addWidget(self._system_group)
+        layout.addWidget(self._sub_widget)
 
         self._check_pop_detail = QCheckBox("Population detail")
         self._check_pop_detail.setChecked(population_detail)
         layout.addWidget(self._check_pop_detail)
+
+        settlement_group = QGroupBox("Settlement type")
+        settlement_layout = QVBoxLayout(settlement_group)
+        settlement_layout.setSpacing(4)
+        self._settlement_btn_group = QButtonGroup(self)
+        for label, key in (
+            ("Standard", "standard"),
+            ("Long-settled", "long_settled"),
+            ("Well-settled", "well_settled"),
+            ("Backwater", "backwater"),
+            ("Unsettled", "unsettled"),
+        ):
+            btn = QRadioButton(label)
+            btn.setProperty("key", key)
+            self._settlement_btn_group.addButton(btn)
+            settlement_layout.addWidget(btn)
+            if key == settlement_type:
+                btn.setChecked(True)
+        if self._settlement_btn_group.checkedButton() is None:
+            self._settlement_btn_group.buttons()[0].setChecked(True)
+        layout.addWidget(settlement_group)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -393,22 +416,22 @@ class _OptionsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        self._system_group.toggled.connect(self._on_group_toggled)
+        self._check_system.toggled.connect(self._on_group_toggled)
         self._on_group_toggled(full_system)
 
     def _on_group_toggled(self, checked: bool) -> None:
-        for cb in (
-            self._check_nhz, self._check_oxygen_biomass,
-            self._check_advanced_temp, self._check_runaway_greenhouse,
-            self._check_independent_gov,
-        ):
-            cb.setEnabled(checked)
-            if not checked:
+        self._sub_widget.setVisible(checked)
+        if not checked:
+            for cb in (
+                self._check_nhz, self._check_oxygen_biomass,
+                self._check_advanced_temp, self._check_runaway_greenhouse,
+                self._check_independent_gov,
+            ):
                 cb.setChecked(False)
 
     @property
     def full_system(self) -> bool:
-        return self._system_group.isChecked()
+        return self._check_system.isChecked()
 
     @property
     def nhz(self) -> bool:
@@ -433,6 +456,11 @@ class _OptionsDialog(QDialog):
     @property
     def population_detail(self) -> bool:
         return self._check_pop_detail.isChecked()
+
+    @property
+    def settlement_type(self) -> str:
+        btn = self._settlement_btn_group.checkedButton()
+        return btn.property("key") if btn is not None else "none"
 
 
 # ---------------------------------------------------------------------------
@@ -479,6 +507,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_population_detail: bool = (
             str(_s.value("opt_population_detail", False)).lower() == "true"
         )
+        self._opt_settlement_type: str = str(_s.value("opt_settlement_type", "standard"))
         self._apply_theme()
         self._build_menu_bar()
         self._build_ui()
@@ -700,6 +729,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             runaway_greenhouse=self._opt_runaway_greenhouse,
             independent_government=self._opt_independent_gov,
             population_detail=self._opt_population_detail,
+            settlement_type=self._opt_settlement_type,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -710,6 +740,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_runaway_greenhouse = dialog.runaway_greenhouse
         self._opt_independent_gov = dialog.independent_government
         self._opt_population_detail = dialog.population_detail
+        self._opt_settlement_type = dialog.settlement_type
         _s = QSettings("traveller-world-gen", "AppWindow")
         _s.setValue("opt_full_system", self._opt_full_system)
         _s.setValue("opt_nhz", self._opt_nhz)
@@ -718,6 +749,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_runaway_greenhouse", self._opt_runaway_greenhouse)
         _s.setValue("opt_independent_gov", self._opt_independent_gov)
         _s.setValue("opt_population_detail", self._opt_population_detail)
+        _s.setValue("opt_settlement_type", self._opt_settlement_type)
         self._on_detail_toggled(self._opt_full_system)
 
     def _on_generate(self) -> None:
@@ -766,7 +798,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 )
                 self._finish_system_generation(system, attach_detail_flag)
             else:
-                world = generate_world(name)
+                world = generate_world(
+                    name, settlement_type=self._opt_settlement_type,
+                )
                 self._finish_generation(world)
 
     def _finish_generation(self, world: object) -> None:
@@ -915,7 +949,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             _select_mainworld(system)   # type: ignore[arg-type]
             self._current_world = system.mainworld   # type: ignore[attr-defined]
         if system.mainworld is not None:  # type: ignore[attr-defined]
-            apply_mainworld_social(system.mainworld)  # type: ignore[attr-defined]
+            apply_mainworld_social(  # type: ignore[attr-defined]
+                system.mainworld,
+                settlement_type=self._opt_settlement_type,
+            )
         if attach_detail_flag:
             apply_secondary_social(  # type: ignore[arg-type]
                 system,

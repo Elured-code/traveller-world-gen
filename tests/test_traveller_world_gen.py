@@ -124,6 +124,9 @@ from traveller_world_gen import (
     _UNUSUAL_SUBTYPE_TABLE,
     generate_unusual_subtype,
     UnusualSubtype,
+    _population_settlement_dm,
+    _SETTLEMENT_DMS,
+    _SETTLEMENT_DEFAULT_DM,
 )
 from traveller_system_gen import generate_full_system, select_mainworld
 from traveller_world_social_detail import (
@@ -6899,3 +6902,142 @@ class TestPopulationDetail:
             assert mw.population_detail is not None
             assert mw.population_detail.total_population > 0
             assert mw.population_detail.population_profile != ""
+
+
+# ===========================================================================
+# TestSettlementType — _population_settlement_dm, generate_population DM,
+#                      generate_world and apply_mainworld_social settlement_type
+# ===========================================================================
+
+
+class TestSettlementType:
+    """Settlement type population modifier (issue #128)."""
+
+    # ------------------------------------------------------------------
+    # DM lookup — long_settled
+    # ------------------------------------------------------------------
+
+    def test_long_settled_good_atm(self):
+        for atm in (5, 6, 8):
+            assert _population_settlement_dm("long_settled", atm) == 3
+
+    def test_long_settled_moderate_atm(self):
+        for atm in (4, 7, 9):
+            assert _population_settlement_dm("long_settled", atm) == 2
+
+    def test_long_settled_thin_atm(self):
+        for atm in (0, 1, 2, 3):
+            assert _population_settlement_dm("long_settled", atm) == 1
+
+    def test_long_settled_exotic_atm_default(self):
+        # atm 10+ not in the explicit table; default is 0
+        assert _population_settlement_dm("long_settled", 10) == 0
+        assert _population_settlement_dm("long_settled", 12) == 0
+
+    # ------------------------------------------------------------------
+    # DM lookup — well_settled
+    # ------------------------------------------------------------------
+
+    def test_well_settled_good_atm(self):
+        for atm in (5, 6, 8):
+            assert _population_settlement_dm("well_settled", atm) == 2
+
+    def test_well_settled_moderate_atm(self):
+        for atm in (4, 7, 9):
+            assert _population_settlement_dm("well_settled", atm) == 1
+
+    def test_well_settled_other_atm_default(self):
+        for atm in (0, 1, 2, 3, 10, 11):
+            assert _population_settlement_dm("well_settled", atm) == -1
+
+    # ------------------------------------------------------------------
+    # DM lookup — backwater
+    # ------------------------------------------------------------------
+
+    def test_backwater_good_atm(self):
+        for atm in (5, 6, 8):
+            assert _population_settlement_dm("backwater", atm) == 1
+
+    def test_backwater_moderate_atm(self):
+        for atm in (4, 7, 9):
+            assert _population_settlement_dm("backwater", atm) == -1
+
+    def test_backwater_thin_atm(self):
+        for atm in (0, 1, 2, 3):
+            assert _population_settlement_dm("backwater", atm) == -3
+
+    def test_backwater_exotic_atm_default(self):
+        assert _population_settlement_dm("backwater", 10) == -5
+        assert _population_settlement_dm("backwater", 13) == -5
+
+    # ------------------------------------------------------------------
+    # DM lookup — unsettled
+    # ------------------------------------------------------------------
+
+    def test_unsettled_good_atm(self):
+        for atm in (5, 6, 8):
+            assert _population_settlement_dm("unsettled", atm) == -4
+
+    def test_unsettled_moderate_atm(self):
+        for atm in (4, 7, 9):
+            assert _population_settlement_dm("unsettled", atm) == -5
+
+    def test_unsettled_other_atm_default(self):
+        for atm in (0, 1, 2, 3, 10, 11):
+            assert _population_settlement_dm("unsettled", atm) == -7
+
+    # ------------------------------------------------------------------
+    # DM lookup — standard / unknown
+    # ------------------------------------------------------------------
+
+    def test_standard_settlement_type_always_zero(self):
+        for atm in range(16):
+            assert _population_settlement_dm("standard", atm) == 0
+
+    def test_unknown_settlement_type_always_zero(self):
+        assert _population_settlement_dm("bogus_type", 6) == 0
+
+    # ------------------------------------------------------------------
+    # generate_population bounds
+    # ------------------------------------------------------------------
+
+    def test_generate_population_dm_clamped_max(self):
+        # With a large positive DM the result must stay ≤ 10 regardless of dice
+        import traveller_world_gen as _m
+        orig = _m._rng
+        _m._rng = random.Random(999)
+        results = {generate_population(settlement_dm=10) for _ in range(50)}
+        _m._rng = orig
+        assert max(results) <= 10
+
+    def test_generate_population_dm_clamped_min(self):
+        # With a large negative DM the result must stay ≥ 0 regardless of dice
+        import traveller_world_gen as _m
+        orig = _m._rng
+        _m._rng = random.Random(999)
+        results = {generate_population(settlement_dm=-20) for _ in range(50)}
+        _m._rng = orig
+        assert min(results) >= 0
+
+    # ------------------------------------------------------------------
+    # Integration smoke tests
+    # ------------------------------------------------------------------
+
+    def test_generate_world_settlement_type_produces_valid_pop(self):
+        for st in ("standard", "long_settled", "well_settled", "backwater", "unsettled"):
+            w = generate_world("Test", seed=42, settlement_type=st)
+            assert 0 <= w.population <= 10
+
+    def test_apply_mainworld_social_settlement_type_produces_valid_pop(self):
+        for st in ("standard", "long_settled", "well_settled", "backwater", "unsettled"):
+            w = World(name="Test", size=6, atmosphere=6)
+            apply_mainworld_social(w, settlement_type=st)
+            assert 0 <= w.population <= 10
+
+    def test_settlement_dms_dict_covers_all_types(self):
+        expected = {"standard", "long_settled", "well_settled", "backwater", "unsettled"}
+        assert set(_SETTLEMENT_DMS.keys()) == expected
+
+    def test_settlement_default_dm_dict_covers_all_types(self):
+        expected = {"standard", "long_settled", "well_settled", "backwater", "unsettled"}
+        assert set(_SETTLEMENT_DEFAULT_DM.keys()) == expected

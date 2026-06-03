@@ -2249,13 +2249,33 @@ def generate_hydrographics(size: int, atmosphere: int, temperature: str) -> int:
     return max(0, min(10, base + dm))
 
 
-def generate_population() -> int:
+_SETTLEMENT_DMS: dict = {
+    "standard":     {},
+    "long_settled": {0: 1, 1: 1, 2: 1, 3: 1, 4: 2, 5: 3, 6: 3, 7: 2, 8: 3, 9: 2},
+    "well_settled": {4: 1, 5: 2, 6: 2, 7: 1, 8: 2, 9: 1},
+    "backwater":    {0: -3, 1: -3, 2: -3, 3: -3, 4: -1, 5: 1, 6: 1, 7: -1, 8: 1, 9: -1},
+    "unsettled":    {4: -5, 5: -4, 6: -4, 7: -5, 8: -4, 9: -5},
+}
+_SETTLEMENT_DEFAULT_DM: dict = {
+    "standard": 0, "long_settled": 0, "well_settled": -1, "backwater": -5, "unsettled": -7,
+}
+
+
+def _population_settlement_dm(settlement_type: str, atmosphere: int) -> int:
+    """Return the population DM for the given settlement type and atmosphere."""
+    return _SETTLEMENT_DMS.get(settlement_type, {}).get(
+        atmosphere, _SETTLEMENT_DEFAULT_DM.get(settlement_type, 0)
+    )
+
+
+def generate_population(settlement_dm: int = 0) -> int:
     """Step 5 — Population (p.251-252): roll 2D-2, range 0-10.
 
     Population 0 = uninhabited.  The referee may optionally place very
     high-population worlds (11-12) but the dice do not produce these.
+    An optional settlement_dm shifts the roll while keeping the 0–10 range.
     """
-    return roll(2, -2)
+    return min(10, roll(2, -2 + settlement_dm))
 
 
 def generate_government(population: int) -> int:
@@ -2639,9 +2659,10 @@ def assign_travel_zone(atmosphere: int, government: int,
 # Social application — called after mainworld selection
 # ---------------------------------------------------------------------------
 
-def apply_mainworld_social(
+def apply_mainworld_social(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     world: World,
     rng: Optional[random.Random] = None,
+    settlement_type: str = "standard",
 ) -> None:
     """Apply social steps to a physically-complete mainworld (CRB pp.248-261).
 
@@ -2655,7 +2676,9 @@ def apply_mainworld_social(
     if rng is not None:
         _rng = rng
 
-    world.population = generate_population()
+    world.population = generate_population(
+        _population_settlement_dm(settlement_type, world.atmosphere)
+    )
     world.government = generate_government(world.population)
     world.law_level = (
         0 if world.population == 0
@@ -2703,6 +2726,7 @@ def generate_world(  # pylint: disable=too-many-arguments,too-many-positional-ar
         name: str = "Unknown",
         seed: Optional[int] = None,
         rng: Optional[random.Random] = None,
+        settlement_type: str = "standard",
 ) -> World:
     """Generate a complete mainworld following the rulebook procedure.
 
@@ -2735,7 +2759,9 @@ def generate_world(  # pylint: disable=too-many-arguments,too-many-positional-ar
     )
 
     # --- Step 5: Population ---
-    world.population = generate_population()
+    world.population = generate_population(
+        _population_settlement_dm(settlement_type, world.atmosphere)
+    )
 
     # --- Step 6: Government ---
     # Uninhabited worlds (Population 0) have no government.
