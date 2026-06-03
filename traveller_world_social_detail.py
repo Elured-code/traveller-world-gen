@@ -555,9 +555,9 @@ def attach_population_detail(
     mw = system.mainworld
     if mw is not None and mw.population > 0:
         tidal_lock = False
-        if (mw.physical is not None
-                and hasattr(mw.physical, "tidal_status")
-                and mw.physical.tidal_status == "1:1_lock"):
+        if (mw.size_detail is not None
+                and hasattr(mw.size_detail, "tidal_status")
+                and mw.size_detail.tidal_status == "1:1_lock"):
             tidal_lock = True
         mw.population_detail = generate_population_detail(
             mw.population, mw.population_multiplier,
