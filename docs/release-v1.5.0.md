@@ -1,12 +1,12 @@
 # Traveller World Generator — v1.5.0 Release Notes
 
-**1942 tests pass. Pylint 10.00/10.**
+**1946 tests pass. Pylint 10.00/10.**
 
-Sessions 88–102. Adds a FastAPI server, mainworld selection, secondary social
+Sessions 88–103. Adds a FastAPI server, mainworld selection, secondary social
 pipeline, secondary world classifications, population detail, government detail,
 FastAPI web UI split, settlement type population modifiers, full web UI options
-parity, save-to-file, atmosphere module extraction, body naming, and assorted
-compliance fixes.
+parity, save-to-file, atmosphere module extraction, body naming, graceful JSON
+loading, and assorted compliance fixes.
 
 ---
 

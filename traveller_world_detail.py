@@ -939,7 +939,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         """Reconstruct a WorldDetail from a dict produced by to_dict()."""
         moons = [Moon.from_dict(m) for m in d.get("moons", [])]
         obj = cls(
-            sah=str(d["sah"]),
+            sah=str(d.get("sah", "000")),
             population=int(d.get("population", 0)),
             government=int(d.get("government", 0)),
             law_level=int(d.get("law_level", 0)),

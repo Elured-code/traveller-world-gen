@@ -264,7 +264,7 @@ class Moon:  # pylint: disable=too-many-instance-attributes
     @classmethod
     def from_dict(cls, d: dict) -> "Moon":
         """Reconstruct a Moon from a dict produced by to_dict()."""
-        size_raw = str(d["size"])
+        size_raw = str(d.get("size", "0"))
         if size_raw == "R":
             moon = cls(size_code=0, is_ring=True,
                        is_gas_giant_moon=bool(d.get("is_gas_giant_moon", False)))

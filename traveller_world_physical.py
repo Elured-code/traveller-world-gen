@@ -801,15 +801,15 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     def from_dict(cls, d: dict) -> "WorldPhysical":
         """Reconstruct a WorldPhysical from a dict produced by to_dict()."""
         obj = cls(
-            composition=str(d["composition"]),
-            diameter_km=int(d["diameter_km"]),
-            density=float(d["density_g_cm3"]),
-            mass=float(d["mass_earth"]),
-            gravity=float(d["gravity_g"]),
-            escape_velocity=float(d["escape_velocity_km_s"]),
-            axial_tilt=float(d["axial_tilt_deg"]),
-            day_length=float(d["day_length_hours"]),
-            tidal_status=str(d["tidal_status"]),
+            composition=str(d.get("composition", "Rock")),
+            diameter_km=int(d.get("diameter_km", 0)),
+            density=float(d.get("density_g_cm3", 0.0)),
+            mass=float(d.get("mass_earth", 0.0)),
+            gravity=float(d.get("gravity_g", 0.0)),
+            escape_velocity=float(d.get("escape_velocity_km_s", 0.0)),
+            axial_tilt=float(d.get("axial_tilt_deg", 0.0)),
+            day_length=float(d.get("day_length_hours", 0.0)),
+            tidal_status=str(d.get("tidal_status", "none")),
         )
         def _fi(k):
             return float(d[k]) if d.get(k) is not None else None

@@ -1090,14 +1090,17 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         file_ver = data.get("_app_version")
         if file_ver != APP_VERSION:
-            QMessageBox.critical(
+            result = QMessageBox.warning(
                 self,
                 "Version mismatch",
-                f"This file was saved with app version {file_ver!r}.\n"
+                f"This file was saved with version {file_ver!r}.\n"
                 f"Current version is {APP_VERSION!r}.\n"
-                "Open is only supported for files from the same version.",
+                "Some fields may be missing or unrecognised. Continue loading?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-            return
+            if result != QMessageBox.StandardButton.Yes:
+                return
 
         if "stars" in data:
             try:

@@ -7430,3 +7430,37 @@ class TestBodyNames:
         primary = system.stellar_system.stars[0]
         d = primary.to_dict()
         assert d["name"] == "Betelgeuse-Primary"
+
+
+# ===========================================================================
+# TestFromDictMissingFields — issue #117
+# ===========================================================================
+
+class TestFromDictMissingFields:
+    """from_dict() returns safe defaults when keys are absent (issue #117)."""
+
+    def test_worlddetail_from_dict_missing_sah(self):
+        obj = WorldDetail.from_dict({})
+        assert obj.sah == "000"
+        assert obj.population == 0
+        assert obj.moons == []
+
+    def test_worldphysical_from_dict_missing_fields(self):
+        obj = WorldPhysical.from_dict({})
+        assert obj.composition == "Rock"
+        assert obj.diameter_km == 0
+        assert obj.density == 0.0
+        assert obj.tidal_status == "none"
+
+    def test_beltphysical_from_dict_missing_fields(self):
+        obj = BeltPhysical.from_dict({})
+        assert obj.inner_au == 0.0
+        assert obj.outer_au == 0.0
+        assert obj.resource_rating == 7
+        assert obj.mean_temperature_k == 0
+
+    def test_moon_from_dict_missing_size(self):
+        from traveller_moon_gen import Moon  # pylint: disable=import-outside-toplevel
+        moon = Moon.from_dict({})
+        assert moon.size_code == 0
+        assert not moon.is_ring

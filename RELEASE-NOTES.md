@@ -1,8 +1,34 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–102
-**Tests:** 1942
+**Sessions:** 88–103
+**Tests:** 1946
+
+---
+
+## Graceful JSON version mismatch + hardened from_dict() (Session 103, issue #117)
+
+**gen-ui/app.py — version mismatch warning:**
+- Opening a JSON saved with a different app version now shows `QMessageBox.warning()`
+  with Yes/No buttons ("Some fields may be missing or unrecognised. Continue
+  loading?"). Previously: `QMessageBox.critical()` + hard abort regardless.
+
+**Hardened `from_dict()` — replaced bare `d["key"]` with `.get()` + safe defaults:**
+- `WorldDetail.from_dict()`: `d["sah"]` → `d.get("sah", "000")`
+- `WorldPhysical.from_dict()`: 9 constructor fields (composition, diameter_km,
+  density_g_cm3, mass_earth, gravity_g, escape_velocity_km_s, axial_tilt_deg,
+  day_length_hours, tidal_status) → `.get()` with sensible defaults
+- `BeltPhysical.from_dict()`: 11 constructor fields → `.get()` with sensible
+  defaults (resource_rating defaults to 7; bulk defaults to 5)
+- `Moon.from_dict()`: `d["size"]` → `d.get("size", "0")`
+
+Unexpected keys were already silently ignored by all `from_dict()` methods (only
+known keys are read). No changes needed there.
+
+4 new tests in `TestFromDictMissingFields`.
+
+**Issue #113 closed:** "Larger worlds for non-mainworld terrestrial bodies" was
+implemented in Session 88. Closed with comment.
 
 ---
 
