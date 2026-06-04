@@ -52,6 +52,7 @@ tr:last-child td{border-bottom:none}
 .moon-type{padding-left:24px}
 .moon-idx{color:var(--txt3)}
 .note-cell{font-size:12px;color:var(--txt2)}
+.name-cell{max-width:16ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .zone-boiling{color:#791f1f;font-weight:500}
 .zone-hot{color:#633806;font-weight:500}
 .zone-temperate{color:#085041;font-weight:500}
@@ -143,13 +144,14 @@ pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
   <div class="table-scroll">
   <table>
     <thead><tr>
-      <th>Star</th><th>#</th><th>Orbit#</th><th>AU</th>
+      <th>Name</th><th>Star</th><th>#</th><th>Orbit#</th><th>AU</th>
       <th>Period</th><th>e/i</th><th>Type</th>
       <th>Profile</th><th>Codes</th><th>Zone</th><th></th>
     </tr></thead>
     <tbody>
     {% for o in orbit_rows %}
     <tr class="{{ o.row_cls }}">
+      <td class="name-cell">{{ o.name or "—" }}</td>
       <td class="mono">{{ o.star }}</td>
       <td class="mono">{{ o.slot_index }}</td>
       <td class="mono">{{ o.orbit_num }}</td>
@@ -164,7 +166,7 @@ pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
     </tr>
     {% for moon in o.moons %}
     <tr class="moon-row">
-      <td></td>
+      <td class="name-cell">{{ moon.name or "—" }}</td>
       <td class="mono moon-idx">↳ m{{ moon.idx }}</td>
       <td class="mono">{{ moon.pd_str }}</td>
       <td class="mono">{{ moon.km_str }}</td>

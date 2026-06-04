@@ -110,6 +110,7 @@ seed that produced it.
 | `select_mainworld(system, rng)` | module | Score all terrestrials and promote the winner; returns `True` if swapped |
 | `generate_system_from_world(world, ...)` | module | Procedural entry point around an existing World |
 | `generate_system_from_canonical(...)` | module | TravellerMap entry point |
+| `attach_body_names(system)` | module | Assign placeholder names to all stars, orbits, moons; call after `attach_detail()` |
 
 ---
 
@@ -162,6 +163,7 @@ TravellerSystem(stellar, orbits, mainworld, mainworld_orbit)
         (when detail requested)
         ▼
 attach_detail(system, ...)               →  WorldDetail for each secondary; biomass; habitability
+attach_body_names(system)                →  name="" → "Homeworld-Primary", "Homeworld-A", etc.
 _attach_mainworld_physical(system)       →  WorldPhysical for mainworld (resource_rating)
 _apply_mainworld_moon_tidal(system)      →  tidal effects on mainworld
         │
@@ -172,6 +174,31 @@ select_mainworld(system, rng)            →  scores all terrestrials; may swap 
 apply_mainworld_social(mainworld, rng)   →  pop, gov, law, starport, TL, trade codes
 apply_secondary_social(system, ...)      →  re-applies social to all secondaries and moons
 ```
+
+---
+
+## `attach_body_names()` — placeholder body names (Session 102, issue #131)
+
+`attach_body_names(system)` assigns a human-readable placeholder name to every
+star, orbit slot, and moon in the system. It must be called **after**
+`attach_detail()` because moon objects don't exist until then. It is
+deterministic (no dice) and idempotent.
+
+**Naming scheme:**
+
+| Body | Placeholder |
+|------|-------------|
+| Mainworld orbit | `World.name` (already set) |
+| Star A (non-companion) | `<mw>-Primary` |
+| Star B (non-companion) | `<mw>-Secondary`, then Tertiary, etc. |
+| Companion stars | Not named (`name` stays `""`) — companions share their parent's orbit |
+| Non-mainworld terrestrial / GG | `<mw>-A`, `<mw>-B`, … (separate counter from belts) |
+| Belt | `<mw>-Belt-A`, `<mw>-Belt-B`, … (separate counter from worlds) |
+| Non-ring moon | `<orbit_name>-alpha`, `…-beta`, … (Greek sequence; rings skipped) |
+| Ring moon | Not named (`name` stays `""`) |
+
+`orbit.detail.name` and `moon.detail.name` are also set to mirror the parent
+slot/moon name, so `WorldDetail` objects carry their own name for JSON output.
 
 ---
 
@@ -188,7 +215,9 @@ two main data structures:
   - `hz_inner` / `hzco` / `hz_outer` — inner edge, centre, and outer edge of the
     Habitable Zone, formatted to 2 decimal places, or `"—"` for stars without a
     computed HZ
-- **`orbit_rows`** — one dict per orbit slot, with inline `moons` list
+- **`orbit_rows`** — one dict per orbit slot, with inline `moons` list. Session 102 added
+  `"name"` as the first key in each orbit row and moon sub-dict, so `system_card.html` can
+  display it as the leftmost column.
 
 The system card shows **stellar data and orbital survey only**. Mainworld detail
 (UWP stats, atmosphere, hydrographic, biological, habitability) appears exclusively

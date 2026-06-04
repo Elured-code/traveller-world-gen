@@ -200,7 +200,9 @@ from traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
 from traveller_hydro_detail import generate_hydrographic_detail
-from traveller_system_gen import generate_full_system, generate_system_from_world, select_mainworld
+from traveller_system_gen import (
+    generate_full_system, generate_system_from_world, select_mainworld, attach_body_names,
+)
 from traveller_world_detail import attach_detail, gg_diameter_from_sah, apply_secondary_social
 from traveller_map_fetch import generate_system_from_map
 
@@ -652,6 +654,7 @@ def generate_single_system(req: func.HttpRequest) -> func.HttpResponse:  # pylin
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
+            attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
@@ -708,6 +711,7 @@ def generate_named_system(req: func.HttpRequest) -> func.HttpResponse:  # pylint
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
+            attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
@@ -780,6 +784,7 @@ def generate_full_system_complete(req: func.HttpRequest) -> func.HttpResponse:  
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
                       optional_inhospitable_rule=want_inhospitable)
+        attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         _apply_mainworld_moon_tidal(system)
         _run_select_mainworld(system, rng, want_rg, True, want_indep)
@@ -850,6 +855,7 @@ def generate_system_card(req: func.HttpRequest) -> func.HttpResponse:  # pylint:
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
+            attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
@@ -915,6 +921,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
                       optional_inhospitable_rule=want_inhospitable)
+        attach_body_names(system)
     _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
     if want_detail:
         _apply_mainworld_moon_tidal(system)
@@ -1000,6 +1007,7 @@ def generate_system_from_existing_world(req: func.HttpRequest) -> func.HttpRespo
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
+            attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)

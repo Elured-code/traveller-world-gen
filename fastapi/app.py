@@ -138,7 +138,9 @@ from traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
 from traveller_hydro_detail import generate_hydrographic_detail
-from traveller_system_gen import generate_full_system, generate_system_from_world, select_mainworld
+from traveller_system_gen import (
+    generate_full_system, generate_system_from_world, select_mainworld, attach_body_names,
+)
 from traveller_world_detail import attach_detail, gg_diameter_from_sah, apply_secondary_social
 from traveller_world_population_detail import attach_population_detail
 from traveller_world_government_detail import attach_government_detail
@@ -536,6 +538,7 @@ async def generate_world_card(request: Request) -> Response:  # pylint: disable=
             _attach_mainworld_physical(system)
             _apply_mainworld_moon_tidal(system)
             attach_detail(system, rng=rng)
+            attach_body_names(system)
             if want_pop_detail:
                 attach_population_detail(system, rng=rng)
             if want_gov_detail:
@@ -668,6 +671,7 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
                       optional_inhospitable_rule=want_inhospitable)
+        attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         _apply_mainworld_moon_tidal(system)
         _run_select_mainworld(system, rng, want_rg, True, want_indep, want_settlement)
@@ -750,6 +754,7 @@ async def generate_system_from_existing_world(request: Request) -> Response:  # 
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
+            attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
@@ -885,6 +890,7 @@ async def generate_system_card(request: Request) -> Response:  # pylint: disable
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
+            attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
@@ -946,6 +952,7 @@ async def generate_named_system(request: Request) -> Response:  # pylint: disabl
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
+            attach_body_names(system)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             _apply_mainworld_moon_tidal(system)
@@ -1010,6 +1017,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
                       optional_inhospitable_rule=want_inhospitable)
+        attach_body_names(system)
     _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
     if want_detail:
         _apply_mainworld_moon_tidal(system)

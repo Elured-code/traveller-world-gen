@@ -1,8 +1,39 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–101
-**Tests:** 1930
+**Sessions:** 88–102
+**Tests:** 1942
+
+---
+
+## Body Names for All System Bodies (Session 102, issue #131)
+
+`attach_body_names(system)` added to `traveller_system_gen.py`. Must be called
+after `attach_detail()` (moons don't exist until then). Deterministic and
+idempotent. Naming scheme:
+
+- Stars (non-companions): `<mw>-Primary`, `<mw>-Secondary`, …
+- Companion stars: not named (name stays `""`)
+- Non-mainworld worlds: `<mw>-A`, `<mw>-B`, … (terrestrials + GGs, one counter)
+- Belts: `<mw>-Belt-A`, `<mw>-Belt-B`, … (separate counter)
+- Non-ring moons: `<orbit>-alpha`, `<orbit>-beta`, … (rings skipped)
+
+Data-structure changes (all `name: str = ""` or `field(default="", init=False)`):
+- `Star.name` — regular init field; emitted unconditionally in `to_dict()`
+- `OrbitSlot.name` — post-init field; emitted conditionally when non-empty
+- `Moon.name` — post-init field; emitted conditionally when non-empty
+- `WorldDetail.name` — `__slots__` entry; emitted conditionally; mirrored from parent orbit/moon
+
+Display changes:
+- `templates/system_card.html` — Name column added as leftmost column in orbital survey table (`.name-cell` CSS, max-width 16ch, text-overflow ellipsis); `TravellerSystem.to_html()` now includes `"name"` key in orbit and moon row dicts
+- `templates/system_detail.html` — same Name column treatment for the standalone detail renderer
+- `render_system_json.py` — `"name"` key added to orbit and moon row dicts
+
+Caller wiring: `attach_body_names(system)` called immediately after every
+`attach_detail()` call in `fastapi/app.py`, `gen-ui/app.py`, and
+`azure-api/function_app.py`.
+
+12 new tests in `TestBodyNames` class.
 
 ---
 
@@ -17,9 +48,6 @@ arithmetic; only the stored/displayed values are rounded.
 `test_city_pops_within_total` tolerance widened from `+1` to `max(1, total//200)`
 (0.5%) — independent rounding means the sum of displayed city populations can
 slightly exceed the rounded total.
-
-GitHub issue #131 created: body naming feature (name field on all system bodies
-with placeholder defaults derived from the mainworld name).
 
 ---
 

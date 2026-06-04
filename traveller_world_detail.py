@@ -824,7 +824,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
                  "is_independent_government", "native_sophont", "classification",
-                 "population_detail", "government_detail")
+                 "population_detail", "government_detail", "name")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -844,6 +844,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.population_detail: Optional[object] = None
         # traveller_world_government_detail.GovernmentDetail — set by attach_government_detail()
         self.government_detail: Optional[object] = None
+        self.name: str = ""  # set by attach_body_names()
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
@@ -925,6 +926,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["biocomplexity_rating"] = self.biocomplexity_rating
         if self.habitability_rating is not None:
             d["habitability_rating"] = self.habitability_rating
+        if self.name:
+            d["name"] = self.name
         if self.population_detail is not None:
             d["population_detail"] = self.population_detail.to_dict()  # type: ignore[attr-defined]
         if self.government_detail is not None:
@@ -952,6 +955,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             else:
                 from traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
                 obj.physical = WorldPhysical.from_dict(phys_d)
+        obj.name = str(d.get("name", ""))
         obj.classification = d.get("classification") or None
         obj.is_independent_government = bool(d.get("is_independent_government", False))
         obj.native_sophont = bool(d.get("native_sophont", False))

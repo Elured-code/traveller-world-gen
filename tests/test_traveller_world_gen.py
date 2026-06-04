@@ -128,7 +128,7 @@ from traveller_world_gen import (
     _SETTLEMENT_DMS,
     _SETTLEMENT_DEFAULT_DM,
 )
-from traveller_system_gen import generate_full_system, select_mainworld
+from traveller_system_gen import generate_full_system, select_mainworld, attach_body_names
 from traveller_world_population_detail import (
     generate_pcr,
     generate_urbanisation_pct,
@@ -7289,3 +7289,144 @@ class TestGovernmentDetail:
         mw = system.mainworld
         if mw is not None and mw.government in (0, 7):
             assert mw.government_detail is None
+
+
+# ===========================================================================
+# TestBodyNames — attach_body_names()  (issue #131)
+# ===========================================================================
+# Seed 370 produces: 2 non-companion stars + 1 companion, 1 belt, 1 mainworld,
+# several terrestrial/GG worlds, moons including rings.
+
+def _name_system(name: str = "Test", seed: int = 370):
+    """Helper: generate, detail, and name a system."""
+    system = generate_full_system(name, seed=seed)
+    from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+    apply_mainworld_social(system.mainworld)
+    attach_detail(system)
+    attach_body_names(system)
+    return system
+
+
+class TestBodyNames:
+    """Tests for attach_body_names() — issue #131."""
+
+    # ------------------------------------------------------------------
+    # Star naming
+    # ------------------------------------------------------------------
+
+    def test_star_primary_name(self):
+        system = _name_system("Zeta")
+        primary = system.stellar_system.stars[0]
+        assert primary.name == "Zeta-Primary"
+
+    def test_star_secondary_name(self):
+        system = _name_system()
+        non_companions = [s for s in system.stellar_system.stars if s.role != "companion"]
+        assert len(non_companions) >= 2
+        assert non_companions[1].name == "Test-Secondary"
+
+    def test_companion_star_name_unchanged(self):
+        system = _name_system()
+        companions = [s for s in system.stellar_system.stars if s.role == "companion"]
+        assert len(companions) >= 1
+        for comp in companions:
+            assert comp.name == ""
+
+    # ------------------------------------------------------------------
+    # Orbit slot naming
+    # ------------------------------------------------------------------
+
+    def test_mainworld_orbit_name_matches_mw(self):
+        system = _name_system("Altair")
+        assert system.mainworld_orbit is not None
+        assert system.mainworld_orbit.name == system.mainworld.name
+
+    def test_world_names_sequential(self):
+        system = _name_system()
+        world_orbits = [
+            o for o in system.system_orbits.orbits
+            if o.world_type in ("terrestrial", "gas_giant")
+            and o is not system.mainworld_orbit
+        ]
+        for idx, orbit in enumerate(world_orbits):
+            expected = f"Test-{chr(ord('A') + idx)}"
+            assert orbit.name == expected
+
+    def test_belt_names_separate_counter(self):
+        system = _name_system()
+        belt_orbits = [
+            o for o in system.system_orbits.orbits
+            if o.world_type == "belt"
+        ]
+        assert len(belt_orbits) >= 1
+        for idx, orbit in enumerate(belt_orbits):
+            expected = f"Test-Belt-{chr(ord('A') + idx)}"
+            assert orbit.name == expected
+
+    # ------------------------------------------------------------------
+    # Moon naming
+    # ------------------------------------------------------------------
+
+    def test_moon_names_greek(self):
+        system = _name_system()
+        for orbit in system.system_orbits.orbits:
+            if orbit.detail is None:
+                continue
+            non_ring_moons = [m for m in orbit.detail.moons if not m.is_ring]
+            if len(non_ring_moons) >= 2:
+                assert non_ring_moons[0].name == f"{orbit.name}-alpha"
+                assert non_ring_moons[1].name == f"{orbit.name}-beta"
+                return
+        pytest.fail("No orbit with 2+ non-ring moons found")
+
+    def test_ring_skipped_in_greek_sequence(self):
+        system = _name_system()
+        for orbit in system.system_orbits.orbits:
+            if orbit.detail is None:
+                continue
+            moons = orbit.detail.moons
+            if moons and moons[0].is_ring and len(moons) > 1 and not moons[1].is_ring:
+                assert moons[0].name == ""
+                assert moons[1].name == f"{orbit.name}-alpha"
+                return
+        pytest.fail("No orbit starting with ring then non-ring found")
+
+    # ------------------------------------------------------------------
+    # WorldDetail propagation
+    # ------------------------------------------------------------------
+
+    def test_worlddetail_name_matches_orbit(self):
+        system = _name_system()
+        for orbit in system.system_orbits.orbits:
+            if orbit.detail is not None and orbit.name:
+                assert orbit.detail.name == orbit.name
+
+    # ------------------------------------------------------------------
+    # JSON round-trip
+    # ------------------------------------------------------------------
+
+    def test_orbit_name_in_to_dict(self):
+        system = _name_system()
+        named = [o for o in system.system_orbits.orbits if o.name]
+        assert len(named) > 0
+        for orbit in named:
+            d = orbit.to_dict()
+            assert d["name"] == orbit.name
+
+    def test_moon_name_in_to_dict(self):
+        system = _name_system()
+        for orbit in system.system_orbits.orbits:
+            if orbit.detail is None:
+                continue
+            for moon in orbit.detail.moons:
+                if moon.name:
+                    d = moon.to_dict()
+                    assert d["name"] == moon.name
+                    return
+        pytest.fail("No named moon found")
+
+    def test_star_name_in_to_dict(self):
+        system = _name_system("Betelgeuse")
+        primary = system.stellar_system.stars[0]
+        d = primary.to_dict()
+        assert d["name"] == "Betelgeuse-Primary"

@@ -1,11 +1,30 @@
 # Traveller World Generator — v1.5.0 Release Notes
 
-**1930 tests pass. Pylint 10.00/10.**
+**1942 tests pass. Pylint 10.00/10.**
 
-Sessions 88–101. Adds a FastAPI server, mainworld selection, secondary social
+Sessions 88–102. Adds a FastAPI server, mainworld selection, secondary social
 pipeline, secondary world classifications, population detail, government detail,
 FastAPI web UI split, settlement type population modifiers, full web UI options
-parity, save-to-file, atmosphere module extraction, and assorted compliance fixes.
+parity, save-to-file, atmosphere module extraction, body naming, and assorted
+compliance fixes.
+
+---
+
+## Body Naming (Session 102, issue #131)
+
+All system bodies now have auto-generated placeholder names derived from the
+mainworld (system) name. A world called "Homeworld" produces:
+
+- Stars: Homeworld-Primary, Homeworld-Secondary, …
+- Non-mainworld worlds: Homeworld-A, Homeworld-B, … (terrestrials + gas giants)
+- Belts: Homeworld-Belt-A, Homeworld-Belt-B, …
+- Moons: Homeworld-A-alpha, Homeworld-A-beta, … (rings skipped)
+
+Names appear as the leftmost column in the orbital survey table in both the
+system card and the standalone system detail renderer. They are saved in the
+system JSON and restored on reload.
+
+Call `attach_body_names(system)` after `attach_detail()` to populate all names.
 
 ---
 

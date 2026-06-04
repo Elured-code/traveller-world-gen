@@ -268,6 +268,22 @@ an extended profile format: G-CB-LS-ES-JS.
 Government code 0 (no government) produces no detail. Government code 7
 (Balkanised) is planned for a future update.
 
+BODY NAMES IN SYSTEM DISPLAY
+-----------------------------
+Every body in a generated star system now has an auto-generated placeholder
+name derived from the system (mainworld) name. The names appear as the
+leftmost column in the orbital survey table:
+
+- Stars are named Homeworld-Primary, Homeworld-Secondary, and so on.
+- Non-mainworld worlds (terrestrial and gas giant) are named Homeworld-A,
+  Homeworld-B, and so on.
+- Belts use a separate counter: Homeworld-Belt-A, Homeworld-Belt-B, and
+  so on.
+- Moons use Greek letters: Homeworld-A-alpha, Homeworld-A-beta. Rings are
+  skipped and receive no name.
+
+Names are saved in the system JSON and restored when you open a saved file.
+
 CITY POPULATION DISPLAY
 ------------------------
 Major city populations and the combined total major city population shown in the

@@ -77,6 +77,7 @@ except ImportError:
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
 from traveller_system_gen import (  # noqa: E402
     generate_full_system, TravellerSystem, select_mainworld as _select_mainworld,
+    attach_body_names,
 )
 from traveller_world_detail import (  # noqa: E402
     attach_detail as _attach_detail, gg_diameter_from_sah, apply_secondary_social,
@@ -983,6 +984,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 system,
                 independent_government=self._opt_independent_gov,
             )
+        if attach_detail_flag:
+            attach_body_names(system)  # type: ignore[arg-type]
         if self._opt_population_detail:
             attach_population_detail(system)  # type: ignore[arg-type]
         if self._opt_government_detail:

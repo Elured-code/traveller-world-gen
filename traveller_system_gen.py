@@ -374,6 +374,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                         else ""
                     )
                     moons.append({
+                        "name": moon.name,
                         "idx": mi,
                         "pd_str": (f"{moon.orbit_pd:.1f} PD"
                                    if moon.orbit_pd is not None else ""),
@@ -403,6 +404,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                     biosphere_str = f"{to_hex(bm)}, {to_hex(bc)}"
 
             orbit_rows.append({
+                "name": o.name,
                 "star_desig": o.star_designation,
                 "slot_index": o.slot_index,
                 "orbit_num": f"{o.orbit_number:.2f}",
@@ -905,6 +907,69 @@ def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-m
     system.mainworld       = new_mw
     system.mainworld_orbit = winner_orbit
     return True
+
+
+# ---------------------------------------------------------------------------
+# Body naming
+# ---------------------------------------------------------------------------
+
+_STAR_SUFFIXES = [
+    "Primary", "Secondary", "Tertiary", "Quaternary",
+    "Quinary", "Senary", "Septenary", "Octonary",
+]
+_GREEK = [
+    "alpha", "beta", "gamma", "delta", "epsilon", "zeta",
+    "eta", "theta", "iota", "kappa", "lambda", "mu",
+    "nu", "xi", "omicron", "pi", "rho", "sigma",
+    "tau", "upsilon", "phi", "chi", "psi", "omega",
+]
+
+
+def attach_body_names(system: TravellerSystem) -> None:
+    """Assign placeholder names to all bodies in the system.
+
+    Must be called after attach_detail() so that moon lists are populated.
+    Safe to call multiple times (idempotent).
+    """
+    mw_name = system.mainworld.name if system.mainworld else "Unknown"
+
+    # Name stars — companions share their parent's orbit, so skip them.
+    star_idx = 0
+    for star in system.stellar_system.stars:
+        if star.role == "companion":
+            continue
+        suffix = (_STAR_SUFFIXES[star_idx] if star_idx < len(_STAR_SUFFIXES)
+                  else f"{star_idx + 1}th")
+        star.name = f"{mw_name}-{suffix}"
+        star_idx += 1
+
+    # Name orbit slots with separate counters for worlds and belts.
+    world_letter_idx = 0
+    belt_letter_idx = 0
+    for orbit in system.system_orbits.orbits:
+        if orbit.world_type == "empty":
+            continue
+        if orbit is system.mainworld_orbit:
+            orbit.name = mw_name
+        elif orbit.world_type == "belt":
+            orbit.name = f"{mw_name}-Belt-{chr(ord('A') + belt_letter_idx)}"
+            belt_letter_idx += 1
+        else:
+            orbit.name = f"{mw_name}-{chr(ord('A') + world_letter_idx)}"
+            world_letter_idx += 1
+
+        # Propagate name to WorldDetail and assign Greek-letter moon names.
+        if orbit.detail is None:
+            continue
+        orbit.detail.name = orbit.name
+        greek_idx = 0
+        for moon in orbit.detail.moons:
+            if moon.is_ring:
+                continue
+            moon.name = f"{orbit.name}-{_GREEK[greek_idx]}"
+            if moon.detail is not None:
+                moon.detail.name = moon.name
+            greek_idx += 1
 
 
 # ---------------------------------------------------------------------------
