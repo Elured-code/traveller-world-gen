@@ -1,8 +1,102 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–98
-**Tests:** 1906
+**Sessions:** 88–101
+**Tests:** 1930
+
+---
+
+## City Population Rounding (Session 101)
+
+`_round_sig(n: int, sig: int = 3) -> int` helper added to
+`traveller_world_population_detail.py`. Applied to `major_city_total_population`
+and each individual `City.population` immediately before they are stored in the
+`PopulationDetail` dataclass. Raw values continue to drive internal distribution
+arithmetic; only the stored/displayed values are rounded.
+
+`test_city_pops_within_total` tolerance widened from `+1` to `max(1, total//200)`
+(0.5%) — independent rounding means the sum of displayed city populations can
+slightly exceed the rounded total.
+
+GitHub issue #131 created: body naming feature (name field on all system bodies
+with placeholder defaults derived from the mainworld name).
+
+---
+
+## Bug Fix: Biodiversity Rating Formula (Session 100)
+
+The WBH Biodiversity Rating formula was incorrectly implemented as
+`2D − 7 + Biomass + ⌈Biocomplexity / 2⌉`. The correct WBH formula (confirmed
+from book image) is `2D − 7 + ⌈(Biomass + Biocomplexity) / 2⌉` — average of
+both ratings, ceiling-rounded. Two test values updated in `TestBiodiversityRating`:
+`test_biocomplexity_ceil_odd` (8 → 7) and `test_high_biomass_raises_result` (14 → 9).
+
+---
+
+## Refactor: traveller_world_atmosphere_detail.py (Session 100)
+
+Atmosphere-derived temperature procedures extracted from `traveller_world_physical.py`
+into a new `traveller_world_atmosphere_detail.py` module (~310 lines relocated):
+
+- Basic Mean Temperature table, DMs, and `_compute_mean_temperature`
+- Albedo grouping constants and `_roll_albedo`
+- Greenhouse factor grouping constants and `_roll_greenhouse_factor`
+- High/Low temperature variance factors (`_axial_tilt_factor`, `_rotation_factor`,
+  `_geographic_factor`)
+- `generate_advanced_mean_temperature` (public API)
+- `RunawayGreenhouseResult` dataclass and `check_runaway_greenhouse` (public API)
+
+`traveller_world_physical.py` retains only physical body procedures
+(composition, density, diameter, axial tilt, rotation, tidal lock, seismic stress,
+resource rating). Import sites updated: `gen-ui/app.py`, `fastapi/app.py`,
+`azure-api/function_app.py`, `traveller_belt_physical.py`, `tests/test_world_physical.py`.
+
+---
+
+## WBH Social: Government Detail (Session 99, issue #96)
+
+New module `traveller_world_government_detail.py` implements WBH Social
+Characteristics Checklist §3 (Government). Exposes an optional, separate
+generation step mirroring the population detail pattern.
+
+### Generation pipeline
+
+- **Step 1 — Centralisation:** 2D + DMs (government code, PCR) →
+  Confederal / Federal / Unitary.
+- **Step 2 — Authority:** 2D + DMs (government code, centralisation) →
+  Legislative / Executive / Judicial / Balanced.
+- **Step 3 — Structure:** per-government special rules then the Functional
+  Structure table (Demos / Single Council / Multiple Councils / Ruler).
+  Balanced authority rolls all three branch structures separately.
+- **Factions:** D3 + DM count (government code), each faction rolls
+  government type (2D−7+pop), strength (2D), and relationship to ruling body
+  (1D+DM). External factions start at numeral II.
+
+### Government profile string
+
+- Non-balanced: `G-CAS` (e.g., `4-FES` = Gov 4, Federal, Executive, Single Council)
+- Balanced: `G-CB-LS-ES-JS` (e.g., `4-FB-LM-ES-JS`)
+
+### New dataclasses
+
+- `Faction` — numeral, government type/name, strength code/label, relationship code/label
+- `GovernmentDetail` — centralisation, authority, primary structure (or three
+  branch structures for Balanced), profile string, factions list
+
+### Integration
+
+- `World.government_detail` — new `Optional[GovernmentDetail]` field; emitted
+  in `to_dict()` and restored by `from_dict()`.
+- `WorldDetail.government_detail` — same pattern for secondary worlds.
+- Government detail card added to `templates/world_card.html`.
+- FastAPI: `parse_government_detail()` in `fastapi/helpers.py`;
+  `attach_government_detail()` wired into 4 endpoints.
+
+### Scope exclusions
+
+- Government code 0 (no government) returns `None` — no procedure applies.
+- Government code 7 (Balkanisation) returns `None` — Balkanised faction/nation
+  procedure deferred to issue #130.
 
 ---
 
@@ -112,7 +206,7 @@ unchecked. `QGroupBox` import and its `_CSS_DARK` rule removed.
 
 ## Population Detail — PCR, Urbanisation, Major Cities (Session 95, issue #95)
 
-New module `traveller_world_social_detail.py`. Dataclasses `City` and
+New module `traveller_world_population_detail.py`. Dataclasses `City` and
 `PopulationDetail`. Public functions `generate_pcr()`, `generate_urbanisation_pct()`,
 `generate_population_detail()`, `attach_population_detail()`.
 

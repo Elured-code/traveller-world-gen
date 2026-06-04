@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-06-03 (Session 98)  
+**Last updated:** 2026-06-04 (Session 101)  
 **Branch:** `v1.5.0` · **Main:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -23,8 +23,10 @@ read only the context files listed below for the specific task at hand.
 | Understanding the generation pipeline, entry points, or RNG/seed behaviour | [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `traveller_stellar_gen.py` or `traveller_orbit_gen.py` | [`context/stellar-orbit.md`](context/stellar-orbit.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_system_gen.py`, `traveller_world_gen.py`, `traveller_world_physical.py`, or `traveller_hydro_detail.py` | [`context/system-world.md`](context/system-world.md) + [`context/data-structures.md`](context/data-structures.md) + [`context/generation-pipeline.md`](context/generation-pipeline.md) |
+| `traveller_world_atmosphere_detail.py` | [`context/atmosphere-detail.md`](context/atmosphere-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_world_detail.py`, `traveller_moon_gen.py`, or `traveller_belt_physical.py` | [`context/detail-moon.md`](context/detail-moon.md) + [`context/data-structures.md`](context/data-structures.md) |
-| `traveller_world_social_detail.py` | [`context/social-detail.md`](context/social-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
+| `traveller_world_population_detail.py` | [`context/social-detail.md`](context/social-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
+| `traveller_world_government_detail.py` | [`context/government-detail.md`](context/government-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_map_fetch.py` | [`context/map-fetch.md`](context/map-fetch.md) + [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `azure-api/function_app.py` or `azure-api/shared/helpers.py` | [`context/api-layer.md`](context/api-layer.md) |
 | `fastapi/app.py` or `fastapi/helpers.py` | [`context/api-layer.md`](context/api-layer.md) |
@@ -72,6 +74,7 @@ After any session in which code, APIs, tests, or documented behaviour change:
 | New deferred feature identified | Add row to `context/deferred-features.md` |
 | Module API or public function changed | The matching module context file |
 | New module created | New `context/<name>.md` + add row to routing table above |
+| Government detail tables or DMs changed | `context/government-detail.md` |
 | Pipeline entry point added or changed | `context/generation-pipeline.md` |
 | Gen-UI widget or interaction changed | `context/gen-ui.md` |
 | SVG map generation changed | `context/system-map.md` |

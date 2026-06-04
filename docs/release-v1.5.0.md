@@ -1,11 +1,69 @@
 # Traveller World Generator — v1.5.0 Release Notes
 
-**1906 tests pass. Pylint 10.00/10.**
+**1930 tests pass. Pylint 10.00/10.**
 
-Sessions 88–98. Adds a FastAPI server, mainworld selection, secondary social
-pipeline, secondary world classifications, population detail, FastAPI web UI
-split, settlement type population modifiers, full web UI options parity,
-save-to-file, and assorted gen-ui and compliance fixes.
+Sessions 88–101. Adds a FastAPI server, mainworld selection, secondary social
+pipeline, secondary world classifications, population detail, government detail,
+FastAPI web UI split, settlement type population modifiers, full web UI options
+parity, save-to-file, atmosphere module extraction, and assorted compliance fixes.
+
+---
+
+## City Population Rounding (Session 101)
+
+Major city populations and the total major city population in population detail
+are now rounded to 3 significant figures before display and storage. A city of
+1,234,567 people is stored and shown as 1,230,000. This prevents spuriously
+precise outputs that imply false accuracy in a Monte Carlo generation system.
+
+---
+
+## WBH Social: Government Detail (Session 99, issue #96)
+
+Every inhabited world with a non-zero government code now supports an optional
+**Government detail** card. When the "Government detail" option is enabled, the
+generator produces a government profile string in the format `G-CAS`
+(Government code — Centralisation — Authority — Structure).
+
+- **Centralisation** (Confederal / Federal / Unitary): rolled 2D with DMs for
+  government type.
+- **Authority** (Legislative / Executive / Judicial / Balanced): rolled 2D with
+  DMs for government type and centralisation. Balanced authority generates a
+  separate structure for each of the three branches.
+- **Structure**: per-government special cases, then the WBH Functional Structure
+  table (Demos / Single Council / Multiple Councils / Ruler).
+- **Factions**: D3 + DM factions per world, each with government type, strength
+  (Obscure → Overwhelming), and relationship to the ruling body.
+
+Government code 0 returns no detail. Government code 7 (Balkanised) is deferred
+to issue #130.
+
+The `GovernmentDetail` object is emitted in `World.to_dict()` and restored by
+`World.from_dict()`. Secondary worlds carry `WorldDetail.government_detail`.
+A dedicated card appears on the world HTML display below Population detail.
+
+24 new tests. 1930 tests pass.
+
+---
+
+## Atmosphere Module Extraction (Session 100)
+
+Atmosphere-derived temperature procedures have been moved into a dedicated
+module `traveller_world_atmosphere_detail.py`. `traveller_world_physical.py`
+now contains only physical body procedures (composition, density, diameter,
+axial tilt, rotation, tidal lock, seismic stress, resource rating).
+
+This is a refactor only — no behaviour change.
+
+---
+
+## Bug Fix: Biodiversity Rating Formula (Session 100)
+
+The WBH Biodiversity Rating formula was incorrectly implemented. The correct
+formula `2D − 7 + ⌈(Biomass + Biocomplexity) / 2⌉` (average of both ratings,
+ceiling-rounded) replaces the old `2D − 7 + Biomass + ⌈Biocomplexity / 2⌉`.
+Results for worlds with high biocomplexity are notably lower under the correct
+formula.
 
 ---
 
@@ -85,7 +143,7 @@ which was smaller and differently styled. The sub-options widget is hidden
 
 ## Population Detail — PCR, Urbanisation, Major Cities (Session 95, issue #95)
 
-New `traveller_world_social_detail` module implements the WBH Social
+New `traveller_world_population_detail` module implements the WBH Social
 Characteristics checklist for population. When the "Population detail" option
 is enabled in the gen-ui Options dialog, every inhabited mainworld and secondary
 world receives a full population profile.
