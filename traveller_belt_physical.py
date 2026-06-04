@@ -64,7 +64,7 @@ import random
 from dataclasses import dataclass
 from typing import Optional
 
-from traveller_world_physical import _compute_mean_temperature
+from traveller_world_atmosphere_detail import _compute_mean_temperature
 
 _rng: random.Random = random  # type: ignore[assignment]
 

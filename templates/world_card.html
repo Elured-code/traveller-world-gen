@@ -434,6 +434,30 @@
   </div>
   {% endif %}
 
+  {% if ctx.gov_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Government detail</p>
+    {{ drow("Government profile", ctx.gov_detail.government_profile) }}
+    {{ drow("Centralisation", ctx.gov_detail.centralisation) }}
+    {{ drow("Primary authority", ctx.gov_detail.authority) }}
+    {% if ctx.gov_detail.authority_code == "B" %}
+    {{ drow("Legislative structure", ctx.gov_detail.structure_leg) }}
+    {{ drow("Executive structure", ctx.gov_detail.structure_exec) }}
+    {{ drow("Judicial structure", ctx.gov_detail.structure_jud) }}
+    {% else %}
+    {{ drow("Structure", ctx.gov_detail.structure) }}
+    {% endif %}
+    {% if ctx.gov_detail.factions %}
+    {{ drow("External factions", ctx.gov_detail.factions|length|string) }}
+    {% for f in ctx.gov_detail.factions %}
+    {{ drow("Faction " ~ f.numeral, f.government_name ~ " — " ~ f.strength_label ~ " (" ~ f.relationship_label ~ ")") }}
+    {% endfor %}
+    {% else %}
+    {{ drow("External factions", "None") }}
+    {% endif %}
+  </div>
+  {% endif %}
+
   <details>
     <summary>Raw JSON</summary>
     <pre>{{ ctx.json_str }}</pre>

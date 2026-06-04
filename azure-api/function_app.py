@@ -195,6 +195,8 @@ from traveller_world_gen import (
 )
 from traveller_world_physical import (
     generate_world_physical, apply_moon_tidal_effects,
+)
+from traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
 from traveller_hydro_detail import generate_hydrographic_detail

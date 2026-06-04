@@ -691,11 +691,11 @@ _INHERENT_TAINTED_CODES: frozenset[int] = frozenset({2, 4, 7, 9})
 def generate_biodiversity_rating(biomass: int, biocomplexity: int) -> int:
     """Roll and return the biodiversity rating (WBH p.130).
 
-    Formula: 2D − 7 + Biomass + ⌈Biocomplexity / 2⌉. Minimum 0.
+    Formula: 2D − 7 + ⌈(Biomass + Biocomplexity) / 2⌉. Minimum 0.
     Only call when biomass ≥ 1.
     """
     base = (_rng.randint(1, 6) + _rng.randint(1, 6)
-            - 7 + biomass + math.ceil(biocomplexity / 2))
+            - 7 + math.ceil((biomass + biocomplexity) / 2))
     return max(0, base)
 
 
@@ -824,7 +824,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
                  "is_independent_government", "native_sophont", "classification",
-                 "population_detail")
+                 "population_detail", "government_detail")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -840,8 +840,10 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.moons      = moons if moons is not None else []
         self.is_independent_government = is_independent_government
         self.classification: Optional[str] = None
-        # traveller_world_social_detail.PopulationDetail — set by attach_population_detail()
+        # traveller_world_population_detail.PopulationDetail — set by attach_population_detail()
         self.population_detail: Optional[object] = None
+        # traveller_world_government_detail.GovernmentDetail — set by attach_government_detail()
+        self.government_detail: Optional[object] = None
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
         self.biocomplexity_rating: Optional[int] = None
@@ -925,6 +927,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["habitability_rating"] = self.habitability_rating
         if self.population_detail is not None:
             d["population_detail"] = self.population_detail.to_dict()  # type: ignore[attr-defined]
+        if self.government_detail is not None:
+            d["government_detail"] = self.government_detail.to_dict()  # type: ignore[attr-defined]
         return d
 
     @classmethod
@@ -958,8 +962,11 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         if d.get("habitability_rating") is not None:
             obj.habitability_rating = int(d["habitability_rating"])
         if d.get("population_detail") is not None:
-            from traveller_world_social_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
+            from traveller_world_population_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
             obj.population_detail = _PD.from_dict(d["population_detail"])
+        if d.get("government_detail") is not None:
+            from traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
+            obj.government_detail = _GD.from_dict(d["government_detail"])
         return obj
 
 

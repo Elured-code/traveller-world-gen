@@ -297,6 +297,9 @@
     <label class="checkbox-label" title="Generate PCR, urbanisation, and major city data for inhabited worlds">
       <input type="checkbox" id="s-pop-detail"> Pop Detail
     </label>
+    <label class="checkbox-label" title="Generate centralisation, authority, structure, and faction data for inhabited worlds">
+      <input type="checkbox" id="s-gov-detail"> Gov Detail
+    </label>
 
     <div class="sub-sep"></div>
     <span class="sub-label">Settlement</span>
@@ -448,7 +451,7 @@
 
   function buildSysUrl(seed, fmt) {
     if (!_lastGen) return null;
-    const { name, full, detail, selectMw, nhz, bio, rg, indep, popDetail, settlement } = _lastGen;
+    const { name, full, detail, selectMw, nhz, bio, rg, indep, popDetail, govDetail, settlement } = _lastGen;
     const cardName = encodeURIComponent(name);
     if (full) {
       const p = new URLSearchParams({ seed, format: fmt });
@@ -459,6 +462,7 @@
       if (rg)         p.set("runaway_greenhouse", "true");
       if (indep)      p.set("independent_government", "true");
       if (popDetail)  p.set("population_detail", "true");
+      if (govDetail)  p.set("government_detail", "true");
       if (settlement !== "standard") p.set("settlement_type", settlement);
       return `/api/system/full?${p}`;
     }
@@ -470,6 +474,7 @@
       if (rg)         p.set("runaway_greenhouse", "true");
       if (indep)      p.set("independent_government", "true");
       if (popDetail)  p.set("population_detail", "true");
+      if (govDetail)  p.set("government_detail", "true");
       if (settlement !== "standard") p.set("settlement_type", settlement);
       return `/api/system/${cardName}/card?${p}`;
     }
@@ -482,6 +487,7 @@
     if (rg)         p.set("runaway_greenhouse", "true");
     if (indep)      p.set("independent_government", "true");
     if (popDetail)  p.set("population_detail", "true");
+    if (govDetail)  p.set("government_detail", "true");
     if (settlement !== "standard") p.set("settlement_type", settlement);
     return `/api/system?${p}`;
   }
@@ -601,6 +607,7 @@
     const rg         = document.getElementById("s-rg").checked;
     const indep      = document.getElementById("s-indep").checked;
     const popDetail  = document.getElementById("s-pop-detail").checked;
+    const govDetail  = document.getElementById("s-gov-detail").checked;
     const settlement = document.getElementById("s-settlement").value;
     const btn        = document.getElementById("s-gen");
     const seed       = seedIn ? parseInt(seedIn, 10) : randSeed();
@@ -617,6 +624,7 @@
       if (rg)         base.set("runaway_greenhouse", "true");
       if (indep)      base.set("independent_government", "true");
       if (popDetail)  base.set("population_detail", "true");
+      if (govDetail)  base.set("government_detail", "true");
       if (settlement !== "standard") base.set("settlement_type", settlement);
       return base;
     }
@@ -625,6 +633,7 @@
     function mwCardParams(seed) {
       const p = new URLSearchParams({ seed, detail: "true" });
       if (popDetail)  p.set("population_detail", "true");
+      if (govDetail)  p.set("government_detail", "true");
       if (settlement !== "standard") p.set("settlement_type", settlement);
       return p;
     }
@@ -689,14 +698,14 @@
           if (!seedIn) document.getElementById("s-seed").value = data.seed ?? seed;
           clearStatus();
           btn.disabled = false;
-          _lastGen = { name: name || "World-1", seed: data.seed ?? seed, full, detail, selectMw, nhz, bio, rg, indep, popDetail, settlement };
+          _lastGen = { name: name || "World-1", seed: data.seed ?? seed, full, detail, selectMw, nhz, bio, rg, indep, popDetail, govDetail, settlement };
           return;
         }
         showSeed(seed);
         if (!seedIn) document.getElementById("s-seed").value = seed;
       }
 
-      _lastGen = { name: name || "World-1", seed, full, detail, selectMw, nhz, bio, rg, indep, popDetail, settlement };
+      _lastGen = { name: name || "World-1", seed, full, detail, selectMw, nhz, bio, rg, indep, popDetail, govDetail, settlement };
       clearStatus();
     } catch (e) {
       setStatus("Error: " + e.message, "error");

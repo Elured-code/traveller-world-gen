@@ -123,7 +123,7 @@ from helpers import (
     parse_nhz_atmospheres, parse_orbital_eccentricity, parse_orbital_inclination,
     parse_runaway_greenhouse, parse_independent_government,
     parse_optional_biomass, parse_optional_inhospitable,
-    parse_population_detail, parse_settlement_type,
+    parse_population_detail, parse_government_detail, parse_settlement_type,
     parse_seed, parse_sector, parse_world_json,
 )
 
@@ -133,12 +133,15 @@ from traveller_world_gen import (
 )
 from traveller_world_physical import (
     generate_world_physical, apply_moon_tidal_effects,
+)
+from traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
 from traveller_hydro_detail import generate_hydrographic_detail
 from traveller_system_gen import generate_full_system, generate_system_from_world, select_mainworld
 from traveller_world_detail import attach_detail, gg_diameter_from_sah, apply_secondary_social
-from traveller_world_social_detail import attach_population_detail
+from traveller_world_population_detail import attach_population_detail
+from traveller_world_government_detail import attach_government_detail
 from traveller_map_fetch import generate_system_from_map
 
 logger = logging.getLogger(__name__)
@@ -502,7 +505,7 @@ async def generate_world_batch(request: Request) -> Response:  # pylint: disable
 
 @app.get("/api/world/{name}/card")
 @limiter.limit(_RATE_LIMIT)
-async def generate_world_card(request: Request) -> Response:
+async def generate_world_card(request: Request) -> Response:  # pylint: disable=too-many-locals
     """Return a standalone HTML mainworld display card.
 
     Parameters: seed (int, opt), detail (bool, opt).
@@ -521,6 +524,7 @@ async def generate_world_card(request: Request) -> Response:
     want_detail = parse_detail(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_pop_detail = parse_population_detail(request, body)
+    want_gov_detail = parse_government_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         if want_detail:
@@ -534,6 +538,8 @@ async def generate_world_card(request: Request) -> Response:
             attach_detail(system, rng=rng)
             if want_pop_detail:
                 attach_population_detail(system, rng=rng)
+            if want_gov_detail:
+                attach_government_detail(system, rng=rng)
             world = system.mainworld
         else:
             # Minimal path: matches gen-ui with system detail and population detail off.
@@ -650,6 +656,7 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_pop_detail = parse_population_detail(request, body)
+    want_gov_detail = parse_government_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
@@ -666,6 +673,8 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
         _run_select_mainworld(system, rng, want_rg, True, want_indep, want_settlement)
         if want_pop_detail:
             attach_population_detail(system, rng=rng)
+        if want_gov_detail:
+            attach_government_detail(system, rng=rng)
     except Exception as exc:
         logger.exception("Error generating full system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -797,6 +806,7 @@ async def generate_single_system(request: Request) -> Response:  # pylint: disab
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_pop_detail = parse_population_detail(request, body)
+    want_gov_detail = parse_government_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
@@ -815,6 +825,8 @@ async def generate_single_system(request: Request) -> Response:  # pylint: disab
         _run_select_mainworld(system, rng, want_rg, want_detail, want_indep, want_settlement)
         if want_pop_detail and want_detail:
             attach_population_detail(system, rng=rng)
+        if want_gov_detail and want_detail:
+            attach_government_detail(system, rng=rng)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -860,6 +872,7 @@ async def generate_system_card(request: Request) -> Response:  # pylint: disable
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_pop_detail = parse_population_detail(request, body)
+    want_gov_detail = parse_government_detail(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
@@ -878,6 +891,8 @@ async def generate_system_card(request: Request) -> Response:  # pylint: disable
         _run_select_mainworld(system, rng, want_rg, want_detail, want_indep, want_settlement)
         if want_pop_detail and want_detail:
             attach_population_detail(system, rng=rng)
+        if want_gov_detail and want_detail:
+            attach_government_detail(system, rng=rng)
         html = system.to_html(detail_attached=want_detail)
     except Exception as exc:
         logger.exception("Error generating system card: %s", exc)

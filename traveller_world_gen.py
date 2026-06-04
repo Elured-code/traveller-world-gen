@@ -56,7 +56,8 @@ from tables import (
 
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
-    from traveller_world_social_detail import PopulationDetail
+    from traveller_world_population_detail import PopulationDetail
+    from traveller_world_government_detail import GovernmentDetail
 
 
 # ---------------------------------------------------------------------------
@@ -1543,6 +1544,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     lifeform_profile:     Optional[str] = field(default=None, init=False)
     habitability_rating:  Optional[int] = field(default=None, init=False)
     population_detail: Optional["PopulationDetail"] = field(default=None, init=False)
+    government_detail: Optional["GovernmentDetail"] = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1656,6 +1658,8 @@ class World:  # pylint: disable=too-many-instance-attributes
             **({"seed": self.seed} if self.seed is not None else {}),
             **({"population_detail": self.population_detail.to_dict()}
                if self.population_detail is not None else {}),
+            **({"government_detail": self.government_detail.to_dict()}
+               if self.government_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1749,7 +1753,7 @@ class World:  # pylint: disable=too-many-instance-attributes
                     )
 
     @classmethod
-    def from_dict(cls, d: dict) -> "World":  # pylint: disable=too-many-locals
+    def from_dict(cls, d: dict) -> "World":  # pylint: disable=too-many-locals,too-many-branches
         """Reconstruct a World from a dict produced by to_dict().
 
         Handles both the nested form produced by to_dict() (where 'starport',
@@ -1834,8 +1838,11 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("seed") is not None:
             world.seed = int(d["seed"])
         if d.get("population_detail") is not None:
-            from traveller_world_social_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
+            from traveller_world_population_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
             world.population_detail = _PD.from_dict(d["population_detail"])
+        if d.get("government_detail") is not None:
+            from traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
+            world.government_detail = _GD.from_dict(d["government_detail"])
 
         return world
 
@@ -2137,6 +2144,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
             [(i + 1, f"{c.population:,}")
              for i, c in enumerate(world.population_detail.cities)]
             if world.population_detail is not None else []),
+        "gov_detail": world.government_detail,
     }
 
 

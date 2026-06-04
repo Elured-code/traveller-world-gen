@@ -295,6 +295,15 @@ def parse_population_detail(request: Request, body: dict) -> bool:
     return _parse_bool_param(request, body, "population_detail")
 
 
+def parse_government_detail(request: Request, body: dict) -> bool:
+    """Extract the optional 'government_detail' flag.
+
+    When True, the caller should run attach_government_detail() to populate
+    centralisation, authority, structure, and faction data on all inhabited worlds.
+    """
+    return _parse_bool_param(request, body, "government_detail")
+
+
 def parse_format(request: Request, body: dict) -> str:
     """Extract the optional 'format' parameter.
 

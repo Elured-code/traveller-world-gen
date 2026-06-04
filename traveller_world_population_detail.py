@@ -1,6 +1,6 @@
 """
-traveller_world_social_detail.py
-=================================
+traveller_world_population_detail.py
+=====================================
 Population detail for Traveller mainworlds and secondary worlds, following
 the World Builder's Handbook Social Characteristics Checklist (§2).
 
@@ -58,6 +58,15 @@ _PCR_LABELS: dict[int, str] = {
 
 # eHex lookup for population code display (codes 0–C are all we need here)
 _EHEX = "0123456789ABC"
+
+
+def _round_sig(n: int, sig: int = 3) -> int:
+    """Round n to sig significant figures."""
+    if n <= 0:
+        return max(0, n)
+    magnitude = math.floor(math.log10(n))
+    factor = 10 ** (magnitude - sig + 1)
+    return int(round(n / factor) * factor)
 
 
 # ---------------------------------------------------------------------------
@@ -518,8 +527,9 @@ def generate_population_detail(  # pylint: disable=too-many-arguments,too-many-p
         pop_code, pcr, urb_pct, urban_pop)
 
     raw_pops = _distribute_city_populations(city_count, total_major_city_pop, pcr)
+    total_major_city_pop = _round_sig(total_major_city_pop)
     # Cap display list at 10; keep all for city_count accuracy
-    detailed_cities = [City(population=p) for p in raw_pops[:10]]
+    detailed_cities = [City(population=_round_sig(p)) for p in raw_pops[:10]]
 
     pop_hex = _EHEX[pop_code] if pop_code < len(_EHEX) else str(pop_code)
     profile = f"{pop_hex}-{p_value}-{pcr}-{urb_pct}-{city_count}"

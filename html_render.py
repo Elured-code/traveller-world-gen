@@ -29,7 +29,7 @@ import jinja2
 
 if getattr(sys, "frozen", False):
     # Running inside a PyInstaller bundle; sys._MEIPASS is the bundle root.
-    _TEMPLATE_DIR = pathlib.Path(sys._MEIPASS) / "templates"  # type: ignore[attr-defined]
+    _TEMPLATE_DIR = pathlib.Path(sys._MEIPASS) / "templates"  # type: ignore[attr-defined]  # pylint: disable=protected-access
 else:
     _TEMPLATE_DIR = pathlib.Path(__file__).parent / "templates"
 _ENV = jinja2.Environment(

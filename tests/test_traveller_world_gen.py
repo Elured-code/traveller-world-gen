@@ -129,13 +129,22 @@ from traveller_world_gen import (
     _SETTLEMENT_DEFAULT_DM,
 )
 from traveller_system_gen import generate_full_system, select_mainworld
-from traveller_world_social_detail import (
+from traveller_world_population_detail import (
     generate_pcr,
     generate_urbanisation_pct,
     generate_population_detail,
     attach_population_detail,
     City,
     PopulationDetail,
+)
+from traveller_world_government_detail import (
+    generate_centralisation,
+    generate_authority,
+    generate_factions,
+    generate_government_detail,
+    attach_government_detail,
+    Faction,
+    GovernmentDetail,
 )
 from traveller_world_detail import (
     attach_detail, _ehex_to_int, generate_biomass_rating, WorldDetail,
@@ -6665,7 +6674,7 @@ class TestSecondaryWorldClassification:
 
 
 class TestPopulationDetail:
-    """Tests for traveller_world_social_detail — PCR, urbanisation, cities, profile."""
+    """Tests for traveller_world_population_detail — PCR, urbanisation, cities, profile."""
 
     # ------------------------------------------------------------------
     # Helpers
@@ -6712,7 +6721,7 @@ class TestPopulationDetail:
     def test_pcr_9_when_1d_exceeds_pop(self):
         # For pop_code=1, a 1D roll of 2–6 gives PCR=9 immediately.
         # Patch first randint to always return 6 (> pop_code 1).
-        with patch("traveller_world_social_detail._rng") as mock_rng:
+        with patch("traveller_world_population_detail._rng") as mock_rng:
             mock_rng.randint.return_value = 6
             pcr = generate_pcr(1, 8, 9, 3, [])
         assert pcr == 9
@@ -6721,7 +6730,7 @@ class TestPopulationDetail:
         # If roll == pop_code (== 3), the first check (> pop_code) fails
         # and we proceed to the table roll — result should not be forced 9
         # from the first check.  We verify by seeding consistently.
-        with patch("traveller_world_social_detail._rng") as mock_rng:
+        with patch("traveller_world_population_detail._rng") as mock_rng:
             # First call (the comparison roll) returns 3 = pop_code → no force-9
             # Second call (the table roll) also returns 3
             mock_rng.randint.side_effect = [3, 3]
@@ -6776,7 +6785,7 @@ class TestPopulationDetail:
     def test_case1_pcr0_no_cities(self):
         # Force PCR=0: pop 6 skips the comparison check; table roll=1 + DMs.
         # Ag (DM-2) + TL9 (DM+1) = DM-1 → roll 1 + DM-1 = 0 → PCR=0
-        with patch("traveller_world_social_detail._rng") as mock_rng:
+        with patch("traveller_world_population_detail._rng") as mock_rng:
             mock_rng.randint.side_effect = [1] * 200
             det = generate_population_detail(6, 5, 8, 9, 3, 4, ["Ag"])
         assert det is not None
@@ -6786,7 +6795,7 @@ class TestPopulationDetail:
 
     def test_case2_pop5_pcr9_one_city(self):
         # Pop 5, PCR 9 → 1 major city = total urban pop
-        with patch("traveller_world_social_detail._rng") as mock_rng:
+        with patch("traveller_world_population_detail._rng") as mock_rng:
             # First check: 1D (6) > pop_code (5) → PCR = 9
             mock_rng.randint.side_effect = [6] + [5] * 100
         det = generate_population_detail(5, 5, 8, 9, 3, 4, [],
@@ -6848,8 +6857,11 @@ class TestPopulationDetail:
             det = generate_population_detail(7, 5, 8, 9, 3, 4, [], rng=rng)
             if det and det.major_city_count > 0 and det.cities:
                 city_sum = sum(c.population for c in det.cities)
-                # Full list may be capped to 10; sum should be ≤ total_major_city_pop
-                assert city_sum <= det.major_city_total_population + 1  # +1 for rounding
+                # Full list may be capped to 10; sum should be ≤ total_major_city_pop.
+                # 3-sig-fig rounding of individual cities and total is independent,
+                # so allow a 0.5% tolerance.
+                tolerance = max(1, det.major_city_total_population // 200)
+                assert city_sum <= det.major_city_total_population + tolerance
 
     # ------------------------------------------------------------------
     # Serialisation round-trip
@@ -7041,3 +7053,239 @@ class TestSettlementType:
     def test_settlement_default_dm_dict_covers_all_types(self):
         expected = {"standard", "long_settled", "well_settled", "backwater", "unsettled"}
         assert set(_SETTLEMENT_DEFAULT_DM.keys()) == expected
+
+
+class TestGovernmentDetail:
+    """Tests for traveller_world_government_detail — centralisation, authority, structure, factions."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _detail(self, gov_code=4, pop_code=6, pcr=0, rng=None):
+        return generate_government_detail(gov_code, pop_code, pcr=pcr, rng=rng)
+
+    # ------------------------------------------------------------------
+    # Returns None for skipped codes
+    # ------------------------------------------------------------------
+
+    def test_gov0_returns_none(self):
+        assert generate_government_detail(0, 6) is None
+
+    def test_gov7_returns_none(self):
+        assert generate_government_detail(7, 6) is None
+
+    # ------------------------------------------------------------------
+    # Centralisation
+    # ------------------------------------------------------------------
+
+    def test_centralisation_valid_code(self):
+        for seed in range(80):
+            rng = random.Random(seed)
+            code, _ = generate_centralisation(4, pcr=0, rng=rng)
+            assert code in ("C", "F", "U"), f"Unexpected centralisation code {code!r}"
+
+    def test_centralisation_label_matches_code(self):
+        labels = {"C": "Confederal", "F": "Federal", "U": "Unitary"}
+        for seed in range(50):
+            rng = random.Random(seed)
+            code, label = generate_centralisation(4, pcr=0, rng=rng)
+            assert label == labels[code]
+
+    def test_centralisation_high_pcr_skews_unitary(self):
+        unitary_count = 0
+        for seed in range(100):
+            rng = random.Random(seed)
+            code, _ = generate_centralisation(9, pcr=9, rng=rng)
+            if code == "U":
+                unitary_count += 1
+        assert unitary_count > 50, "PCR9 + gov9 should strongly skew toward Unitary"
+
+    # ------------------------------------------------------------------
+    # Authority
+    # ------------------------------------------------------------------
+
+    def test_authority_valid_code(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            code, _ = generate_authority(4, "F", rng=rng)
+            assert code in ("L", "E", "J", "B"), f"Unexpected authority code {code!r}"
+
+    def test_authority_label_matches_code(self):
+        labels = {"L": "Legislative", "E": "Executive", "J": "Judicial", "B": "Balanced"}
+        for seed in range(50):
+            rng = random.Random(seed)
+            code, label = generate_authority(4, "F", rng=rng)
+            assert label == labels[code]
+
+    def test_high_dm_govs_skew_executive(self):
+        # Government 1 carries DM+6 → result ≥12 almost always → Executive
+        exec_count = 0
+        for seed in range(50):
+            rng = random.Random(seed)
+            code, _ = generate_authority(1, "F", rng=rng)
+            if code == "E":
+                exec_count += 1
+        assert exec_count > 35
+
+    # ------------------------------------------------------------------
+    # Full generate_government_detail
+    # ------------------------------------------------------------------
+
+    def test_structure_code_valid_when_not_balanced(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            det = self._detail(gov_code=4, rng=rng)
+            assert det is not None
+            if det.authority_code != "B":
+                assert det.structure_code in ("D", "S", "M", "R")
+                assert det.structure != ""
+
+    def test_balanced_authority_has_branch_structures(self):
+        for seed in range(200):
+            rng = random.Random(seed)
+            det = self._detail(gov_code=4, rng=rng)
+            assert det is not None
+            if det.authority_code == "B":
+                assert det.structure_code == ""
+                assert det.structure_leg_code in ("D", "S", "M", "R")
+                assert det.structure_exec_code in ("D", "S", "M", "R")
+                assert det.structure_jud_code in ("D", "S", "M", "R")
+                break
+
+    def test_government_profile_format_non_balanced(self):
+        for seed in range(200):
+            rng = random.Random(seed)
+            det = self._detail(gov_code=4, rng=rng)
+            assert det is not None
+            if det.authority_code != "B":
+                parts = det.government_profile.split("-")
+                assert len(parts) == 2, f"Profile {det.government_profile!r} should be G-CAS"
+                assert len(parts[1]) == 3
+                break
+
+    def test_government_profile_format_balanced(self):
+        for seed in range(500):
+            rng = random.Random(seed)
+            det = self._detail(gov_code=4, rng=rng)
+            assert det is not None
+            if det.authority_code == "B":
+                # Format: G-CB-LS-ES-JS
+                assert det.government_profile.count("-") == 4
+                break
+
+    def test_profile_gov_hex_matches_gov_code(self):
+        for gov_code in (1, 4, 8, 10, 12):
+            det = generate_government_detail(gov_code, 6, rng=random.Random(42))
+            assert det is not None
+            expected_hex = "0123456789ABCDEF"[gov_code]
+            assert det.government_profile.startswith(expected_hex + "-")
+
+    # ------------------------------------------------------------------
+    # Factions
+    # ------------------------------------------------------------------
+
+    def test_factions_is_list(self):
+        det = self._detail(gov_code=4, rng=random.Random(1))
+        assert det is not None
+        assert isinstance(det.factions, list)
+
+    def test_faction_strength_code_valid(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            factions = generate_factions(4, 6, rng=rng)
+            for f in factions:
+                assert f.strength_code in ("O", "F", "M", "N", "S", "P")
+
+    def test_faction_relationship_code_valid(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            factions = generate_factions(4, 6, rng=rng)
+            for f in factions:
+                assert f.relationship_code in [str(i) for i in range(10)]
+
+    def test_faction_numeral_sequence(self):
+        # External factions start at numeral II
+        for seed in range(100):
+            rng = random.Random(seed)
+            factions = generate_factions(4, 6, rng=rng)
+            if len(factions) >= 2:
+                assert factions[0].numeral == "II"
+                assert factions[1].numeral == "III"
+                break
+
+    def test_no_factions_when_count_le1(self):
+        # Government A+ gets DM-1; seed such that D3=1 → count=0 → no factions
+        no_faction_found = False
+        for seed in range(200):
+            rng = random.Random(seed)
+            factions = generate_factions(10, 6, rng=rng)
+            if len(factions) == 0:
+                no_faction_found = True
+                break
+        assert no_faction_found
+
+    # ------------------------------------------------------------------
+    # Serialisation round-trip
+    # ------------------------------------------------------------------
+
+    def test_faction_to_dict_from_dict(self):
+        f = Faction(numeral="II", government_type=4,
+                    government_name="Representative Democracy",
+                    strength_code="M", strength_label="Minor group",
+                    relationship_code="3", relationship_label="Competition")
+        restored = Faction.from_dict(f.to_dict())
+        assert restored.numeral == "II"
+        assert restored.government_type == 4
+        assert restored.strength_code == "M"
+        assert restored.relationship_code == "3"
+
+    def test_government_detail_to_dict_from_dict(self):
+        rng = random.Random(7)
+        det = generate_government_detail(4, 6, rng=rng)
+        assert det is not None
+        restored = GovernmentDetail.from_dict(det.to_dict())
+        assert restored.centralisation_code == det.centralisation_code
+        assert restored.authority_code == det.authority_code
+        assert restored.government_profile == det.government_profile
+        assert len(restored.factions) == len(det.factions)
+
+    def test_world_from_dict_restores_government_detail(self):
+        rng = random.Random(55)
+        det = generate_government_detail(4, 6, rng=rng)
+        assert det is not None
+        w = World(name="Test", size=8, atmosphere=6, population=6,
+                  population_multiplier=5, tech_level=9, government=4,
+                  law_level=4, starport="B")
+        w.government_detail = det
+        d = w.to_dict()
+        assert "government_detail" in d
+        restored = World.from_dict(d)
+        assert restored.government_detail is not None
+        assert restored.government_detail.government_profile == det.government_profile
+
+    def test_world_government_detail_defaults_none(self):
+        w = World(name="Test", size=8, atmosphere=6)
+        assert w.government_detail is None
+
+    # ------------------------------------------------------------------
+    # Integration: attach_government_detail on a full system
+    # ------------------------------------------------------------------
+
+    def test_attach_government_detail_mainworld(self):
+        system = generate_full_system("GovTest", seed=42)
+        rng = random.Random(42)
+        attach_government_detail(system, rng=rng)
+        mw = system.mainworld
+        if mw is not None and mw.population > 0 and mw.government not in (0, 7):
+            assert mw.government_detail is not None
+            assert mw.government_detail.government_profile != ""
+            assert mw.government_detail.centralisation_code in ("C", "F", "U")
+
+    def test_attach_skips_gov0_and_gov7(self):
+        system = generate_full_system("GovSkip", seed=99)
+        rng = random.Random(99)
+        attach_government_detail(system, rng=rng)
+        mw = system.mainworld
+        if mw is not None and mw.government in (0, 7):
+            assert mw.government_detail is None

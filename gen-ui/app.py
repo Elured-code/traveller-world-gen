@@ -81,7 +81,8 @@ from traveller_system_gen import (  # noqa: E402
 from traveller_world_detail import (  # noqa: E402
     attach_detail as _attach_detail, gg_diameter_from_sah, apply_secondary_social,
 )
-from traveller_world_social_detail import attach_population_detail  # noqa: E402
+from traveller_world_population_detail import attach_population_detail  # noqa: E402
+from traveller_world_government_detail import attach_government_detail  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
     World,
     generate_atmosphere_detail,
@@ -93,8 +94,9 @@ from traveller_world_gen import (  # noqa: E402
 )
 from traveller_world_physical import (  # noqa: E402
     generate_world_physical, apply_moon_tidal_effects,
-    generate_advanced_mean_temperature,
-    check_runaway_greenhouse,
+)
+from traveller_world_atmosphere_detail import (  # noqa: E402
+    generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
 from tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
@@ -350,6 +352,7 @@ class _OptionsDialog(QDialog):
         runaway_greenhouse: bool,
         independent_government: bool,
         population_detail: bool,
+        government_detail: bool,
         settlement_type: str,
     ) -> None:
         super().__init__(parent)
@@ -387,6 +390,10 @@ class _OptionsDialog(QDialog):
         self._check_pop_detail = QCheckBox("Population detail")
         self._check_pop_detail.setChecked(population_detail)
         layout.addWidget(self._check_pop_detail)
+
+        self._check_gov_detail = QCheckBox("Government detail")
+        self._check_gov_detail.setChecked(government_detail)
+        layout.addWidget(self._check_gov_detail)
 
         settlement_group = QGroupBox("Settlement type")
         settlement_layout = QVBoxLayout(settlement_group)
@@ -458,6 +465,10 @@ class _OptionsDialog(QDialog):
         return self._check_pop_detail.isChecked()
 
     @property
+    def government_detail(self) -> bool:
+        return self._check_gov_detail.isChecked()
+
+    @property
     def settlement_type(self) -> str:
         btn = self._settlement_btn_group.checkedButton()
         return btn.property("key") if btn is not None else "none"
@@ -506,6 +517,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         self._opt_population_detail: bool = (
             str(_s.value("opt_population_detail", False)).lower() == "true"
+        )
+        self._opt_government_detail: bool = (
+            str(_s.value("opt_government_detail", False)).lower() == "true"
         )
         self._opt_settlement_type: str = str(_s.value("opt_settlement_type", "standard"))
         self._apply_theme()
@@ -729,6 +743,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             runaway_greenhouse=self._opt_runaway_greenhouse,
             independent_government=self._opt_independent_gov,
             population_detail=self._opt_population_detail,
+            government_detail=self._opt_government_detail,
             settlement_type=self._opt_settlement_type,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -740,6 +755,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_runaway_greenhouse = dialog.runaway_greenhouse
         self._opt_independent_gov = dialog.independent_government
         self._opt_population_detail = dialog.population_detail
+        self._opt_government_detail = dialog.government_detail
         self._opt_settlement_type = dialog.settlement_type
         _s = QSettings("traveller-world-gen", "AppWindow")
         _s.setValue("opt_full_system", self._opt_full_system)
@@ -749,6 +765,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_runaway_greenhouse", self._opt_runaway_greenhouse)
         _s.setValue("opt_independent_gov", self._opt_independent_gov)
         _s.setValue("opt_population_detail", self._opt_population_detail)
+        _s.setValue("opt_government_detail", self._opt_government_detail)
         _s.setValue("opt_settlement_type", self._opt_settlement_type)
         self._on_detail_toggled(self._opt_full_system)
 
@@ -828,7 +845,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 temperature=world.temperature,  # type: ignore[attr-defined]
             )
         if self._opt_population_detail:
-            from traveller_world_social_detail import generate_population_detail  # pylint: disable=import-outside-toplevel
+            from traveller_world_population_detail import generate_population_detail  # pylint: disable=import-outside-toplevel
             if world.population > 0:  # type: ignore[attr-defined]
                 world.population_detail = generate_population_detail(  # type: ignore[attr-defined]
                     world.population, world.population_multiplier,  # type: ignore[attr-defined]
@@ -837,6 +854,14 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     law_level=world.law_level,  # type: ignore[attr-defined]
                     trade_codes=world.trade_codes,  # type: ignore[attr-defined]
                     atm=world.atmosphere,  # type: ignore[attr-defined]
+                )
+        if self._opt_government_detail:
+            from traveller_world_government_detail import generate_government_detail  # pylint: disable=import-outside-toplevel
+            if world.population > 0:  # type: ignore[attr-defined]
+                pop_det = world.population_detail  # type: ignore[attr-defined]
+                pcr = pop_det.pcr if pop_det is not None else 0
+                world.government_detail = generate_government_detail(  # type: ignore[attr-defined]
+                    world.government, world.population, pcr=pcr,  # type: ignore[attr-defined]
                 )
         self._act_save.setEnabled(True)
         self._show_summary(world)
@@ -960,6 +985,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             )
         if self._opt_population_detail:
             attach_population_detail(system)  # type: ignore[arg-type]
+        if self._opt_government_detail:
+            attach_government_detail(system)  # type: ignore[arg-type]
         self._detail_attached = attach_detail_flag
         self._act_save.setEnabled(True)
         self._show_system_summary(system)

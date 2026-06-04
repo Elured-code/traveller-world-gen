@@ -763,25 +763,25 @@ def _roll_biodiversity(biomass: int, biocomplexity: int, rolls: list[int]) -> in
 
 
 class TestBiodiversityRating:
-    """Biodiversity rating formula: 2D − 7 + biomass + ⌈biocomplexity / 2⌉, min 0."""
+    """Biodiversity rating formula: 2D − 7 + ⌈(biomass + biocomplexity) / 2⌉, min 0."""
 
     def test_minimum_is_zero(self):
-        # rolls 1+1=2; bio=1, cx=1 → 2-7+1+1=−3 → clamped to 0
+        # rolls 1+1=2; bio=1, cx=1 → 2-7+ceil((1+1)/2)=2-7+1=−4 → clamped to 0
         assert _roll_biodiversity(1, 1, [1, 1]) == 0
 
     def test_biocomplexity_ceil_odd(self):
-        # cx=3 → ceil(3/2)=2; rolls 6+6=12; bio=1 → 12-7+1+2=8
-        assert _roll_biodiversity(1, 3, [6, 6]) == 8
+        # bio=1, cx=3 → ceil((1+3)/2)=ceil(2)=2; rolls 6+6=12 → 12-7+2=7
+        assert _roll_biodiversity(1, 3, [6, 6]) == 7
 
     def test_biocomplexity_ceil_even(self):
-        # cx=4 → ceil(4/2)=2 (same as cx=3)
-        # cx=6 → ceil(6/2)=3
+        # bio=1, cx=4 → ceil((1+4)/2)=ceil(2.5)=3; rolls 12 → 12-7+3=8
+        # bio=1, cx=6 → ceil((1+6)/2)=ceil(3.5)=4; rolls 12 → 12-7+4=9
         assert _roll_biodiversity(1, 4, [6, 6]) == 8
         assert _roll_biodiversity(1, 6, [6, 6]) == 9
 
     def test_high_biomass_raises_result(self):
-        # rolls 4+3=7; bio=9, cx=9 → 7-7+9+5=14
-        assert _roll_biodiversity(9, 9, [4, 3]) == 14
+        # rolls 4+3=7; bio=9, cx=9 → 7-7+ceil((9+9)/2)=0+9=9
+        assert _roll_biodiversity(9, 9, [4, 3]) == 9
 
     def test_result_always_nonnegative_seed_sweep(self):
         for seed in range(50):
@@ -792,7 +792,7 @@ class TestBiodiversityRating:
     def test_high_value_encodes_as_ehex(self):
         # Ensure biodiversity >= 10 produces a single eHex char in profile
         from traveller_world_gen import to_hex  # pylint: disable=import-outside-toplevel
-        rating = _roll_biodiversity(9, 9, [6, 6])  # 12-7+9+5=19
+        rating = _roll_biodiversity(9, 9, [6, 6])  # 12-7+ceil(9)=14
         assert len(to_hex(rating)) == 1
 
 
@@ -865,7 +865,7 @@ class TestCompatibilityRating:
         from traveller_world_gen import to_hex  # pylint: disable=import-outside-toplevel
         bio = 5
         cx = 3
-        div = _roll_biodiversity(bio, cx, [4, 4])   # 8-7+5+2=8
+        div = _roll_biodiversity(bio, cx, [4, 4])   # 8-7+ceil((5+3)/2)=1+4=5
         comp = _roll_compat(cx, 6, 3.0, [4, 4])    # 8-1+2=9
         profile = f"{to_hex(bio)}{to_hex(cx)}{to_hex(div)}{to_hex(comp)}"
         assert len(profile) == 4
