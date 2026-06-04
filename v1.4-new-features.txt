@@ -245,53 +245,6 @@ most one role.
 The two-letter classification code (e.g. "Mi") appears alongside the world's other
 trade codes in the system orbit table and in JSON output.
 
-GOVERNMENT DETAIL CARD (WBH Social Characteristics §3)
--------------------------------------------------------
-Every inhabited world with a non-zero government code now supports an optional
-Government detail card. When the "Government detail" option is enabled in the
-Options dialog (or passed as a parameter to the API), the generated world displays:
-
-- Centralisation: whether the government is Confederal, Federal, or Unitary.
-- Authority: whether power rests with the Legislative, Executive, or Judicial
-  branch, or is Balanced across all three.
-- Structure: the internal organisation of the ruling body — Demos (elected
-  assembly), Single Council, Multiple Councils, or a Ruler.
-- Government profile string in the format G-CAS (e.g. 4-FES for a Federal,
-  Executive, Single Council government of type 4).
-- Factions: a list of other organised groups operating in the system, each with
-  a government type, a strength rating (Obscure to Overwhelming), and a
-  relationship to the ruling body.
-
-Balanced authority generates separate structures for all three branches and uses
-an extended profile format: G-CB-LS-ES-JS.
-
-Government code 0 (no government) produces no detail. Government code 7
-(Balkanised) is planned for a future update.
-
-BODY NAMES IN SYSTEM DISPLAY
------------------------------
-Every body in a generated star system now has an auto-generated placeholder
-name derived from the system (mainworld) name. The names appear as the
-leftmost column in the orbital survey table:
-
-- Stars are named Homeworld-Primary, Homeworld-Secondary, and so on.
-- Non-mainworld worlds (terrestrial and gas giant) are named Homeworld-A,
-  Homeworld-B, and so on.
-- Belts use a separate counter: Homeworld-Belt-A, Homeworld-Belt-B, and
-  so on.
-- Moons use Greek letters: Homeworld-A-alpha, Homeworld-A-beta. Rings are
-  skipped and receive no name.
-
-Names are saved in the system JSON and restored when you open a saved file.
-
-CITY POPULATION DISPLAY
-------------------------
-Major city populations and the combined total major city population shown in the
-Population detail card are now rounded to 3 significant figures. A city of
-1,234,567 people is shown as 1,230,000. This avoids implying false precision in
-values that are generated stochastically and are best understood as order-of-
-magnitude estimates.
-
 MAINWORLD SELECTION (WBH pp.155-156)
 -------------------------------------
 When generating a full star system, the generator now follows the World Builder's
@@ -317,11 +270,6 @@ happened to be closest to the habitable zone centre.
 
 BUG FIXES
 ---------
-- Fixed: Biodiversity Rating was calculated as Biomass + ⌈Biocomplexity / 2⌉
-  instead of the correct WBH formula ⌈(Biomass + Biocomplexity) / 2⌉. The
-  correct formula averages the two ratings and then rounds up, producing notably
-  lower Biodiversity values on worlds with high Biocomplexity.
-
 - Fixed: Worlds orbiting a gas giant as a satellite displayed seismic stress
   values millions of times larger than physically possible. The tidal stress
   formula (calibrated for AU-scale star-to-planet distances) was incorrectly
