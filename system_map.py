@@ -90,6 +90,7 @@ PALETTE_LIGHT = ColourPalette(
 )
 
 _PERSP_Y = 0.5  # cos(60°) — y-axis foreshortening factor for perspective view
+_SHADOW_INCL_MIN_RAD = math.radians(3.0)  # minimum inclination to draw orbit shadow
 
 # Stellar spectral-class colours (approximations of blackbody emission).
 # Used for star glyphs, companion markers, and arc strokes.
@@ -392,6 +393,13 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                     f'stroke-dasharray="8,6" opacity="0.40"/>'
                 )
                 continue
+            # Shadow arc — reference-plane projection of inclined orbit (perspective only)
+            if perspective and abs(ir) > _SHADOW_INCL_MIN_RAD:
+                hd_sh = _orbit_half_deg(r, e, available, persp_y, 0.0)
+                s.append(
+                    f'<path d="{_orbit_arc(cx, cy, r, e, hd_sh, persp_y, 0.0)}" fill="none" '
+                    f'stroke="{palette.axis}" stroke-width="0.8" opacity="0.22"/>'
+                )
             o     = item["obj"]
             wt    = o.world_type
             is_mw = o.is_mainworld_candidate
@@ -474,6 +482,15 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             detail = getattr(o, "detail", None)
             idx    = item["idx"]
             ic     = palette.mainworld if is_mw else palette.dim
+
+            # Shadow dot — projected position on reference plane (perspective only)
+            if perspective and abs(item["i_rad"]) > _SHADOW_INCL_MIN_RAD:
+                smx, smy = _orbit_marker(cx, cy, item["r"], item["e"],
+                                         item["half_deg"], persp_y, 0.0)
+                s.append(
+                    f'<circle cx="{smx:.1f}" cy="{smy:.1f}" r="2" '
+                    f'fill="{palette.axis}" opacity="0.28"/>'
+                )
 
             if wt == "belt":
                 bw = max(10, int(arc_zone_h * 0.028))
