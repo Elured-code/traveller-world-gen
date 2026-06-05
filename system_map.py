@@ -163,63 +163,65 @@ def _fmt_period(period_yr: float) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Arc / marker geometry
+# Arc / marker geometry  (unified — handles eccentricity, perspective, inclination)
 # ---------------------------------------------------------------------------
 
-def _arc_path_persp(cx: float, cy: float, r: float, half_deg: float) -> str:
+def _orbit_half_deg(
+    a_px: float, e: float, available: float,
+    persp_y: float = 1.0, incl_rad: float = 0.0,
+) -> float:
+    """Half-angle so the orbit arc's vertical extent fits within *available* pixels.
+
+    Accounts for eccentricity (flattens semi-minor axis), perspective
+    foreshortening (*persp_y* = cos 60° = 0.5 in perspective mode), and
+    orbital inclination (additional cosine factor in perspective mode).
     """
-    SVG path for a 60° perspective-projected orbit arc.
-    The y-axis is foreshortened by _PERSP_Y = cos(60°) = 0.5, turning the
-    circular arc into an elliptical arc with rx=r, ry=r*_PERSP_Y.
-    """
-    a   = math.radians(half_deg)
-    x1  = cx + r * math.cos(a)
-    y1  = cy - r * math.sin(a) * _PERSP_Y
-    x2  = cx + r * math.cos(a)
-    y2  = cy + r * math.sin(a) * _PERSP_Y
-    ry  = r * _PERSP_Y
-    large = 1 if half_deg > 90 else 0
-    return (f"M {x1:.1f},{y1:.1f} "
-            f"A {r:.1f},{ry:.1f} 0 {large} 1 {x2:.1f},{y2:.1f}")
-
-
-def _marker_xy_persp(cx: float, cy: float, r: float, half_deg: float) -> tuple[float, float]:
-    """Marker position for perspective view — y-coordinate foreshortened by _PERSP_Y."""
-    a = math.radians(half_deg / 3)
-    return (cx + r * math.cos(a), cy - r * math.sin(a) * _PERSP_Y)
-
-
-def _arc_path(cx: float, cy: float, r: float, half_deg: float) -> str:
-    """
-    SVG path for a symmetric arc centred on (cx, cy) with radius r.
-    The arc spans ±half_deg from the horizontal, sweeping clockwise
-    through the rightmost point (cx + r, cy).
-    half_deg=90 → full right-facing semicircle.
-    """
-    a  = math.radians(half_deg)
-    x1 = cx + r * math.cos(a)
-    y1 = cy - r * math.sin(a)   # upper endpoint
-    x2 = cx + r * math.cos(a)
-    y2 = cy + r * math.sin(a)   # lower endpoint (symmetric)
-    # Clockwise short arc from upper to lower through rightmost point
-    large = 1 if half_deg > 90 else 0
-    return (f"M {x1:.1f},{y1:.1f} "
-            f"A {r:.1f},{r:.1f} 0 {large} 1 {x2:.1f},{y2:.1f}")
-
-
-def _marker_xy(cx: float, cy: float, r: float, half_deg: float) -> tuple[float, float]:
-    """Marker sits one third of the way down the arc from the top endpoint."""
-    a = math.radians(half_deg / 3)
-    return (cx + r * math.cos(a), cy - r * math.sin(a))
-
-
-def _orbit_half_deg(r: float, available: float) -> float:
-    """Half-angle so the arc's vertical extent equals *available* pixels."""
-    if r <= 0:
+    if a_px <= 0:
         return 30.0
-    if r <= available:
+    b_px = a_px * math.sqrt(max(0.0, 1.0 - e * e))
+    ry   = b_px * persp_y * math.cos(incl_rad)
+    if ry <= 0:
+        return 30.0
+    if ry <= available:
         return 90.0
-    return max(8.0, math.degrees(math.asin(available / r)))
+    return max(8.0, math.degrees(math.asin(available / ry)))
+
+
+def _orbit_arc(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    star_cx: float, cy: float, a_px: float, e: float, half_deg: float,
+    persp_y: float = 1.0, incl_rad: float = 0.0,
+) -> str:
+    """SVG path for an orbit arc, with optional eccentricity, perspective, and inclination.
+
+    The star sits at the left focus of the ellipse.  The arc sweeps ±half_deg
+    from the major axis, clockwise through aphelion (rightmost point).
+
+    *persp_y* = 1.0 → top-down view; 0.5 → 60° perspective.
+    *incl_rad*       → orbital inclination in radians (perspective mode only).
+    """
+    b_px   = a_px * math.sqrt(max(0.0, 1.0 - e * e))
+    ry     = b_px * persp_y * math.cos(incl_rad)
+    ex     = star_cx + a_px * e          # ellipse centre (star at left focus)
+    a      = math.radians(half_deg)
+    x1     = ex + a_px * math.cos(a)
+    y1     = cy - ry  * math.sin(a)
+    x2     = x1                          # same x, symmetric arc
+    y2     = cy + ry  * math.sin(a)
+    large  = 1 if half_deg > 90 else 0
+    return (f"M {x1:.1f},{y1:.1f} "
+            f"A {a_px:.1f},{ry:.1f} 0 {large} 1 {x2:.1f},{y2:.1f}")
+
+
+def _orbit_marker(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    star_cx: float, cy: float, a_px: float, e: float, half_deg: float,
+    persp_y: float = 1.0, incl_rad: float = 0.0,
+) -> tuple[float, float]:
+    """Body-marker position: one-third of the way down the arc from the top endpoint."""
+    b_px  = a_px * math.sqrt(max(0.0, 1.0 - e * e))
+    ry    = b_px * persp_y * math.cos(incl_rad)
+    ex    = star_cx + a_px * e
+    a     = math.radians(half_deg / 3)
+    return (ex + a_px * math.cos(a), cy - ry * math.sin(a))
 
 
 # ---------------------------------------------------------------------------
@@ -306,19 +308,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     n_tbl_cols = len(star_desigs)
     col_w      = canvas_w // n_tbl_cols
 
-    # Perspective helpers — swap in foreshortened variants when requested.
-    # In perspective mode the arc half-angle is computed against a larger
-    # "available" value so the ellipse tips reach the same visual y-extent.
-    if perspective:
-        _arc_fn     = _arc_path_persp
-        _mxy_fn     = _marker_xy_persp
-        eff_avail   = available / _PERSP_Y   # compensate for y-foreshortening
-        tick_half   = 4 * _PERSP_Y           # compressed tick half-height
-    else:
-        _arc_fn     = _arc_path
-        _mxy_fn     = _marker_xy
-        eff_avail   = available
-        tick_half   = 4.0
+    persp_y   = _PERSP_Y if perspective else 1.0
+    tick_half = 4 * persp_y
 
     # Global sequential indices for orbit slots (A orbits first, then B, etc.)
     orbit_idx: dict[int, int] = {}
@@ -359,26 +350,30 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         if is_pri:
             au_vals += [st.orbit_au for st in sec_stars]
         max_au   = max(au_vals + [0.1])
-        target_r = (canvas_w - cx) * 0.28
-        log_scale = max(30.0, min(600.0, target_r / math.log1p(max_au)))
+        target_r  = int(canvas_w * 0.75) - cx
+        log_scale = max(30.0, min(canvas_w * 0.75, target_r / math.log1p(max_au)))
         max_r     = math.log1p(max_au) * log_scale
 
         # Build items for this arc zone
         items: list[dict] = []
         for o in group:
-            r      = math.log1p(o.orbit_au) * log_scale
-            hd     = _orbit_half_deg(r, eff_avail)
-            mx, my = _mxy_fn(cx, cy, r, hd)
+            r     = math.log1p(o.orbit_au) * log_scale
+            o_e   = o.eccentricity
+            o_i   = math.radians(o.inclination) if perspective else 0.0
+            hd    = _orbit_half_deg(r, o_e, available, persp_y, o_i)
+            mx, my = _orbit_marker(cx, cy, r, o_e, hd, persp_y, o_i)
             items.append({
-                "kind": "orbit", "obj": o, "r": r,
+                "kind": "orbit", "obj": o, "r": r, "e": o_e, "i_rad": o_i,
                 "mx": mx, "my": my, "idx": orbit_idx[id(o)], "half_deg": hd,
             })
         if is_pri:
             for st in sec_stars:
-                r      = math.log1p(st.orbit_au) * log_scale
-                hd     = _orbit_half_deg(r, eff_avail)
-                mx, my = _mxy_fn(cx, cy, r, hd)
-                items.append({"kind": "star", "obj": st, "r": r,
+                r     = math.log1p(st.orbit_au) * log_scale
+                st_e  = getattr(st, "orbit_eccentricity", 0.0)
+                st_i  = math.radians(getattr(st, "orbit_inclination", 0.0)) if perspective else 0.0
+                hd    = _orbit_half_deg(r, st_e, available, persp_y, st_i)
+                mx, my = _orbit_marker(cx, cy, r, st_e, hd, persp_y, st_i)
+                items.append({"kind": "star", "obj": st, "r": r, "e": st_e, "i_rad": st_i,
                                "mx": mx, "my": my, "half_deg": hd})
         items.sort(key=lambda x: x["r"])
 
@@ -386,11 +381,13 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         for item in items:
             r  = item["r"]
             hd = item["half_deg"]
+            e  = item["e"]
+            ir = item["i_rad"]
             if item["kind"] == "star":
                 comp_col = _star_colour(item["obj"].spectral_type,
                                         item["obj"].lum_class)
                 s.append(
-                    f'<path d="{_arc_fn(cx, cy, r, hd)}" fill="none" '
+                    f'<path d="{_orbit_arc(cx, cy, r, e, hd, persp_y, ir)}" fill="none" '
                     f'stroke="{comp_col}" stroke-width="1.2" '
                     f'stroke-dasharray="8,6" opacity="0.40"/>'
                 )
@@ -413,7 +410,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 stroke, opa = palette.mainworld, "0.75"
             da = f'stroke-dasharray="{dash}"' if dash != "none" else ""
             s.append(
-                f'<path d="{_arc_fn(cx, cy, r, hd)}" fill="none" '
+                f'<path d="{_orbit_arc(cx, cy, r, e, hd, persp_y, ir)}" fill="none" '
                 f'stroke="{stroke}" stroke-width="1.8" {da} opacity="{opa}"/>'
             )
 
