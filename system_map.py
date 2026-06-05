@@ -220,15 +220,10 @@ _TBL_FONT_LG  = 11   # primary text size
 _TBL_FONT_SM  = 9    # secondary text size
 _TBL_COL_PAD  = 12   # left padding inside each column
 
-# Column offsets within a table column (px from column left + _TBL_COL_PAD)
-_C_IDX    = 0
-_C_ORBIT  = 16
-_C_AU     = 58
-_C_TYPE   = 120
-_C_PROF   = 168
-_C_CODES  = 268
-_C_ZONE   = 398
-_C_PERIOD = 490   # orbital period; world orbit periods deferred to future work
+# Column proportions (fraction of usable column width).
+# Columns scale with canvas / star-count so the table always fills the space.
+_COL_FRACS = (0.000, 0.030, 0.105, 0.220, 0.305, 0.490, 0.725, 0.890)
+_COL_NAMES = ("#", "Orbit#", "AU", "Type", "Profile", "Codes", "Zone  ♦", "Period")
 
 
 def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
@@ -533,6 +528,13 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         group = star_groups[d]
         bx    = ci * col_w + _TBL_COL_PAD
 
+        # Proportional column x-positions — expand to fill the available width.
+        col_usable = col_w - 2 * _TBL_COL_PAD
+        (c_idx, c_orbit, c_au, c_type,
+         c_prof, c_codes, c_zone, c_period) = (
+            bx + int(col_usable * f) for f in _COL_FRACS
+        )
+
         # Vertical column separator (left edge of each non-first column)
         if ci > 0:
             sx = ci * col_w
@@ -565,20 +567,12 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             f'stroke="{palette.axis}" stroke-width="0.5" opacity="0.40"/>'
         )
 
-        # Column labels
-        col_labels = [
-            (_C_IDX,    "#"),
-            (_C_ORBIT,  "Orbit#"),
-            (_C_AU,     "AU"),
-            (_C_TYPE,   "Type"),
-            (_C_PROF,   "Profile"),
-            (_C_CODES,  "Codes"),
-            (_C_ZONE,   "Zone  ♦"),
-            (_C_PERIOD, "Period"),
-        ]
-        for cx, lbl in col_labels:
+        # Column labels — positions already absolute (c_* vars)
+        col_xs = (c_idx, c_orbit, c_au, c_type,
+                  c_prof, c_codes, c_zone, c_period)
+        for col_x, lbl in zip(col_xs, _COL_NAMES):
             s.append(
-                f'<text x="{bx + cx}" y="{col_hdr_y}" '
+                f'<text x="{col_x}" y="{col_hdr_y}" '
                 f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}" opacity="0.70">'
                 f'{esc(lbl)}</text>'
             )
@@ -605,32 +599,32 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 cls = (f'{st.spectral_type}'
                        f'{st.subtype if st.subtype is not None else ""} {st.lum_class}')
                 s.append(
-                    f'<text x="{bx + _C_IDX}" y="{ry}" '
+                    f'<text x="{c_idx}" y="{ry}" '
                     f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}">★</text>'
                 )
                 s.append(
-                    f'<text x="{bx + _C_ORBIT}" y="{ry}" '
+                    f'<text x="{c_orbit}" y="{ry}" '
                     f'font-size="{_TBL_FONT_LG}" fill="{palette.star_sec}">'
                     f'{st.orbit_number:.2f}</text>'
                 )
                 s.append(
-                    f'<text x="{bx + _C_AU}" y="{ry}" '
+                    f'<text x="{c_au}" y="{ry}" '
                     f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
                     f'{st.orbit_au:.3f} AU</text>'
                 )
                 s.append(
-                    f'<text x="{bx + _C_TYPE}" y="{ry}" '
+                    f'<text x="{c_type}" y="{ry}" '
                     f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}">'
                     f'Star {esc(st.designation)}</text>'
                 )
                 s.append(
-                    f'<text x="{bx + _C_PROF}" y="{ry}" '
+                    f'<text x="{c_prof}" y="{ry}" '
                     f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
                     f'{esc(cls)}</text>'
                 )
                 if st.orbit_period_yr is not None:
                     s.append(
-                        f'<text x="{bx + _C_PERIOD}" y="{ry}" '
+                        f'<text x="{c_period}" y="{ry}" '
                         f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
                         f'{esc(_fmt_period(st.orbit_period_yr))}</text>'
                     )
@@ -674,11 +668,11 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             tz_col    = _TEMP_COLS.get(o.temperature_zone, palette.dim)
 
             s.append(
-                f'<text x="{bx + _C_IDX}" y="{ry}" '
+                f'<text x="{c_idx}" y="{ry}" '
                 f'font-size="{_TBL_FONT_LG}" fill="{col1}">{idx}</text>'
             )
             s.append(
-                f'<text x="{bx + _C_ORBIT}" y="{ry}" '
+                f'<text x="{c_orbit}" y="{ry}" '
                 f'font-size="{_TBL_FONT_LG}" fill="{palette.text}">'
                 f'{o.orbit_number:.2f}</text>'
             )
@@ -688,34 +682,34 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 else f'{o.orbit_au:.3f} AU'
             )
             s.append(
-                f'<text x="{bx + _C_AU}" y="{ry}" '
+                f'<text x="{c_au}" y="{ry}" '
                 f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
                 f'{_au_txt}</text>'
             )
             s.append(
-                f'<text x="{bx + _C_TYPE}" y="{ry}" '
+                f'<text x="{c_type}" y="{ry}" '
                 f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
                 f'{esc(mw_tag)}{type_abbr}</text>'
             )
             s.append(
-                f'<text x="{bx + _C_PROF}" y="{ry}" '
+                f'<text x="{c_prof}" y="{ry}" '
                 f'font-size="{_TBL_FONT_LG}" fill="{col1}">'
                 f'{esc(profile)}</text>'
             )
             if codes_str:
                 s.append(
-                    f'<text x="{bx + _C_CODES}" y="{ry}" '
+                    f'<text x="{c_codes}" y="{ry}" '
                     f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
                     f'{esc(codes_str)}</text>'
                 )
             s.append(
-                f'<text x="{bx + _C_ZONE}" y="{ry}" '
+                f'<text x="{c_zone}" y="{ry}" '
                 f'font-size="{_TBL_FONT_SM}" fill="{tz_col}" opacity="0.85">'
                 f'{esc(hz_tag)}{esc(o.temperature_zone)}{esc(moons_str)}</text>'
             )
             if wt != "empty" and o.orbit_period_yr is not None:
                 s.append(
-                    f'<text x="{bx + _C_PERIOD}" y="{ry}" '
+                    f'<text x="{c_period}" y="{ry}" '
                     f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
                     f'{esc(_fmt_period(o.orbit_period_yr))}</text>'
                 )

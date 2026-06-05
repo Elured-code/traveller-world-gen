@@ -1,6 +1,36 @@
 Traveller World & System Generator — What's New in v1.5.0
 ==========================================================
 
+SYSTEM MAP — PERSPECTIVE VIEW
+------------------------------
+The system map can now be viewed in a 60° perspective projection. In this mode
+orbit arcs are foreshortened on the y-axis (cos 60° = 0.5), turning the flat
+circles into ellipses that give the map an orrery-like sense of depth.
+
+- In the desktop app, click "Perspective View" in the System Map window toolbar
+  to toggle between top-down and perspective modes. Click "Top-down View" to
+  switch back. The toggle re-renders the current map without regenerating the
+  system.
+- In the web interface, a "Perspective view (60°)" checkbox appears above the
+  map on the System Map tab.
+- The CLI gains a --perspective flag: python system_map.py --perspective
+
+SYSTEM MAP — ORBIT TABLE FILLS AVAILABLE WIDTH
+-----------------------------------------------
+The orbit survey table at the bottom of the system map now uses the full
+available horizontal space for each star column. Column positions are calculated
+as proportions of the available column width, so the table spreads out on a
+single-star system and does not overflow on multi-star systems. All eight
+columns (#, Orbit#, AU, Type, Profile, Codes, Zone, Period) are always visible
+regardless of how many stars are in the system.
+
+SYSTEM MAP — WEB VIEW
+----------------------
+The FastAPI system page now includes a third "System Map" tab. After a system
+is generated, the tab shows the SVG system map fetched from the server. The
+Perspective view toggle on this tab re-fetches the map without regenerating the
+system.
+
 FASTAPI WEB UI — SAVE TO FILE
 -----------------------------
 Both the Mainworld Only and Full System web pages now have Save buttons. After
