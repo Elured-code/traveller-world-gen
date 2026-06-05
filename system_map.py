@@ -291,8 +291,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         star_groups[o.star_designation].append(o)
     active_stars = [s for s in all_stars if star_groups[s.designation]]
 
-    # Geometry constants (arc zone is fixed 4:1; available is constant across zones)
-    arc_zone_h = canvas_w // 4
+    # Geometry constants (arc zone is 1.5:1 width:height; available is constant across zones)
+    arc_zone_h = canvas_w * 2 // 3
     cx         = int(canvas_w * 0.045)
     arc_margin = max(14, int(arc_zone_h * 0.08))
     available  = arc_zone_h // 2 - arc_margin   # fixed arc half-height in pixels
