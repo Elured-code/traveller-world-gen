@@ -127,6 +127,8 @@ from helpers import (
     parse_seed, parse_sector, parse_world_json,
 )
 
+from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT
+
 from traveller_world_gen import (
     World, generate_world, generate_atmosphere_detail, generate_gas_mix,
     generate_unusual_subtype, generate_hydrographics, apply_mainworld_social,
@@ -1040,7 +1042,58 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
 
 
 # ===========================================================================
-# Endpoint 10:  GET/POST /api/map/system
+# Endpoint 10:  GET /api/system/svg  (SVG system map)
+# ===========================================================================
+
+def _parse_bool_flag(val: object) -> bool:
+    """Return True for '1', 'true', 'yes' (case-insensitive) or bool True."""
+    if isinstance(val, bool):
+        return val
+    return str(val).strip().lower() in ("1", "true", "yes")
+
+
+@app.get("/api/system/svg")
+@limiter.limit(_RATE_LIMIT)
+async def generate_system_svg(request: Request) -> Response:
+    """Generate a full star system and return it as an SVG map image.
+
+    Query parameters
+    ----------------
+    name        : str   — world/system name (required)
+    seed        : int   — RNG seed (random if absent)
+    detail      : bool  — attach secondary world detail (default false)
+    perspective : bool  — 60° perspective projection instead of top-down (default false)
+    white_bg    : bool  — light background instead of dark (default false)
+    """
+    params = request.query_params
+
+    name = str(params.get("name", "")).strip()
+    if not name:
+        return error("name is required", ERR_MISSING_PARAM, 400)
+
+    seed_val, rng = apply_seed(params.get("seed"))
+    want_detail   = _parse_bool_flag(params.get("detail", False))
+    persp         = _parse_bool_flag(params.get("perspective", False))
+    white_bg      = _parse_bool_flag(params.get("white_bg", False))
+
+    try:
+        system = generate_full_system(name, seed=seed_val, rng=rng)
+        apply_mainworld_social(system.mainworld, rng=rng)
+        if want_detail:
+            attach_detail(system, rng=rng)
+            attach_body_names(system)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.exception("Error generating system SVG: %s", exc)
+        return error("An unexpected error occurred while generating the system.", ERR_INTERNAL, 500)
+
+    palette   = PALETTE_LIGHT if white_bg else PALETTE_DARK
+    svg_str, _h = build_svg(system, canvas_w=1600, palette=palette, perspective=persp)
+
+    return Response(content=svg_str, media_type="image/svg+xml")
+
+
+# ===========================================================================
+# Endpoint 12:  GET/POST /api/map/system
 # ===========================================================================
 
 @app.api_route("/api/map/system", methods=["GET", "POST"])
@@ -1094,7 +1147,7 @@ async def generate_map_system(request: Request) -> Response:  # pylint: disable=
 
 
 # ===========================================================================
-# Endpoint 11:  GET /api/map/system/{name}
+# Endpoint 13:  GET /api/map/system/{name}
 # ===========================================================================
 
 @app.get("/api/map/system/{name}")

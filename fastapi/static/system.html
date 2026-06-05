@@ -214,6 +214,21 @@
     .result-pre.text { color: var(--text); }
     .result-pre.visible { display: block; }
 
+    /* ── Map tab ─────────────────────────────────── */
+    .map-toolbar {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.5rem 1rem; border-bottom: 1px solid var(--border);
+      background: var(--panel); flex-shrink: 0;
+    }
+    .map-toolbar label { font-size: 0.82rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+    .map-container {
+      flex: 1; overflow: auto; background: #0d1117;
+      display: flex; align-items: flex-start; justify-content: center;
+    }
+    .map-container.light-bg { background: #fff; }
+    .map-container img, .map-container object { max-width: 100%; height: auto; }
+    .map-loading { color: var(--muted); font-size: 0.85rem; padding: 2rem; }
+
     .empty-state {
       flex: 1; display: flex; flex-direction: column;
       align-items: center; justify-content: center;
@@ -338,6 +353,7 @@
   <div class="tab-bar" id="s-tab-bar">
     <button class="tab-btn active" data-tab="mw">Mainworld</button>
     <button class="tab-btn" data-tab="sys">System</button>
+    <button class="tab-btn" data-tab="map">System Map</button>
   </div>
 
   <!-- Mainworld tab -->
@@ -348,6 +364,20 @@
   <!-- System tab -->
   <div class="tab-panel" id="tab-sys">
     <iframe class="result-frame" id="sys-frame" title="System card"></iframe>
+  </div>
+
+  <!-- System Map tab -->
+  <div class="tab-panel" id="tab-map">
+    <div class="map-toolbar">
+      <label>
+        <input type="checkbox" id="map-perspective">
+        Perspective view (60°)
+      </label>
+    </div>
+    <div class="map-container" id="map-container">
+      <span class="map-loading" id="map-loading" style="display:none">Generating map…</span>
+      <img id="map-img" alt="System map" style="display:none">
+    </div>
   </div>
 
   <!-- Non-HTML output (no tabs) -->
@@ -401,7 +431,7 @@
   function clearResult() {
     document.getElementById("s-empty").style.display = "";
     document.getElementById("s-tab-bar").classList.remove("visible");
-    ["tab-mw", "tab-sys"].forEach(id => {
+    ["tab-mw", "tab-sys", "tab-map"].forEach(id => {
       document.getElementById(id).classList.remove("active");
     });
     document.getElementById("mw-frame").classList.remove("visible");
@@ -409,6 +439,7 @@
     document.getElementById("s-json").classList.remove("visible");
     document.getElementById("s-text").classList.remove("visible");
     document.getElementById("s-seed-badge").classList.remove("visible");
+    document.getElementById("map-img").style.display = "none";
     _lastGen = null;
   }
 
@@ -423,14 +454,39 @@
     };
   }
 
-  function showTabs(mwHtml, sysHtml) {
+  function buildMapUrl(seed) {
+    if (!_lastGen) return null;
+    const { name, detail } = _lastGen;
+    const persp = document.getElementById("map-perspective").checked;
+    const p = new URLSearchParams({ name, seed });
+    if (detail) p.set("detail", "true");
+    if (persp)  p.set("perspective", "true");
+    return `/api/system/svg?${p.toString()}`;
+  }
+
+  function loadMap(seed) {
+    const url = buildMapUrl(seed);
+    if (!url) return;
+    const img     = document.getElementById("map-img");
+    const loading = document.getElementById("map-loading");
+    img.style.display = "none";
+    loading.style.display = "";
+    img.onload  = () => { loading.style.display = "none"; img.style.display = ""; };
+    img.onerror = () => { loading.textContent = "Map generation failed."; };
+    img.src = url;
+  }
+
+  function showTabs(mwHtml, sysHtml, seed) {
     document.getElementById("s-empty").style.display = "none";
     loadFrame("mw-frame", mwHtml);
     loadFrame("sys-frame", sysHtml);
     document.getElementById("tab-mw").classList.add("active");
     document.getElementById("tab-sys").classList.remove("active");
+    document.getElementById("tab-map").classList.remove("active");
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "mw"));
     document.getElementById("s-tab-bar").classList.add("visible");
+    // Pre-fetch the map so it's ready when the user clicks the tab
+    if (seed !== undefined) loadMap(seed);
   }
 
   function showJson(data) {
@@ -538,6 +594,12 @@
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === btn));
     document.getElementById("tab-mw").classList.toggle("active", tab === "mw");
     document.getElementById("tab-sys").classList.toggle("active", tab === "sys");
+    document.getElementById("tab-map").classList.toggle("active", tab === "map");
+  });
+
+  // ── Perspective toggle re-fetches the map ────────────
+  document.getElementById("map-perspective").addEventListener("change", () => {
+    if (_lastGen) loadMap(_lastGen.seed);
   });
 
   // ── Seed copy-on-click ───────────────────────────────
@@ -666,7 +728,7 @@
         }
 
         const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
-        showTabs(mwHtml, sysHtml);
+        showTabs(mwHtml, sysHtml, seed);
         showSeed(seed);
         if (!seedIn) document.getElementById("s-seed").value = seed;
 

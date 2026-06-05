@@ -206,6 +206,7 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
 
         self._system = system
         self._palette = PALETTE_DARK
+        self._perspective = False
         self._svg_str = ""
 
         central = QWidget()
@@ -223,6 +224,10 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self._theme_btn.clicked.connect(self._toggle_theme)
         tbox.addWidget(self._theme_btn)
 
+        self._persp_btn = QPushButton("Perspective View")
+        self._persp_btn.clicked.connect(self._toggle_perspective)
+        tbox.addWidget(self._persp_btn)
+
         save_btn = QPushButton("Save SVG…")
         save_btn.clicked.connect(self._on_save)
         tbox.addWidget(save_btn)
@@ -238,7 +243,8 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
 
     def _render(self) -> None:
         svg_str, canvas_h = build_svg(
-            self._system, canvas_w=_MAP_CANVAS_W, palette=self._palette
+            self._system, canvas_w=_MAP_CANVAS_W,
+            palette=self._palette, perspective=self._perspective,
         )
         self._svg_str = svg_str
 
@@ -269,6 +275,13 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         else:
             self._palette = PALETTE_DARK
             self._theme_btn.setText("Light Theme")
+        self._render()
+
+    def _toggle_perspective(self) -> None:
+        self._perspective = not self._perspective
+        self._persp_btn.setText(
+            "Top-down View" if self._perspective else "Perspective View"
+        )
         self._render()
 
     def _on_save(self) -> None:

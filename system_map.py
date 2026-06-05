@@ -89,6 +89,8 @@ PALETTE_LIGHT = ColourPalette(
     leader="#E0E0E0",
 )
 
+_PERSP_Y = 0.5  # cos(60°) — y-axis foreshortening factor for perspective view
+
 _EHEX = "0123456789ABCDEFGHIJKLMNOPQRSTU"
 
 
@@ -122,6 +124,29 @@ def _fmt_period(period_yr: float) -> str:
 # ---------------------------------------------------------------------------
 # Arc / marker geometry
 # ---------------------------------------------------------------------------
+
+def _arc_path_persp(cx: float, cy: float, r: float, half_deg: float) -> str:
+    """
+    SVG path for a 60° perspective-projected orbit arc.
+    The y-axis is foreshortened by _PERSP_Y = cos(60°) = 0.5, turning the
+    circular arc into an elliptical arc with rx=r, ry=r*_PERSP_Y.
+    """
+    a   = math.radians(half_deg)
+    x1  = cx + r * math.cos(a)
+    y1  = cy - r * math.sin(a) * _PERSP_Y
+    x2  = cx + r * math.cos(a)
+    y2  = cy + r * math.sin(a) * _PERSP_Y
+    ry  = r * _PERSP_Y
+    large = 1 if half_deg > 90 else 0
+    return (f"M {x1:.1f},{y1:.1f} "
+            f"A {r:.1f},{ry:.1f} 0 {large} 1 {x2:.1f},{y2:.1f}")
+
+
+def _marker_xy_persp(cx: float, cy: float, r: float, half_deg: float) -> tuple[float, float]:
+    """Marker position for perspective view — y-coordinate foreshortened by _PERSP_Y."""
+    a = math.radians(half_deg / 3)
+    return (cx + r * math.cos(a), cy - r * math.sin(a) * _PERSP_Y)
+
 
 def _arc_path(cx: float, cy: float, r: float, half_deg: float) -> str:
     """
@@ -210,6 +235,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     system: Any,
     canvas_w: int = 1600,
     palette: ColourPalette = PALETTE_DARK,
+    perspective: bool = False,
 ) -> tuple[str, int]:
     """Build and return (svg_string, canvas_height) for the given system."""
     mw        = system.mainworld
@@ -243,6 +269,20 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     canvas_h   = sep_y + tbl_h
     n_tbl_cols = len(star_desigs)
     col_w      = canvas_w // n_tbl_cols
+
+    # Perspective helpers — swap in foreshortened variants when requested.
+    # In perspective mode the arc half-angle is computed against a larger
+    # "available" value so the ellipse tips reach the same visual y-extent.
+    if perspective:
+        _arc_fn     = _arc_path_persp
+        _mxy_fn     = _marker_xy_persp
+        eff_avail   = available / _PERSP_Y   # compensate for y-foreshortening
+        tick_half   = 4 * _PERSP_Y           # compressed tick half-height
+    else:
+        _arc_fn     = _arc_path
+        _mxy_fn     = _marker_xy
+        eff_avail   = available
+        tick_half   = 4.0
 
     # Global sequential indices for orbit slots (A orbits first, then B, etc.)
     orbit_idx: dict[int, int] = {}
@@ -291,8 +331,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         items: list[dict] = []
         for o in group:
             r      = math.log1p(o.orbit_au) * log_scale
-            hd     = _orbit_half_deg(r, available)
-            mx, my = _marker_xy(cx, cy, r, hd)
+            hd     = _orbit_half_deg(r, eff_avail)
+            mx, my = _mxy_fn(cx, cy, r, hd)
             items.append({
                 "kind": "orbit", "obj": o, "r": r,
                 "mx": mx, "my": my, "idx": orbit_idx[id(o)], "half_deg": hd,
@@ -300,8 +340,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         if is_pri:
             for st in sec_stars:
                 r      = math.log1p(st.orbit_au) * log_scale
-                hd     = _orbit_half_deg(r, available)
-                mx, my = _marker_xy(cx, cy, r, hd)
+                hd     = _orbit_half_deg(r, eff_avail)
+                mx, my = _mxy_fn(cx, cy, r, hd)
                 items.append({"kind": "star", "obj": st, "r": r,
                                "mx": mx, "my": my, "half_deg": hd})
         items.sort(key=lambda x: x["r"])
@@ -312,7 +352,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             hd = item["half_deg"]
             if item["kind"] == "star":
                 s.append(
-                    f'<path d="{_arc_path(cx, cy, r, hd)}" fill="none" '
+                    f'<path d="{_arc_fn(cx, cy, r, hd)}" fill="none" '
                     f'stroke="{palette.star_sec}" stroke-width="1.2" '
                     f'stroke-dasharray="8,6" opacity="0.40"/>'
                 )
@@ -335,7 +375,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 stroke, opa = palette.mainworld, "0.75"
             da = f'stroke-dasharray="{dash}"' if dash != "none" else ""
             s.append(
-                f'<path d="{_arc_path(cx, cy, r, hd)}" fill="none" '
+                f'<path d="{_arc_fn(cx, cy, r, hd)}" fill="none" '
                 f'stroke="{stroke}" stroke-width="1.8" {da} opacity="{opa}"/>'
             )
 
@@ -349,11 +389,12 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 break
             tx = cx + math.log1p(au_tick) * log_scale
             s.append(
-                f'<line x1="{tx:.1f}" y1="{cy - 4}" x2="{tx:.1f}" y2="{cy + 4}" '
+                f'<line x1="{tx:.1f}" y1="{cy - tick_half:.1f}" '
+                f'x2="{tx:.1f}" y2="{cy + tick_half:.1f}" '
                 f'stroke="{palette.axis}" stroke-width="1" opacity="0.7"/>'
             )
             s.append(
-                f'<text x="{tx:.1f}" y="{cy + 13}" text-anchor="middle" '
+                f'<text x="{tx:.1f}" y="{cy + tick_half + 9:.1f}" text-anchor="middle" '
                 f'font-size="8" fill="{palette.dim}" opacity="0.65">{au_tick:g} AU</text>'
             )
 
@@ -717,6 +758,8 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     ap.add_argument("--width", type=int, default=1600)
     ap.add_argument("--white-bg", action="store_true",
                     help="Use light background instead of dark (default: dark)")
+    ap.add_argument("--perspective", action="store_true",
+                    help="Render orbits as 60° perspective ellipses instead of top-down arcs")
     args = ap.parse_args()
 
     seed = args.seed if args.seed is not None else secrets.randbelow(2**31)
@@ -727,7 +770,9 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     print(system.summary())
 
     palette = PALETTE_LIGHT if args.white_bg else PALETTE_DARK
-    svg_str, canvas_h = build_svg(system, canvas_w=args.width, palette=palette)
+    svg_str, canvas_h = build_svg(
+        system, canvas_w=args.width, palette=palette, perspective=args.perspective
+    )
 
     out_path = args.out or "/tmp/traveller_system_map.svg"
     save_output(svg_str, out_path)
