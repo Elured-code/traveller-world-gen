@@ -91,6 +91,41 @@ PALETTE_LIGHT = ColourPalette(
 
 _PERSP_Y = 0.5  # cos(60°) — y-axis foreshortening factor for perspective view
 
+# Stellar spectral-class colours (approximations of blackbody emission).
+# Used for star glyphs, companion markers, and arc strokes.
+_SPECTRAL_COLOUR: dict[str, str] = {
+    "O": "#92B5FF",   # blue
+    "B": "#AABFFF",   # blue-white
+    "A": "#D8E3FF",   # white with blue tint
+    "F": "#F8F8FF",   # near-white
+    "G": "#FFE066",   # pale yellow (Sun-like)
+    "K": "#FFAA44",   # orange
+    "M": "#FF6644",   # red-orange
+    "L": "#CC2200",   # deep red
+    "T": "#884400",   # brown dwarf
+    "Y": "#553300",   # cool brown dwarf
+}
+_WD_COLOUR = "#C8D8FF"          # white dwarf (hot, blue-white)
+_STAR_FALLBACK = "#FFE066"      # fallback if spectral type unknown
+
+
+def _star_colour(spectral_type: str, lum_class: str) -> str:
+    """Return the display colour for a star given its spectral type and luminosity class."""
+    if lum_class == "D":
+        return _WD_COLOUR
+    return _SPECTRAL_COLOUR.get(spectral_type.upper(), _STAR_FALLBACK)
+
+
+def _star_r_px(diameter_solar: float, arc_zone_h: int) -> int:
+    """Pixel radius for a star glyph, scaled logarithmically by solar diameter.
+
+    The Sun (1.0 solar diam) maps to roughly arc_zone_h/55 px.
+    Dwarfs are noticeably smaller; giants and supergiants are larger.
+    """
+    base = max(5, arc_zone_h // 55)
+    return max(4, min(arc_zone_h // 18, int(base * max(0.01, diameter_solar) ** 0.35)))
+
+
 _EHEX = "0123456789ABCDEFGHIJKLMNOPQRSTU"
 
 
@@ -98,9 +133,15 @@ def _ehex_val(c: str) -> int:
     return _EHEX.index(c.upper()) if c.upper() in _EHEX else 0
 
 
-def _gg_radius_px(gg_sah: str) -> int:
-    diam = _ehex_val(gg_sah[2]) if len(gg_sah) >= 3 else 8
-    return max(4, min(12, 3 + diam // 2))
+def _gg_radius_px(gg_sah: str, arc_zone_h: int = 400) -> int:
+    """Pixel radius for a gas-giant glyph, scaled by GG category (S/M/L)."""
+    base = max(4, arc_zone_h // 80)   # ~5px at default 400h
+    category = gg_sah[1] if len(gg_sah) >= 2 else "M"
+    if category == "S":
+        return max(4, int(base * 1.0))
+    if category == "L":
+        return max(6, min(arc_zone_h // 22, int(base * 2.4)))
+    return max(5, int(base * 1.6))  # M (medium, default)
 
 
 def esc(s: str) -> str:
@@ -253,7 +294,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     cx         = int(canvas_w * 0.045)
     arc_margin = max(14, int(arc_zone_h * 0.08))
     available  = arc_zone_h // 2 - arc_margin   # fixed arc half-height in pixels
-    star_r_px  = max(6, int(arc_zone_h * 0.022))
+    # star_r_px is now computed per-star inside the arc zone loop (_star_r_px)
 
     # Table zone metrics — primary column includes companion rows
     pri_desig = next(s.designation for s in all_stars if s.orbit_number == 0)
@@ -346,9 +387,11 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             r  = item["r"]
             hd = item["half_deg"]
             if item["kind"] == "star":
+                comp_col = _star_colour(item["obj"].spectral_type,
+                                        item["obj"].lum_class)
                 s.append(
                     f'<path d="{_arc_fn(cx, cy, r, hd)}" fill="none" '
-                    f'stroke="{palette.star_sec}" stroke-width="1.2" '
+                    f'stroke="{comp_col}" stroke-width="1.2" '
                     f'stroke-dasharray="8,6" opacity="0.40"/>'
                 )
                 continue
@@ -394,16 +437,17 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             )
 
         # ── Central star glyph + label (left of glyph) ───────────────────────
-        star_color = palette.star_pri if is_pri else palette.star_sec
+        star_color = _star_colour(star.spectral_type, star.lum_class)
+        star_r     = _star_r_px(star.diameter, arc_zone_h)
         cls_str    = (f'{star.spectral_type}'
                       f'{star.subtype if star.subtype is not None else ""} {star.lum_class}')
         star_label = f'Star {star.designation}  {cls_str}'
         s.append(
-            f'<circle cx="{cx}" cy="{cy}" r="{star_r_px}" '
+            f'<circle cx="{cx}" cy="{cy}" r="{star_r}" '
             f'fill="{star_color}" opacity="0.95"/>'
         )
         s.append(
-            f'<text x="{cx - star_r_px - 4}" y="{cy + 4}" '
+            f'<text x="{cx - star_r - 4}" y="{cy + 4}" '
             f'text-anchor="end" font-size="9" fill="{star_color}" opacity="0.85">'
             f'{esc(star_label)}</text>'
         )
@@ -414,14 +458,15 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             kind   = item["kind"]
 
             if kind == "star":
-                st = item["obj"]
+                st       = item["obj"]
+                st_col   = _star_colour(st.spectral_type, st.lum_class)
                 s.append(
                     f'<text x="{mx:.1f}" y="{my + 4:.1f}" text-anchor="middle" '
-                    f'font-size="12" fill="{palette.star_sec}">★</text>'
+                    f'font-size="12" fill="{st_col}">★</text>'
                 )
                 s.append(
                     f'<text x="{mx:.1f}" y="{my - 9:.1f}" text-anchor="middle" '
-                    f'font-size="8" fill="{palette.star_sec}" opacity="0.85">'
+                    f'font-size="8" fill="{st_col}" opacity="0.85">'
                     f'{esc(st.designation)}</text>'
                 )
                 continue
@@ -442,7 +487,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 )
             elif wt == "gas_giant":
                 gg_sah = getattr(o, "gg_sah", "")
-                rr     = _gg_radius_px(gg_sah)
+                rr     = _gg_radius_px(gg_sah, arc_zone_h)
                 if is_mw:
                     s.append(
                         f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rr + 4}" '
@@ -544,7 +589,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             )
 
         # Column header
-        hdr_col = palette.star_pri if star.orbit_number == 0 else palette.star_sec
+        hdr_col = _star_colour(star.spectral_type, star.lum_class)
         cls     = (f'{star.spectral_type}'
                    f'{star.subtype if star.subtype is not None else ""}'
                    f' {star.lum_class}')
@@ -595,37 +640,38 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             ry = row0_y + ri * _TBL_ROW_H
 
             if row_kind == "comp":
-                st  = row_item
+                st      = row_item
+                comp_c  = _star_colour(st.spectral_type, st.lum_class)
                 cls = (f'{st.spectral_type}'
                        f'{st.subtype if st.subtype is not None else ""} {st.lum_class}')
                 s.append(
                     f'<text x="{c_idx}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}">★</text>'
+                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}">★</text>'
                 )
                 s.append(
                     f'<text x="{c_orbit}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_LG}" fill="{palette.star_sec}">'
+                    f'font-size="{_TBL_FONT_LG}" fill="{comp_c}">'
                     f'{st.orbit_number:.2f}</text>'
                 )
                 s.append(
                     f'<text x="{c_au}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
+                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
                     f'{st.orbit_au:.3f} AU</text>'
                 )
                 s.append(
                     f'<text x="{c_type}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}">'
+                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}">'
                     f'Star {esc(st.designation)}</text>'
                 )
                 s.append(
                     f'<text x="{c_prof}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
+                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
                     f'{esc(cls)}</text>'
                 )
                 if st.orbit_period_yr is not None:
                     s.append(
                         f'<text x="{c_period}" y="{ry}" '
-                        f'font-size="{_TBL_FONT_SM}" fill="{palette.star_sec}" opacity="0.75">'
+                        f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
                         f'{esc(_fmt_period(st.orbit_period_yr))}</text>'
                     )
                 continue
