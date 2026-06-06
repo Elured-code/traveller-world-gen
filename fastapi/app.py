@@ -1071,13 +1071,16 @@ async def generate_system_svg(request: Request) -> Response:
     if not name:
         return error("name is required", ERR_MISSING_PARAM, 400)
 
-    seed_val, rng = apply_seed(params.get("seed"))
+    seed_raw      = params.get("seed")
+    seed_val, rng = apply_seed(int(seed_raw) if seed_raw is not None else None)
     want_detail   = _parse_bool_flag(params.get("detail", False))
     persp         = _parse_bool_flag(params.get("perspective", False))
     white_bg      = _parse_bool_flag(params.get("white_bg", False))
 
     try:
         system = generate_full_system(name, seed=seed_val, rng=rng)
+        if system.mainworld is None:
+            return error("No mainworld in generated system.", ERR_INTERNAL, 500)
         apply_mainworld_social(system.mainworld, rng=rng)
         if want_detail:
             attach_detail(system, rng=rng)
