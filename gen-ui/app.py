@@ -32,14 +32,13 @@ import os
 import random
 import secrets
 import sys
-import tempfile
 
 # Allow importing from the project root when run directly from any directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import Qt, QSettings, QThread, QUrl, Signal  # noqa: E402
+from PySide6.QtCore import Qt, QSettings, QThread, Signal  # noqa: E402
 from PySide6.QtGui import (  # noqa: E402
-    QAction, QDesktopServices, QFontDatabase, QKeySequence, QShortcut,
+    QAction, QFontDatabase, QKeySequence, QShortcut,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
@@ -59,7 +58,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QMessageBox,
     QPushButton,
     QRadioButton,
-    QScrollArea,
+
     QSizePolicy,
     QTabWidget,
     QVBoxLayout,
@@ -68,11 +67,6 @@ from PySide6.QtWidgets import (  # noqa: E402
 
 from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
 
-try:
-    from PySide6.QtSvgWidgets import QSvgWidget as _QSvgWidget  # pylint: disable=ungrouped-imports
-    _HAS_SVG_WIDGET = True
-except ImportError:
-    _HAS_SVG_WIDGET = False
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
 from traveller_system_gen import (  # noqa: E402
@@ -235,38 +229,26 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         vbox.addWidget(toolbar)
         vbox.addWidget(_make_hsep())
 
-        self._scroll = QScrollArea()
-        self._scroll.setWidgetResizable(False)
-        vbox.addWidget(self._scroll, stretch=1)
+        # QWebEngineView (Chromium) handles the full SVG feature set including
+        # feGaussianBlur filters and correct palette background colours.
+        self._map_view = QWebEngineView()
+        vbox.addWidget(self._map_view, stretch=1)
 
         self._render()
 
     def _render(self) -> None:
-        svg_str, canvas_h = build_svg(
+        svg_str, _canvas_h = build_svg(
             self._system, canvas_w=_MAP_CANVAS_W,
             palette=self._palette, perspective=self._perspective,
         )
         self._svg_str = svg_str
-
-        if _HAS_SVG_WIDGET:
-            widget = _QSvgWidget()  # type: ignore[possibly-undefined]
-            widget.load(svg_str.encode("utf-8"))
-            widget.setFixedSize(_MAP_CANVAS_W, canvas_h)
-            self._scroll.setWidget(widget)
-        else:
-            try:
-                fd, path = tempfile.mkstemp(suffix=".svg", prefix="traveller-map-")
-                os.close(fd)
-                with open(path, "w", encoding="utf-8") as fh:
-                    fh.write(svg_str)
-                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-                msg = "System map opened in browser (PySide6.QtSvgWidgets not available)."
-            except OSError as exc:
-                msg = f"Could not write map: {exc}"
-            lbl = QLabel(msg)
-            lbl.setObjectName("hint-label")
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._scroll.setWidget(lbl)
+        bg = self._palette.bg
+        html = (
+            f'<!DOCTYPE html><html><head><meta charset="utf-8">'
+            f'<style>html,body{{margin:0;padding:0;background:{bg};}}</style>'
+            f'</head><body>{svg_str}</body></html>'
+        )
+        self._map_view.setHtml(html)
 
     def _toggle_theme(self) -> None:
         if self._palette is PALETTE_DARK:

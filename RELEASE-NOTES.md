@@ -1,8 +1,166 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–103
+**Sessions:** 88–112
 **Tests:** 1946
+
+---
+
+## Perspective orbit depth cues and drop lines (Session 112)
+
+`system_map.py` — two depth-cue enhancements for perspective mode:
+
+**Orbit arc transparency split:** each perspective orbit arc is split at its midpoint
+(α=0° rightmost point, screen index `n_seg//2`) into two path segments:
+
+- **Near half** (upper screen, toward viewer): drawn at normal opacity.
+- **Far half** (lower screen, receding from viewer): drawn at 40% of normal opacity
+  (minimum 0.08), giving a clear visual cue that the back of the orbit lies behind
+  the orbital plane.
+
+Both halves share the same stroke colour, width, and dash pattern. Applied to regular
+world/belt-fallback orbit arcs and companion star dashed arcs. Non-perspective (half-arc)
+mode is unchanged.
+
+**Drop lines:** when an orbit is inclined (body displaced above or below the reference
+plane), a dotted `<line>` is drawn from the edge of the world or companion star sphere
+down to its projected position on the x-y plane (z=0). The endpoint reuses `smy_z0`
+already computed by the shadow-ellipse block (`cy − y4·persp_y`, no z contribution).
+Style: `stroke=palette.axis`, `stroke-width=0.8`, `stroke-dasharray="2,3"`,
+`opacity=0.55`. Suppressed when the displacement is ≤ symbol-radius + 1 px.
+
+---
+
+## 3-D sphere glyphs, ring systems, and belt-width arcs (Session 111)
+
+`system_map.py` — three visual enhancements to star and world rendering:
+
+- **3-D sphere glyphs:** all filled circles (primary star, companion stars, gas giants,
+  terrestrial worlds) now use SVG radial gradient fills (`_sphere_gradient_def`/`_sph`).
+  Each gradient has a lightened highlight at cx=35% cy=30%, the base colour at 50%, and
+  a darkened edge at 100%, giving a convincing sphere-shading effect on all background
+  colours. Gradients are emitted once in the SVG `<defs>` block, collected from all
+  star and world colours in the system before the arc zones are drawn.
+- **3-D ring systems:** gas giants with `is_ring=True` moon(s) now render a
+  foreshortened ring annulus. `_gg_ring_px` reads `Moon.ring_centre_pd`/`ring_span_pd`
+  to size the ring in pixels. `_ring_halves` produces two SVG annular arc paths: a rear
+  half drawn before the sphere (opacity 0.40) and a front half drawn after (opacity 0.65),
+  so the planet appears embedded in the ring plane. In top-down mode the ring appears
+  circular; in perspective mode it is foreshortened by `persp_y = sin(15°)`.
+- **Belt perspective bands:** belt orbits are no longer represented by a `<rect>` marker
+  or thick stroke. `_belt_band_path` generates a filled annular band using
+  `_orbit_screen_pts` for both the inner edge (`log1p(inner_au) × log_scale`) and outer
+  edge (`log1p(outer_au) × log_scale`), with `e=0` (circular belt boundaries). The filled
+  path is the correct perspective projection of a flat disc in the orbital plane, including
+  inclination and z-rotation. In top-down mode the band appears as a symmetric annular
+  arc; in perspective mode it is a foreshortened elliptical band. Where no
+  `BeltPhysical` data is attached the fallback is a thin stroke arc. Belt orbits are
+  excluded from the inclination shadow-arc rendering.
+
+---
+
+## Perspective map companion star + shadow polish (Session 109)
+
+`system_map.py` — four targeted enhancements to the perspective rendering mode:
+
+- **Companion star circles:** companion star markers now use `_star_r_px` to render
+  a filled circle (same logic as the primary star glyph) instead of a ★ text character.
+  Designation label repositioned above the circle.
+- **Companion star shadows:** blurred shadow ellipse drawn at the orbital-plane
+  projection of each companion star marker. Companion orbit shadows (blurred shadow arc)
+  added for inclined companion orbits, matching world orbit shadow behaviour.
+- **Flat shadow ellipses:** world and star shadows changed from `<circle>` to
+  `<ellipse rx ry=rx·sin(15°)>` so they appear as flat ovals lying on the orbital
+  reference plane at the correct 15° foreshortening.
+- **Legend at top:** the arc-zone legend is now anchored at `y_top + 14` with a
+  compact fixed 13 px row pitch (was `arc_zone_h × 9.2%`, far too large for tall zones)
+  and brightened from opacity 0.75 to 0.92.
+
+`gen-ui/app.py`:
+- System map now rendered via `QWebEngineView` (Chromium) instead of
+  `QSvgRenderer → QPixmap → QLabel`. Qt's SVG renderer silently produced
+  incorrect output for SVGs containing `feGaussianBlur` filters (added for
+  perspective shadow arcs), making the light-theme background appear black.
+  Chromium renders all SVG features and respects palette background colours.
+- Iso-grid opacity for dark mode raised 0.22 → 0.45 so the floor grid is visible
+  against the near-black background.
+
+---
+
+## Perspective system map visual overhaul (Session 108)
+
+`system_map.py` — comprehensive overhaul of the perspective rendering mode:
+
+- **Full ellipse orbits:** perspective orbit and shadow arcs now use `half_deg=180°`,
+  producing closed 360° polylines clipped to each arc zone via `<clipPath>`.
+- **Z-rotation:** all orbit/shadow polylines rotated 30° CW around the z-axis
+  (`_ROT_Z = radians(30°)`), giving a more natural perspective on the orbital plane.
+- **Shadow arcs:** inclined orbits now project a blurred shadow onto the z=0 plane
+  via `_shadow_orbit_arc`; drawn with `<feGaussianBlur stdDeviation="3">`.
+- **Angle symbols:** small 6px arcs drawn at the α=0 and α=π crossings of each
+  orbit and its shadow, showing the inclination angle visually.
+- **World icon shadows:** blurred filled circles placed at the shadow-projected
+  marker position for gas giant and terrestrial worlds.
+- **World icon halved:** world glyph radii halved for less visual clutter.
+- **Orbital inclinations enabled:** `--perspective` CLI flag now passes
+  `orbital_inclination=True` to `generate_full_system`.
+- **New helpers:** `_orbit_screen_pts`, `_shadow_orbit_arc`; `_orbit_half_deg` and
+  `_orbit_marker` extended with `rot_z` parameter.
+
+---
+
+## Orbital plane disc + dashing cleanup (Session 107)
+
+`system_map.py` — two changes:
+
+- **Orbital plane disc:** in perspective mode each arc zone draws a faint
+  `<ellipse>` centred on the star (`rx = max_r`, `ry = max_r × persp_y`),
+  clipped to the zone and drawn beneath the isometric grid. Fill-opacity
+  0.10/0.12, stroke-opacity 0.30/0.38 (dark/light mode). The disc makes the
+  tilted orbital plane visible as a translucent surface.
+
+- **Dashing reserved for inclination:** belt and empty orbit arcs changed from
+  dashed to solid (`dash="none"`). Dashed lines now exclusively signal the
+  "hidden behind the orbital plane" far arc (Session 106 near/far split).
+
+---
+
+## Near/far arc split for inclined orbits (Session 106)
+
+`system_map.py` — in perspective mode, inclined orbits are now drawn as two
+half-arcs. The solid **near arc** (above the orbital reference plane) and the
+dashed **far arc** (below, `stroke-dasharray="5,4"`, ~45% opacity) are split at
+the rightmost point of the arc, which is where the tilted orbit crosses the
+reference plane in projection. Applied to all non-empty, non-companion-star arcs
+when `orbital_inclination=True`. No effect in top-down mode.
+
+---
+
+## Perspective isometric floor grid (Session 105)
+
+`system_map.py` — new `_iso_grid` helper generates an understated diamond-tiled
+floor grid in perspective mode. Two families of diagonal lines (slopes ±`persp_y`)
+are analytically clipped to each arc zone and drawn before orbit arcs. Opacity is
+0.11 in dark mode and 0.17 in light mode, using `palette.axis` so the grid adapts
+to both themes without additional palette fields. No effect in top-down mode.
+
+---
+
+## Perspective arc centring fix (Session 104)
+
+Fixed two bugs in `system_map.py` affecting perspective mode when orbital
+eccentricity or inclination are enabled:
+
+- **Retrograde inclination bug:** orbits with inclination > 90° produced a
+  negative `ry` via `cos(incl) < 0`, causing arcs to be drawn centred far to
+  the right of the star. Fixed by using `abs(math.cos(incl_rad))` in
+  `_orbit_half_deg`, `_orbit_arc`, and `_orbit_marker`.
+- **Eccentricity float:** eccentric orbits used the ellipse focus
+  (`star_cx + a_px * e`) as the arc centre rather than the star. In perspective
+  mode, where more orbits reach `half_deg = 90°` (full semicircle) due to
+  compressed `ry`, this caused arcs to visually float away from the star. Fixed
+  by always centring arcs on `star_cx`. Eccentricity is still visible as a
+  compressed y-radius (`b_px < a_px`).
 
 ---
 

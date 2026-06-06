@@ -1,6 +1,6 @@
 # Traveller World Generator — v1.4.0 Release Notes
 
-**1861 tests pass. Pylint 10.00/10.**
+**1946 tests pass. Pylint 10.00/10.**
 
 ---
 
@@ -327,9 +327,10 @@ Removed field: `advanced_seismic_temperature_k` (seismic heating now baked into
 |---|---|
 | v1.2.0 baseline | 1146 |
 | v1.4.0 (Sessions 55–79) | 1449 |
-| v1.4.0 (Sessions 80–82) | **1644** |
+| v1.4.0 (Sessions 80–82) | 1644 |
+| v1.5.0 (Sessions 88–112) | **1946** |
 
-All 1644 tests pass.
+All 1946 tests pass.
 
 ---
 

@@ -268,6 +268,50 @@ worlds relative to it.
 This replaces the old behaviour where the mainworld was always whichever orbit
 happened to be closest to the habitable zone centre.
 
+SYSTEM MAP — 3D PERSPECTIVE RENDERING
+--------------------------------------
+The system map now has a perspective rendering mode (--perspective on the command
+line; toggle via the System Map window in the app). In perspective mode:
+
+- All orbits are shown as full 360° ellipses observed from 15° above the orbital
+  plane, rotated 30° clockwise from above, giving the map a convincing 3-D look.
+- Inclined orbits project a blurred shadow onto the orbital reference plane,
+  and small angle symbols are drawn where the orbit crosses the reference plane.
+- An isometric floor grid is drawn behind all orbits to reinforce the sense of depth.
+
+SYSTEM MAP — ORBIT DEPTH CUES
+-------------------------------
+In perspective mode the near and far halves of each orbit arc are drawn at
+different transparencies. The half that curves toward the viewer is fully opaque;
+the half receding behind the orbital plane is drawn at 40% opacity. This makes it
+immediately clear which part of the orbit is "in front" and which is "behind" —
+the same technique used in scientific orbit diagrams.
+
+SYSTEM MAP — 3D SPHERE GLYPHS AND RING SYSTEMS
+------------------------------------------------
+Stars, gas giants, and terrestrial worlds are now drawn as shaded spheres rather
+than flat-coloured circles. Each sphere has a bright highlight in the upper-left,
+the body's natural colour in the middle, and a darker shadow around the edge.
+
+Gas giants that have a ring system in the generated data now display a
+foreshortened ring annulus — a rear half drawn behind the sphere and a front
+half drawn in front of it, so the planet appears to sit inside its rings.
+
+SYSTEM MAP — DROP LINES FOR INCLINED BODIES
+---------------------------------------------
+In perspective mode, any world or companion star on an inclined orbit (displaced
+above or below the orbital plane) now shows a short dotted line connecting the
+bottom of its sphere to the orbital plane directly below it. This makes it easy
+to read the body's height above or below the plane at a glance.
+
+SYSTEM MAP — BELT PERSPECTIVE BANDS
+-------------------------------------
+Asteroid belt orbits are now rendered as filled annular bands — a filled ring
+between the belt's inner and outer edge — instead of a coloured line or symbol.
+In perspective mode the band is correctly foreshortened to match the viewing
+angle. The band width is proportional to the logarithm of the belt's physical
+extent in AU, matching the logarithmic scale used for orbital radii.
+
 BUG FIXES
 ---------
 - Fixed: Worlds orbiting a gas giant as a satellite displayed seismic stress
