@@ -176,8 +176,10 @@ pseudo-3D view:
   from 15° above the orbital plane.
 - Inclined orbits draw a blurred **shadow arc** on the reference plane and an
   **angle symbol** at the orbit crossings.
-- **Depth cues:** the far half of each orbit (receding behind the plane) is drawn
-  at 40% opacity; the near half keeps full opacity.
+- **Depth cues:** for orbits inclined ≥ 3°, the far half (receding behind the
+  plane) is drawn at 40% opacity; the near half keeps full opacity. Orbits
+  inclined less than 3° draw uniformly — the split adds no visible information
+  for nearly equatorial orbits.
 - **Drop lines:** bodies above or below the plane get a dotted line connecting the
   bottom of their sphere to their shadow point, making the 3-D position obvious.
 - An **isometric floor grid** is drawn behind all orbits to reinforce the depth

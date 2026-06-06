@@ -1,8 +1,25 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–112
+**Sessions:** 88–113
 **Tests:** 1946
+
+---
+
+## Drop-line prominence + inclination-gated orbit depth cues (Session 113)
+
+`system_map.py` — two refinements to the Session 112 perspective depth cues:
+
+- **Drop-line prominence:** all three drop-line `<line>` elements increased from
+  `stroke-width="0.8" stroke-dasharray="2,3" opacity="0.55"` to
+  `stroke-width="1.4" stroke-dasharray="3,3" opacity="0.75"` — roughly twice as
+  visible against the background.
+- **Inclination threshold for orbit split:** the near/far opacity split is now
+  suppressed for orbits where `abs(inclination) < 3°` (`math.radians(3.0)`).
+  Near-equatorial orbits draw as a single full-opacity arc, avoiding an
+  imperceptible split that added no depth information. Applies to both world arcs
+  and companion star dashed arcs; the threshold matches the existing shadow-arc
+  minimum inclination convention.
 
 ---
 
