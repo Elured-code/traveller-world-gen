@@ -15,6 +15,7 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
 
 # ── Azure Functions ─────────────────────────────────────────────────────────
 # local.settings.json contains secrets (storage connection strings, keys).
@@ -49,6 +50,7 @@ run-world.sh
 run-world.bat
 run-mapfetch.sh
 run-mapfetch.bat
+
 
 # ── Generated outputs ───────────────────────────────────────────────────────
 # The examples/ directory contains generated HTML cards for illustration.

@@ -235,7 +235,7 @@ python -m venv .venv
 |---|---|---|
 | CLI scripts only | _(nothing)_ | Pure stdlib — no install needed |
 | Desktop UI | `pip install "PySide6>=6.4.0"` | Bundles Qt — no system packages required |
-| Test suite | `pip install pytest jsonschema httpx2` | `jsonschema` for schema tests; `httpx2` for FastAPI TestClient |
+| Test suite | `pip install pytest jsonschema httpx2 hypothesis` | `jsonschema` for schema tests; `httpx2` for FastAPI TestClient; `hypothesis` for property-based tests |
 | Azure Functions API | `pip install -r azure-api/requirements.txt` | Also requires [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) |
 | FastAPI server | `pip install -r fastapi/requirements.txt` | Includes uvicorn; no extra tooling needed |
 

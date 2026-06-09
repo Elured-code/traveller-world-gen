@@ -1090,9 +1090,9 @@ python system_map.py --seed 42 --width 2400 --out multi-star.svg
 ### Running the tests
 
 ```bash
-pip install pytest jsonschema
+pip install pytest jsonschema hypothesis
 
-# All tests
+# All tests (includes property-based tests in tests/test_hypothesis.py)
 pytest tests/ -v
 
 # Mainworld generation only
@@ -1100,6 +1100,9 @@ pytest tests/test_traveller_world_gen.py -v
 
 # API layer only
 pytest tests/test_function_app.py -v
+
+# Property-based tests only
+pytest tests/test_hypothesis.py -v
 ```
 
 The Azure Functions SDK is stubbed automatically by `conftest.py` if not installed. The test suite does not require a live Azure runtime.
