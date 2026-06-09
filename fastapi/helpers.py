@@ -286,22 +286,14 @@ def parse_settlement_type(request: Request, body: dict) -> str:
     return raw if raw in _VALID_SETTLEMENT_TYPES else "standard"
 
 
-def parse_population_detail(request: Request, body: dict) -> bool:
-    """Extract the optional 'population_detail' flag.
+def parse_social_detail(request: Request, body: dict) -> bool:
+    """Extract the optional 'social_detail' flag.
 
-    When True, the caller should run attach_population_detail() to populate
-    PCR, urbanisation, and major-city data on all inhabited worlds.
+    When True, the caller should run attach_government_detail() and
+    attach_law_detail() to populate government profile, judicial system,
+    law subcategory scores, and law profile on all inhabited worlds.
     """
-    return _parse_bool_param(request, body, "population_detail")
-
-
-def parse_government_detail(request: Request, body: dict) -> bool:
-    """Extract the optional 'government_detail' flag.
-
-    When True, the caller should run attach_government_detail() to populate
-    centralisation, authority, structure, and faction data on all inhabited worlds.
-    """
-    return _parse_bool_param(request, body, "government_detail")
+    return _parse_bool_param(request, body, "social_detail")
 
 
 def parse_format(request: Request, body: dict) -> str:

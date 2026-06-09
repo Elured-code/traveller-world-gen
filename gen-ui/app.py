@@ -78,6 +78,7 @@ from traveller_world_detail import (  # noqa: E402
 )
 from traveller_world_population_detail import attach_population_detail  # noqa: E402
 from traveller_world_government_detail import attach_government_detail  # noqa: E402
+from traveller_world_law_detail import attach_law_detail  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
     World,
     generate_atmosphere_detail,
@@ -347,8 +348,7 @@ class _OptionsDialog(QDialog):
         advanced_temp: bool,
         runaway_greenhouse: bool,
         independent_government: bool,
-        population_detail: bool,
-        government_detail: bool,
+        social_detail: bool,
         settlement_type: str,
     ) -> None:
         super().__init__(parent)
@@ -383,13 +383,9 @@ class _OptionsDialog(QDialog):
         checks_layout.addWidget(self._check_independent_gov)
         layout.addWidget(self._sub_widget)
 
-        self._check_pop_detail = QCheckBox("Population detail")
-        self._check_pop_detail.setChecked(population_detail)
-        layout.addWidget(self._check_pop_detail)
-
-        self._check_gov_detail = QCheckBox("Government detail")
-        self._check_gov_detail.setChecked(government_detail)
-        layout.addWidget(self._check_gov_detail)
+        self._check_social_detail = QCheckBox("Social detail")
+        self._check_social_detail.setChecked(social_detail)
+        layout.addWidget(self._check_social_detail)
 
         settlement_group = QGroupBox("Settlement type")
         settlement_layout = QVBoxLayout(settlement_group)
@@ -457,12 +453,8 @@ class _OptionsDialog(QDialog):
         return self._check_independent_gov.isChecked()
 
     @property
-    def population_detail(self) -> bool:
-        return self._check_pop_detail.isChecked()
-
-    @property
-    def government_detail(self) -> bool:
-        return self._check_gov_detail.isChecked()
+    def social_detail(self) -> bool:
+        return self._check_social_detail.isChecked()
 
     @property
     def settlement_type(self) -> str:
@@ -511,11 +503,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_independent_gov: bool = (
             str(_s.value("opt_independent_gov", False)).lower() == "true"
         )
-        self._opt_population_detail: bool = (
-            str(_s.value("opt_population_detail", False)).lower() == "true"
-        )
-        self._opt_government_detail: bool = (
-            str(_s.value("opt_government_detail", False)).lower() == "true"
+        self._opt_social_detail: bool = (
+            str(_s.value("opt_social_detail", False)).lower() == "true"
         )
         self._opt_settlement_type: str = str(_s.value("opt_settlement_type", "standard"))
         self._apply_theme()
@@ -738,8 +727,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             advanced_temp=self._opt_advanced_temp,
             runaway_greenhouse=self._opt_runaway_greenhouse,
             independent_government=self._opt_independent_gov,
-            population_detail=self._opt_population_detail,
-            government_detail=self._opt_government_detail,
+            social_detail=self._opt_social_detail,
             settlement_type=self._opt_settlement_type,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -750,8 +738,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_advanced_temp = dialog.advanced_temp
         self._opt_runaway_greenhouse = dialog.runaway_greenhouse
         self._opt_independent_gov = dialog.independent_government
-        self._opt_population_detail = dialog.population_detail
-        self._opt_government_detail = dialog.government_detail
+        self._opt_social_detail = dialog.social_detail
         self._opt_settlement_type = dialog.settlement_type
         _s = QSettings("traveller-world-gen", "AppWindow")
         _s.setValue("opt_full_system", self._opt_full_system)
@@ -760,8 +747,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_advanced_temp", self._opt_advanced_temp)
         _s.setValue("opt_runaway_greenhouse", self._opt_runaway_greenhouse)
         _s.setValue("opt_independent_gov", self._opt_independent_gov)
-        _s.setValue("opt_population_detail", self._opt_population_detail)
-        _s.setValue("opt_government_detail", self._opt_government_detail)
+        _s.setValue("opt_social_detail", self._opt_social_detail)
         _s.setValue("opt_settlement_type", self._opt_settlement_type)
         self._on_detail_toggled(self._opt_full_system)
 
@@ -840,8 +826,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 atmosphere=world.atmosphere,  # type: ignore[attr-defined]
                 temperature=world.temperature,  # type: ignore[attr-defined]
             )
-        if self._opt_population_detail:
+        if self._opt_social_detail:
             from traveller_world_population_detail import generate_population_detail  # pylint: disable=import-outside-toplevel
+            from traveller_world_government_detail import generate_government_detail  # pylint: disable=import-outside-toplevel
+            from traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
             if world.population > 0:  # type: ignore[attr-defined]
                 world.population_detail = generate_population_detail(  # type: ignore[attr-defined]
                     world.population, world.population_multiplier,  # type: ignore[attr-defined]
@@ -851,13 +839,19 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     trade_codes=world.trade_codes,  # type: ignore[attr-defined]
                     atm=world.atmosphere,  # type: ignore[attr-defined]
                 )
-        if self._opt_government_detail:
-            from traveller_world_government_detail import generate_government_detail  # pylint: disable=import-outside-toplevel
-            if world.population > 0:  # type: ignore[attr-defined]
                 pop_det = world.population_detail  # type: ignore[attr-defined]
                 pcr = pop_det.pcr if pop_det is not None else 0
                 world.government_detail = generate_government_detail(  # type: ignore[attr-defined]
                     world.government, world.population, pcr=pcr,  # type: ignore[attr-defined]
+                )
+                gov_auth = (
+                    world.government_detail.authority_code  # type: ignore[attr-defined]
+                    if world.government_detail is not None else ""  # type: ignore[attr-defined]
+                )
+                world.law_detail = generate_law_detail(  # type: ignore[attr-defined]
+                    world.law_level, world.government,  # type: ignore[attr-defined]
+                    world.tech_level, pcr=pcr,  # type: ignore[attr-defined]
+                    gov_authority_code=gov_auth,
                 )
         self._act_save.setEnabled(True)
         self._show_summary(world)
@@ -981,10 +975,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             )
         if attach_detail_flag:
             attach_body_names(system)  # type: ignore[arg-type]
-        if self._opt_population_detail:
+        if self._opt_social_detail:
             attach_population_detail(system)  # type: ignore[arg-type]
-        if self._opt_government_detail:
             attach_government_detail(system)  # type: ignore[arg-type]
+            attach_law_detail(system)  # type: ignore[arg-type]
         self._detail_attached = attach_detail_flag
         self._act_save.setEnabled(True)
         self._show_system_summary(system)

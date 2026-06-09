@@ -58,6 +58,7 @@ if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
     from traveller_world_population_detail import PopulationDetail
     from traveller_world_government_detail import GovernmentDetail
+    from traveller_world_law_detail import LawDetail
 
 
 # ---------------------------------------------------------------------------
@@ -1545,6 +1546,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     habitability_rating:  Optional[int] = field(default=None, init=False)
     population_detail: Optional["PopulationDetail"] = field(default=None, init=False)
     government_detail: Optional["GovernmentDetail"] = field(default=None, init=False)
+    law_detail:        Optional["LawDetail"]         = field(default=None, init=False)
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1660,6 +1662,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.population_detail is not None else {}),
             **({"government_detail": self.government_detail.to_dict()}
                if self.government_detail is not None else {}),
+            **({"law_detail": self.law_detail.to_dict()}
+               if self.law_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1843,6 +1847,9 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("government_detail") is not None:
             from traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
             world.government_detail = _GD.from_dict(d["government_detail"])
+        if d.get("law_detail") is not None:
+            from traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
+            world.law_detail = _LD.from_dict(d["law_detail"])
 
         return world
 
@@ -2145,6 +2152,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
              for i, c in enumerate(world.population_detail.cities)]
             if world.population_detail is not None else []),
         "gov_detail": world.government_detail,
+        "law_detail": world.law_detail,
     }
 
 
@@ -2297,12 +2305,13 @@ def generate_government(population: int) -> int:
 
 
 def generate_law_level(government: int) -> int:
-    """Step 7 — Law Level (p.255): roll 2D-7 + Government, minimum 0.
+    """Step 7 — Law Level (p.255): roll 2D-7 + Government, clamped to [0, 18].
 
     Law Level 0 = no restrictions; higher values ban progressively more.
     If Population is 0 (handled by caller), Law Level should also be 0.
+    Maximum 18 (eHex 'I') matches the schema and WBH subcategory ceilings.
     """
-    return max(0, roll(2, -7 + government))
+    return min(18, max(0, roll(2, -7 + government)))
 
 
 def generate_starport(population: int) -> str:

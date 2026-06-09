@@ -458,6 +458,24 @@
   </div>
   {% endif %}
 
+  {% if ctx.law_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Law detail</p>
+    {{ drow("Justice profile", ctx.law_detail.justice_profile) }}
+    {{ drow("Law profile", ctx.law_detail.law_profile) }}
+    {{ drow("Primary judicial", ctx.law_detail.judicial_primary ~ " — " ~ ctx.law_detail.judicial_primary_label) }}
+    {{ drow("Secondary judicial", ctx.law_detail.judicial_secondary ~ " — " ~ ctx.law_detail.judicial_secondary_label) }}
+    {{ drow("Law uniformity", ctx.law_detail.law_uniformity ~ " - " ~ ctx.law_detail.law_uniformity_label) }}
+    {{ drow("Presumption of innocence", "Yes" if ctx.law_detail.presumption_of_innocence else "No") }}
+    {{ drow("Death penalty", "Yes" if ctx.law_detail.death_penalty else "No") }}
+    {{ drow("Weapons law", ctx.law_detail.law_weapons|string) }}
+    {{ drow("Economic law", ctx.law_detail.law_economic|string) }}
+    {{ drow("Criminal law", ctx.law_detail.law_criminal|string) }}
+    {{ drow("Private law", ctx.law_detail.law_private|string) }}
+    {{ drow("Personal rights law", ctx.law_detail.law_personal_rights|string) }}
+  </div>
+  {% endif %}
+
   <details>
     <summary>Raw JSON</summary>
     <pre>{{ ctx.json_str }}</pre>

@@ -824,7 +824,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
                  "is_independent_government", "native_sophont", "classification",
-                 "population_detail", "government_detail", "name")
+                 "population_detail", "government_detail", "law_detail", "name")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -844,6 +844,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.population_detail: Optional[object] = None
         # traveller_world_government_detail.GovernmentDetail — set by attach_government_detail()
         self.government_detail: Optional[object] = None
+        # traveller_world_law_detail.LawDetail — set by attach_law_detail()
+        self.law_detail: Optional[object] = None
         self.name: str = ""  # set by attach_body_names()
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
@@ -932,6 +934,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["population_detail"] = self.population_detail.to_dict()  # type: ignore[attr-defined]
         if self.government_detail is not None:
             d["government_detail"] = self.government_detail.to_dict()  # type: ignore[attr-defined]
+        if self.law_detail is not None:
+            d["law_detail"] = self.law_detail.to_dict()  # type: ignore[attr-defined]
         return d
 
     @classmethod
@@ -971,6 +975,9 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         if d.get("government_detail") is not None:
             from traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
             obj.government_detail = _GD.from_dict(d["government_detail"])
+        if d.get("law_detail") is not None:
+            from traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
+            obj.law_detail = _LD.from_dict(d["law_detail"])
         return obj
 
 

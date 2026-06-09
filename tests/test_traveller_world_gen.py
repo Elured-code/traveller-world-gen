@@ -5985,6 +5985,155 @@ class TestReconcileOrbitTypes:
 
 
 # ===========================================================================
+# TestReconcileWorldCount
+# ===========================================================================
+
+class TestReconcileWorldCount:
+    """Tests for _reconcile_world_count (issue #133)."""
+
+    def _make_orbit(self, star_desig, orbit_number, world_type,
+                    is_mainworld=False, is_empty=False):
+        from traveller_orbit_gen import OrbitSlot
+        o = OrbitSlot(
+            star_designation=star_desig,
+            orbit_number=orbit_number,
+            orbit_au=orbit_number * 0.5,
+            slot_index=1 if not is_empty else 0,
+            world_type="empty" if is_empty else world_type,
+            is_habitable_zone=False,
+            hz_deviation=0.0,
+            temperature_zone="Temperate",
+        )
+        o.is_mainworld_candidate = is_mainworld
+        return o
+
+    def _make_orbits(self, slots):
+        from traveller_orbit_gen import SystemOrbits
+        from traveller_stellar_gen import StarSystem
+        from traveller_map_fetch import _recount_orbit_metadata
+        so = SystemOrbits(stellar_system=StarSystem())
+        so.orbits = slots
+        _recount_orbit_metadata(so)
+        return so
+
+    def test_noop_when_worlds_zero(self):
+        from traveller_map_fetch import _reconcile_world_count
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "terrestrial"),
+            self._make_orbit("A", 3.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        original_terr = so.terrestrial_count
+        _reconcile_world_count(so, 0)
+        assert so.terrestrial_count == original_terr
+
+    def test_noop_when_exact_match(self):
+        # GG=2, Belt=1, Terr=2 (mainworld + 1) → Worlds=5 → no change
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "gas_giant"),
+            self._make_orbit("A", 3.0, "belt"),
+            self._make_orbit("A", 4.0, "terrestrial"),
+            self._make_orbit("A", 5.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 5)
+        _recount_orbit_metadata(so)
+        assert so.gas_giant_count == 2
+        assert so.belt_count == 1
+        assert so.terrestrial_count == 2
+        assert so.total_worlds == 5
+
+    def test_promotes_empty_slots_to_terrestrial(self):
+        # GG=2, Belt=1, want Worlds=8 → target_terr=5, currently terr=1 (mainworld only)
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "gas_giant"),
+            self._make_orbit("A", 3.0, "belt"),
+            self._make_orbit("A", 4.0, "terrestrial", is_mainworld=True),
+            self._make_orbit("A", 5.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 6.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 7.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 8.0, "terrestrial", is_empty=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 8)
+        _recount_orbit_metadata(so)
+        assert so.terrestrial_count == 5
+        assert so.total_worlds == 8
+
+    def test_demotes_excess_terrestrials(self):
+        # GG=2, Belt=1, currently terr=4, want Worlds=4 → target_terr=1 (mainworld only)
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "gas_giant"),
+            self._make_orbit("A", 3.0, "belt"),
+            self._make_orbit("A", 4.0, "terrestrial"),
+            self._make_orbit("A", 5.0, "terrestrial"),
+            self._make_orbit("A", 6.0, "terrestrial"),
+            self._make_orbit("A", 7.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 4)
+        _recount_orbit_metadata(so)
+        assert so.terrestrial_count == 1
+        assert so.total_worlds == 4
+
+    def test_clamps_to_one_when_worlds_less_than_gg_plus_belt_plus_one(self):
+        # GG=3, Belt=0, Worlds=2 → target_terr = max(1, 2-3-0) = 1
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "gas_giant"),
+            self._make_orbit("A", 3.0, "gas_giant"),
+            self._make_orbit("A", 4.0, "terrestrial"),
+            self._make_orbit("A", 5.0, "terrestrial"),
+            self._make_orbit("A", 6.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 2)
+        _recount_orbit_metadata(so)
+        assert so.terrestrial_count == 1
+
+    def test_mainworld_slot_never_demoted(self):
+        # Even when demoting excess, mainworld candidate is always preserved.
+        # GG=0, Belt=0, Worlds=1 → target_terr=1; currently terr=3 → demote 2 non-mw
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "terrestrial"),
+            self._make_orbit("A", 2.0, "terrestrial"),
+            self._make_orbit("A", 3.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 1)
+        _recount_orbit_metadata(so)
+        assert so.terrestrial_count == 1
+        mw = next(o for o in so.orbits if o.is_mainworld_candidate)
+        assert mw.world_type == "terrestrial"
+
+    def test_gg_satellite_mainworld_formula(self):
+        # Mainworld is a GG satellite: host GG in gas_giant_count, mainworld in
+        # terrestrial_count.  Formula target_terr = Worlds - GG - Belt is correct.
+        # GG=1 (host GG), Belt=0, Worlds=3 → target_terr=2 (mainworld + 1 other)
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),       # host GG
+            self._make_orbit("A", 2.0, "terrestrial", is_mainworld=True),  # satellite
+            self._make_orbit("A", 3.0, "terrestrial", is_empty=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 3)
+        _recount_orbit_metadata(so)
+        assert so.gas_giant_count == 1
+        assert so.terrestrial_count == 2
+        assert so.total_worlds == 3
+
+
+# ===========================================================================
 # TestOrbitalEccentricity
 # ===========================================================================
 
@@ -7464,3 +7613,221 @@ class TestFromDictMissingFields:
         moon = Moon.from_dict({})
         assert moon.size_code == 0
         assert not moon.is_ring
+
+
+# ===========================================================================
+# TestLawDetail — issue #97
+# ===========================================================================
+
+class TestLawDetail:
+    """Tests for traveller_world_law_detail — judicial system, subcategory scores, profiles."""
+
+    from traveller_world_law_detail import generate_law_detail, attach_law_detail, LawDetail  # noqa: E402
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _detail(self, law_level=5, gov_code=4, tech_level=7, pcr=0,
+                gov_authority_code="", rng=None):
+        from traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
+        return generate_law_detail(law_level, gov_code, tech_level,
+                                   pcr=pcr, gov_authority_code=gov_authority_code, rng=rng)
+
+    # ------------------------------------------------------------------
+    # Returns None for law_level 0
+    # ------------------------------------------------------------------
+
+    def test_returns_none_for_law_level_0(self):
+        from traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
+        assert generate_law_detail(0, gov_code=4) is None
+
+    # ------------------------------------------------------------------
+    # Judicial system
+    # ------------------------------------------------------------------
+
+    def test_judicial_primary_valid_codes(self):
+        for seed in range(80):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert det.judicial_primary in ("I", "A", "T"), (
+                f"Unexpected primary code {det.judicial_primary!r} (seed={seed})"
+            )
+
+    def test_judicial_secondary_valid_codes(self):
+        for seed in range(80):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert det.judicial_secondary in ("I", "A", "T"), (
+                f"Unexpected secondary code {det.judicial_secondary!r} (seed={seed})"
+            )
+
+    def test_high_law_skews_inquisitorial(self):
+        """Law ≥ 10 carries DM -4 on judicial roll → more Inquisitorial results."""
+        inq_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=12, gov_code=4, tech_level=7,
+                                  rng=random.Random(seed))) and d.judicial_primary == "I"
+        )
+        assert inq_count > 80, f"Expected >80 Inquisitorial with law=12, got {inq_count}"
+
+    def test_low_tl_skews_tribunal(self):
+        """TL 0 carries DM +4 on judicial roll → more Tribunal results."""
+        tri_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=5, gov_code=4, tech_level=0,
+                                  rng=random.Random(seed))) and d.judicial_primary == "T"
+        )
+        assert tri_count > 60, f"Expected >60 Tribunal with TL=0, got {tri_count}"
+
+    def test_judicial_authority_dm(self):
+        """gov_authority_code='J' carries DM -2 → more Inquisitorial/Adversarial."""
+        j_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=5, gov_code=4, gov_authority_code="J",
+                                  rng=random.Random(seed))) and d.judicial_primary in ("I", "A")
+        )
+        baseline = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=5, gov_code=4, gov_authority_code="",
+                                  rng=random.Random(seed))) and d.judicial_primary in ("I", "A")
+        )
+        assert j_count >= baseline, (
+            f"J authority should not increase Tribunal: j={j_count} baseline={baseline}"
+        )
+
+    # ------------------------------------------------------------------
+    # Uniformity
+    # ------------------------------------------------------------------
+
+    def test_uniformity_valid_codes(self):
+        for seed in range(80):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert det.law_uniformity in ("P", "T", "U"), (
+                f"Unexpected uniformity code {det.law_uniformity!r} (seed={seed})"
+            )
+
+    # ------------------------------------------------------------------
+    # Subcategory scores
+    # ------------------------------------------------------------------
+
+    def test_subcategory_scores_in_range(self):
+        for seed in range(100):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            for attr in ("law_weapons", "law_economic", "law_criminal",
+                         "law_private", "law_personal_rights"):
+                val = getattr(det, attr)
+                assert 0 <= val <= 18, (
+                    f"{attr}={val} out of range [0, 18] (seed={seed})"
+                )
+
+    def test_high_law_death_penalty_dm(self):
+        """Law ≥ 9 carries DM +4 on death penalty roll → more Yes results."""
+        dp_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=10, gov_code=4, rng=random.Random(seed)))
+            and d.death_penalty
+        )
+        assert dp_count > 100, f"Expected >100 death penalties with law=10, got {dp_count}"
+
+    def test_gov0_reduces_death_penalty(self):
+        """Gov 0 carries DM -4 on death penalty roll → fewer Yes results."""
+        dp_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=5, gov_code=0, rng=random.Random(seed)))
+            and d.death_penalty
+        )
+        assert dp_count < 100, f"Expected <100 death penalties with gov=0, got {dp_count}"
+
+    # ------------------------------------------------------------------
+    # Profile strings
+    # ------------------------------------------------------------------
+
+    def test_justice_profile_format(self):
+        import re  # pylint: disable=import-outside-toplevel
+        pattern = re.compile(r"^[IAT][IAT][PTU]-[YN]-[YN]$")
+        for seed in range(50):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert pattern.match(det.justice_profile), (
+                f"Justice profile {det.justice_profile!r} does not match format (seed={seed})"
+            )
+
+    def test_law_profile_format(self):
+        import re  # pylint: disable=import-outside-toplevel
+        pattern = re.compile(r"^[0-9A-Z]-[0-9A-Z]{5}$")
+        for seed in range(50):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert pattern.match(det.law_profile), (
+                f"Law profile {det.law_profile!r} does not match format (seed={seed})"
+            )
+
+    # ------------------------------------------------------------------
+    # Serialisation
+    # ------------------------------------------------------------------
+
+    def test_to_dict_keys_present(self):
+        det = self._detail(rng=random.Random(42))
+        assert det is not None
+        d = det.to_dict()
+        required = {
+            "judicial_primary", "judicial_secondary", "law_uniformity",
+            "presumption_of_innocence", "death_penalty", "justice_profile",
+            "law_weapons", "law_economic", "law_criminal", "law_private",
+            "law_personal_rights", "law_profile",
+        }
+        assert required.issubset(d.keys()), f"Missing keys: {required - d.keys()}"
+
+    def test_from_dict_roundtrip(self):
+        from traveller_world_law_detail import LawDetail  # pylint: disable=import-outside-toplevel
+        for seed in range(50):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            restored = LawDetail.from_dict(det.to_dict())
+            assert restored.justice_profile == det.justice_profile, (
+                f"justice_profile changed after round-trip (seed={seed})"
+            )
+            assert restored.law_profile == det.law_profile, (
+                f"law_profile changed after round-trip (seed={seed})"
+            )
+            assert restored.law_weapons == det.law_weapons
+            assert restored.presumption_of_innocence == det.presumption_of_innocence
+
+    # ------------------------------------------------------------------
+    # Determinism
+    # ------------------------------------------------------------------
+
+    def test_deterministic_with_seed(self):
+        rng1 = random.Random(12345)
+        rng2 = random.Random(12345)
+        det1 = self._detail(rng=rng1)
+        det2 = self._detail(rng=rng2)
+        assert det1 is not None and det2 is not None
+        assert det1.justice_profile == det2.justice_profile
+        assert det1.law_profile == det2.law_profile
+
+    # ------------------------------------------------------------------
+    # attach_law_detail
+    # ------------------------------------------------------------------
+
+    def test_attach_sets_mainworld_law_detail(self):
+        from traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        system = generate_full_system(seed=42)
+        assert system.mainworld is not None
+        assert system.mainworld.law_detail is None
+        attach_law_detail(system)
+        if system.mainworld.population > 0 and system.mainworld.law_level > 0:
+            assert system.mainworld.law_detail is not None
+
+    def test_attach_skips_uninhabited_mainworld(self):
+        from traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        # Use a seed that produces an uninhabited world
+        for seed in range(200):
+            system = generate_full_system(seed=seed)
+            if system.mainworld is not None and system.mainworld.population == 0:
+                attach_law_detail(system)
+                assert system.mainworld.law_detail is None
+                break
