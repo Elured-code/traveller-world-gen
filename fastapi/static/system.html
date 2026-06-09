@@ -257,18 +257,18 @@
   <div class="controls-row">
     <div class="field">
       <label for="s-name">Name</label>
-      <input type="text" id="s-name" placeholder="e.g. Ardenne" maxlength="64">
+      <input type="text" id="s-name" placeholder="e.g. Ardenne" maxlength="64" title="System name — leave blank for an auto-generated name">
     </div>
     <div class="field">
       <label for="s-seed">Seed</label>
       <div class="seed-row">
-        <input type="number" id="s-seed" placeholder="random">
+        <input type="number" id="s-seed" placeholder="random" title="Integer seed for reproducible results — leave blank for a random seed">
         <button class="btn btn-ghost" id="s-rand" title="Pick random seed">⟳</button>
       </div>
     </div>
     <div class="field">
       <label for="s-format">Format</label>
-      <select id="s-format">
+      <select id="s-format" title="Card (HTML): renders the system map and world cards inline. Text: plain-text system summary. JSON: full structured data.">
         <option value="html">Card (HTML)</option>
         <option value="text">Text</option>
         <option value="json">JSON</option>
@@ -277,49 +277,46 @@
     <div class="field">
       <label>&nbsp;</label>
       <div class="options-row">
-        <label class="checkbox-label" title="Attach secondary world and moon detail">
+        <label class="checkbox-label" title="Generates physical, atmosphere, and biological profiles for every secondary world and moon in the system">
           <input type="checkbox" id="s-detail"> Detail
         </label>
-        <label class="checkbox-label" title="Always-full detail via /api/system/full">
+        <label class="checkbox-label" title="Generates full detail for all worlds and re-selects the best-scoring mainworld after generation — implies Detail">
           <input type="checkbox" id="s-full"> Full
         </label>
-        <label class="checkbox-label" title="Select best-scoring world as mainworld (WBH pp.155–156)">
+        <label class="checkbox-label" title="Evaluates all worlds and replaces the designated mainworld with the highest-scoring candidate (WBH pp.155–156)">
           <input type="checkbox" id="s-select-mw"> Select MW
         </label>
       </div>
     </div>
-    <button class="btn" id="s-gen">Generate</button>
+    <button class="btn" id="s-gen" title="Generate a star system with the current options (Enter)">Generate</button>
   </div>
 
   <!-- Secondary options sub-row -->
   <div class="controls-sub">
     <span class="sub-label">System</span>
-    <label class="checkbox-label" id="lbl-nhz" title="Use WBH Non-Habitable Zone atmosphere tables (WBH pp.42–48)">
+    <label class="checkbox-label" id="lbl-nhz" title="Applies specialised atmosphere tables to worlds outside the habitable zone, producing more varied exotic and trace atmospheres (WBH pp.42–48)">
       <input type="checkbox" id="s-nhz" disabled> NHZ Atm
     </label>
-    <label class="checkbox-label" id="lbl-bio" title="Oxygenated atmospheres require biomass to sustain O₂ (WBH p.131)">
+    <label class="checkbox-label" id="lbl-bio" title="Worlds with oxygenated atmospheres receive at least trace biomass; without it the atmosphere collapses to a non-oxygen type (WBH p.131)">
       <input type="checkbox" id="s-bio" disabled> Biomass Rule
     </label>
-    <label class="checkbox-label" id="lbl-rg" title="Optional runaway greenhouse check (WBH p.79)">
+    <label class="checkbox-label" id="lbl-rg" title="Hot, wet worlds close to their star may trigger a runaway greenhouse, stripping water and pushing surface temperatures above 500 K (WBH p.79)">
       <input type="checkbox" id="s-rg" disabled> Runaway GH
     </label>
-    <label class="checkbox-label" id="lbl-indep" title="Secondary worlds use independent government formula (WBH p.162 Case 2)">
+    <label class="checkbox-label" id="lbl-indep" title="Each secondary world rolls its own government code rather than offsetting from the mainworld, producing more diverse political landscapes (WBH p.162)">
       <input type="checkbox" id="s-indep" disabled> Indep Gov
     </label>
 
     <div class="sub-sep"></div>
-    <span class="sub-label">Population</span>
-    <label class="checkbox-label" title="Generate PCR, urbanisation, and major city data for inhabited worlds">
-      <input type="checkbox" id="s-pop-detail"> Pop Detail
-    </label>
-    <label class="checkbox-label" title="Generate centralisation, authority, structure, and faction data for inhabited worlds">
-      <input type="checkbox" id="s-gov-detail"> Gov Detail
+    <span class="sub-label">Social</span>
+    <label class="checkbox-label" title="Generates PCR and city data, government centralisation and authority profile, judicial system, and law subcategory scores for all inhabited worlds">
+      <input type="checkbox" id="s-social-detail"> Social Detail
     </label>
 
     <div class="sub-sep"></div>
     <span class="sub-label">Settlement</span>
     <div class="field" style="margin: 0;">
-      <select id="s-settlement" title="Shift the mainworld population roll based on settlement history">
+      <select id="s-settlement" title="Adjusts the mainworld population roll: Long-settled (+4), Well-settled (+2), Backwater (−2), Unsettled (−4)">
         <option value="standard">Standard</option>
         <option value="long_settled">Long-settled</option>
         <option value="well_settled">Well-settled</option>
@@ -370,7 +367,7 @@
   <div class="tab-panel" id="tab-map">
     <div class="map-toolbar">
       <label>
-        <input type="checkbox" id="map-perspective">
+        <input type="checkbox" id="map-perspective" title="Show orbit arcs at a 60° tilt to suggest depth">
         Perspective view (60°)
       </label>
     </div>
@@ -393,6 +390,38 @@
 
   function slugName(name) {
     return (name || "system").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "system";
+  }
+
+  // ── Preferences (localStorage) ───────────────────────
+
+  const _PREF_KEY = "traveller-sys-prefs";
+  const _PREF_IDS = ["s-format", "s-detail", "s-full", "s-select-mw",
+                     "s-nhz", "s-bio", "s-rg", "s-indep",
+                     "s-social-detail", "s-settlement", "map-perspective"];
+
+  function savePrefs() {
+    const prefs = {};
+    _PREF_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      prefs[id] = el.type === "checkbox" ? el.checked : el.value;
+    });
+    try { localStorage.setItem(_PREF_KEY, JSON.stringify(prefs)); } catch (_) {}
+  }
+
+  function loadPrefs() {
+    try {
+      const raw = localStorage.getItem(_PREF_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      _PREF_IDS.forEach(id => {
+        if (!(id in p)) return;
+        const el = document.getElementById(id);
+        if (el.type === "checkbox") el.checked = p[id];
+        else el.value = p[id];
+      });
+      if (p["s-full"]) document.getElementById("s-detail").disabled = true;
+      updateSubOptions();
+    } catch (_) {}
   }
 
   function downloadBlob(content, filename, mimeType) {
@@ -507,43 +536,40 @@
 
   function buildSysUrl(seed, fmt) {
     if (!_lastGen) return null;
-    const { name, full, detail, selectMw, nhz, bio, rg, indep, popDetail, govDetail, settlement } = _lastGen;
+    const { name, full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement } = _lastGen;
     const cardName = encodeURIComponent(name);
     if (full) {
       const p = new URLSearchParams({ seed, format: fmt });
       if (name !== "World-1") p.set("name", name);
-      if (selectMw)   p.set("select_mainworld", "true");
-      if (nhz)        p.set("nhz_atmospheres", "true");
-      if (bio)        p.set("optional_biomass_rule", "true");
-      if (rg)         p.set("runaway_greenhouse", "true");
-      if (indep)      p.set("independent_government", "true");
-      if (popDetail)  p.set("population_detail", "true");
-      if (govDetail)  p.set("government_detail", "true");
+      if (selectMw)      p.set("select_mainworld", "true");
+      if (nhz)           p.set("nhz_atmospheres", "true");
+      if (bio)           p.set("optional_biomass_rule", "true");
+      if (rg)            p.set("runaway_greenhouse", "true");
+      if (indep)         p.set("independent_government", "true");
+      if (socialDetail)  p.set("social_detail", "true");
       if (settlement !== "standard") p.set("settlement_type", settlement);
       return `/api/system/full?${p}`;
     }
     if (fmt === "html") {
       const p = new URLSearchParams({ seed, detail: detail ? "true" : "false" });
-      if (selectMw)   p.set("select_mainworld", "true");
-      if (nhz)        p.set("nhz_atmospheres", "true");
-      if (bio)        p.set("optional_biomass_rule", "true");
-      if (rg)         p.set("runaway_greenhouse", "true");
-      if (indep)      p.set("independent_government", "true");
-      if (popDetail)  p.set("population_detail", "true");
-      if (govDetail)  p.set("government_detail", "true");
+      if (selectMw)      p.set("select_mainworld", "true");
+      if (nhz)           p.set("nhz_atmospheres", "true");
+      if (bio)           p.set("optional_biomass_rule", "true");
+      if (rg)            p.set("runaway_greenhouse", "true");
+      if (indep)         p.set("independent_government", "true");
+      if (socialDetail)  p.set("social_detail", "true");
       if (settlement !== "standard") p.set("settlement_type", settlement);
       return `/api/system/${cardName}/card?${p}`;
     }
     // text / json via /api/system
     const p = new URLSearchParams({ seed, format: fmt, detail: detail ? "true" : "false" });
     if (name !== "World-1") p.set("name", name);
-    if (selectMw)   p.set("select_mainworld", "true");
-    if (nhz)        p.set("nhz_atmospheres", "true");
-    if (bio)        p.set("optional_biomass_rule", "true");
-    if (rg)         p.set("runaway_greenhouse", "true");
-    if (indep)      p.set("independent_government", "true");
-    if (popDetail)  p.set("population_detail", "true");
-    if (govDetail)  p.set("government_detail", "true");
+    if (selectMw)      p.set("select_mainworld", "true");
+    if (nhz)           p.set("nhz_atmospheres", "true");
+    if (bio)           p.set("optional_biomass_rule", "true");
+    if (rg)            p.set("runaway_greenhouse", "true");
+    if (indep)         p.set("independent_government", "true");
+    if (socialDetail)  p.set("social_detail", "true");
     if (settlement !== "standard") p.set("settlement_type", settlement);
     return `/api/system?${p}`;
   }
@@ -648,6 +674,12 @@
 
   document.getElementById("s-detail").addEventListener("change", updateSubOptions);
 
+  // ── Persist preferences on any option change ─────────
+  _PREF_IDS.forEach(id => {
+    document.getElementById(id).addEventListener("change", savePrefs);
+  });
+  loadPrefs();
+
   document.getElementById("s-gen").addEventListener("click", generateSystem);
   ["s-name", "s-seed"].forEach(id => {
     document.getElementById(id).addEventListener("keydown", e => {
@@ -668,9 +700,8 @@
     const bio        = document.getElementById("s-bio").checked;
     const rg         = document.getElementById("s-rg").checked;
     const indep      = document.getElementById("s-indep").checked;
-    const popDetail  = document.getElementById("s-pop-detail").checked;
-    const govDetail  = document.getElementById("s-gov-detail").checked;
-    const settlement = document.getElementById("s-settlement").value;
+    const socialDetail = document.getElementById("s-social-detail").checked;
+    const settlement   = document.getElementById("s-settlement").value;
     const btn        = document.getElementById("s-gen");
     const seed       = seedIn ? parseInt(seedIn, 10) : randSeed();
 
@@ -684,9 +715,8 @@
       if (nhz)        base.set("nhz_atmospheres", "true");
       if (bio)        base.set("optional_biomass_rule", "true");
       if (rg)         base.set("runaway_greenhouse", "true");
-      if (indep)      base.set("independent_government", "true");
-      if (popDetail)  base.set("population_detail", "true");
-      if (govDetail)  base.set("government_detail", "true");
+      if (indep)         base.set("independent_government", "true");
+      if (socialDetail)  base.set("social_detail", "true");
       if (settlement !== "standard") base.set("settlement_type", settlement);
       return base;
     }
@@ -694,8 +724,7 @@
     // Params to forward to the mainworld card endpoint
     function mwCardParams(seed) {
       const p = new URLSearchParams({ seed, detail: "true" });
-      if (popDetail)  p.set("population_detail", "true");
-      if (govDetail)  p.set("government_detail", "true");
+      if (socialDetail)  p.set("social_detail", "true");
       if (settlement !== "standard") p.set("settlement_type", settlement);
       return p;
     }
@@ -760,14 +789,14 @@
           if (!seedIn) document.getElementById("s-seed").value = data.seed ?? seed;
           clearStatus();
           btn.disabled = false;
-          _lastGen = { name: name || "World-1", seed: data.seed ?? seed, full, detail, selectMw, nhz, bio, rg, indep, popDetail, govDetail, settlement };
+          _lastGen = { name: name || "World-1", seed: data.seed ?? seed, full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
           return;
         }
         showSeed(seed);
         if (!seedIn) document.getElementById("s-seed").value = seed;
       }
 
-      _lastGen = { name: name || "World-1", seed, full, detail, selectMw, nhz, bio, rg, indep, popDetail, govDetail, settlement };
+      _lastGen = { name: name || "World-1", seed, full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
       clearStatus();
     } catch (e) {
       setStatus("Error: " + e.message, "error");

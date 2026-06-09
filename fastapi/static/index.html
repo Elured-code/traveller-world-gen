@@ -284,23 +284,23 @@
 <div class="controls">
   <div class="field">
     <label for="w-name">Name</label>
-    <input type="text" id="w-name" placeholder="e.g. Mora" maxlength="64">
+    <input type="text" id="w-name" placeholder="e.g. Mora" maxlength="64" title="World name — leave blank for an auto-generated name">
   </div>
   <div class="field">
     <label for="w-seed">Seed</label>
     <div class="seed-row">
-      <input type="number" id="w-seed" placeholder="random">
+      <input type="number" id="w-seed" placeholder="random" title="Integer seed for reproducible results — leave blank for a random seed">
       <button class="btn btn-ghost" id="w-rand" title="Pick random seed">⟳</button>
     </div>
   </div>
   <div class="field">
     <label for="w-format">Format</label>
-    <select id="w-format">
+    <select id="w-format" title="Card (HTML): renders the world card inline. JSON: full structured data for download.">
       <option value="html">Card (HTML)</option>
       <option value="json">JSON</option>
     </select>
   </div>
-  <button class="btn" id="w-gen">Generate</button>
+  <button class="btn" id="w-gen" title="Generate a mainworld with the current options (Enter)">Generate</button>
 </div>
 
 <div class="status-bar" id="w-status"></div>
@@ -459,6 +459,16 @@
   document.getElementById("w-rand").addEventListener("click", () => {
     document.getElementById("w-seed").value = randSeed();
   });
+
+  // ── Persist format preference ────────────────────────
+  (function () {
+    const KEY = "traveller-world-prefs";
+    const fmt = document.getElementById("w-format");
+    try { const p = JSON.parse(localStorage.getItem(KEY) || "{}"); if (p.format) fmt.value = p.format; } catch (_) {}
+    fmt.addEventListener("change", () => {
+      try { localStorage.setItem(KEY, JSON.stringify({ format: fmt.value })); } catch (_) {}
+    });
+  })();
 
   document.getElementById("w-gen").addEventListener("click", generateWorld);
   ["w-name", "w-seed"].forEach(id => {
