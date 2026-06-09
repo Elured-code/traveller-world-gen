@@ -1201,10 +1201,29 @@ def _open_file(path: str) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
-def main() -> None:  # pylint: disable=missing-function-docstring
-    ap = argparse.ArgumentParser(description="Draw a Traveller system map")
+def main() -> None:  # pylint: disable=missing-function-docstring,too-many-statements
+    # pylint: disable=import-outside-toplevel
+    import urllib.error as _ue
+    from traveller_map_fetch import generate_system_from_map as _gsm
+    # pylint: enable=import-outside-toplevel
+
+    ap = argparse.ArgumentParser(
+        description=(
+            "Draw a Traveller system map.  "
+            "Without --sector, generates procedurally from --seed and --name.  "
+            "With --sector, fetches canonical UWP and stellar data from TravellerMap "
+            "so the map reflects the canonical world/belt/gas-giant counts."
+        )
+    )
     ap.add_argument("--seed",  type=int, default=None)
-    ap.add_argument("--name",            default="Unnamed")
+    ap.add_argument("--name",            default=None,
+                    help="World/system name.  Required for TravellerMap mode.")
+    ap.add_argument("--sector",          default=None,
+                    help="Sector name (e.g. 'Spinward Marches').  "
+                         "Required for TravellerMap mode; triggers map fetch.")
+    ap.add_argument("--hex",             default=None,
+                    metavar="NNNN",
+                    help="4-digit hex position within sector (alternative to --name in TM mode).")
     ap.add_argument("--out",   default=None,
                     help="Output path (default: /tmp/traveller_system_map.svg)")
     ap.add_argument("--width", type=int, default=1600)
@@ -1217,9 +1236,23 @@ def main() -> None:  # pylint: disable=missing-function-docstring
     seed = args.seed if args.seed is not None else secrets.randbelow(2**31)
     print(f"Seed: {seed}")
 
-    system = generate_full_system(args.name, seed=seed,
-                                  orbital_inclination=args.perspective)
-    attach_detail(system)
+    if args.sector:
+        if not args.name and not args.hex:
+            ap.error("--sector requires --name or --hex to identify the world.")
+        try:
+            system = _gsm(
+                name=args.name, sector=args.sector, hex_pos=args.hex,
+                seed=seed, attach=True,
+                orbital_inclination=args.perspective,
+            )
+        except LookupError as exc:
+            ap.error(f"TravellerMap lookup failed: {exc}")
+        except _ue.URLError as exc:
+            ap.error(f"Network error fetching from TravellerMap: {exc}")
+    else:
+        system = generate_full_system(args.name or "Unnamed", seed=seed,
+                                      orbital_inclination=args.perspective)
+        attach_detail(system)
     print(system.summary())
 
     palette = PALETTE_LIGHT if args.white_bg else PALETTE_DARK

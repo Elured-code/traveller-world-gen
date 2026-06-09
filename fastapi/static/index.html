@@ -319,7 +319,7 @@
     <span class="icon">🌍</span>
     Generate a mainworld to see the card here
   </div>
-  <iframe class="result-frame" id="w-frame" title="World card"></iframe>
+  <iframe class="result-frame" id="w-frame" title="World card" sandbox="allow-scripts"></iframe>
   <pre class="result-pre json" id="w-json"></pre>
 </div>
 
@@ -351,7 +351,10 @@
     const el = document.getElementById("w-status");
     el.className = "status-bar " + type;
     if (type === "loading") {
-      el.innerHTML = `<div class="spinner"></div>${msg}`;
+      el.innerHTML = '<div class="spinner"></div>';
+      const span = document.createElement("span");
+      span.textContent = msg;
+      el.appendChild(span);
     } else {
       el.textContent = msg;
     }
@@ -463,8 +466,12 @@
   // ── Persist format preference ────────────────────────
   (function () {
     const KEY = "traveller-world-prefs";
+    const _VALID_FORMATS = new Set(["json", "html", "text"]);
     const fmt = document.getElementById("w-format");
-    try { const p = JSON.parse(localStorage.getItem(KEY) || "{}"); if (p.format) fmt.value = p.format; } catch (_) {}
+    try {
+      const p = JSON.parse(localStorage.getItem(KEY) || "{}");
+      if (p.format && _VALID_FORMATS.has(p.format)) fmt.value = p.format;
+    } catch (_) {}
     fmt.addEventListener("change", () => {
       try { localStorage.setItem(KEY, JSON.stringify({ format: fmt.value })); } catch (_) {}
     });

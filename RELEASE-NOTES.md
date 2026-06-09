@@ -1,8 +1,97 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–113
-**Tests:** 1946
+**Sessions:** 88–115
+**Tests:** 2015
+
+---
+
+## FastAPI security hardening (Session 115)
+
+Five security issues found and fixed across `fastapi/app.py`, `fastapi/static/index.html`,
+and `fastapi/static/system.html`.
+
+**HIGH — XSS in `setStatus()` (both HTML files):** The loading branch injected user-supplied
+`msg` (containing form field values such as sector name) directly into `innerHTML` via a
+template literal. Fixed by keeping only the static spinner `<div>` in `innerHTML` and
+appending `msg` through a created `<span>` with `textContent`.
+
+**MEDIUM — Security HTTP headers via middleware (`app.py`):** Added
+`_SecurityHeadersMiddleware(BaseHTTPMiddleware)` that attaches `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: DENY`, and a full `Content-Security-Policy` to every response (including
+static file responses from the `StaticFiles` mount). CSP key directives:
+`script-src 'self' 'unsafe-inline'` (required for inline scripts), `img-src 'self'`,
+`connect-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`.
+
+**MEDIUM — Unsandboxed iframes (both HTML files):** All three `<iframe>` elements
+(`w-frame`, `mw-frame`, `sys-frame`) now carry `sandbox="allow-scripts"`. Without `allow-same-origin`,
+srcdoc content gets an opaque origin and cannot access the parent's localStorage, cookies, or window.
+
+**MEDIUM — SVG content-type guard in `loadMap()` (`system.html`):** Replaced direct
+`img.src = url` with `fetch()` → response `content-type` check → `URL.createObjectURL(blob)`.
+Verifies `image/svg+xml` before rendering; logs error on mismatch. Previous blob URLs are
+revoked on each call to prevent memory leaks.
+
+**LOW — localStorage allowlist validation (both HTML files):** Enum-like preferences
+(`format`, `settlement_type`, `src-mode`) are now validated against `Set` allowlists before
+being written to form elements. Prevents unexpected form state from tampered or stale
+localStorage entries.
+
+---
+
+## TravellerMap SVG endpoint + system_map.py CLI (Session 115)
+
+**New endpoint: `GET /api/map/system/svg`** (`fastapi/app.py`) — fetches canonical UWP and
+stellar data from TravellerMap via `generate_system_from_map()`, then renders an SVG system
+map via `build_svg()`. Critical property: `_reconcile_orbit_types()` runs inside
+`generate_system_from_map()`, setting each `OrbitSlot.world_type` to match the canonical
+TravellerMap PBG world/belt/GG counts. The SVG therefore shows the correct body distribution
+instead of a fresh procedural roll.
+
+Accepts `sector` (required), `name` or `hex`, `seed`, `detail` (optionally run `attach_detail()`
+so secondary UWPs appear in the orbit table), `perspective`, and `white_bg`. Returns
+`image/svg+xml`. FastAPI only; 9 new tests in `TestMapSystemSvg`.
+
+`system.html` `buildMapUrl()` updated to route TravellerMap-mode systems to
+`/api/map/system/svg` (using `_lastGen.isMap`) rather than the procedural `/api/system/svg`.
+
+**Route registration:** registered before `/api/map/system/{name}` to prevent "svg" being
+matched as a path parameter.
+
+**`system_map.py` CLI extended** with `--sector` and `--hex` flags. When `--sector` is present,
+`generate_system_from_map()` is called instead of `generate_full_system()`, so the CLI honours
+canonical PBG counts identically to the API endpoint. Usage:
+
+```
+python system_map.py --sector "Spinward Marches" --name Regina --seed 42
+python system_map.py --sector "Spinward Marches" --hex 1910
+```
+
+---
+
+## TravellerMap full-detail endpoint + SVG routing fix (Session 114)
+
+**New endpoint: `GET/POST /api/map/system/full`** (`fastapi/app.py`) — fetches
+canonical UWP and stellar data from TravellerMap then runs the complete detail
+pipeline unconditionally:
+
+- `attach_detail()` — secondary world SAH, moons, belts
+- `attach_body_names()` — deterministic name assignment
+- `_attach_mainworld_physical()` — diameter, density, gravity, temperature
+- `_apply_mainworld_moon_tidal()` — tidal stress and lock
+- `apply_secondary_social()` — secondary world UWP social digits
+- Optionally: `attach_population_detail()`, `attach_government_detail()`,
+  `attach_law_detail()` when `social_detail=true`
+
+Accepts `format` (json/html/text), all optional orbital and social flags.
+`sector` always required; `name` or `hex` identifies the world. Does **not**
+call `select_mainworld()` or `apply_mainworld_social()` — canonical UWP from
+TravellerMap is preserved. FastAPI only (11 new tests).
+
+**Bug fix: `/api/system/svg` routing** — the SVG endpoint was registered after
+`GET /api/system/{name}`, causing "svg" to be matched as a world name and
+returning JSON instead of an SVG image. Fixed by moving the SVG endpoint
+registration before both `{name}/card` and `{name}` wildcard routes.
 
 ---
 

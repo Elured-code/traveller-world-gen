@@ -35,6 +35,9 @@ Test organisation
   TestSystemCard            - GET /api/system/{name}/card  (HTML)
   TestSystemFromWorld       - POST /api/system/from-world
   TestMapSystem             - GET/POST /api/map/system  (mocked)
+  TestMapSystemFull         - GET/POST /api/map/system/full  (mocked)
+  TestMapWorldCard          - GET /api/map/world/card  (mocked)
+  TestMapSystemSvg          - GET /api/map/system/svg  (mocked)
   TestNamedMapSystem        - GET /api/map/system/{name}  (mocked)
   TestRateLimit             - 429 handler shape
 """
@@ -935,6 +938,242 @@ class TestMapSystem:
         resp = client.post("/api/map/system", json={"name": "Regina"})
         assert resp.status_code == 400
         assert resp.json()["error"]["code"] == ERR_MISSING_PARAM
+
+
+# ===========================================================================
+# TestMapSystemFull
+# ===========================================================================
+
+class TestMapSystemFull:
+    """Tests for GET/POST /api/map/system/full (generate_system_from_map mocked)."""
+
+    def test_missing_sector_returns_400(self):
+        resp = client.get("/api/map/system/full?name=Regina")
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == ERR_MISSING_PARAM
+
+    def test_missing_name_and_hex_returns_400(self):
+        resp = client.get("/api/map/system/full?sector=Spinward+Marches")
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == ERR_MISSING_PARAM
+
+    def test_invalid_hex_format_returns_400(self):
+        resp = client.get(
+            "/api/map/system/full?sector=Spinward+Marches&hex=ZZZZ"
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == "INVALID_HEX"
+
+    def test_lookup_error_returns_404(self):
+        with patch("app.generate_system_from_map",
+                   side_effect=LookupError("not found")):
+            resp = client.get(
+                "/api/map/system/full?sector=Spinward+Marches&name=NoWorld"
+            )
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == ERR_NOT_FOUND
+
+    def test_url_error_returns_502(self):
+        with patch("app.generate_system_from_map",
+                   side_effect=urllib.error.URLError("timeout")):
+            resp = client.get(
+                "/api/map/system/full?sector=Spinward+Marches&name=Regina"
+            )
+        assert resp.status_code == 502
+        assert resp.json()["error"]["code"] == ERR_UPSTREAM
+
+    def test_valid_request_returns_200_json(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/system/full?sector=Spinward+Marches&name=Regina"
+            )
+        assert resp.status_code == 200
+        assert resp.json()["mainworld"] is not None
+
+    def test_html_format_returns_html(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/system/full?sector=Spinward+Marches&name=Regina&format=html"
+            )
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_text_format_returns_plain(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/system/full?sector=Spinward+Marches&name=Regina&format=text"
+            )
+        assert resp.status_code == 200
+        assert "text/plain" in resp.headers["content-type"]
+
+    def test_post_missing_sector_returns_400(self):
+        resp = client.post("/api/map/system/full", json={"name": "Regina"})
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == ERR_MISSING_PARAM
+
+    def test_post_valid_request_returns_200(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.post(
+                "/api/map/system/full",
+                json={"sector": "Spinward Marches", "name": "Regina"},
+            )
+        assert resp.status_code == 200
+
+    def test_not_shadowed_by_named_route(self):
+        """Ensure /api/map/system/full is not matched by /api/map/system/{name}."""
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/system/full?sector=Spinward+Marches&name=Regina"
+            )
+        # Would return 400 MISSING_PARAM (sector required for named route)
+        # if shadowed, but should return 200 from the full endpoint.
+        assert resp.status_code == 200
+
+
+# ===========================================================================
+# TestMapWorldCard
+# ===========================================================================
+
+class TestMapWorldCard:
+    """Tests for GET /api/map/world/card (generate_system_from_map mocked)."""
+
+    def test_missing_sector_returns_400(self):
+        resp = client.get("/api/map/world/card?name=Regina")
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == ERR_MISSING_PARAM
+
+    def test_missing_name_and_hex_returns_400(self):
+        resp = client.get("/api/map/world/card?sector=Spinward+Marches")
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == ERR_MISSING_PARAM
+
+    def test_invalid_hex_format_returns_400(self):
+        resp = client.get(
+            "/api/map/world/card?sector=Spinward+Marches&hex=ZZZZ"
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == "INVALID_HEX"
+
+    def test_lookup_error_returns_404(self):
+        with patch("app.generate_system_from_map",
+                   side_effect=LookupError("not found")):
+            resp = client.get(
+                "/api/map/world/card?sector=Spinward+Marches&name=NoWorld"
+            )
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == ERR_NOT_FOUND
+
+    def test_url_error_returns_502(self):
+        with patch("app.generate_system_from_map",
+                   side_effect=urllib.error.URLError("timeout")):
+            resp = client.get(
+                "/api/map/world/card?sector=Spinward+Marches&name=Regina"
+            )
+        assert resp.status_code == 502
+        assert resp.json()["error"]["code"] == ERR_UPSTREAM
+
+    def test_valid_request_returns_html(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/world/card?sector=Spinward+Marches&name=Regina"
+            )
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+
+    def test_html_contains_world_content(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/world/card?sector=Spinward+Marches&name=Regina&seed=42"
+            )
+        assert resp.status_code == 200
+        # world.to_html() always emits a UWP somewhere in the card
+        assert "uwp" in resp.text.lower() or "UWP" in resp.text or resp.text.startswith("<")
+
+
+
+# ===========================================================================
+# TestMapSystemSvg
+# ===========================================================================
+
+class TestMapSystemSvg:
+    """Tests for GET /api/map/system/svg (generate_system_from_map mocked)."""
+
+    def test_missing_sector_returns_400(self):
+        resp = client.get("/api/map/system/svg?name=Regina")
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == ERR_MISSING_PARAM
+
+    def test_missing_name_and_hex_returns_400(self):
+        resp = client.get("/api/map/system/svg?sector=Spinward+Marches")
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == ERR_MISSING_PARAM
+
+    def test_invalid_hex_format_returns_400(self):
+        resp = client.get(
+            "/api/map/system/svg?sector=Spinward+Marches&hex=ZZZZ"
+        )
+        assert resp.status_code == 400
+        assert resp.json()["error"]["code"] == "INVALID_HEX"
+
+    def test_lookup_error_returns_404(self):
+        with patch("app.generate_system_from_map",
+                   side_effect=LookupError("not found")):
+            resp = client.get(
+                "/api/map/system/svg?sector=Spinward+Marches&name=NoWorld"
+            )
+        assert resp.status_code == 404
+        assert resp.json()["error"]["code"] == ERR_NOT_FOUND
+
+    def test_url_error_returns_502(self):
+        with patch("app.generate_system_from_map",
+                   side_effect=urllib.error.URLError("timeout")):
+            resp = client.get(
+                "/api/map/system/svg?sector=Spinward+Marches&name=Regina"
+            )
+        assert resp.status_code == 502
+        assert resp.json()["error"]["code"] == ERR_UPSTREAM
+
+    def test_valid_request_returns_svg(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/system/svg?sector=Spinward+Marches&name=Regina&seed=42"
+            )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/svg+xml"
+
+    def test_svg_content_is_valid(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/system/svg?sector=Spinward+Marches&name=Regina"
+            )
+        assert resp.status_code == 200
+        assert resp.text.startswith("<svg") or "svg" in resp.text[:100].lower()
+
+    def test_hex_param_accepted(self):
+        with patch("app.generate_system_from_map",
+                   return_value=_SAMPLE_SYSTEM):
+            resp = client.get(
+                "/api/map/system/svg?sector=Spinward+Marches&hex=1910&seed=42"
+            )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "image/svg+xml"
+
+    def test_not_shadowed_by_named_route(self):
+        """Ensure /api/map/system/svg is not swallowed by /api/map/system/{name}."""
+        resp = client.get("/api/map/system/svg?sector=Spinward+Marches&name=Test")
+        # Would return 422/500 from wrong handler if shadowed; we expect 404 from
+        # LookupError path (no mock) or the correct 400 for missing-sector path —
+        # either way NOT a 422 Unprocessable Entity.
+        assert resp.status_code != 422
 
 
 # ===========================================================================

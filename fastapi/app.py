@@ -26,6 +26,9 @@ POST      /api/system/from-world
 TravellerMap endpoints  (canonical UWP + procedural orbits)
 -----------------------------------------------------------
 GET/POST  /api/map/system
+GET/POST  /api/map/system/full
+GET       /api/map/system/svg
+GET       /api/map/world/card
 GET       /api/map/system/{name}
 
 Optional system parameters
@@ -115,6 +118,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded  # registered as exception handler key
 from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from helpers import (
     ERR_INTERNAL, ERR_INVALID_BODY, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
@@ -203,6 +207,35 @@ async def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
 
 
 # ---------------------------------------------------------------------------
+# Security headers
+# ---------------------------------------------------------------------------
+
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self'; "
+    "connect-src 'self'; "
+    "frame-src 'none'; "
+    "frame-ancestors 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "object-src 'none'"
+)
+
+
+class _SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
+    """Attach security headers to every response."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"]         = "DENY"
+        response.headers["Content-Security-Policy"] = _CSP
+        return response
+
+
+# ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
@@ -213,6 +246,7 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+app.add_middleware(_SecurityHeadersMiddleware)
 app.mount("/static", StaticFiles(directory=os.path.join(_here, "static")), name="static")
 
 
@@ -845,7 +879,62 @@ async def generate_single_system(request: Request) -> Response:  # pylint: disab
 
 
 # ===========================================================================
-# Endpoint 8:  GET /api/system/{name}/card  (HTML system card)
+# Endpoint 8:  GET /api/system/svg  (SVG system map)
+# (registered before /api/system/{name} to avoid shadowing)
+# ===========================================================================
+
+def _parse_bool_flag(val: object) -> bool:
+    """Return True for '1', 'true', 'yes' (case-insensitive) or bool True."""
+    if isinstance(val, bool):
+        return val
+    return str(val).strip().lower() in ("1", "true", "yes")
+
+
+@app.get("/api/system/svg")
+@limiter.limit(_RATE_LIMIT)
+async def generate_system_svg(request: Request) -> Response:
+    """Generate a full star system and return it as an SVG map image.
+
+    Query parameters
+    ----------------
+    name        : str   — world/system name (required)
+    seed        : int   — RNG seed (random if absent)
+    detail      : bool  — attach secondary world detail (default false)
+    perspective : bool  — 60° perspective projection instead of top-down (default false)
+    white_bg    : bool  — light background instead of dark (default false)
+    """
+    params = request.query_params
+
+    name = str(params.get("name", "")).strip()
+    if not name:
+        return error("name is required", ERR_MISSING_PARAM, 400)
+
+    seed_raw      = params.get("seed")
+    seed_val, rng = apply_seed(int(seed_raw) if seed_raw is not None else None)
+    want_detail   = _parse_bool_flag(params.get("detail", False))
+    persp         = _parse_bool_flag(params.get("perspective", False))
+    white_bg      = _parse_bool_flag(params.get("white_bg", False))
+
+    try:
+        system = generate_full_system(name, seed=seed_val, rng=rng)
+        if system.mainworld is None:
+            return error("No mainworld in generated system.", ERR_INTERNAL, 500)
+        apply_mainworld_social(system.mainworld, rng=rng)
+        if want_detail:
+            attach_detail(system, rng=rng)
+            attach_body_names(system)
+    except Exception as exc:  # pylint: disable=broad-except
+        logger.exception("Error generating system SVG: %s", exc)
+        return error("An unexpected error occurred while generating the system.", ERR_INTERNAL, 500)
+
+    palette   = PALETTE_LIGHT if white_bg else PALETTE_DARK
+    svg_str, _h = build_svg(system, canvas_w=1600, palette=palette, perspective=persp)
+
+    return Response(content=svg_str, media_type="image/svg+xml")
+
+
+# ===========================================================================
+# Endpoint 9:  GET /api/system/{name}/card  (HTML system card)
 # (registered before /api/system/{name} to avoid shadowing)
 # ===========================================================================
 
@@ -1039,61 +1128,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
 
 
 # ===========================================================================
-# Endpoint 10:  GET /api/system/svg  (SVG system map)
-# ===========================================================================
-
-def _parse_bool_flag(val: object) -> bool:
-    """Return True for '1', 'true', 'yes' (case-insensitive) or bool True."""
-    if isinstance(val, bool):
-        return val
-    return str(val).strip().lower() in ("1", "true", "yes")
-
-
-@app.get("/api/system/svg")
-@limiter.limit(_RATE_LIMIT)
-async def generate_system_svg(request: Request) -> Response:
-    """Generate a full star system and return it as an SVG map image.
-
-    Query parameters
-    ----------------
-    name        : str   — world/system name (required)
-    seed        : int   — RNG seed (random if absent)
-    detail      : bool  — attach secondary world detail (default false)
-    perspective : bool  — 60° perspective projection instead of top-down (default false)
-    white_bg    : bool  — light background instead of dark (default false)
-    """
-    params = request.query_params
-
-    name = str(params.get("name", "")).strip()
-    if not name:
-        return error("name is required", ERR_MISSING_PARAM, 400)
-
-    seed_raw      = params.get("seed")
-    seed_val, rng = apply_seed(int(seed_raw) if seed_raw is not None else None)
-    want_detail   = _parse_bool_flag(params.get("detail", False))
-    persp         = _parse_bool_flag(params.get("perspective", False))
-    white_bg      = _parse_bool_flag(params.get("white_bg", False))
-
-    try:
-        system = generate_full_system(name, seed=seed_val, rng=rng)
-        if system.mainworld is None:
-            return error("No mainworld in generated system.", ERR_INTERNAL, 500)
-        apply_mainworld_social(system.mainworld, rng=rng)
-        if want_detail:
-            attach_detail(system, rng=rng)
-            attach_body_names(system)
-    except Exception as exc:  # pylint: disable=broad-except
-        logger.exception("Error generating system SVG: %s", exc)
-        return error("An unexpected error occurred while generating the system.", ERR_INTERNAL, 500)
-
-    palette   = PALETTE_LIGHT if white_bg else PALETTE_DARK
-    svg_str, _h = build_svg(system, canvas_w=1600, palette=palette, perspective=persp)
-
-    return Response(content=svg_str, media_type="image/svg+xml")
-
-
-# ===========================================================================
-# Endpoint 12:  GET/POST /api/map/system
+# Endpoint 11:  GET/POST /api/map/system
 # ===========================================================================
 
 @app.api_route("/api/map/system", methods=["GET", "POST"])
@@ -1147,7 +1182,309 @@ async def generate_map_system(request: Request) -> Response:  # pylint: disable=
 
 
 # ===========================================================================
-# Endpoint 13:  GET /api/map/system/{name}
+# Endpoint 12:  GET/POST /api/map/system/full
+# (registered before /api/map/system/{name} to avoid shadowing)
+# ===========================================================================
+
+@app.api_route("/api/map/system/full", methods=["GET", "POST"])
+@limiter.limit(_RATE_LIMIT)
+async def generate_map_system_full(request: Request) -> Response:  # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches
+    """Fetch canonical data from TravellerMap and generate a fully detailed system.
+
+    Like /api/map/system but always runs attach_detail(), apply_secondary_social(),
+    and accepts the full suite of detail flags and format selection.  The
+    canonical UWP and stellar classification from TravellerMap are preserved.
+
+    Sector is always required.  Identify the world by name or hex position.
+
+    Parameters: sector (required), name or hex, seed, format,
+                nhz_atmospheres, orbital_eccentricity, orbital_inclination,
+                runaway_greenhouse, independent_government, optional_biomass_rule,
+                optional_inhospitable_rule, social_detail.
+    """
+    logger.info("generate_map_system_full [method=%s]", request.method)
+    body = await _get_body(request)
+    name, err = parse_name(request, body)
+    if err:
+        return err
+    seed_val, err = parse_seed(request, body)
+    if err:
+        return err
+    sector, err = parse_sector(request, body)
+    if err:
+        return err
+    hex_pos, err = parse_hex_pos(request, body)
+    if err:
+        return err
+    if not sector:
+        return error(
+            "The 'sector' parameter is required to avoid same-name ambiguity.",
+            ERR_MISSING_PARAM,
+        )
+    if not name and not hex_pos:
+        return error(
+            "Supply 'name' or 'hex' to identify the world within the sector.",
+            ERR_MISSING_PARAM,
+        )
+    fmt = parse_format(request, body)
+    want_nhz = parse_nhz_atmospheres(request, body)
+    want_ecc = parse_orbital_eccentricity(request, body)
+    want_incl = parse_orbital_inclination(request, body)
+    want_rg = parse_runaway_greenhouse(request, body)
+    want_indep = parse_independent_government(request, body)
+    want_bio = parse_optional_biomass(request, body)
+    want_inhospitable = parse_optional_inhospitable(request, body)
+    want_social_detail = parse_social_detail(request, body)
+    seed, rng = apply_seed(seed_val)
+    try:
+        system = generate_system_from_map(
+            name=name, sector=sector, hex_pos=hex_pos,
+            seed=seed, attach=False,
+            nhz_atmospheres=want_nhz,
+            orbital_eccentricity=want_ecc,
+            orbital_inclination=want_incl,
+        )
+    except LookupError as exc:
+        logger.warning("TravellerMap lookup failed: %s", exc)
+        return error(str(exc), ERR_NOT_FOUND, status_code=404)
+    except urllib.error.URLError as exc:
+        logger.error("TravellerMap upstream error: %s", exc)
+        return error(
+            "Could not reach the upstream data source. Please try again later.",
+            ERR_UPSTREAM, status_code=502,
+        )
+    except Exception as exc:
+        logger.exception("Error generating map system full: %s", exc)
+        return error(
+            "An unexpected error occurred while generating the map system.",
+            ERR_INTERNAL, status_code=500,
+        )
+    try:
+        attach_detail(system, rng=rng,
+                      independent_government=want_indep,
+                      optional_biomass_rule=want_bio,
+                      optional_inhospitable_rule=want_inhospitable)
+        attach_body_names(system)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
+        _apply_mainworld_moon_tidal(system)
+        apply_secondary_social(system, independent_government=want_indep, rng=rng)
+        if want_social_detail:
+            attach_population_detail(system, rng=rng)
+            attach_government_detail(system, rng=rng)
+            attach_law_detail(system, rng=rng)
+    except Exception as exc:
+        logger.exception("Error in map system full detail generation: %s", exc)
+        return error(
+            "An unexpected error occurred while generating the map system.",
+            ERR_INTERNAL, status_code=500,
+        )
+    mw = system.mainworld
+    logger.info(
+        "Generated map system full name=%s stars=%d worlds=%d format=%s uwp=%s",
+        name or hex_pos,
+        len(system.stellar_system.stars),
+        system.system_orbits.total_worlds,
+        fmt,
+        mw.uwp() if mw else "—",
+    )
+    if fmt == "html":
+        return HTMLResponse(content=system.to_html(detail_attached=True), status_code=200)
+    if fmt == "text":
+        return PlainTextResponse(content=system.summary(), status_code=200)
+    return ok(system.to_dict())
+
+
+# ===========================================================================
+# Endpoint 13:  GET /api/map/system/svg  (TravellerMap SVG system map)
+# (registered before /api/map/system/{name} to avoid shadowing)
+# ===========================================================================
+
+@app.get("/api/map/system/svg")
+@limiter.limit(_RATE_LIMIT)
+async def generate_map_system_svg(request: Request) -> Response:  # pylint: disable=too-many-return-statements,too-many-locals
+    """Fetch canonical data from TravellerMap and return it as an SVG map image.
+
+    Uses the canonical PBG world/belt/gas-giant counts so the map matches
+    the system detail card.  Sector is always required.
+
+    Query parameters
+    ----------------
+    sector      : str  — sector name (required)
+    name        : str  — world name within the sector
+    hex         : str  — 4-digit hex position (alternative to name)
+    seed        : int  — RNG seed (random if absent)
+    detail      : bool — attach secondary world detail (default false)
+    perspective : bool — 60° perspective projection (default false)
+    white_bg    : bool — light background (default false)
+    """
+    logger.info("generate_map_system_svg called")
+    body = await _get_body(request)
+    name, err = parse_name(request, body)
+    if err:
+        return err
+    seed_val, err = parse_seed(request, body)
+    if err:
+        return err
+    sector, err = parse_sector(request, body)
+    if err:
+        return err
+    hex_pos, err = parse_hex_pos(request, body)
+    if err:
+        return err
+    if not sector:
+        return error(
+            "The 'sector' parameter is required to avoid same-name ambiguity.",
+            ERR_MISSING_PARAM,
+        )
+    if not name and not hex_pos:
+        return error(
+            "Supply 'name' or 'hex' to identify the world within the sector.",
+            ERR_MISSING_PARAM,
+        )
+    want_detail = parse_detail(request, body)
+    persp    = _parse_bool_flag(request.query_params.get("perspective", False))
+    white_bg = _parse_bool_flag(request.query_params.get("white_bg",   False))
+    seed, rng = apply_seed(seed_val)
+    try:
+        system = generate_system_from_map(
+            name=name, sector=sector, hex_pos=hex_pos,
+            seed=seed, attach=False,
+        )
+    except LookupError as exc:
+        logger.warning("TravellerMap lookup failed for SVG: %s", exc)
+        return error(str(exc), ERR_NOT_FOUND, status_code=404)
+    except urllib.error.URLError as exc:
+        logger.error("TravellerMap upstream error for SVG: %s", exc)
+        return error(
+            "Could not reach the upstream data source. Please try again later.",
+            ERR_UPSTREAM, status_code=502,
+        )
+    except Exception as exc:
+        logger.exception("Error fetching map system for SVG: %s", exc)
+        return error(
+            "An unexpected error occurred while generating the map SVG.",
+            ERR_INTERNAL, status_code=500,
+        )
+    if want_detail:
+        try:
+            attach_detail(system, rng=rng)
+            attach_body_names(system)
+        except Exception as exc:
+            logger.exception("Error attaching detail for map SVG: %s", exc)
+            return error(
+                "An unexpected error occurred while generating the map SVG.",
+                ERR_INTERNAL, status_code=500,
+            )
+    palette = PALETTE_LIGHT if white_bg else PALETTE_DARK
+    svg_str, _ = build_svg(system, canvas_w=1600, palette=palette, perspective=persp)
+    logger.info("Generated map system SVG name=%s sector=%s", name or hex_pos, sector)
+    return Response(content=svg_str, media_type="image/svg+xml")
+
+
+# ===========================================================================
+# Endpoint 14:  GET /api/map/world/card  (TravellerMap mainworld card, HTML)
+# ===========================================================================
+
+@app.get("/api/map/world/card")
+@limiter.limit(_RATE_LIMIT)
+async def generate_map_world_card(request: Request) -> Response:  # pylint: disable=too-many-locals,too-many-return-statements
+    """Fetch canonical data from TravellerMap and return a detailed mainworld HTML card.
+
+    Runs the same full detail pipeline as /api/map/system/full (attach_detail,
+    physical, tidal, secondary social) then returns system.mainworld.to_html().
+    Intended for use alongside /api/map/system/full?format=html to populate
+    the Mainworld tab in the web UI.
+
+    Parameters: sector (required), name or hex, seed,
+                nhz_atmospheres, orbital_eccentricity, orbital_inclination,
+                runaway_greenhouse, independent_government, optional_biomass_rule,
+                optional_inhospitable_rule, social_detail.
+    """
+    logger.info("generate_map_world_card called")
+    body = await _get_body(request)
+    name, err = parse_name(request, body)
+    if err:
+        return err
+    seed_val, err = parse_seed(request, body)
+    if err:
+        return err
+    sector, err = parse_sector(request, body)
+    if err:
+        return err
+    hex_pos, err = parse_hex_pos(request, body)
+    if err:
+        return err
+    if not sector:
+        return error(
+            "The 'sector' parameter is required to avoid same-name ambiguity.",
+            ERR_MISSING_PARAM,
+        )
+    if not name and not hex_pos:
+        return error(
+            "Supply 'name' or 'hex' to identify the world within the sector.",
+            ERR_MISSING_PARAM,
+        )
+    want_nhz = parse_nhz_atmospheres(request, body)
+    want_ecc = parse_orbital_eccentricity(request, body)
+    want_incl = parse_orbital_inclination(request, body)
+    want_rg = parse_runaway_greenhouse(request, body)
+    want_indep = parse_independent_government(request, body)
+    want_bio = parse_optional_biomass(request, body)
+    want_inhospitable = parse_optional_inhospitable(request, body)
+    want_social_detail = parse_social_detail(request, body)
+    seed, rng = apply_seed(seed_val)
+    try:
+        system = generate_system_from_map(
+            name=name, sector=sector, hex_pos=hex_pos,
+            seed=seed, attach=False,
+            nhz_atmospheres=want_nhz,
+            orbital_eccentricity=want_ecc,
+            orbital_inclination=want_incl,
+        )
+    except LookupError as exc:
+        logger.warning("TravellerMap lookup failed: %s", exc)
+        return error(str(exc), ERR_NOT_FOUND, status_code=404)
+    except urllib.error.URLError as exc:
+        logger.error("TravellerMap upstream error: %s", exc)
+        return error(
+            "Could not reach the upstream data source. Please try again later.",
+            ERR_UPSTREAM, status_code=502,
+        )
+    except Exception as exc:
+        logger.exception("Error generating map world card: %s", exc)
+        return error(
+            "An unexpected error occurred while generating the map world card.",
+            ERR_INTERNAL, status_code=500,
+        )
+    try:
+        attach_detail(system, rng=rng,
+                      independent_government=want_indep,
+                      optional_biomass_rule=want_bio,
+                      optional_inhospitable_rule=want_inhospitable)
+        attach_body_names(system)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
+        _apply_mainworld_moon_tidal(system)
+        apply_secondary_social(system, independent_government=want_indep, rng=rng)
+        if want_social_detail:
+            attach_population_detail(system, rng=rng)
+            attach_government_detail(system, rng=rng)
+            attach_law_detail(system, rng=rng)
+    except Exception as exc:
+        logger.exception("Error in map world card detail generation: %s", exc)
+        return error(
+            "An unexpected error occurred while generating the map world card.",
+            ERR_INTERNAL, status_code=500,
+        )
+    mw = system.mainworld
+    if mw is None:
+        return error("No mainworld in generated system.", ERR_INTERNAL, 500)
+    logger.info("Generated map world card name=%s sector=%s uwp=%s",
+                name or hex_pos, sector, mw.uwp())
+    return HTMLResponse(content=mw.to_html(), status_code=200)
+
+
+# ===========================================================================
+# Endpoint 15:  GET /api/map/system/{name}
 # ===========================================================================
 
 @app.get("/api/map/system/{name}")

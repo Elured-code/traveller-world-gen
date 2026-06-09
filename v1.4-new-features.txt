@@ -312,6 +312,36 @@ In perspective mode the band is correctly foreshortened to match the viewing
 angle. The band width is proportional to the logarithm of the belt's physical
 extent in AU, matching the logarithmic scale used for orbital radii.
 
+FASTAPI — TRAVELLERMAP SYSTEM MAP
+----------------------------------
+The system map shown in the FastAPI web UI now displays the correct number of
+worlds, belts, and gas giants when a world is looked up via TravellerMap. The
+map previously rolled a fresh procedural count rather than using the canonical
+numbers from the TravellerMap database.
+
+- In TravellerMap mode the system map is generated via a new
+  `/api/map/system/svg` endpoint that honours the official PBG
+  (Population / Belts / Gas-giants) counts from TravellerMap.
+- Procedural mode is unchanged — a fresh random count is still rolled.
+- The `system_map.py` command-line tool gains the same capability via the new
+  `--sector` flag (e.g. `--sector "Spinward Marches" --name Regina`).
+
+FASTAPI — SECURITY IMPROVEMENTS
+---------------------------------
+Several security improvements have been made to the FastAPI web interface. These
+are not visible during normal use but protect against misuse.
+
+- All responses now include `Content-Security-Policy`, `X-Frame-Options`, and
+  `X-Content-Type-Options` HTTP headers.
+- The generation status bar no longer accepts unsafe HTML content — user-supplied
+  text (such as a sector name) is handled as plain text only.
+- The result iframes (World card, Mainworld card, System card) are sandboxed so
+  their content cannot access the parent page's stored data.
+- The system map image is verified to be a valid SVG before being displayed;
+  invalid responses produce an error message rather than a broken image.
+- Saved preferences (format, settlement type, source mode) are checked against a
+  list of valid values before being restored.
+
 BUG FIXES
 ---------
 - Fixed: Worlds orbiting a gas giant as a satellite displayed seismic stress
