@@ -153,6 +153,7 @@ class MapWorldData:  # pylint: disable=too-many-instance-attributes
     zone:      str   # "" / " " = Green, "A" = Amber, "R" = Red
     pbg:       str   # Population-Belt-Gas digit string, e.g. "703"
     stars_str: str   # stellar classification, e.g. "G2 V M7 V"
+    worlds:    int = 0  # total world count from TravellerMap "Worlds" field
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +314,7 @@ def fetch_world_data(
         zone      = _raw_field(raw, "Zone", "TravelCode",        default=""),
         pbg       = _raw_field(raw, "PBG", "Pbg",               default="000"),
         stars_str = _raw_field(raw, "Stellar", "Stars", "Star",  default="G2 V"),
+        worlds    = int(_raw_field(raw, "Worlds", "worlds",      default="0") or "0"),
     )
 
 
@@ -584,6 +586,40 @@ def _reconcile_orbit_types(orbits: SystemOrbits,
         o.world_type = wtype
 
 
+def _reconcile_world_count(orbits: SystemOrbits, target_worlds: int) -> None:
+    """
+    Adjust terrestrial slot count so total_worlds matches target_worlds.
+
+    Called after _reconcile_orbit_types() and mainworld type resolution so
+    gas_giant_count and belt_count are already correct.  When the mainworld
+    is a gas giant satellite, the host GG is already in gas_giant_count and
+    the mainworld slot is in terrestrial_count — no special-casing needed.
+    No-op when target_worlds <= 0 (field absent or zero in API response).
+    Mainworld slot is never promoted or demoted.
+    """
+    if target_worlds <= 0:
+        return
+    target_terr = max(1, target_worlds - orbits.gas_giant_count - orbits.belt_count)
+    current_terr = orbits.terrestrial_count
+
+    if current_terr < target_terr:
+        needed = target_terr - current_terr
+        for slot in orbits.orbits:
+            if needed == 0:
+                break
+            if slot.world_type == "empty" and not slot.is_mainworld_candidate:
+                slot.world_type = "terrestrial"
+                needed -= 1
+    elif current_terr > target_terr:
+        excess = current_terr - target_terr
+        for slot in orbits.orbits:
+            if excess == 0:
+                break
+            if slot.world_type == "terrestrial" and not slot.is_mainworld_candidate:
+                slot.world_type = "empty"
+                excess -= 1
+
+
 def _recount_orbit_metadata(orbits: SystemOrbits) -> None:
     """Update SystemOrbits count fields from the actual orbit list."""
     orbits.gas_giant_count   = sum(1 for o in orbits.orbits if o.world_type == "gas_giant")
@@ -668,6 +704,12 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     if mw_orbit is not None:
         mw_orbit.canonical_profile = world.uwp()
         mw_orbit.world_type = "belt" if world.size == 0 else "terrestrial"
+    _recount_orbit_metadata(orbits)
+
+    # Step 6c: reconcile total world count to canonical "Worlds" field.
+    # gas_giant_count and belt_count are now correct; adjust terrestrial
+    # slots so total_worlds matches the API value.  Re-run recount after.
+    _reconcile_world_count(orbits, map_data.worlds)
     _recount_orbit_metadata(orbits)
 
     # Step 6b: temperature is not in the UWP — derive from orbital position
