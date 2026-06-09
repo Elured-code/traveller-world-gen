@@ -245,6 +245,63 @@ rem   run-mapfetch --sector "Spinward Marches" --hex 1910 --detail
 '@
 $mapBat | Set-Content (Join-Path $ScriptDir 'run-mapfetch.bat') -Encoding ASCII
 
+# FastAPI server — batch file
+$fastapiBat = @'
+@echo off
+rem Start the Traveller World Generator FastAPI server.
+rem
+rem The server listens on http://localhost:8000 by default.
+rem
+rem Options (passed through to uvicorn):
+rem   --host HOST   Bind address (default: 127.0.0.1)
+rem   --port PORT   Port number   (default: 8000)
+rem   --reload      Auto-reload on source changes (development only)
+rem
+rem Examples:
+rem   run-fastapi
+rem   run-fastapi --host 0.0.0.0 --port 8080
+cd /d "%~dp0fastapi"
+"%~dp0.venv\Scripts\uvicorn.exe" app:app --host 127.0.0.1 --port 8000 %*
+'@
+$fastapiBat | Set-Content (Join-Path $ScriptDir 'run-fastapi.bat') -Encoding ASCII
+
+# FastAPI server — PowerShell script
+$fastapiPs1 = @'
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+    Start the Traveller World Generator FastAPI server.
+
+.DESCRIPTION
+    Starts uvicorn serving app:app from the fastapi/ subdirectory.
+    The server listens on http://localhost:8000 by default.
+
+    Any extra arguments are forwarded to uvicorn, for example:
+        .\run-fastapi.ps1 --host 0.0.0.0 --port 8080
+        .\run-fastapi.ps1 --reload
+
+.EXAMPLE
+    .\run-fastapi.ps1
+
+.EXAMPLE
+    .\run-fastapi.ps1 --host 0.0.0.0 --port 8080
+#>
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Uvicorn   = Join-Path $ScriptDir '.venv\Scripts\uvicorn.exe'
+$FastApiDir = Join-Path $ScriptDir 'fastapi'
+
+if (-not (Test-Path $Uvicorn)) {
+    Write-Host "[error] uvicorn not found at $Uvicorn" -ForegroundColor Red
+    Write-Host "        Run install.ps1 first to create the virtual environment." -ForegroundColor Yellow
+    exit 1
+}
+
+Set-Location $FastApiDir
+& $Uvicorn app:app --host 127.0.0.1 --port 8000 @args
+'@
+$fastapiPs1 | Set-Content (Join-Path $ScriptDir 'run-fastapi.ps1') -Encoding UTF8
+
 # 6. Activate virtual environment
 if ($env:VIRTUAL_ENV -ne $VenvDir) {
     Info "Activating virtual environment..."
