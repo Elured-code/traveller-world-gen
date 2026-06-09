@@ -609,18 +609,25 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                         f' {comp_clip}/>'
                     )
                 if perspective:
-                    c_pts = _orbit_screen_pts(cx, cy, r, e, 180.0, persp_y, ir, rot_z)
-                    c_mid = len(c_pts) // 2
-                    c_near = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in c_pts[:c_mid + 1])
-                    c_far  = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in c_pts[c_mid:])
-                    s.append(
-                        f'<path d="{c_far}" fill="none" stroke="{comp_col}" stroke-width="1.2"'
-                        f' stroke-dasharray="8,6" opacity="0.16" {comp_clip}/>'
-                    )
-                    s.append(
-                        f'<path d="{c_near}" fill="none" stroke="{comp_col}" stroke-width="1.2"'
-                        f' stroke-dasharray="8,6" opacity="0.40" {comp_clip}/>'
-                    )
+                    if abs(ir) < math.radians(3.0):
+                        s.append(
+                            f'<path d="{_orbit_arc(cx, cy, r, e, 180.0, persp_y, ir, rot_z)}"'
+                            f' fill="none" stroke="{comp_col}" stroke-width="1.2"'
+                            f' stroke-dasharray="8,6" opacity="0.40" {comp_clip}/>'
+                        )
+                    else:
+                        c_pts = _orbit_screen_pts(cx, cy, r, e, 180.0, persp_y, ir, rot_z)
+                        c_mid = len(c_pts) // 2
+                        c_near = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in c_pts[:c_mid + 1])
+                        c_far  = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in c_pts[c_mid:])
+                        s.append(
+                            f'<path d="{c_far}" fill="none" stroke="{comp_col}" stroke-width="1.2"'
+                            f' stroke-dasharray="8,6" opacity="0.16" {comp_clip}/>'
+                        )
+                        s.append(
+                            f'<path d="{c_near}" fill="none" stroke="{comp_col}" stroke-width="1.2"'
+                            f' stroke-dasharray="8,6" opacity="0.40" {comp_clip}/>'
+                        )
                 else:
                     s.append(
                         f'<path d="{_orbit_arc(cx, cy, r, e, hd, persp_y, ir, rot_z)}"'
@@ -712,19 +719,26 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                                 f' stroke-width="0.9" opacity="0.65"/>'
                             )
             if perspective:
-                a_pts  = _orbit_screen_pts(cx, cy, r, e, 180.0, persp_y, ir, rot_z)
-                mid_ix = len(a_pts) // 2
-                near_d = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in a_pts[:mid_ix + 1])
-                far_d  = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in a_pts[mid_ix:])
-                far_opa = f"{max(0.08, float(opa) * 0.40):.2f}"
-                s.append(
-                    f'<path d="{far_d}" fill="none" stroke="{stroke}"'
-                    f' stroke-width="{arc_sw}" {da} opacity="{far_opa}" {clip_attr}/>'
-                )
-                s.append(
-                    f'<path d="{near_d}" fill="none" stroke="{stroke}"'
-                    f' stroke-width="{arc_sw}" {da} opacity="{opa}" {clip_attr}/>'
-                )
+                if abs(ir) < math.radians(3.0):
+                    s.append(
+                        f'<path d="{_orbit_arc(cx, cy, r, e, 180.0, persp_y, ir, rot_z)}" '
+                        f'fill="none" stroke="{stroke}" stroke-width="{arc_sw}" {da} '
+                        f'opacity="{opa}" {clip_attr}/>'
+                    )
+                else:
+                    a_pts  = _orbit_screen_pts(cx, cy, r, e, 180.0, persp_y, ir, rot_z)
+                    mid_ix = len(a_pts) // 2
+                    near_d = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in a_pts[:mid_ix + 1])
+                    far_d  = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in a_pts[mid_ix:])
+                    far_opa = f"{max(0.08, float(opa) * 0.40):.2f}"
+                    s.append(
+                        f'<path d="{far_d}" fill="none" stroke="{stroke}"'
+                        f' stroke-width="{arc_sw}" {da} opacity="{far_opa}" {clip_attr}/>'
+                    )
+                    s.append(
+                        f'<path d="{near_d}" fill="none" stroke="{stroke}"'
+                        f' stroke-width="{arc_sw}" {da} opacity="{opa}" {clip_attr}/>'
+                    )
             else:
                 s.append(
                     f'<path d="{_orbit_arc(cx, cy, r, e, hd, persp_y, ir, rot_z)}" '
@@ -807,8 +821,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                     s.append(
                         f'<line x1="{mx:.1f}" y1="{dl_sy:.1f}"'
                         f' x2="{mx:.1f}" y2="{smy_c:.1f}"'
-                        f' stroke="{palette.axis}" stroke-width="0.8"'
-                        f' stroke-dasharray="2,3" opacity="0.55"/>'
+                        f' stroke="{palette.axis}" stroke-width="1.4"'
+                        f' stroke-dasharray="3,3" opacity="0.75"/>'
                     )
                 # Companion star glyph — same circle logic as the primary star
                 s.append(
@@ -875,8 +889,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                     s.append(
                         f'<line x1="{mx:.1f}" y1="{dl_sy:.1f}"'
                         f' x2="{mx:.1f}" y2="{_smy_z0:.1f}"'
-                        f' stroke="{palette.axis}" stroke-width="0.8"'
-                        f' stroke-dasharray="2,3" opacity="0.55"/>'
+                        f' stroke="{palette.axis}" stroke-width="1.4"'
+                        f' stroke-dasharray="3,3" opacity="0.75"/>'
                     )
                 if ring_px is not None:
                     r_rear, r_front = _ring_halves(mx, my, ring_px[0], ring_px[1], persp_y)
@@ -900,8 +914,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                     s.append(
                         f'<line x1="{mx:.1f}" y1="{dl_sy:.1f}"'
                         f' x2="{mx:.1f}" y2="{_smy_z0:.1f}"'
-                        f' stroke="{palette.axis}" stroke-width="0.8"'
-                        f' stroke-dasharray="2,3" opacity="0.55"/>'
+                        f' stroke="{palette.axis}" stroke-width="1.4"'
+                        f' stroke-dasharray="3,3" opacity="0.75"/>'
                     )
                 s.append(
                     f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{dot_r}" fill="{_sph(fill)}"/>'
