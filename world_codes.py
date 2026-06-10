@@ -78,4 +78,4 @@ class AtmosphereCode(IntEnum):
     GAS_GIANT_I       = 17
 
 
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.5.1"

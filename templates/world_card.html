@@ -458,6 +458,26 @@
   </div>
   {% endif %}
 
+  {% if ctx.tech_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Technology detail</p>
+    {{ drow("Technology profile", ctx.tech_detail.technology_profile) }}
+    {{ drow("High common TL", ctx.tech_detail.tl_high_common|string) }}
+    {{ drow("Low common TL", ctx.tech_detail.tl_low_common|string) }}
+    {{ drow("Energy TL", ctx.tech_detail.tl_energy|string) }}
+    {{ drow("Electronics TL", ctx.tech_detail.tl_electronics|string) }}
+    {{ drow("Manufacturing TL", ctx.tech_detail.tl_manufacturing|string) }}
+    {{ drow("Medical TL", ctx.tech_detail.tl_medical|string) }}
+    {{ drow("Environmental TL", ctx.tech_detail.tl_environmental|string) }}
+    {{ drow("Land transport TL", ctx.tech_detail.tl_land|string) }}
+    {{ drow("Sea transport TL", ctx.tech_detail.tl_sea|string) }}
+    {{ drow("Air transport TL", ctx.tech_detail.tl_air|string) }}
+    {{ drow("Space transport TL", ctx.tech_detail.tl_space|string) }}
+    {{ drow("Personal military TL", ctx.tech_detail.tl_military_personal|string) }}
+    {{ drow("Heavy military TL", ctx.tech_detail.tl_military_heavy|string) }}
+  </div>
+  {% endif %}
+
   {% if ctx.law_detail is not none %}
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Law detail</p>
