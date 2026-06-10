@@ -1,10 +1,69 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–115
-**Tests:** 2015
+**Sessions:** 88–116
+**Tests:** 2044
 
 ---
+
+## Internal refactor: RNG threading, `_MWCtx`, adjacency cache, `gg_diameter_from_sah` (Session 116)
+
+Six source-level optimisations with no user-visible behaviour change:
+
+1. **`hz_deviation_to_raw_roll` signature simplified** — removed unused `hzco: float`
+   and `orbit: float` parameters from `hz_deviation_to_raw_roll()` and
+   `generate_temperature_from_orbit()`. Cascade-updated all four callers in
+   `traveller_system_gen.py` and `traveller_map_fetch.py`.
+
+2. **`_MWCtx` NamedTuple** — replaced the 7-field `mw_*` keyword-argument explosion
+   across all private helpers in `traveller_world_detail.py` with a single
+   `_MWCtx(pop, gov, law, tl, trade_codes, bases, starport)`. `_mw_context(mainworld)`
+   constructs one; public APIs are unchanged.
+
+3. **Adjacency cache** — `generate_system_detail()` now pre-builds a
+   `dict[tuple, dict]` of `_moon_adjacency_context()` results keyed by
+   `(orbit_number, star_designation)` before the main orbit loop, eliminating
+   redundant re-computation for systems with many orbits.
+
+4. **`global _rng` removed** — all public entry points in `traveller_world_detail.py`
+   (`attach_detail`, `apply_secondary_social`, `reattach_mainworld_orbit`,
+   `generate_system_detail`) now resolve `rng = rng if rng is not None else _rng`
+   locally. All private helpers now accept `rng: random.Random` as a required
+   argument with no default.
+
+5. **Intentional double-social documented** — `generate_system_detail()` calls
+   `_social()` for every orbit during system-level generation, and `apply_secondary_social()`
+   re-applies it after `apply_mainworld_social()` sets the correct mainworld values.
+   This double pass is intentional and is now explained in a comment.
+
+6. **`gg_diameter_from_sah` deduplicated** — moved from private copies in both
+   `traveller_system_gen.py` (`_gg_diameter`) and `traveller_world_detail.py` to a
+   single public function in `world_codes.py`. Both modules now import it from there.
+   `APP_VERSION` bumped to `"1.5.1"` (schema-compatible maintenance release).
+
+31 test call-sites updated to match new private-helper signatures. 2044 tests pass.
+
+---
+
+## FastAPI mainworld UWP mismatch fix + gen-ui Select mainworld option (Session 116)
+
+FastAPI was making two separate API calls for the same seed — `/api/system/full` and
+`/api/world/{name}/card` — which used different RNG paths and produced different UWPs.
+Fixed by adding `include_mw_card=true` to `/api/system/full` and
+`/api/map/system/full`: when `format=html&include_mw_card=true` the endpoint returns
+`JSONResponse({"sys_html":…,"mw_html":…})` so both cards come from the same
+generation. `parse_include_mw_card()` helper added to `fastapi/helpers.py`.
+Frontend (`system.html`) updated to use a single fetch for both full modes.
+
+gen-ui RNG was also diverging from FastAPI: `attach_detail` was starting from RNG
+position 0 (fresh module-level `random.seed(seed)`) instead of continuing from
+position P after stellar/orbit generation. Fixed by threading an explicit
+`random.Random(seed)` through the entire pipeline in `_finish_system_generation()`.
+Same-seed generations in gen-ui and FastAPI now use the same RNG continuation.
+
+"Select mainworld" option added to gen-ui `_OptionsDialog` (sub-option under
+"System detail"). Previously `select_mainworld()` ran unconditionally whenever
+System detail was on; it is now opt-in. QSettings key: `opt_select_mw`.
 
 ## FastAPI security hardening (Session 115)
 

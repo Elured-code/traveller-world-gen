@@ -141,6 +141,25 @@ or `Ni` in the system body table and JSON output.
 
 ---
 
+## `_MWCtx`: passing mainworld context to private helpers (Session 116)
+
+Many private helpers need the mainworld's social codes (population, government,
+law, TL, trade codes, bases, starport) to compute secondary world values. Rather
+than accepting seven individual keyword arguments, they all receive a `_MWCtx`
+NamedTuple:
+
+```python
+class _MWCtx(NamedTuple):
+    pop: int; gov: int; law: int; tl: int
+    trade_codes: list; bases: list; starport: str
+```
+
+The public functions build one at their entry point via `_mw_context(mainworld)`
+and pass it through to every private call. This eliminates the `mw_pop=...,
+mw_gov=..., mw_law=...` explosion that the original code had.
+
+---
+
 ## Secondary world government: Case 1 vs Case 2
 
 WBH p.162 defines two ways to determine a secondary world's government, and the
@@ -152,23 +171,27 @@ table with DMs based on the mainworld's government code. This produces only
 government codes 0, 1, 2, 3, or 6.
 
 ```python
-def _secondary_government(mainworld_pop, mainworld_gov):
-    r = _rng.randint(1, 6)
-    if mainworld_gov == 0: r = max(1, r - 2)
-    elif mainworld_gov == 6: r += mainworld_pop
+def _secondary_government(mw_pop: int, mw_gov: int, rng: random.Random) -> int:
+    r = rng.randint(1, 6)
+    if mw_gov == 0: r = max(1, r - 2)
+    elif mw_gov == 6: r += mw_pop
     if r <= 1: return 0
     if r <= 2: return 1
     ...
     return 6  # captive government
 ```
 
+Private helpers receive `rng: random.Random` as a required argument (Session 116).
+They no longer read the module-level `_rng` directly — the resolved RNG is threaded
+through from the public entry point (`attach_detail` / `apply_secondary_social`).
+
 **Case 2 — Independent:** The secondary world governs itself. Roll `2D − 7 +
 Population`, the same formula used for a mainworld. This can produce any
 government code from 0 upwards.
 
 ```python
-def _independent_government(population):
-    return max(0, _roll(2, -7 + population))
+def _independent_government(pop: int, rng: random.Random) -> int:
+    return max(0, _roll(2, -7 + pop, rng=rng))
 ```
 
 The Case 2 path is activated by passing `independent_government=True` to
