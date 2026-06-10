@@ -79,3 +79,17 @@ class AtmosphereCode(IntEnum):
 
 
 APP_VERSION = "1.5.1"
+
+_EHEX = "0123456789ABCDEFGHIJ"
+
+
+def gg_diameter_from_sah(gg_sah: str) -> int:
+    """Return the numeric diameter (Terran diameters) from a gas giant SAH string.
+
+    E.g. 'GM9' → 9, 'GLE' → 14.  Returns 8 (mid-range default) on parse failure.
+    """
+    if len(gg_sah) >= 3:
+        idx = _EHEX.find(gg_sah[2].upper())
+        if idx >= 0:
+            return idx
+    return 8

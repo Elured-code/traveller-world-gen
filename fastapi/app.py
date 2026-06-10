@@ -127,7 +127,7 @@ from helpers import (
     parse_nhz_atmospheres, parse_orbital_eccentricity, parse_orbital_inclination,
     parse_runaway_greenhouse, parse_independent_government,
     parse_optional_biomass, parse_optional_inhospitable,
-    parse_social_detail, parse_settlement_type,
+    parse_social_detail, parse_settlement_type, parse_include_mw_card,
     parse_seed, parse_sector, parse_world_json,
 )
 
@@ -147,7 +147,10 @@ from traveller_hydro_detail import generate_hydrographic_detail
 from traveller_system_gen import (
     generate_full_system, generate_system_from_world, select_mainworld, attach_body_names,
 )
-from traveller_world_detail import attach_detail, gg_diameter_from_sah, apply_secondary_social
+from traveller_world_detail import (
+    attach_detail, gg_diameter_from_sah, apply_secondary_social,
+    reattach_mainworld_orbit,
+)
 from traveller_world_population_detail import attach_population_detail
 from traveller_world_government_detail import attach_government_detail
 from traveller_world_law_detail import attach_law_detail
@@ -397,6 +400,15 @@ def _attach_mainworld_physical(  # pylint: disable=too-many-branches
         orbit_eccentricity=orbit_ecc,
         star_mass=stars[0].mass if stars else 1.0,
     )
+    # Sync the orbit slot WorldDetail SAH with any atmosphere/hydro mutations
+    # (e.g. runaway greenhouse).  No-op when attach_detail() hasn't run yet.
+    if mw_orbit.world_type == "gas_giant":
+        if mw_orbit.detail and mw_orbit.detail.moons:
+            sat_det = mw_orbit.detail.moons[0].detail
+            if sat_det is not None:
+                sat_det.sah = mw.uwp()[1:4]
+    elif mw_orbit.detail is not None:
+        mw_orbit.detail.sah = mw.uwp()[1:4]
 
 
 def _get_mainworld_moons(system) -> list:
@@ -652,10 +664,11 @@ def _run_select_mainworld(  # pylint: disable=too-many-arguments,too-many-positi
     swapped = select_mainworld(system, rng=rng)
     if swapped:
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
-        if want_detail:
-            _apply_mainworld_moon_tidal(system)
     if system.mainworld is not None:
         apply_mainworld_social(system.mainworld, rng=rng, settlement_type=settlement_type)
+    if swapped and want_detail:
+        reattach_mainworld_orbit(system, rng=rng)
+        _apply_mainworld_moon_tidal(system)
     if want_detail:
         apply_secondary_social(system,
                                independent_government=independent_government,
@@ -669,7 +682,7 @@ def _run_select_mainworld(  # pylint: disable=too-many-arguments,too-many-positi
 
 @app.api_route("/api/system/full", methods=["GET", "POST"])
 @limiter.limit(_RATE_LIMIT)
-async def generate_full_system_complete(request: Request) -> Response:  # pylint: disable=too-many-locals
+async def generate_full_system_complete(request: Request) -> Response:  # pylint: disable=too-many-locals,too-many-return-statements
     """Generate a complete star system with all secondary world and moon profiles.
 
     Always runs attach_detail() — every orbit slot and moon receives its full
@@ -697,6 +710,7 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_social_detail = parse_social_detail(request, body)
+    want_mw_card = parse_include_mw_card(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
@@ -729,7 +743,10 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
         mw.uwp() if mw else "—",
     )
     if fmt == "html":
-        return HTMLResponse(content=system.to_html(detail_attached=True), status_code=200)
+        sys_html = system.to_html(detail_attached=True)
+        if want_mw_card and mw is not None:
+            return JSONResponse({"sys_html": sys_html, "mw_html": mw.to_html()})
+        return HTMLResponse(content=sys_html, status_code=200)
     if fmt == "text":
         return PlainTextResponse(content=system.summary(), status_code=200)
     return ok(system.to_dict())
@@ -1193,7 +1210,7 @@ async def generate_map_system(request: Request) -> Response:  # pylint: disable=
 
 @app.api_route("/api/map/system/full", methods=["GET", "POST"])
 @limiter.limit(_RATE_LIMIT)
-async def generate_map_system_full(request: Request) -> Response:  # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches
+async def generate_map_system_full(request: Request) -> Response:  # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches,too-many-statements
     """Fetch canonical data from TravellerMap and generate a fully detailed system.
 
     Like /api/map/system but always runs attach_detail(), apply_secondary_social(),
@@ -1240,6 +1257,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_social_detail = parse_social_detail(request, body)
+    want_mw_card = parse_include_mw_card(request, body)
     seed, rng = apply_seed(seed_val)
     try:
         system = generate_system_from_map(
@@ -1294,7 +1312,10 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
         mw.uwp() if mw else "—",
     )
     if fmt == "html":
-        return HTMLResponse(content=system.to_html(detail_attached=True), status_code=200)
+        sys_html = system.to_html(detail_attached=True)
+        if want_mw_card and mw is not None:
+            return JSONResponse({"sys_html": sys_html, "mw_html": mw.to_html()})
+        return HTMLResponse(content=sys_html, status_code=200)
     if fmt == "text":
         return PlainTextResponse(content=system.summary(), status_code=200)
     return ok(system.to_dict())

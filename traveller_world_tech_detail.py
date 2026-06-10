@@ -422,6 +422,8 @@ def attach_tech_detail(
         )
 
     for orbit in system.system_orbits.orbits:
+        if orbit.is_mainworld_candidate:
+            continue
         det = orbit.detail
         if det is None or not det.inhabited:
             continue

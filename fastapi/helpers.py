@@ -296,6 +296,16 @@ def parse_social_detail(request: Request, body: dict) -> bool:
     return _parse_bool_param(request, body, "social_detail")
 
 
+def parse_include_mw_card(request: Request, body: dict) -> bool:
+    """Extract the optional 'include_mw_card' flag.
+
+    When True and format=html, the /api/system/full endpoint returns a JSON
+    object with 'sys_html' and 'mw_html' keys instead of bare system HTML, so
+    the mainworld card comes from the same generation as the system table.
+    """
+    return _parse_bool_param(request, body, "include_mw_card")
+
+
 def parse_format(request: Request, body: dict) -> str:
     """Extract the optional 'format' parameter.
 

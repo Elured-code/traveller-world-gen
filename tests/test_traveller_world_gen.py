@@ -148,6 +148,7 @@ from traveller_world_government_detail import (
 )
 from traveller_world_detail import (
     attach_detail, _ehex_to_int, generate_biomass_rating, WorldDetail,
+    reattach_mainworld_orbit,
 )
 from traveller_hydro_detail import HydrographicDetail
 from traveller_world_physical import WorldPhysical
@@ -4435,20 +4436,20 @@ class TestGasGiantOrbitSlot:
                 )
 
     def test_gg_diameter_parses_decimal_digits(self):
-        from traveller_system_gen import _gg_diameter
-        assert _gg_diameter("GM9") == 9
-        assert _gg_diameter("GS4") == 4
-        assert _gg_diameter("GL0") == 0
+        from world_codes import gg_diameter_from_sah
+        assert gg_diameter_from_sah("GM9") == 9
+        assert gg_diameter_from_sah("GS4") == 4
+        assert gg_diameter_from_sah("GL0") == 0
 
     def test_gg_diameter_parses_hex_letter(self):
-        from traveller_system_gen import _gg_diameter
-        assert _gg_diameter("GLC") == 12
-        assert _gg_diameter("GLF") == 15
+        from world_codes import gg_diameter_from_sah
+        assert gg_diameter_from_sah("GLC") == 12
+        assert gg_diameter_from_sah("GLF") == 15
 
     def test_gg_diameter_fallback_for_empty(self):
-        from traveller_system_gen import _gg_diameter
-        assert _gg_diameter("") == 8
-        assert _gg_diameter("XX") == 8
+        from world_codes import gg_diameter_from_sah
+        assert gg_diameter_from_sah("") == 8
+        assert gg_diameter_from_sah("XX") == 8
 
     def test_gas_giant_mainworld_size_less_than_gg(self):
         from traveller_system_gen import generate_full_system
@@ -6366,7 +6367,7 @@ class TestLargeSecondaryWorldAtmosphere:
         with patch("traveller_world_detail._terrestrial_size", return_value=10), \
              patch("traveller_world_gen.roll", side_effect=[15, 5]):
             # side_effect order: atmosphere roll, then hydrographics roll
-            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), 3.0)
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
         assert atm == 15
 
     @pytest.mark.parametrize("size,max_formula_result", [
@@ -6378,7 +6379,7 @@ class TestLargeSecondaryWorldAtmosphere:
         import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         with patch("traveller_world_detail._terrestrial_size", return_value=size), \
              patch("traveller_world_gen.roll", side_effect=[max_formula_result, 5]):
-            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), 3.0)
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
         assert atm == 15, (
             f"size={size}: formula yields {max_formula_result} but must clamp to 15"
         )
@@ -6390,7 +6391,7 @@ class TestLargeSecondaryWorldAtmosphere:
         import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         with patch("traveller_world_detail._terrestrial_size", return_value=size), \
              patch("traveller_world_gen.roll", side_effect=[15, 5]):
-            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), 3.0)
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
         assert atm == 15, (
             f"size={size}: forced roll=15 should give atm=15 (old cap gave max 14)"
         )
@@ -6403,11 +6404,13 @@ class TestLargeSecondaryWorldAtmosphere:
         moon = Moon(size_code=11)
         # roll calls in _moon_detail: atmosphere then hydrographics.
         # Social dice go through _rng.randint() directly and are not intercepted.
-        random.seed(1)
+        rng = random.Random(1)
         with patch("traveller_world_gen.roll", side_effect=[17, 5]):
             detail = _twd._moon_detail(
-                moon=moon, hz_deviation=0.0, hzco=3.0, orbit_number=3.0,
-                mw_pop=8, mw_gov=5, mw_law=5, mw_tl=10, max_secondary_pop=6,
+                moon=moon, hz_deviation=0.0,
+                mwc=_twd._MWCtx(pop=8, gov=5, law=5, tl=10,
+                                 trade_codes=[], bases=[], starport="X"),
+                max_secondary_pop=6, rng=rng,
             )
         atm = _ehex_to_int(detail.sah[1]) if len(detail.sah) >= 2 else -1
         assert atm == 15, f"size-11 moon: forced roll=17 should clamp to 15, got {atm}"
@@ -6419,7 +6422,7 @@ class TestLargeSecondaryWorldAtmosphere:
         for seed in range(300):
             random.seed(seed)
             with patch("traveller_world_detail._terrestrial_size", return_value=11):
-                _, atm, _ = _twd._terrestrial_sah(slot, 3.0)
+                _, atm, _ = _twd._terrestrial_sah(slot, False, random.Random(seed))
             assert 0 <= atm <= 15, (
                 f"seed={seed}: size-11 secondary produced atmosphere {atm} outside [0,15]"
             )
@@ -6433,8 +6436,7 @@ class TestIndependentGovernment:
         import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         for pop in range(0, 10):
             for seed in range(50):
-                random.seed(seed)
-                gov = _twd._independent_government(pop)
+                gov = _twd._independent_government(pop, random.Random(seed))
                 assert gov >= 0
                 assert gov <= 14  # max: 2×6 - 7 + 9 = 14
 
@@ -6443,8 +6445,7 @@ class TestIndependentGovernment:
         import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         codes_seen: set = set()
         for seed in range(200):
-            random.seed(seed)
-            gov = _twd._secondary_government(mainworld_pop=6, mainworld_gov=3)
+            gov = _twd._secondary_government(6, 3, random.Random(seed))
             codes_seen.add(gov)
         assert codes_seen <= {0, 1, 2, 3, 6}, (
             f"Case 1 should only produce {{0,1,2,3,6}}, got {codes_seen}"
@@ -6500,8 +6501,8 @@ class TestIndependentGovernment:
         # The independent formula must stay in [0, 11] (max 2D-1 = 12-1 = 11).
         mainworld_law = 99
         for seed in range(100):
-            random.seed(seed)
-            law = _twd._secondary_law_level(6, mainworld_law, independent=True)
+            law = _twd._secondary_law_level(6, mainworld_law, random.Random(seed),
+                                             independent=True)
             assert 0 <= law <= 11, (
                 f"seed={seed}: independent law for gov 6 should be in [0,11], got {law}"
             )
@@ -6662,6 +6663,93 @@ class TestSelectMainworld:
         assert uwp[0] in "ABCDEX"
         assert mw.travel_zone in ("Green", "Amber", "Red")
 
+    def _force_swap(self, seed_range=50):
+        """Return (system, orig_orbit) with a confirmed swap applied."""
+        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        system, winner_orbit = self._make_system_with_terrestrial_secondary()
+        mw = system.mainworld
+        winner_orbit.detail.habitability_rating = 20
+        if mw.habitability_rating is None or mw.habitability_rating < 15:
+            mw.habitability_rating = 0
+        orig_orbit = system.mainworld_orbit
+        for attempt in range(seed_range):
+            rng = random.Random(attempt)
+            roll = rng.randint(1, 6) + rng.randint(1, 6) + rng.randint(1, 6)
+            if roll != 18:
+                result = select_mainworld(system, rng=random.Random(attempt))
+                if result:
+                    apply_mainworld_social(system.mainworld, rng=random.Random(99999))
+                    return system, orig_orbit
+        return None, None  # no swap found
+
+    def test_reattach_noop_when_detail_exists(self):
+        """reattach_mainworld_orbit() is a no-op when orbit already has a WorldDetail."""
+        system = generate_full_system("T", seed=7)
+        attach_detail(system, rng=random.Random(77777))
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        orig_detail = mw_orbit.detail
+        reattach_mainworld_orbit(system, rng=random.Random(1))
+        assert mw_orbit.detail is orig_detail
+
+    def test_orbit_detail_created_after_swap(self):
+        """After swap + social + reattach, mainworld orbit has a WorldDetail."""
+        system, _ = self._force_swap()
+        if system is None:
+            pytest.skip("No swap found in seed range")
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        assert mw_orbit.detail is None  # cleared by select_mainworld
+        reattach_mainworld_orbit(system, rng=random.Random(1))
+        assert mw_orbit.detail is not None
+        assert isinstance(mw_orbit.detail, WorldDetail)
+
+    def test_orbit_sah_matches_mainworld_after_swap(self):
+        """After reattach, orbit slot SAH matches mainworld UWP[1:4]."""
+        system, _ = self._force_swap()
+        if system is None:
+            pytest.skip("No swap found in seed range")
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        reattach_mainworld_orbit(system, rng=random.Random(1))
+        expected_sah = system.mainworld.uwp()[1:4]
+        if mw_orbit.world_type == "gas_giant":
+            assert mw_orbit.detail.moons
+            assert mw_orbit.detail.moons[0].detail.sah == expected_sah
+        else:
+            assert mw_orbit.detail.sah == expected_sah
+
+    def test_orbit_starport_matches_mainworld(self):
+        """After reattach, orbit slot spaceport matches mainworld starport."""
+        system, _ = self._force_swap()
+        if system is None:
+            pytest.skip("No swap found in seed range")
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        reattach_mainworld_orbit(system, rng=random.Random(1))
+        expected_starport = system.mainworld.starport
+        if mw_orbit.world_type == "gas_giant":
+            assert mw_orbit.detail.moons
+            assert mw_orbit.detail.moons[0].detail.spaceport == expected_starport
+        else:
+            assert mw_orbit.detail.spaceport == expected_starport
+
+    def test_no_orbit_detail_mutation_when_not_swapped(self):
+        """When select_mainworld returns False, calling reattach is a no-op."""
+        for seed in range(20):
+            system = generate_full_system("T", seed=seed)
+            attach_detail(system, rng=random.Random(seed + 1000))
+            mw_orbit = system.mainworld_orbit
+            if mw_orbit is None or mw_orbit.detail is None:
+                continue
+            orig_detail = mw_orbit.detail
+            result = select_mainworld(system, rng=random.Random(seed))
+            if not result:
+                reattach_mainworld_orbit(system, rng=random.Random(1))
+                assert mw_orbit.detail is orig_detail
+                return
+        pytest.skip("No non-swap case found in seed range")
+
 
 class TestSecondaryWorldClassification:
     """Secondary world categorisation (WBH p.163, issue #18)."""
@@ -6712,16 +6800,23 @@ class TestSecondaryWorldClassification:
     def _call(self, **kw):
         """Thin wrapper that supplies neutral defaults and calls the private fn."""
         import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
-        defaults = dict(
-            pop=3, gov=2, tl=7, law_level=4, atm=6, hyd=5,
-            hz_deviation=0.0, is_belt=False,
-            mw_pop=7, mw_tl=9, mw_law=5, mw_gov=5,
-            mw_trade_codes=[], mw_bases=[], mw_starport="C",
+        mw_kw = dict(mw_pop=7, mw_gov=5, mw_law=5, mw_tl=9,
+                     mw_trade_codes=[], mw_bases=[], mw_starport="C")
+        call_kw = dict(pop=3, gov=2, tl=7, law_level=4, atm=6, hyd=5,
+                       hz_deviation=0.0, is_belt=False)
+        for k, v in kw.items():
+            if k in mw_kw:
+                mw_kw[k] = v
+            else:
+                call_kw[k] = v
+        mwc = twd._MWCtx(  # pylint: disable=protected-access
+            pop=mw_kw["mw_pop"], gov=mw_kw["mw_gov"], law=mw_kw["mw_law"],
+            tl=mw_kw["mw_tl"], trade_codes=mw_kw["mw_trade_codes"],
+            bases=mw_kw["mw_bases"], starport=mw_kw["mw_starport"],
         )
-        defaults.update(kw)
-        # Seed the module RNG so rolls are deterministic
-        twd._rng = random.Random(0)  # pylint: disable=protected-access
-        return twd._secondary_classification(**defaults)  # pylint: disable=protected-access
+        rng = random.Random(0)
+        return twd._secondary_classification(  # pylint: disable=protected-access
+            **call_kw, mwc=mwc, rng=rng)
 
     def test_colony_automatic(self):
         """Pop 5+, Gov 6 → Colony without a roll."""
@@ -6766,12 +6861,12 @@ class TestSecondaryWorldClassification:
         # contested check to pass.  Loop until Mi is assigned.
         found = False
         for seed in range(200):
-            twd._rng = random.Random(seed)  # pylint: disable=protected-access
+            rng = random.Random(seed)
+            mwc = twd._MWCtx(pop=8, gov=4, law=5, tl=10,  # pylint: disable=protected-access
+                              trade_codes=["In"], bases=[], starport="C")
             result = twd._secondary_classification(  # pylint: disable=protected-access
                 pop=3, gov=0, tl=5, law_level=2, atm=0, hyd=0,
-                hz_deviation=0.5, is_belt=True,
-                mw_pop=8, mw_tl=10, mw_law=5, mw_gov=4,
-                mw_trade_codes=["In"], mw_bases=[], mw_starport="C",
+                hz_deviation=0.5, is_belt=True, mwc=mwc, rng=rng,
             )
             if result == "Mi":
                 found = True
@@ -7450,6 +7545,7 @@ def _name_system(name: str = "Test", seed: int = 370):
     """Helper: generate, detail, and name a system."""
     system = generate_full_system(name, seed=seed)
     from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+    random.seed(seed)   # deterministic social/detail regardless of prior test state
     apply_mainworld_social(system.mainworld)
     attach_detail(system)
     attach_body_names(system)

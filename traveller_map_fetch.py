@@ -714,12 +714,9 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
 
     # Step 6b: temperature is not in the UWP — derive from orbital position
     if mw_orbit is not None:
-        hzco = orbits.star_hzco.get(mw_orbit.star_designation, 1.0)
         world.temperature = generate_temperature_from_orbit(
             atmosphere   = world.atmosphere,
             hz_deviation = mw_orbit.hz_deviation,
-            hzco         = hzco,
-            orbit        = mw_orbit.orbit_number,
         )
         world.notes.append(
             f"Temperature derived from orbit: "

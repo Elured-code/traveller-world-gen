@@ -380,10 +380,13 @@ class TestGenerateWorldPhysical:
         assert result.tidal_status == "none"
 
     def test_tidal_status_set_when_orbit_data_provided(self):
-        # Close orbit, heavy star, old age → should produce a non-"none" status
+        # Close orbit, heavy star, old age → should produce a non-"none" status.
+        # Seeded RNG to isolate from module-level _rng state in other tests.
+        import random  # pylint: disable=import-outside-toplevel
         w = _World(size=6, atmosphere=6)
         result = generate_world_physical(
-            w, age_gyr=12.0, orbit_number=1.5, orbit_au=0.4, star_mass=1.0
+            w, age_gyr=12.0, orbit_number=1.5, orbit_au=0.4, star_mass=1.0,
+            rng=random.Random(0),
         )
         assert result is not None
         assert result.tidal_status in TIDAL_STATUS_LABELS

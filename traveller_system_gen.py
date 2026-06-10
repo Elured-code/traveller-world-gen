@@ -63,7 +63,7 @@ from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
 from traveller_hydro_detail import generate_hydrographic_detail
 from html_render import render
-from world_codes import APP_VERSION
+from world_codes import APP_VERSION, gg_diameter_from_sah
 from traveller_world_gen import (
     World,
     generate_size,
@@ -83,11 +83,7 @@ from traveller_world_gen import (
 # HZ deviation → raw temperature roll  (WBH p.46-47)
 # ---------------------------------------------------------------------------
 
-def hz_deviation_to_raw_roll(  # pylint: disable=unused-argument
-    hz_deviation: float,
-    hzco: float,
-    orbit: float,
-) -> int:
+def hz_deviation_to_raw_roll(hz_deviation: float) -> int:
     """
     Convert an orbit's HZ deviation to the raw 2D temperature roll
     used in the CRB temperature table (p.251), via the WBH Habitable
@@ -98,38 +94,27 @@ def hz_deviation_to_raw_roll(  # pylint: disable=unused-argument
     Negative deviation (closer = hotter) raises the raw roll toward Boiling.
     Positive deviation (further = colder) lowers the raw roll toward Frozen.
 
-    The hzco and orbit parameters are retained for API compatibility but are
-    no longer used; the WBH HZ Regions table (p.46) is applied directly to
-    the unscaled orbit# deviation.  Sub-Orbit#1 scaling was removed because
-    it conflicts with is_habitable_zone (which uses the unscaled deviation) and
-    produces absurd results for dim stars (HZCO ≈ 0 amplified 50×).
-
     Returns an int in range 2-12 (clamped).
     """
-    # Map deviation to raw roll via the HZ Regions table (WBH p.46)
-    # HZCO = raw roll 7 (deviation 0)
-    # Each 0.1 Orbit# away from HZCO shifts the raw roll by ~1
-    eff_dev = hz_deviation
-
-    if eff_dev >= 1.1:
+    if hz_deviation >= 1.1:
         raw = 2        # Frozen
-    elif eff_dev >= 1.0:
+    elif hz_deviation >= 1.0:
         raw = 3        # Cold
-    elif eff_dev >= 0.5:
+    elif hz_deviation >= 0.5:
         raw = 4        # Cold
-    elif eff_dev >= 0.2:
+    elif hz_deviation >= 0.2:
         raw = 5        # Temperate (cool)
-    elif eff_dev >= 0.1:
+    elif hz_deviation >= 0.1:
         raw = 6        # Temperate
-    elif eff_dev >= 0.0:
+    elif hz_deviation >= 0.0:
         raw = 7        # Temperate (HZCO)
-    elif eff_dev >= -0.1:
+    elif hz_deviation >= -0.1:
         raw = 8        # Temperate (warm)
-    elif eff_dev >= -0.2:
+    elif hz_deviation >= -0.2:
         raw = 9        # Temperate (warm)
-    elif eff_dev >= -0.5:
+    elif hz_deviation >= -0.5:
         raw = 10       # Hot
-    elif eff_dev >= -1.0:
+    elif hz_deviation >= -1.0:
         raw = 11       # Hot
     else:
         raw = 12       # Boiling
@@ -137,12 +122,7 @@ def hz_deviation_to_raw_roll(  # pylint: disable=unused-argument
     return max(2, min(12, raw))
 
 
-def generate_temperature_from_orbit(
-    atmosphere: int,
-    hz_deviation: float,
-    hzco: float,
-    orbit: float,
-) -> str:
+def generate_temperature_from_orbit(atmosphere: int, hz_deviation: float) -> str:
     """
     Determine temperature using orbital position rather than a random roll.
 
@@ -150,7 +130,7 @@ def generate_temperature_from_orbit(
     then the atmosphere DM is added exactly as the CRB specifies (p.251).
     This ensures the world's temperature is consistent with its orbit.
     """
-    raw_roll = hz_deviation_to_raw_roll(hz_deviation, hzco, orbit)
+    raw_roll = hz_deviation_to_raw_roll(hz_deviation)
     atm_dm = TEMPERATURE_DM.get(atmosphere, 0)
     modified_roll = raw_roll + atm_dm
     return temperature_category(modified_roll)
@@ -325,7 +305,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             if o.notes:
                 note_parts.append(o.notes)
             if o.world_type == "gas_giant" and o.gg_mass_earth is not None:
-                gg_diam_km = _gg_diameter(o.gg_sah or "") * 12800.0
+                gg_diam_km = gg_diameter_from_sah(o.gg_sah or "") * 12800.0
                 if gg_diam_km > 0:
                     gg_density = (
                         o.gg_mass_earth / (gg_diam_km / 12742.0) ** 3
@@ -435,20 +415,10 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
         )
 
 
-_GG_EHEX = "0123456789ABCDEFGHIJ"
-
-
-def _gg_diameter(gg_sah: str) -> int:
-    """Return the numeric diameter from a gas giant SAH string (e.g. 'GM9' → 9)."""
-    if len(gg_sah) >= 3 and gg_sah[2].upper() in _GG_EHEX:
-        return _GG_EHEX.index(gg_sah[2].upper())
-    return 8  # fallback: mid-range GM diameter
-
 
 def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements
     name: str,
     orbit: OrbitSlot,
-    hzco: float,
     gas_giant_count: int,
     belt_count: int,
     system_age_gyr: Optional[float] = None,
@@ -487,14 +457,12 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.temperature = generate_temperature_from_orbit(
             atmosphere=0,
             hz_deviation=orbit.hz_deviation,
-            hzco=hzco,
-            orbit=orbit.orbit_number,
         )
     elif orbit.world_type == "gas_giant":
         # The mainworld is a satellite of the gas giant, not the giant itself.
         # Size is constrained: at least 1, at most gg_diameter-1 (WBH p.57).
         gg_sah = getattr(orbit, "gg_sah", "")
-        gg_diam = _gg_diameter(gg_sah)
+        gg_diam = gg_diameter_from_sah(gg_sah)
         world.size = min(max(generate_size(), 1), gg_diam - 1)
         _nhz = (nhz_atmospheres
                 and orbit.hz_deviation is not None
@@ -509,8 +477,6 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=orbit.hz_deviation,
-            hzco=hzco,
-            orbit=orbit.orbit_number,
         )
         world.atmosphere_detail = generate_atmosphere_detail(
             world.atmosphere, world.size, system_age_gyr, world.temperature,
@@ -551,8 +517,6 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=orbit.hz_deviation,
-            hzco=hzco,
-            orbit=orbit.orbit_number,
         )
 
         # Atmosphere detail needs temperature to characterise exotic/corrosive subtypes
@@ -643,13 +607,9 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
     mainworld = None
 
     if mw_orbit is not None:
-        # Retrieve HZCO for the mainworld's host star
-        hzco = orbits.star_hzco.get(mw_orbit.star_designation, 1.0)
-
         mainworld = generate_mainworld_at_orbit(
             name=name,
             orbit=mw_orbit,
-            hzco=hzco,
             gas_giant_count=orbits.gas_giant_count,
             belt_count=orbits.belt_count,
             system_age_gyr=stellar.age_gyr,
@@ -722,12 +682,9 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
 
         # Recalculate temperature from orbital position ("orbital temperature,
         # not random" design rule — the JSON value is discarded).
-        hzco = orbits.star_hzco.get(mw_orbit.star_designation, 1.0)
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=mw_orbit.hz_deviation,
-            hzco=hzco,
-            orbit=mw_orbit.orbit_number,
         )
         world.notes.append(
             f"System generated from existing mainworld UWP {world.uwp()}. "
@@ -875,12 +832,10 @@ def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-m
 
     # b. Regenerate winner as a full World
     import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
-    hzco    = system.system_orbits.star_hzco.get(winner_orbit.star_designation, 1.0)
     age_gyr = system.stellar_system.primary.age_gyr
     new_mw  = generate_mainworld_at_orbit(
         name=mw.name,
         orbit=winner_orbit,
-        hzco=hzco,
         gas_giant_count=system.system_orbits.gas_giant_count,
         belt_count=system.system_orbits.belt_count,
         system_age_gyr=age_gyr,

@@ -907,23 +907,41 @@
                      full: isFullDetail, detail, nhz, bio, rg, indep, socialDetail };
 
         if (format === "html") {
-          // Parallel fetch: system card + mainworld card
-          const mwUrl = `/api/map/world/card?${sysParams(mapIdParams(new URLSearchParams({ seed })))}`;
-          const [sysResp, mwResp] = await Promise.all([fetch(sysUrl), fetch(mwUrl)]);
+          if (isFullDetail) {
+            // Request sys_html + mw_html together so both come from the same
+            // generation (separate /map/world/card uses a different RNG path).
+            const fullUrl = new URL(sysUrl, window.location.href);
+            fullUrl.searchParams.set("include_mw_card", "true");
 
-          if (!sysResp.ok) {
-            const err = await sysResp.json().catch(() => ({}));
-            throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
-          }
-          if (!mwResp.ok) {
-            const err = await mwResp.json().catch(() => ({}));
-            throw new Error((err.error && err.error.message) || `Mainworld HTTP ${mwResp.status}`);
-          }
+            const sysResp = await fetch(fullUrl.toString());
+            if (!sysResp.ok) {
+              const err = await sysResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
+            }
+            const data = await sysResp.json();
+            showTabs(data.mw_html, data.sys_html, seed);
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
 
-          const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
-          showTabs(mwHtml, sysHtml, seed);
-          showSeed(seed);
-          if (!seedIn) document.getElementById("s-seed").value = seed;
+          } else {
+            // Basic system: separate card fetch is acceptable (no select_mainworld)
+            const mwUrl = `/api/map/world/card?${sysParams(mapIdParams(new URLSearchParams({ seed })))}`;
+            const [sysResp, mwResp] = await Promise.all([fetch(sysUrl), fetch(mwUrl)]);
+
+            if (!sysResp.ok) {
+              const err = await sysResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
+            }
+            if (!mwResp.ok) {
+              const err = await mwResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `Mainworld HTTP ${mwResp.status}`);
+            }
+
+            const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
+            showTabs(mwHtml, sysHtml, seed);
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
+          }
 
         } else {
           const resp = await fetch(sysUrl);
@@ -958,39 +976,54 @@
         if (format === "html") {
           const cardName = encodeURIComponent(name || "World-1");
 
-          let sysUrl;
           if (full) {
+            // Request sys_html + mw_html together so both come from the same
+            // generation (separate /card fetch uses a different RNG path).
             const p = sysParams(new URLSearchParams({ seed, format: "html" }));
             if (selectMw) p.set("select_mainworld", "true");
             if (settlement !== "standard") p.set("settlement_type", settlement);
             if (name) p.set("name", name);
-            sysUrl = `/api/system/full?${p}`;
+            p.set("include_mw_card", "true");
+            const sysUrl = `/api/system/full?${p}`;
+
+            const sysResp = await fetch(sysUrl);
+            if (!sysResp.ok) {
+              const err = await sysResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
+            }
+            const data = await sysResp.json();
+            _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
+                         full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
+            showTabs(data.mw_html, data.sys_html, seed);
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
+
           } else {
             const p = sysParams(new URLSearchParams({ seed, detail: detail ? "true" : "false" }));
             if (selectMw) p.set("select_mainworld", "true");
             if (settlement !== "standard") p.set("settlement_type", settlement);
-            sysUrl = `/api/system/${cardName}/card?${p}`;
+            const sysUrl = `/api/system/${cardName}/card?${p}`;
+
+            const mwUrl = `/api/world/${encodeURIComponent(name || "World-1")}/card?${mwCardParams(seed)}`;
+
+            const [sysResp, mwResp] = await Promise.all([fetch(sysUrl), fetch(mwUrl)]);
+
+            if (!sysResp.ok) {
+              const err = await sysResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
+            }
+            if (!mwResp.ok) {
+              const err = await mwResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `Mainworld HTTP ${mwResp.status}`);
+            }
+
+            const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
+            _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
+                         full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
+            showTabs(mwHtml, sysHtml, seed);
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
           }
-
-          const mwUrl = `/api/world/${encodeURIComponent(name || "World-1")}/card?${mwCardParams(seed)}`;
-
-          const [sysResp, mwResp] = await Promise.all([fetch(sysUrl), fetch(mwUrl)]);
-
-          if (!sysResp.ok) {
-            const err = await sysResp.json().catch(() => ({}));
-            throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
-          }
-          if (!mwResp.ok) {
-            const err = await mwResp.json().catch(() => ({}));
-            throw new Error((err.error && err.error.message) || `Mainworld HTTP ${mwResp.status}`);
-          }
-
-          const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
-          _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
-                       full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
-          showTabs(mwHtml, sysHtml, seed);
-          showSeed(seed);
-          if (!seedIn) document.getElementById("s-seed").value = seed;
 
         } else {
           const cardName = encodeURIComponent(name || "World-1");

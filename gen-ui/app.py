@@ -75,10 +75,12 @@ from traveller_system_gen import (  # noqa: E402
 )
 from traveller_world_detail import (  # noqa: E402
     attach_detail as _attach_detail, gg_diameter_from_sah, apply_secondary_social,
+    reattach_mainworld_orbit as _reattach_mainworld_orbit,
 )
 from traveller_world_population_detail import attach_population_detail  # noqa: E402
 from traveller_world_government_detail import attach_government_detail  # noqa: E402
 from traveller_world_law_detail import attach_law_detail  # noqa: E402
+from traveller_world_tech_detail import attach_tech_detail  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
     World,
     generate_atmosphere_detail,
@@ -348,6 +350,7 @@ class _OptionsDialog(QDialog):
         advanced_temp: bool,
         runaway_greenhouse: bool,
         independent_government: bool,
+        select_mainworld: bool,
         social_detail: bool,
         settlement_type: str,
     ) -> None:
@@ -376,11 +379,14 @@ class _OptionsDialog(QDialog):
         self._check_runaway_greenhouse.setChecked(runaway_greenhouse)
         self._check_independent_gov = QCheckBox("Independent government")
         self._check_independent_gov.setChecked(independent_government)
+        self._check_select_mw = QCheckBox("Select mainworld")
+        self._check_select_mw.setChecked(select_mainworld)
         checks_layout.addWidget(self._check_nhz)
         checks_layout.addWidget(self._check_oxygen_biomass)
         checks_layout.addWidget(self._check_advanced_temp)
         checks_layout.addWidget(self._check_runaway_greenhouse)
         checks_layout.addWidget(self._check_independent_gov)
+        checks_layout.addWidget(self._check_select_mw)
         layout.addWidget(self._sub_widget)
 
         self._check_social_detail = QCheckBox("Social detail")
@@ -424,7 +430,7 @@ class _OptionsDialog(QDialog):
             for cb in (
                 self._check_nhz, self._check_oxygen_biomass,
                 self._check_advanced_temp, self._check_runaway_greenhouse,
-                self._check_independent_gov,
+                self._check_independent_gov, self._check_select_mw,
             ):
                 cb.setChecked(False)
 
@@ -451,6 +457,10 @@ class _OptionsDialog(QDialog):
     @property
     def independent_government(self) -> bool:
         return self._check_independent_gov.isChecked()
+
+    @property
+    def select_mainworld(self) -> bool:
+        return self._check_select_mw.isChecked()
 
     @property
     def social_detail(self) -> bool:
@@ -486,6 +496,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._pending_full_system: bool = False
         self._pending_attach_detail: bool = False
         self._pending_seed: int = 0
+        self._pending_rng: random.Random | None = None
         _s = QSettings("traveller-world-gen", "AppWindow")
         raw = _s.value("dark_mode", False)
         self._dark_mode: bool = str(raw).lower() == "true"
@@ -505,6 +516,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         self._opt_social_detail: bool = (
             str(_s.value("opt_social_detail", False)).lower() == "true"
+        )
+        self._opt_select_mw: bool = (
+            str(_s.value("opt_select_mw", False)).lower() == "true"
         )
         self._opt_settlement_type: str = str(_s.value("opt_settlement_type", "standard"))
         self._apply_theme()
@@ -727,6 +741,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             advanced_temp=self._opt_advanced_temp,
             runaway_greenhouse=self._opt_runaway_greenhouse,
             independent_government=self._opt_independent_gov,
+            select_mainworld=self._opt_select_mw,
             social_detail=self._opt_social_detail,
             settlement_type=self._opt_settlement_type,
         )
@@ -738,6 +753,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_advanced_temp = dialog.advanced_temp
         self._opt_runaway_greenhouse = dialog.runaway_greenhouse
         self._opt_independent_gov = dialog.independent_government
+        self._opt_select_mw = dialog.select_mainworld
         self._opt_social_detail = dialog.social_detail
         self._opt_settlement_type = dialog.settlement_type
         _s = QSettings("traveller-world-gen", "AppWindow")
@@ -747,6 +763,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_advanced_temp", self._opt_advanced_temp)
         _s.setValue("opt_runaway_greenhouse", self._opt_runaway_greenhouse)
         _s.setValue("opt_independent_gov", self._opt_independent_gov)
+        _s.setValue("opt_select_mw", self._opt_select_mw)
         _s.setValue("opt_social_detail", self._opt_social_detail)
         _s.setValue("opt_settlement_type", self._opt_settlement_type)
         self._on_detail_toggled(self._opt_full_system)
@@ -786,16 +803,18 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             self._pending_full_system = full_system
             self._pending_attach_detail = attach_detail_flag
             self._pending_seed = seed
+            self._pending_rng = None
             self._start_travellermap_worker(sector, search_name, hex_pos, seed)
         else:
             if full_system:
+                rng = random.Random(seed)
                 system = generate_full_system(
-                    name, seed=seed,
+                    name, seed=seed, rng=rng,
                     nhz_atmospheres=self._opt_nhz,
                     orbital_eccentricity=True,
                     orbital_inclination=True,
                 )
-                self._finish_system_generation(system, attach_detail_flag)
+                self._finish_system_generation(system, attach_detail_flag, rng=rng)
             else:
                 world = generate_world(
                     name, settlement_type=self._opt_settlement_type,
@@ -853,11 +872,19 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     world.tech_level, pcr=pcr,  # type: ignore[attr-defined]
                     gov_authority_code=gov_auth,
                 )
+                from traveller_world_tech_detail import generate_tech_detail  # pylint: disable=import-outside-toplevel
+                world.tech_detail = generate_tech_detail(  # type: ignore[attr-defined]
+                    world.tech_level, world.atmosphere,  # type: ignore[attr-defined]
+                    world.hydrographics, world.population,  # type: ignore[attr-defined]
+                    world.government, world.law_level,  # type: ignore[attr-defined]
+                    world.starport, pcr=pcr,  # type: ignore[attr-defined]
+                )
         self._act_save.setEnabled(True)
         self._show_summary(world)
 
     def _finish_system_generation(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
-        self, system: object, attach_detail_flag: bool = False
+        self, system: object, attach_detail_flag: bool = False,
+        rng: random.Random | None = None,
     ) -> None:
         self._current_system = system
         self._current_world = system.mainworld  # type: ignore[attr-defined]
@@ -873,6 +900,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 world.size_detail = generate_world_physical(
                     world, age, orbit_number, orbit_au, star_mass,
                     hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
+                    rng=rng,
                 )
                 if world.atmosphere_detail is None:
                     hz_dev = mw_orbit.hz_deviation if mw_orbit is not None else None
@@ -925,6 +953,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 system,
                 optional_biomass_rule=self._opt_oxygen_biomass,
                 independent_government=self._opt_independent_gov,
+                rng=rng,
             )
             if world is not None and world.size_detail is not None and mw_orbit is not None:
                 det = mw_orbit.detail
@@ -960,18 +989,91 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         gg_mass_earth=_gg_m_e,
                         gg_satellite_moon=_gg_sat,
                     )
-        if attach_detail_flag:
-            _select_mainworld(system)   # type: ignore[arg-type]
-            self._current_world = system.mainworld   # type: ignore[attr-defined]
+        swapped = False
+        if attach_detail_flag and self._opt_select_mw:
+            swapped = _select_mainworld(system, rng=rng)  # type: ignore[arg-type]
+            self._current_world = system.mainworld  # type: ignore[attr-defined]
         if system.mainworld is not None:  # type: ignore[attr-defined]
             apply_mainworld_social(  # type: ignore[attr-defined]
                 system.mainworld,
+                rng=rng,
                 settlement_type=self._opt_settlement_type,
             )
+        if swapped and attach_detail_flag:
+            world = system.mainworld  # type: ignore[attr-defined]
+            mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
+            stars = system.stellar_system.stars  # type: ignore[attr-defined]
+            age = stars[0].age_gyr if stars else 0.0
+            if world is not None and mw_orbit is not None:
+                world.size_detail = generate_world_physical(
+                    world, age,
+                    mw_orbit.orbit_number,
+                    mw_orbit.orbit_au,
+                    stars[0].mass if stars else None,
+                    hz_deviation=mw_orbit.hz_deviation,
+                    rng=rng,
+                )
+                if (self._opt_advanced_temp
+                        and world.size_detail is not None):
+                    mw_au = mw_orbit.orbit_au
+                    interior_lum = sum(
+                        s.luminosity for s in stars
+                        if s.orbit_au <= 0.0 or s.orbit_au < mw_au
+                    )
+                    pb = (world.atmosphere_detail.pressure_bar
+                          if world.atmosphere_detail else None)
+                    generate_advanced_mean_temperature(
+                        world.size_detail,
+                        atmosphere=world.atmosphere,
+                        hydrographics=world.hydrographics,
+                        pressure_bar=pb,
+                        luminosity=interior_lum,
+                        orbit_au=mw_au,
+                        hz_deviation=mw_orbit.hz_deviation,
+                        orbit_eccentricity=mw_orbit.eccentricity,
+                        star_mass=stars[0].mass if stars else 1.0,
+                    )
+                    self._maybe_apply_runaway_greenhouse(
+                        world, stars, mw_orbit, interior_lum, mw_au
+                    )
+                _reattach_mainworld_orbit(system, rng=rng)  # type: ignore[arg-type]
+                det = mw_orbit.detail
+                if det is not None and world.size_detail is not None:
+                    _is_moon = mw_orbit.world_type == "gas_giant"
+                    if _is_moon:
+                        first = det.moons[0] if det.moons else None
+                        moons = first.detail.moons if first and first.detail else []
+                        _gg_sat = det.moons[0] if det.moons else None
+                        _gg_sah = getattr(mw_orbit, "gg_sah", "")
+                        _stored = getattr(mw_orbit, "gg_mass_earth", None)
+                        _gg_diam = gg_diameter_from_sah(_gg_sah)  # type: ignore[attr-defined]
+                        _gg_m_e = (
+                            float(_stored) if _stored is not None
+                            else float(_gg_diam ** 2) if _gg_sah else 0.0
+                        )
+                    else:
+                        moons = det.moons or []
+                        _gg_sat = None
+                        _gg_m_e = 0.0
+                    apply_moon_tidal_effects(
+                        world.size_detail,
+                        moons=moons,
+                        world_size=world.size,
+                        world_atmosphere=world.atmosphere,
+                        age_gyr=stars[0].age_gyr if stars else 0.0,
+                        orbit_number=mw_orbit.orbit_number,
+                        orbit_au=mw_orbit.orbit_au,
+                        star_mass=stars[0].mass if stars else 1.0,
+                        orbit_eccentricity=mw_orbit.eccentricity,
+                        is_moon=_is_moon,
+                        gg_mass_earth=_gg_m_e,
+                        gg_satellite_moon=_gg_sat,
+                    )
         if attach_detail_flag:
             apply_secondary_social(  # type: ignore[arg-type]
                 system,
                 independent_government=self._opt_independent_gov,
+                rng=rng,
             )
         if attach_detail_flag:
             attach_body_names(system)  # type: ignore[arg-type]
@@ -979,6 +1081,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             attach_population_detail(system)  # type: ignore[arg-type]
             attach_government_detail(system)  # type: ignore[arg-type]
             attach_law_detail(system)  # type: ignore[arg-type]
+            attach_tech_detail(system)  # type: ignore[arg-type]
         self._detail_attached = attach_detail_flag
         self._act_save.setEnabled(True)
         self._show_system_summary(system)
@@ -1252,7 +1355,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         if self._generate_btn is not None:
             self._generate_btn.setEnabled(True)
         if self._pending_full_system:
-            self._finish_system_generation(system, self._pending_attach_detail)
+            self._finish_system_generation(
+                system, self._pending_attach_detail, rng=self._pending_rng,
+            )
         else:
             world = system.mainworld  # type: ignore[attr-defined]
             if world is None:
