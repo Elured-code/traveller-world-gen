@@ -335,6 +335,148 @@ The two-letter classification code (e.g. "Mi") appears alongside the world's oth
 trade codes in the system orbit table and in JSON output.
 
 
+TECH LEVEL DETAIL CARD (WBH Social Characteristics §5)
+-------------------------------------------------------
+Every inhabited world now supports an optional Tech Level detail card. When Social
+detail is enabled, the generated world displays a full WBH tech level breakdown:
+
+- High common TL — the UWP tech level; the level the most advanced equipment is
+  manufactured at on this world.
+- Low common TL — the lowest level of technology in everyday use. Worlds with
+  dispersed populations or weak governments have a larger gap between high and low.
+- Quality-of-life sub-TLs — Energy, Electronics, Manufacturing, Medical, and
+  Environmental, computed in dependency order. Electronics is bounded by Energy,
+  Manufacturing by Electronics, and so on.
+- Transportation sub-TLs — Land, Sea (always 0 for dry worlds), Air (0 for
+  airless worlds at TL 5 or below), and Space.
+- Military sub-TLs — Personal (0 for law level 0) and Heavy.
+- Technology profile string in the format H-L-QQQQQ-TTTT-MM (all digits in
+  eHex). For example, "C-8-BBA98-9870-A8" shows a world at TL 12 with a Low
+  common TL of 8 and the full sub-TL breakdown.
+
+The card appears below Law detail in the world card.
+Novelty TL is planned for a future update (WBH §5 procedure).
+
+
+LAW DETAIL CARD (WBH Social Characteristics §3)
+------------------------------------------------
+Every inhabited world with a non-zero law level now supports an optional Law
+detail card. When Social detail is enabled, the generated world displays:
+
+- Judicial system — Primary and Secondary: Inquisitorial (guilty until proven
+  innocent), Adversarial (each side argues its case), or Tribunal (panel of
+  judges). The primary system determines most of the legal culture; the secondary
+  system is the form used in appeals or specialised courts.
+- Law uniformity — whether the law is enforced Patchily (varies across regions),
+  Typically (standard enforcement), or Uniformly (rigidly consistent).
+- Presumption of innocence — whether defendants are considered innocent until
+  proven guilty. Worlds with high law levels or inquisitorial courts are less
+  likely to extend this presumption.
+- Death penalty — whether capital punishment is in use. High law levels and some
+  government types increase the likelihood.
+- Justice profile string in the format PSU-I-D (e.g. "AIT-Y-N" = Adversarial
+  primary, Inquisitorial secondary, Typical uniformity, Innocent until proven
+  guilty, no death penalty).
+- Law subcategory scores — how strictly the law regulates Weapons, Economic
+  activity, Criminal behaviour, Private life, and Personal Rights. Each is
+  derived from the overall law level with DMs for government type and PCR.
+- Law profile string in the format O-WECPR (e.g. "7-86755" = law level 7,
+  Weapons 8, Economic 6, Criminal 7, Private 5, Personal Rights 5).
+
+Law level 0 (no law) produces no detail card.
+
+
+SOCIAL DETAIL — SINGLE COMBINED OPTION
+---------------------------------------
+Population detail, Government detail, and Law detail are now controlled by a
+single "Social detail" checkbox in both the desktop app and the web interface.
+Enabling Social detail generates all three (and Tech Level detail) in one step.
+Previously each had a separate option.
+
+The option is saved between sessions. When social detail is enabled, the world
+card shows Population, Government, Law, and Tech Level detail cards in sequence.
+
+
+FASTAPI WEB UI — PERSISTENT PREFERENCES
+-----------------------------------------
+All option controls on the Mainworld and Full System web pages now save their
+state in browser localStorage. Format selection (Card / JSON / Text), checkboxes
+(Detail, Full, Select MW, Social detail), Settlement type dropdown, and the
+Perspective view toggle are all remembered across page reloads and browser
+restarts. Previously settings reset to defaults on every page load.
+
+
+FASTAPI WEB UI — CONTROL TOOLTIPS
+-----------------------------------
+Every interactive control in the web interface now has a descriptive tooltip
+(title attribute). Hovering over a checkbox or dropdown shows a plain-English
+explanation of what the control does and what effect it has on the generated
+output. The previous controls were labelled but not explained.
+
+
+FASTAPI SERVER — INSTALLER AND LAUNCHER SCRIPTS
+------------------------------------------------
+A new install script (install.sh on macOS/Linux, install.ps1 on Windows) sets
+up the FastAPI server environment and generates platform-appropriate launcher
+scripts (run-fastapi.sh, run-fastapi.bat, or run-fastapi.ps1). Running the
+launcher starts the server without needing to navigate to the fastapi/ directory
+or remember the uvicorn command manually.
+
+To set up: run install.sh (or install.ps1) once from the project root. To start
+the server: run ./run-fastapi.sh (or run-fastapi.bat / run-fastapi.ps1).
+
+
+GRACEFUL JSON LOADING — VERSION MISMATCH WARNING
+-------------------------------------------------
+Opening a saved JSON file that was created with a different app version now
+shows a warning dialog asking whether to continue loading. Previously the app
+showed an error and refused to load the file entirely.
+
+The warning explains that some fields may be missing or unrecognised, then
+offers Yes/No buttons to proceed or cancel. Most files from recent versions
+load without issue; the warning is a precaution for files from much older
+releases.
+
+
+SYSTEM MAP — DEPTH AND VISUAL ENHANCEMENTS
+-------------------------------------------
+The perspective system map has received a series of visual improvements that
+make the orbital structure easier to read at a glance:
+
+- Sphere shading: stars, gas giants, and terrestrial worlds are rendered as
+  shaded spheres with a highlight and darkened edge, rather than flat circles.
+- Ring systems: gas giants with ring moons display a foreshortened ring annulus
+  that passes behind and in front of the planet sphere.
+- Belt rendering: asteroid belts are shown as filled annular bands with the
+  correct perspective projection of a flat disc in the orbital plane.
+- Near/far arc split: perspective orbit arcs are drawn at full opacity for the
+  near half (above the orbital plane) and reduced opacity for the far half
+  (behind the orbital plane), giving a sense of depth.
+- Drop lines: inclined orbits draw a dotted line from each world symbol down to
+  its projected position on the orbital reference plane.
+- Shadow arcs: inclined orbits project a blurred shadow onto the orbital plane.
+- Isometric floor grid: a faint diamond-tiled grid drawn on the orbital plane
+  reinforces the 3-D perspective.
+- Orbital plane disc: a translucent ellipse in each arc zone makes the tilted
+  orbital plane visible as a surface.
+- Companion stars: now rendered as filled circles with the same sphere shading
+  as other bodies, with shadow arcs for inclined companion orbits.
+- Z-rotation: the entire perspective map is rotated 30° around the vertical
+  axis for a more natural viewing angle.
+
+
+SYSTEM MAP — TRAVELLERMAP FULL DETAIL (WEB API)
+------------------------------------------------
+A new API endpoint `GET /api/map/system/full` fetches a world from TravellerMap
+and runs the complete detail pipeline — secondary world profiles, body names,
+physical detail, and optionally social detail (population, government, law,
+tech level) — all in one call. The canonical UWP from TravellerMap is preserved
+throughout; the endpoint does not roll new social data for the mainworld.
+
+Accepts the same parameters as other TravellerMap endpoints: sector, name or
+hex, and the social_detail flag.
+
+
 BUG FIXES
 ---------
 - Fixed: Biodiversity Rating was calculated as Biomass + ⌈Biocomplexity / 2⌉
@@ -365,3 +507,20 @@ BUG FIXES
   3 K due to unchecked formula extrapolation. The WBH footnote specifies that
   results below 10 K should be replaced with a random 6–11 K roll (1D+5). This
   is now correctly implemented.
+
+- Fixed: in perspective mode, orbits with inclination greater than 90°
+  (retrograde orbits) produced a negative y-radius, causing the arc to be drawn
+  far to the right of the star instead of around it. The y-radius is now taken
+  as an absolute value.
+
+- Fixed: eccentric orbits in perspective mode were centred on the ellipse focus
+  (offset from the star) rather than on the star, causing arcs to float away
+  from the star in perspective mode. Arcs are now always centred on the star.
+
+- Fixed: near-circular companion star orbits (eccentricity < 0.01) were drawn
+  using a helper that produced slightly incorrect arc geometry in perspective
+  mode. The standard orbit arc function is now used for all companion orbits.
+
+- Fixed: the `generate_law_level()` function could return values above 18 in
+  edge cases (very high population codes with maximum DMs). Results are now
+  clamped to the valid law level range.
