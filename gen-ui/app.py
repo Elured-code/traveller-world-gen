@@ -69,35 +69,17 @@ from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
 
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
-from traveller_system_gen import (  # noqa: E402
-    generate_full_system, TravellerSystem, select_mainworld as _select_mainworld,
-    attach_body_names,
-)
-from traveller_world_detail import (  # noqa: E402
-    attach_detail as _attach_detail, gg_diameter_from_sah, apply_secondary_social,
-    reattach_mainworld_orbit as _reattach_mainworld_orbit,
-)
-from traveller_world_population_detail import attach_population_detail  # noqa: E402
-from traveller_world_government_detail import attach_government_detail  # noqa: E402
-from traveller_world_law_detail import attach_law_detail  # noqa: E402
-from traveller_world_tech_detail import attach_tech_detail  # noqa: E402
+from traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
 from traveller_world_gen import (  # noqa: E402
     World,
     generate_atmosphere_detail,
     generate_gas_mix,
-    generate_hydrographics,
     generate_unusual_subtype,
     generate_world,
-    apply_mainworld_social,
-)
-from traveller_world_physical import (  # noqa: E402
-    generate_world_physical, apply_moon_tidal_effects,
-)
-from traveller_world_atmosphere_detail import (  # noqa: E402
-    generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
 from tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
+from system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
 from world_codes import APP_VERSION  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -347,12 +329,13 @@ class _OptionsDialog(QDialog):
         full_system: bool,
         nhz: bool,
         oxygen_biomass: bool,
-        advanced_temp: bool,
         runaway_greenhouse: bool,
         independent_government: bool,
         select_mainworld: bool,
         social_detail: bool,
         settlement_type: str,
+        eccentricity: bool = True,
+        inclination: bool = True,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Generation Options")
@@ -373,18 +356,21 @@ class _OptionsDialog(QDialog):
         self._check_nhz.setChecked(nhz)
         self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
         self._check_oxygen_biomass.setChecked(oxygen_biomass)
-        self._check_advanced_temp = QCheckBox("Advanced temperature")
-        self._check_advanced_temp.setChecked(advanced_temp)
         self._check_runaway_greenhouse = QCheckBox("Runaway greenhouse")
         self._check_runaway_greenhouse.setChecked(runaway_greenhouse)
+        self._check_eccentricity = QCheckBox("Orbital eccentricity")
+        self._check_eccentricity.setChecked(eccentricity)
+        self._check_inclination = QCheckBox("Orbital inclination")
+        self._check_inclination.setChecked(inclination)
         self._check_independent_gov = QCheckBox("Independent government")
         self._check_independent_gov.setChecked(independent_government)
         self._check_select_mw = QCheckBox("Select mainworld")
         self._check_select_mw.setChecked(select_mainworld)
         checks_layout.addWidget(self._check_nhz)
         checks_layout.addWidget(self._check_oxygen_biomass)
-        checks_layout.addWidget(self._check_advanced_temp)
         checks_layout.addWidget(self._check_runaway_greenhouse)
+        checks_layout.addWidget(self._check_eccentricity)
+        checks_layout.addWidget(self._check_inclination)
         checks_layout.addWidget(self._check_independent_gov)
         checks_layout.addWidget(self._check_select_mw)
         layout.addWidget(self._sub_widget)
@@ -429,7 +415,8 @@ class _OptionsDialog(QDialog):
         if not checked:
             for cb in (
                 self._check_nhz, self._check_oxygen_biomass,
-                self._check_advanced_temp, self._check_runaway_greenhouse,
+                self._check_runaway_greenhouse,
+                self._check_eccentricity, self._check_inclination,
                 self._check_independent_gov, self._check_select_mw,
             ):
                 cb.setChecked(False)
@@ -447,12 +434,16 @@ class _OptionsDialog(QDialog):
         return self._check_oxygen_biomass.isChecked()
 
     @property
-    def advanced_temp(self) -> bool:
-        return self._check_advanced_temp.isChecked()
-
-    @property
     def runaway_greenhouse(self) -> bool:
         return self._check_runaway_greenhouse.isChecked()
+
+    @property
+    def eccentricity(self) -> bool:
+        return self._check_eccentricity.isChecked()
+
+    @property
+    def inclination(self) -> bool:
+        return self._check_inclination.isChecked()
 
     @property
     def independent_government(self) -> bool:
@@ -505,9 +496,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_oxygen_biomass: bool = (
             str(_s.value("opt_oxygen_biomass", False)).lower() == "true"
         )
-        self._opt_advanced_temp: bool = (
-            str(_s.value("opt_advanced_temp", False)).lower() == "true"
-        )
         self._opt_runaway_greenhouse: bool = (
             str(_s.value("opt_runaway_greenhouse", False)).lower() == "true"
         )
@@ -519,6 +507,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         self._opt_select_mw: bool = (
             str(_s.value("opt_select_mw", False)).lower() == "true"
+        )
+        self._opt_eccentricity: bool = (
+            str(_s.value("opt_eccentricity", True)).lower() != "false"
+        )
+        self._opt_inclination: bool = (
+            str(_s.value("opt_inclination", True)).lower() != "false"
         )
         self._opt_settlement_type: str = str(_s.value("opt_settlement_type", "standard"))
         self._apply_theme()
@@ -738,34 +732,37 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             full_system=self._opt_full_system,
             nhz=self._opt_nhz,
             oxygen_biomass=self._opt_oxygen_biomass,
-            advanced_temp=self._opt_advanced_temp,
             runaway_greenhouse=self._opt_runaway_greenhouse,
             independent_government=self._opt_independent_gov,
             select_mainworld=self._opt_select_mw,
             social_detail=self._opt_social_detail,
             settlement_type=self._opt_settlement_type,
+            eccentricity=self._opt_eccentricity,
+            inclination=self._opt_inclination,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self._opt_full_system = dialog.full_system
         self._opt_nhz = dialog.nhz
         self._opt_oxygen_biomass = dialog.oxygen_biomass
-        self._opt_advanced_temp = dialog.advanced_temp
         self._opt_runaway_greenhouse = dialog.runaway_greenhouse
         self._opt_independent_gov = dialog.independent_government
         self._opt_select_mw = dialog.select_mainworld
         self._opt_social_detail = dialog.social_detail
         self._opt_settlement_type = dialog.settlement_type
+        self._opt_eccentricity = dialog.eccentricity
+        self._opt_inclination = dialog.inclination
         _s = QSettings("traveller-world-gen", "AppWindow")
         _s.setValue("opt_full_system", self._opt_full_system)
         _s.setValue("opt_nhz", self._opt_nhz)
         _s.setValue("opt_oxygen_biomass", self._opt_oxygen_biomass)
-        _s.setValue("opt_advanced_temp", self._opt_advanced_temp)
         _s.setValue("opt_runaway_greenhouse", self._opt_runaway_greenhouse)
         _s.setValue("opt_independent_gov", self._opt_independent_gov)
         _s.setValue("opt_select_mw", self._opt_select_mw)
         _s.setValue("opt_social_detail", self._opt_social_detail)
         _s.setValue("opt_settlement_type", self._opt_settlement_type)
+        _s.setValue("opt_eccentricity", self._opt_eccentricity)
+        _s.setValue("opt_inclination", self._opt_inclination)
         self._on_detail_toggled(self._opt_full_system)
 
     def _on_generate(self) -> None:
@@ -804,15 +801,19 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             self._pending_attach_detail = attach_detail_flag
             self._pending_seed = seed
             self._pending_rng = None
-            self._start_travellermap_worker(sector, search_name, hex_pos, seed)
+            self._start_travellermap_worker(
+                sector, search_name, hex_pos, seed,
+                orbital_eccentricity=self._opt_eccentricity,
+                orbital_inclination=self._opt_inclination,
+            )
         else:
             if full_system:
                 rng = random.Random(seed)
                 system = generate_full_system(
                     name, seed=seed, rng=rng,
                     nhz_atmospheres=self._opt_nhz,
-                    orbital_eccentricity=True,
-                    orbital_inclination=True,
+                    orbital_eccentricity=self._opt_eccentricity,
+                    orbital_inclination=self._opt_inclination,
                 )
                 self._finish_system_generation(system, attach_detail_flag, rng=rng)
             else:
@@ -882,206 +883,24 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._act_save.setEnabled(True)
         self._show_summary(world)
 
-    def _finish_system_generation(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches
+    def _finish_system_generation(
         self, system: object, attach_detail_flag: bool = False,
         rng: random.Random | None = None,
     ) -> None:
         self._current_system = system
-        self._current_world = system.mainworld  # type: ignore[attr-defined]
-        if attach_detail_flag:
-            world = system.mainworld  # type: ignore[attr-defined]
-            mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
-            if world is not None:
-                stars = system.stellar_system.stars  # type: ignore[attr-defined]
-                age = stars[0].age_gyr if stars else 0.0
-                orbit_number = mw_orbit.orbit_number if mw_orbit is not None else None
-                orbit_au = mw_orbit.orbit_au if mw_orbit is not None else None
-                star_mass = stars[0].mass if stars else None
-                world.size_detail = generate_world_physical(
-                    world, age, orbit_number, orbit_au, star_mass,
-                    hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
-                    rng=rng,
-                )
-                if world.atmosphere_detail is None:
-                    hz_dev = mw_orbit.hz_deviation if mw_orbit is not None else None
-                    world.atmosphere_detail = generate_atmosphere_detail(
-                        world.atmosphere, world.size, age,
-                        temperature=world.temperature,
-                        hz_deviation=hz_dev,
-                    )
-                    generate_gas_mix(
-                        world.atmosphere_detail, world.atmosphere, world.size,
-                        world.temperature, hz_dev, world.hydrographics,
-                    )
-                    generate_unusual_subtype(
-                        world.atmosphere_detail, world.atmosphere,
-                        world.size, world.hydrographics,
-                    )
-                if world.hydrographic_detail is None:
-                    world.hydrographic_detail = generate_hydrographic_detail(
-                        world.hydrographics, world.size,
-                        atmosphere=world.atmosphere,
-                        temperature=world.temperature,
-                    )
-                # Advanced temperature computed before attach_detail so that
-                # high_temp_k and advanced_mean_temperature_k are available to
-                # the biomass DM calculation inside _apply_biomass().
-                if (self._opt_advanced_temp
-                        and world.size_detail is not None
-                        and mw_orbit is not None):
-                    mw_au = mw_orbit.orbit_au
-                    interior_lum = sum(
-                        s.luminosity for s in stars
-                        if s.orbit_au <= 0.0 or s.orbit_au < mw_au
-                    )
-                    pb = world.atmosphere_detail.pressure_bar if world.atmosphere_detail else None
-                    generate_advanced_mean_temperature(
-                        world.size_detail,
-                        atmosphere=world.atmosphere,
-                        hydrographics=world.hydrographics,
-                        pressure_bar=pb,
-                        luminosity=interior_lum,
-                        orbit_au=mw_au,
-                        hz_deviation=mw_orbit.hz_deviation,
-                        orbit_eccentricity=mw_orbit.eccentricity,
-                        star_mass=stars[0].mass if stars else 1.0,
-                    )
-                    self._maybe_apply_runaway_greenhouse(
-                        world, stars, mw_orbit, interior_lum, mw_au
-                    )
-            _attach_detail(  # type: ignore[arg-type]
-                system,
-                optional_biomass_rule=self._opt_oxygen_biomass,
+        run_detail_pipeline(  # type: ignore[arg-type]
+            system, rng,  # type: ignore[arg-type]
+            PipelineOptions(
+                want_detail=attach_detail_flag,
+                want_select_mw=self._opt_select_mw and attach_detail_flag,
+                runaway_greenhouse=self._opt_runaway_greenhouse,
                 independent_government=self._opt_independent_gov,
-                rng=rng,
-            )
-            if world is not None and world.size_detail is not None and mw_orbit is not None:
-                det = mw_orbit.detail
-                if det is not None:
-                    _is_moon = mw_orbit.world_type == "gas_giant"
-                    if _is_moon:
-                        first = det.moons[0] if det.moons else None
-                        moons = first.detail.moons if first and first.detail else []
-                        _gg_sat = det.moons[0] if det.moons else None
-                        _gg_sah = getattr(mw_orbit, "gg_sah", "")
-                        _stored = getattr(mw_orbit, "gg_mass_earth", None)
-                        _gg_diam = gg_diameter_from_sah(_gg_sah)  # type: ignore[attr-defined]
-                        _gg_m_e = (
-                            float(_stored) if _stored is not None
-                            else float(_gg_diam ** 2) if _gg_sah else 0.0
-                        )
-                    else:
-                        moons = det.moons or []
-                        _gg_sat = None
-                        _gg_m_e = 0.0
-                    stars = system.stellar_system.stars  # type: ignore[attr-defined]
-                    apply_moon_tidal_effects(
-                        world.size_detail,
-                        moons=moons,
-                        world_size=world.size,
-                        world_atmosphere=world.atmosphere,
-                        age_gyr=stars[0].age_gyr if stars else 0.0,
-                        orbit_number=mw_orbit.orbit_number,
-                        orbit_au=mw_orbit.orbit_au,
-                        star_mass=stars[0].mass if stars else 1.0,
-                        orbit_eccentricity=mw_orbit.eccentricity,
-                        is_moon=_is_moon,
-                        gg_mass_earth=_gg_m_e,
-                        gg_satellite_moon=_gg_sat,
-                    )
-        swapped = False
-        if attach_detail_flag and self._opt_select_mw:
-            swapped = _select_mainworld(system, rng=rng)  # type: ignore[arg-type]
-            self._current_world = system.mainworld  # type: ignore[attr-defined]
-        if system.mainworld is not None:  # type: ignore[attr-defined]
-            apply_mainworld_social(  # type: ignore[attr-defined]
-                system.mainworld,
-                rng=rng,
+                optional_biomass=self._opt_oxygen_biomass,
                 settlement_type=self._opt_settlement_type,
-            )
-        if swapped and attach_detail_flag:
-            world = system.mainworld  # type: ignore[attr-defined]
-            mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
-            stars = system.stellar_system.stars  # type: ignore[attr-defined]
-            age = stars[0].age_gyr if stars else 0.0
-            if world is not None and mw_orbit is not None:
-                world.size_detail = generate_world_physical(
-                    world, age,
-                    mw_orbit.orbit_number,
-                    mw_orbit.orbit_au,
-                    stars[0].mass if stars else None,
-                    hz_deviation=mw_orbit.hz_deviation,
-                    rng=rng,
-                )
-                if (self._opt_advanced_temp
-                        and world.size_detail is not None):
-                    mw_au = mw_orbit.orbit_au
-                    interior_lum = sum(
-                        s.luminosity for s in stars
-                        if s.orbit_au <= 0.0 or s.orbit_au < mw_au
-                    )
-                    pb = (world.atmosphere_detail.pressure_bar
-                          if world.atmosphere_detail else None)
-                    generate_advanced_mean_temperature(
-                        world.size_detail,
-                        atmosphere=world.atmosphere,
-                        hydrographics=world.hydrographics,
-                        pressure_bar=pb,
-                        luminosity=interior_lum,
-                        orbit_au=mw_au,
-                        hz_deviation=mw_orbit.hz_deviation,
-                        orbit_eccentricity=mw_orbit.eccentricity,
-                        star_mass=stars[0].mass if stars else 1.0,
-                    )
-                    self._maybe_apply_runaway_greenhouse(
-                        world, stars, mw_orbit, interior_lum, mw_au
-                    )
-                _reattach_mainworld_orbit(system, rng=rng)  # type: ignore[arg-type]
-                det = mw_orbit.detail
-                if det is not None and world.size_detail is not None:
-                    _is_moon = mw_orbit.world_type == "gas_giant"
-                    if _is_moon:
-                        first = det.moons[0] if det.moons else None
-                        moons = first.detail.moons if first and first.detail else []
-                        _gg_sat = det.moons[0] if det.moons else None
-                        _gg_sah = getattr(mw_orbit, "gg_sah", "")
-                        _stored = getattr(mw_orbit, "gg_mass_earth", None)
-                        _gg_diam = gg_diameter_from_sah(_gg_sah)  # type: ignore[attr-defined]
-                        _gg_m_e = (
-                            float(_stored) if _stored is not None
-                            else float(_gg_diam ** 2) if _gg_sah else 0.0
-                        )
-                    else:
-                        moons = det.moons or []
-                        _gg_sat = None
-                        _gg_m_e = 0.0
-                    apply_moon_tidal_effects(
-                        world.size_detail,
-                        moons=moons,
-                        world_size=world.size,
-                        world_atmosphere=world.atmosphere,
-                        age_gyr=stars[0].age_gyr if stars else 0.0,
-                        orbit_number=mw_orbit.orbit_number,
-                        orbit_au=mw_orbit.orbit_au,
-                        star_mass=stars[0].mass if stars else 1.0,
-                        orbit_eccentricity=mw_orbit.eccentricity,
-                        is_moon=_is_moon,
-                        gg_mass_earth=_gg_m_e,
-                        gg_satellite_moon=_gg_sat,
-                    )
-        if attach_detail_flag:
-            apply_secondary_social(  # type: ignore[arg-type]
-                system,
-                independent_government=self._opt_independent_gov,
-                rng=rng,
-            )
-        if attach_detail_flag:
-            attach_body_names(system)  # type: ignore[arg-type]
-        if self._opt_social_detail:
-            attach_population_detail(system)  # type: ignore[arg-type]
-            attach_government_detail(system)  # type: ignore[arg-type]
-            attach_law_detail(system)  # type: ignore[arg-type]
-            attach_tech_detail(system)  # type: ignore[arg-type]
+                want_social_detail=self._opt_social_detail,
+            ),
+        )
+        self._current_world = system.mainworld  # type: ignore[attr-defined]
         self._detail_attached = attach_detail_flag
         self._act_save.setEnabled(True)
         self._show_system_summary(system)
@@ -1135,7 +954,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         if dialog.exec() == QDialog.DialogCode.Accepted:
             selected = next((h for radio, h in radios if radio.isChecked()), None)
             if selected:
-                self._start_travellermap_worker(error.sector, None, selected, seed)
+                self._start_travellermap_worker(
+                    error.sector, None, selected, seed,
+                    orbital_eccentricity=self._opt_eccentricity,
+                    orbital_inclination=self._opt_inclination,
+                )
 
     def _on_map_clicked(self) -> None:
         if self._current_system is None:
@@ -1332,18 +1155,22 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.addWidget(lbl)
         self._status_layout.addStretch()
 
-    def _start_travellermap_worker(
+    def _start_travellermap_worker(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         sector: str,
         search_name: "str | None",
         hex_pos: "str | None",
         seed: int,
+        orbital_eccentricity: bool = True,
+        orbital_inclination: bool = True,
     ) -> None:
         display = search_name or hex_pos or "world"
         self._show_loading(f"Looking up {display} in {sector}…")
         if self._generate_btn is not None:
             self._generate_btn.setEnabled(False)
-        worker = _TravMapWorker(sector, search_name, hex_pos, seed)
+        worker = _TravMapWorker(sector, search_name, hex_pos, seed,
+                                orbital_eccentricity=orbital_eccentricity,
+                                orbital_inclination=orbital_inclination)
         worker.result.connect(self._on_worker_result)
         worker.failed.connect(self._on_worker_error)
         worker.ambiguous.connect(self._on_worker_ambiguous)
@@ -1490,62 +1317,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         return header
 
-    def _maybe_apply_runaway_greenhouse(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-            self, world: object, stars: list,
-            mw_orbit: object, interior_lum: float, mw_au: float,
-    ) -> None:
-        """Apply optional runaway greenhouse mutations (WBH p.79)."""
-        if not self._opt_runaway_greenhouse:
-            return
-        if (world.size_detail is None  # type: ignore[attr-defined]
-                or world.size_detail.advanced_mean_temperature_k is None):  # type: ignore
-            return
-        rg = check_runaway_greenhouse(
-            atmosphere=world.atmosphere,  # type: ignore[attr-defined]
-            temp_k=world.size_detail.advanced_mean_temperature_k,  # type: ignore
-            age_gyr=stars[0].age_gyr if stars else 0.0,
-            size=world.size,  # type: ignore[attr-defined]
-        )
-        if rg is None:
-            return
-        world.size_detail.runaway_greenhouse = True  # type: ignore
-        if rg.new_atmosphere is not None:
-            world.atmosphere = rg.new_atmosphere  # type: ignore
-        world.temperature = "Boiling"  # type: ignore
-        world.hydrographics = generate_hydrographics(  # type: ignore
-            world.size, world.atmosphere, "Boiling"  # type: ignore
-        )
-        world.hydrographic_detail = generate_hydrographic_detail(  # type: ignore
-            world.hydrographics, world.size,  # type: ignore
-            atmosphere=world.atmosphere,  # type: ignore
-            temperature="Boiling",
-        )
-        age_gyr = stars[0].age_gyr if stars else 0.0
-        world.atmosphere_detail = generate_atmosphere_detail(  # type: ignore[attr-defined]
-            world.atmosphere, world.size,  # type: ignore[attr-defined]
-            age_gyr, "Boiling",
-            hz_deviation=mw_orbit.hz_deviation,  # type: ignore[attr-defined]
-        )
-        generate_gas_mix(
-            world.atmosphere_detail,  # type: ignore[attr-defined]
-            world.atmosphere, world.size,  # type: ignore[attr-defined]
-            "Boiling", mw_orbit.hz_deviation, world.hydrographics,  # type: ignore[attr-defined]
-        )
-        rg_pb = (
-            world.atmosphere_detail.pressure_bar  # type: ignore
-            if world.atmosphere_detail else None  # type: ignore
-        )
-        generate_advanced_mean_temperature(
-            world.size_detail,  # type: ignore
-            atmosphere=world.atmosphere,  # type: ignore
-            hydrographics=world.hydrographics,  # type: ignore
-            pressure_bar=rg_pb,
-            luminosity=interior_lum,
-            orbit_au=mw_au,
-            hz_deviation=mw_orbit.hz_deviation,  # type: ignore
-            orbit_eccentricity=mw_orbit.eccentricity,  # type: ignore
-            star_mass=stars[0].mass if stars else 1.0,
-        )
 
 
 # ---------------------------------------------------------------------------

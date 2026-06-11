@@ -931,7 +931,7 @@ def attach_body_names(system: TravellerSystem) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
-def main() -> None:
+def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Generate a Traveller star system and print it to stdout."""
     import argparse  # pylint: disable=import-outside-toplevel
     import sys as _sys  # pylint: disable=import-outside-toplevel
@@ -953,6 +953,10 @@ def main() -> None:
                         help="Attach all secondary world SAH/social profiles and moon data")
     parser.add_argument("--nhz-atmospheres", action="store_true",
                         help="Use WBH Non-Habitable Zone atmosphere tables for out-of-HZ worlds")
+    parser.add_argument("--orbital-eccentricity", action="store_true",
+                        help="Roll eccentricity for each orbit slot (WBH p.27)")
+    parser.add_argument("--orbital-inclination", action="store_true",
+                        help="Roll inclination for each orbit slot (WBH p.28)")
     # --format supersedes the legacy --json flag; --json kept for back-compat
     fmt_group = parser.add_mutually_exclusive_group()
     fmt_group.add_argument("--format", choices=["text", "json", "html"],
@@ -978,17 +982,25 @@ def main() -> None:
         out_format = "text"
         want_detail = args.detail
 
-    from traveller_world_detail import attach_detail  # pylint: disable=import-outside-toplevel
+    # pylint: disable=import-outside-toplevel
+    from system_pipeline import PipelineOptions, run_detail_pipeline
 
     for i in range(args.count):
+        seed_val: Optional[int] = args.seed if i == 0 else None
+        if seed_val is None:
+            seed_val = secrets.randbelow(2 ** 31)
+        rng = random.Random(seed_val)
+
         system = generate_full_system(
             name=args.name if args.count == 1 else f"{args.name}-{i+1}",
-            seed=args.seed if i == 0 else None,
+            rng=rng,
             nhz_atmospheres=args.nhz_atmospheres,
+            orbital_eccentricity=args.orbital_eccentricity,
+            orbital_inclination=args.orbital_inclination,
         )
-
-        if want_detail:
-            attach_detail(system)
+        run_detail_pipeline(system, rng, PipelineOptions(
+            want_detail=want_detail,
+        ))
 
         if out_format == "json":
             print(system.to_json())
