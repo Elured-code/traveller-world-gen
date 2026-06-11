@@ -477,8 +477,52 @@ Accepts the same parameters as other TravellerMap endpoints: sector, name or
 hex, and the social_detail flag.
 
 
+ORBITAL ECCENTRICITY AND INCLINATION CONTROLS (APP)
+
+The app's Options dialog now has two new checkboxes: "Orbital eccentricity" and
+"Orbital inclination". When ticked, the generator rolls eccentricity and inclination
+values for each orbit slot as described in the World Builder's Handbook (pp.27–28).
+Both settings default to on and are remembered between sessions.
+
+Previously these were hardcoded to always on, with no user control.
+
+
+COMMAND-LINE NOW PRODUCES COMPLETE MAINWORLDS
+
+When you generate a system using the command line, the mainworld now receives full
+social data — starport class, population, government type, law level, and Tech Level.
+Previously the command line skipped these steps and the mainworld always showed
+a placeholder profile (starport X, all codes 0).
+
+Two new command-line flags are also available:
+- --orbital-eccentricity — roll eccentricity for each orbit slot
+- --orbital-inclination — roll inclination for each orbit slot
+
+
+WEB UI ECCENTRICITY AND INCLINATION CONTROLS
+
+The system generator web page now has Eccentricity and Inclination checkboxes in
+the generation controls, matching the options already available in the app. When
+ticked, the generator rolls eccentricity and inclination as described in the World
+Builder's Handbook. Both settings are remembered between sessions.
+
+
 BUG FIXES
 ---------
+- Fixed: Gas-atmosphere worlds (Gas-Helium and Gas-Hydrogen environments produced
+  by the non-habitable-zone atmosphere tables) could previously appear as inhabited
+  secondary worlds. These worlds have no solid surface and cannot support colonists
+  at any technology level. They are now always uninhabited.
+
+- Fixed: Generating a tech level detail profile for a world with an exotic NHZ
+  atmosphere (codes G or H) could crash the generator with an error. The crash
+  occurred because the tech level lookup used a hexadecimal conversion that only
+  handles codes 0–F. The lookup now handles all valid atmosphere codes correctly.
+
+- Fixed: The moon sub-rows in the System Card and System Detail views had their
+  columns misaligned — the eccentricity/inclination, moon type, orbit, size, and
+  composition columns were each shifted one position to the right of their headers.
+
 - Fixed: Biodiversity Rating was calculated as Biomass + ⌈Biocomplexity / 2⌉
   instead of the correct WBH formula ⌈(Biomass + Biocomplexity) / 2⌉. The
   correct formula averages the two ratings and then rounds up, producing notably
