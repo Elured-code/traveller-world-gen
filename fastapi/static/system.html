@@ -580,14 +580,15 @@
 
   function loadFrame(frameId, html) {
     const frame = document.getElementById(frameId);
+    frame.classList.remove("visible");
     frame.srcdoc = html;
-    frame.classList.add("visible");
     frame.onload = () => {
       requestAnimationFrame(() => {
         try {
           const h = frame.contentDocument.documentElement.scrollHeight;
           if (h > 0) frame.style.height = h + "px";
         } catch (_) {}
+        frame.classList.add("visible");
       });
     };
   }
