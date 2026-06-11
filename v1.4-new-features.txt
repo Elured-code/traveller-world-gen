@@ -326,6 +326,37 @@ numbers from the TravellerMap database.
 - The `system_map.py` command-line tool gains the same capability via the new
   `--sector` flag (e.g. `--sector "Spinward Marches" --name Regina`).
 
+FASTAPI — MONGOOSE TRAVELLER THEME
+------------------------------------
+The FastAPI web interface has been restyled to match the Mongoose Traveller visual
+identity.
+
+- The page background is near-black. The accent colour is amber-orange (#c87828),
+  matching the orange used throughout the Mongoose Traveller books and digital tools.
+- The header has an amber bottom border and the title is rendered in uppercase with
+  wider letter-spacing, giving it a military-document feel.
+- Generate, Save, and active-tab highlights all use the amber accent.
+
+FASTAPI — WORLD AND SYSTEM CARD COLOURS
+-----------------------------------------
+The HTML world and system cards have been restyled to match the Mongoose Traveller
+theme.
+
+- Light mode: warm parchment backgrounds (cream/tan). Section headers are amber-orange,
+  uppercase, with subtle letter-spacing — similar to the style used in Traveller
+  rulebook tables.
+- Dark mode: warm near-black backgrounds instead of cold grey. Section headers use
+  the same amber accent.
+
+FASTAPI — MONGOOSE PUBLISHING COPYRIGHT NOTICE
+------------------------------------------------
+A Mongoose Publishing copyright and fair use disclaimer now appears at the bottom of
+every web page and every generated world or system card. The notice reads:
+
+  "The Traveller game in all forms is owned by Mongoose Publishing.
+   Copyright 1977–2025 Mongoose Publishing. All rights reserved.
+   This is an unofficial fan work, not affiliated with Mongoose Publishing."
+
 FASTAPI — SECURITY IMPROVEMENTS
 ---------------------------------
 Several security improvements have been made to the FastAPI web interface. These
@@ -344,6 +375,13 @@ are not visible during normal use but protect against misuse.
 
 BUG FIXES
 ---------
+- Fixed: The mainworld card in the Full System page sometimes displayed as blank on
+  the first generate. The iframe was made visible immediately (before the browser had
+  finished parsing the card HTML), so the user saw only the empty iframe background.
+  Switching to another tab and back forced a repaint and revealed the content. The card
+  is now only made visible after its content has finished loading, so it always appears
+  on first generate.
+
 - Fixed: Worlds orbiting a gas giant as a satellite displayed seismic stress
   values millions of times larger than physically possible. The tidal stress
   formula (calibrated for AU-scale star-to-planet distances) was incorrectly

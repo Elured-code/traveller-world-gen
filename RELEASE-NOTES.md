@@ -6,6 +6,27 @@
 
 ---
 
+## Mongoose Traveller Theme + Copyright Footer (Session 118)
+
+Six HTML files rethemed and given a Mongoose Publishing copyright footer — no Python generation logic changed, test count unchanged.
+
+**App shells (`fastapi/static/index.html`, `fastapi/static/system.html`):**
+- Colour scheme: amber `#c87828` accent on near-black `#0c0e14` background, warm cream `#ddd4b0` text
+- Header: 2 px amber bottom border; title uppercase with 0.08 em letter-spacing; `.badge` border-radius 2 px (angular)
+- `result-frame` background: `transparent` (card templates now set their own background)
+- Footer: single-line Mongoose Publishing IP notice at bottom of every page
+
+**Card templates (`templates/world_card.html`, `world_list.html`, `system_card.html`, `system_detail.html`):**
+- Light mode: warm parchment palette (`#f9f5ee` / `#eeeadb` / `#e4dfc8`)
+- Dark mode: warm dark palette (`#141210` / `#1d1b17` / `#222018`)
+- `--color-accent` / `--acc` CSS variable added; section labels (`.inner-label`, `.section-title`, `.inner-lbl`) set to amber with uppercase + 0.06 em tracking
+- Copyright footer appended inside every rendered HTML document (visible in iframes and in saved standalone files)
+
+**Iframe blank-display fix (root cause):**
+- `loadFrame()` in `system.html` and `showFrame()` in `index.html`: `frame.classList.add("visible")` moved into the `onload` / `requestAnimationFrame` callback. The iframe is only made visible *after* its `srcdoc` has fully loaded, eliminating the intermittent blank mainworld card that appeared on first generate. The previous RAF + `h > 0` guard fixed the height-setting race but not the display race; this fix addresses the root cause.
+
+---
+
 ## Bug fixes: issue #138 call order, CSP blob:, iframe height race (Session 117)
 
 Three correctness fixes in the FastAPI layer — no Python generation logic changed.
