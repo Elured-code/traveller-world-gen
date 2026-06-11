@@ -1,8 +1,66 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–117
+**Sessions:** 88–119
 **Tests:** 2044
+
+---
+
+## Generation Pipeline Alignment — CLI, gen-ui, FastAPI (Session 119)
+
+All three generation paths (CLI, gen-ui, FastAPI) now produce the same mainworld UWP
+for the same seed and the same option selection.
+
+**FastAPI RNG threading fix (`fastapi/app.py`):**
+`_attach_mainworld_physical()` now accepts `rng: Optional[random.Random]` and passes
+it to `generate_world_physical()`. Previously, the physical dice rolls (axial tilt,
+rotation rate, etc.) advanced stdlib `random` instead of the seeded RNG object,
+leaving the shared RNG M calls behind gen-ui at `apply_mainworld_social()` — causing
+different starport/population/government/TL for the same seed. All 10 call sites
+updated to pass `rng=rng`.
+
+**CLI pipeline completion (`traveller_system_gen.py`):**
+`main()` was missing `apply_mainworld_social()` entirely, so CLI mainworlds had
+placeholder social data (starport `X`, all codes 0). `main()` now follows the full
+pipeline: `generate_world_physical()` → `attach_detail()` → `attach_body_names()` →
+`apply_mainworld_social()` → `apply_secondary_social()`. New flags added:
+`--orbital-eccentricity`, `--orbital-inclination`. A per-iteration `random.Random`
+is created and propagated so CLI seeds are reproducible.
+
+**gen-ui eccentricity/inclination checkboxes (`gen-ui/app.py`):**
+`_OptionsDialog` gains "Orbital eccentricity" and "Orbital inclination" checkboxes
+(previously hardcoded `True`). Both are persisted in QSettings
+(`opt_eccentricity`, `opt_inclination`). `generate_world_physical()` now receives
+the actual orbit eccentricity value instead of 0.0.
+
+**FastAPI system.html eccentricity/inclination (`fastapi/static/system.html`):**
+Eccentricity and Inclination checkboxes added to the generation controls. Wired
+into `sysParams()`, `buildMapUrl()`, `buildSysUrl()`, and all five `_lastGen`
+assignment points. The `/api/system/svg` and `/api/map/system/svg` endpoints
+now read and forward `ecc`/`incl` query params.
+
+## Gas/Helium World Colonisation Bug Fix (Session 119)
+
+`_minimal_tl()` in `traveller_world_detail.py` previously returned 8 for all
+atmospheres above 9 (the `A+` catch-all). Atmosphere codes G and H (EHEX values 16/17
+— Gas–Helium and Gas–Hydrogen) are produced by NHZ atmosphere tables and represent
+worlds with no hard surface. These worlds are not colonisable. `_minimal_tl()` now
+returns 99 for atmosphere ≥ 16, so secondary worlds with NHZ atmospheres are always
+uninhabited regardless of mainworld TL.
+
+## EHEX Atmosphere Crash Fix (`_sah_digit`) (Session 119)
+
+`traveller_world_tech_detail.py` called `int(sah[1], 16)` to read the atmosphere
+digit from a SAH string. Python's `int(x, 16)` only handles `0–F`; passing `G` or `H`
+(atmosphere codes 16/17) raised `ValueError: invalid literal for int() with base 16`.
+A new `_sah_digit(sah, idx)` helper uses `_EHEX.find()` instead, handling all valid
+EHEX characters without error.
+
+## Moon Table Column Alignment Fix (Session 119)
+
+`system_card.html` and `system_detail.html` moon sub-rows had 11 `<td>` cells
+against a 12-column header, misaligning every column from `ecc/incl` rightward.
+An empty `<td>` inserted in the correct position in each template restores alignment.
 
 ---
 

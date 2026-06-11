@@ -177,6 +177,38 @@ apply_secondary_social(system, ...)      →  re-applies social to all secondari
 
 ---
 
+## `main()` — command-line interface (updated Session 119)
+
+```bash
+python traveller_system_gen.py [OPTIONS]
+```
+
+| Flag | Default | Notes |
+|------|---------|-------|
+| `--name NAME` | `Unknown` | Mainworld name |
+| `--seed SEED` | random | Integer RNG seed |
+| `--count N` | `1` | Number of systems to generate |
+| `--detail` | off | Attach all secondary world and moon profiles |
+| `--nhz-atmospheres` | off | NHZ atmosphere tables for out-of-HZ worlds |
+| `--orbital-eccentricity` | off | Roll eccentricity for each orbit (WBH p.27) |
+| `--orbital-inclination` | off | Roll inclination for each orbit (WBH p.28) |
+| `--format json\|html\|text` | `text` | Output format |
+| `--json` | — | Shorthand for `--format json` |
+| `--html` | — | Shorthand for `--format html` (implies `--detail`) |
+
+**Session 119 changes:** The CLI now mirrors the app/FastAPI pipeline.
+
+- A per-iteration `random.Random(seed_val)` is created and passed to
+  `generate_full_system()` so the seed is fully deterministic.
+- `apply_mainworld_social()` is always called — previously the CLI produced
+  mainworlds with no starport, population, government, law level, or TL.
+- When `--detail`: `generate_world_physical()` is called first (advancing the
+  same `rng`), then `attach_detail()`, `attach_body_names()`, and
+  `apply_secondary_social()` — matching the FastAPI full pipeline order so the
+  same seed + same flags produce the same mainworld UWP in both CLI and FastAPI.
+
+---
+
 ## `attach_body_names()` — placeholder body names (Session 102, issue #131)
 
 `attach_body_names(system)` assigns a human-readable placeholder name to every

@@ -329,8 +329,9 @@ Removed field: `advanced_seismic_temperature_k` (seismic heating now baked into
 | v1.4.0 (Sessions 55–79) | 1449 |
 | v1.4.0 (Sessions 80–82) | 1644 |
 | v1.5.0 (Sessions 88–112) | **1946** |
+| v1.5.0 (Sessions 113–119) | **2044** |
 
-All 1946 tests pass.
+All 2044 tests pass.
 
 ---
 
