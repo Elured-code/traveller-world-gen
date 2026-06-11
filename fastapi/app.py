@@ -218,7 +218,7 @@ _CSP = (
     "default-src 'self'; "
     "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self'; "
+    "img-src 'self' blob:; "
     "connect-src 'self'; "
     "frame-src 'none'; "
     "frame-ancestors 'none'; "
@@ -718,12 +718,12 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
                                       orbital_inclination=want_incl)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         attach_detail(system, rng=rng,
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
                       optional_inhospitable_rule=want_inhospitable)
         attach_body_names(system)
-        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         _apply_mainworld_moon_tidal(system)
         _run_select_mainworld(system, rng, want_rg, True, want_indep, want_settlement)
         if want_social_detail:
@@ -804,14 +804,13 @@ async def generate_system_from_existing_world(request: Request) -> Response:  # 
                                             nhz_atmospheres=want_nhz,
                                             orbital_eccentricity=want_ecc,
                                             orbital_inclination=want_incl)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             attach_detail(system, rng=rng,
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
             attach_body_names(system)
-        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
-        if want_detail:
             _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating system from world: %s", exc)
@@ -873,13 +872,12 @@ async def generate_single_system(request: Request) -> Response:  # pylint: disab
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
                                       orbital_inclination=want_incl)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             attach_detail(system, rng=rng,
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
-        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
-        if want_detail:
             _apply_mainworld_moon_tidal(system)
         _run_select_mainworld(system, rng, want_rg, want_detail, want_indep, want_settlement)
         if want_social_detail and want_detail:
@@ -994,14 +992,13 @@ async def generate_system_card(request: Request) -> Response:  # pylint: disable
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
                                       orbital_inclination=want_incl)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             attach_detail(system, rng=rng,
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
             attach_body_names(system)
-        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
-        if want_detail:
             _apply_mainworld_moon_tidal(system)
         _run_select_mainworld(system, rng, want_rg, want_detail, want_indep, want_settlement)
         if want_social_detail and want_detail:
@@ -1057,14 +1054,13 @@ async def generate_named_system(request: Request) -> Response:  # pylint: disabl
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
                                       orbital_inclination=want_incl)
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         if want_detail:
             attach_detail(system, rng=rng,
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
                           optional_inhospitable_rule=want_inhospitable)
             attach_body_names(system)
-        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
-        if want_detail:
             _apply_mainworld_moon_tidal(system)
     except Exception as exc:
         logger.exception("Error generating system: %s", exc)
@@ -1122,14 +1118,13 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
             "An unexpected error occurred while generating the map system.",
             ERR_INTERNAL, status_code=500,
         )
+    _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
     if want_detail:
         attach_detail(system,
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
                       optional_inhospitable_rule=want_inhospitable)
         attach_body_names(system)
-    _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
-    if want_detail:
         _apply_mainworld_moon_tidal(system)
     mw = system.mainworld
     logger.info(
@@ -1283,12 +1278,12 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
             ERR_INTERNAL, status_code=500,
         )
     try:
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         attach_detail(system, rng=rng,
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
                       optional_inhospitable_rule=want_inhospitable)
         attach_body_names(system)
-        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         _apply_mainworld_moon_tidal(system)
         apply_secondary_social(system, independent_government=want_indep, rng=rng)
         if want_social_detail:
@@ -1484,12 +1479,12 @@ async def generate_map_world_card(request: Request) -> Response:  # pylint: disa
             ERR_INTERNAL, status_code=500,
         )
     try:
+        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         attach_detail(system, rng=rng,
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
                       optional_inhospitable_rule=want_inhospitable)
         attach_body_names(system)
-        _attach_mainworld_physical(system, runaway_greenhouse=want_rg)
         _apply_mainworld_moon_tidal(system)
         apply_secondary_social(system, independent_government=want_indep, rng=rng)
         if want_social_detail:

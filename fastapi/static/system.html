@@ -583,9 +583,12 @@
     frame.srcdoc = html;
     frame.classList.add("visible");
     frame.onload = () => {
-      try {
-        frame.style.height = frame.contentDocument.documentElement.scrollHeight + "px";
-      } catch (_) {}
+      requestAnimationFrame(() => {
+        try {
+          const h = frame.contentDocument.documentElement.scrollHeight;
+          if (h > 0) frame.style.height = h + "px";
+        } catch (_) {}
+      });
     };
   }
 

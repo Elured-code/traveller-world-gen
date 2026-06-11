@@ -1,8 +1,45 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–116
+**Sessions:** 88–117
 **Tests:** 2044
+
+---
+
+## Bug fixes: issue #138 call order, CSP blob:, iframe height race (Session 117)
+
+Three correctness fixes in the FastAPI layer — no Python generation logic changed.
+
+1. **Issue #138 — `_attach_mainworld_physical` before `attach_detail` (7 endpoints)**
+   `_attach_mainworld_physical()` was called *after* `attach_detail()` in every
+   system and map endpoint except `/api/world/card`.  When the runaway greenhouse
+   fired it mutated `mainworld.atmosphere` and `mainworld.hydrographics` after
+   `attach_detail()` had already copied the pre-physical SAH into the mainworld
+   orbit slot's `WorldDetail`, leaving the orbit slot with stale data (issue #138
+   seed example: SAH `681` in orbit slot vs `6B0` on the mainworld object).
+   Fixed in all 7 affected endpoints: `/api/system/full`, `/api/system/from-world`,
+   `/api/system`, `/api/system/{name}/card`, `/api/system/{name}`,
+   `_map_system_response`, `/api/map/system/full`, and `/api/map/world/card`.
+   The existing SAH-sync block at the end of `_attach_mainworld_physical()`
+   (lines 403–411) — added as a defensive patch — is now always a no-op in the
+   correct call order and is retained as a safety net.
+   The `is_mainworld_candidate` guard (already present) prevents the mainworld
+   orbit slot from receiving duplicate social detail in
+   `attach_population_detail()`, `attach_government_detail()`, and
+   `attach_tech_detail()`.
+
+2. **CSP `img-src 'self' blob:`** — the `_SecurityHeadersMiddleware` CSP was
+   `img-src 'self'` which blocked `blob:` URLs created by `URL.createObjectURL()`
+   in `loadMap()`.  System map SVGs fetched by the browser were converted to blob
+   URLs and set as `<img src=blob:…>`, which browsers refused under the CSP.
+   Added `blob:` to `img-src`.
+
+3. **`loadFrame` iframe height race** — the `onload` handler in `system.html`
+   read `frame.contentDocument.documentElement.scrollHeight` synchronously and
+   could receive `0` (layout not yet computed after the tab panel was made
+   visible).  Setting `style.height = "0px"` collapsed the iframe and left the
+   mainworld card blank.  Fixed with `requestAnimationFrame` deferral and an
+   `h > 0` guard.
 
 ---
 
