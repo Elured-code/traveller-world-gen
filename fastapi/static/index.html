@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <script>(function(){var t=localStorage.getItem("traveller-theme")||((window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light");document.documentElement.setAttribute("data-theme",t);})();</script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Traveller World Generator — Mainworld Only</title>
@@ -18,6 +19,21 @@
       --error-bg: rgba(191,64,64,0.10);
       --error-fg: #bf4040;
       --ok-fg:    #5a9e5a;
+    }
+
+    [data-theme=light] {
+      --bg:       #f4f0e4;
+      --surface:  #ede8d8;
+      --panel:    #e8e2cc;
+      --border:   #c8b890;
+      --accent:   #b56e20;
+      --accent2:  #bf4040;
+      --text:     #1a1510;
+      --muted:    #7a6850;
+      --input-bg: #faf6ee;
+      --error-bg: rgba(191,64,64,0.08);
+      --error-fg: #c03030;
+      --ok-fg:    #3a7a3a;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -72,6 +88,19 @@
     }
     nav a:hover { color: var(--text); }
     nav a.active { color: var(--accent); font-weight: 600; }
+    .btn-icon {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 0.22rem 0.5rem;
+      font-size: 0.85rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-icon:hover { border-color: var(--accent); color: var(--text); }
     .server-status {
       font-size: 0.78rem;
       color: var(--muted);
@@ -291,6 +320,7 @@
       <div class="dot" id="status-dot"></div>
       <span id="status-text">checking…</span>
     </div>
+    <button class="btn-icon" id="theme-toggle" title="Toggle light / dark mode" aria-label="Toggle theme">☀</button>
   </nav>
 </header>
 
@@ -364,6 +394,14 @@
 
   // Tracks the last successful generation so save buttons can re-fetch.
   let _lastGen = null;
+  let _lastFrameHtml = null;
+
+  function _injectTheme(html) {
+    const t = document.documentElement.getAttribute("data-theme") || "dark";
+    return html.replace(/(<html\b[^>]*)>/, function (_, p1) {
+      return p1.replace(/\s*data-theme="[^"]*"/, "") + ' data-theme="' + t + '">';
+    });
+  }
 
   function setStatus(msg, type) {
     const el = document.getElementById("w-status");
@@ -398,10 +436,11 @@
   }
 
   function showFrame(html) {
+    _lastFrameHtml = html;
     const frame = document.getElementById("w-frame");
     document.getElementById("w-result").querySelector(".empty-state").style.display = "none";
     frame.classList.remove("visible");
-    frame.srcdoc = html;
+    frame.srcdoc = _injectTheme(html);
     frame.onload = () => {
       requestAnimationFrame(() => {
         try {
@@ -505,6 +544,27 @@
       if (e.key === "Enter") generateWorld();
     });
   });
+
+  // ── Theme toggle ─────────────────────────────────────
+
+  function _getTheme() {
+    return localStorage.getItem("traveller-theme") ||
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
+
+  function _applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("traveller-theme", theme);
+    document.getElementById("theme-toggle").textContent = theme === "dark" ? "☀" : "☾";
+    if (_lastFrameHtml) showFrame(_lastFrameHtml);
+  }
+
+  document.getElementById("theme-toggle").addEventListener("click", function () {
+    const cur = document.documentElement.getAttribute("data-theme") || _getTheme();
+    _applyTheme(cur === "dark" ? "light" : "dark");
+  });
+
+  _applyTheme(_getTheme());
 
   async function generateWorld() {
     const name   = document.getElementById("w-name").value.trim();
