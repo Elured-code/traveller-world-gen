@@ -373,6 +373,21 @@ are not visible during normal use but protect against misuse.
 - Saved preferences (format, settlement type, source mode) are checked against a
   list of valid values before being restored.
 
+SYSTEM MAP MATCHES PAGE THEME IN LIGHT MODE
+
+When the FastAPI web interface is set to light mode, the system map SVG now uses
+the same warm background colour as the rest of the page (#f4f0e4) instead of
+pure white. Switching between light and dark mode now automatically re-fetches
+the map with the correct palette so the map always matches the current theme
+without requiring a new generation.
+
+MOON ORBITAL DISTANCES NOW ALIGN WITH THE ORBIT# COLUMN
+
+In the system card and system detail tables, moon orbital distances (in Planetary
+Diameters) were displaying one column too far left. They now appear under the
+Orbit# heading, and the km distance and period columns are similarly aligned with
+their correct headers.
+
 BUG FIXES
 ---------
 - Fixed: The mainworld card in the Full System page sometimes displayed as blank on

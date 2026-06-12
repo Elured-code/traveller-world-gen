@@ -87,6 +87,7 @@ AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
 
+import dataclasses
 import logging
 import logging.config
 import os
@@ -133,6 +134,9 @@ from helpers import (
 )
 
 from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT
+
+# FastAPI light-mode background matches the page (#f4f0e4), not pure white.
+_PALETTE_LIGHT = dataclasses.replace(PALETTE_LIGHT, bg="#f4f0e4")
 
 from traveller_world_gen import (
     World, generate_world, generate_atmosphere_detail, generate_gas_mix,
@@ -930,7 +934,7 @@ async def generate_system_svg(request: Request) -> Response:  # pylint: disable=
         logger.exception("Error generating system SVG: %s", exc)
         return error("An unexpected error occurred while generating the system.", ERR_INTERNAL, 500)
 
-    palette   = PALETTE_LIGHT if white_bg else PALETTE_DARK
+    palette   = _PALETTE_LIGHT if white_bg else PALETTE_DARK
     svg_str, _h = build_svg(system, canvas_w=1600, palette=palette, perspective=persp)
 
     return Response(content=svg_str, media_type="image/svg+xml")
@@ -1381,7 +1385,7 @@ async def generate_map_system_svg(request: Request) -> Response:  # pylint: disa
                 "An unexpected error occurred while generating the map SVG.",
                 ERR_INTERNAL, status_code=500,
             )
-    palette = PALETTE_LIGHT if white_bg else PALETTE_DARK
+    palette = _PALETTE_LIGHT if white_bg else PALETTE_DARK
     svg_str, _ = build_svg(system, canvas_w=1600, palette=palette, perspective=persp)
     logger.info("Generated map system SVG name=%s sector=%s", name or hex_pos, sector)
     return Response(content=svg_str, media_type="image/svg+xml")

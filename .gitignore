@@ -44,8 +44,7 @@ Desktop.ini
 
 # ── Install-generated launchers ─────────────────────────────────────────────
 # Created by install.sh / install.ps1 — user-specific, not committed.
-run-gui.command
-run-gui.bat
+
 run-world.sh
 run-world.bat
 run-mapfetch.sh

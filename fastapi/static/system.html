@@ -281,10 +281,9 @@
     }
     .map-toolbar label { font-size: 0.82rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
     .map-container {
-      flex: 1; overflow: auto; background: #0d1117;
+      flex: 1; overflow: auto; background: var(--bg);
       display: flex; align-items: flex-start; justify-content: center;
     }
-    .map-container.light-bg { background: #fff; }
     .map-container img, .map-container object { max-width: 100%; height: auto; }
     .map-loading { color: var(--muted); font-size: 0.85rem; padding: 2rem; }
 
@@ -656,23 +655,26 @@
   function buildMapUrl(seed) {
     if (!_lastGen) return null;
     const { name, detail, full, isMap, sector, hex, ecc, incl } = _lastGen;
-    const persp = document.getElementById("map-perspective").checked;
+    const persp    = document.getElementById("map-perspective").checked;
+    const lightBg  = (document.documentElement.getAttribute("data-theme") || "dark") === "light";
     if (isMap) {
       const p = new URLSearchParams({ seed });
-      if (name)   p.set("name",   name);
-      if (sector) p.set("sector", sector);
-      if (hex)    p.set("hex",    hex);
-      if (full)   p.set("detail", "true");
-      if (persp)  p.set("perspective", "true");
-      if (ecc)    p.set("orbital_eccentricity", "true");
-      if (incl)   p.set("orbital_inclination",  "true");
+      if (name)    p.set("name",   name);
+      if (sector)  p.set("sector", sector);
+      if (hex)     p.set("hex",    hex);
+      if (full)    p.set("detail", "true");
+      if (persp)   p.set("perspective", "true");
+      if (ecc)     p.set("orbital_eccentricity", "true");
+      if (incl)    p.set("orbital_inclination",  "true");
+      if (lightBg) p.set("white_bg", "true");
       return `/api/map/system/svg?${p.toString()}`;
     }
     const p = new URLSearchParams({ name, seed });
-    if (detail) p.set("detail", "true");
-    if (persp)  p.set("perspective", "true");
-    if (ecc)    p.set("orbital_eccentricity", "true");
-    if (incl)   p.set("orbital_inclination",  "true");
+    if (detail)  p.set("detail", "true");
+    if (persp)   p.set("perspective", "true");
+    if (ecc)     p.set("orbital_eccentricity", "true");
+    if (incl)    p.set("orbital_inclination",  "true");
+    if (lightBg) p.set("white_bg", "true");
     return `/api/system/svg?${p.toString()}`;
   }
 
@@ -928,6 +930,7 @@
     document.getElementById("theme-toggle").textContent = theme === "dark" ? "☀" : "☾";
     if (_lastMwHtml) loadFrame("mw-frame", _lastMwHtml);
     if (_lastSysHtml) loadFrame("sys-frame", _lastSysHtml);
+    if (_lastGen) loadMap(_lastGen.seed);
   }
 
   document.getElementById("theme-toggle").addEventListener("click", function () {

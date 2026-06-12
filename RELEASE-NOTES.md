@@ -1,8 +1,34 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–121
+**Sessions:** 88–122
 **Tests:** 2122
+
+---
+
+## FastAPI UI Polish (Session 122)
+
+**System map light/dark theming.** The system map SVG now uses the page background
+colour (`#f4f0e4`) in light mode rather than pure white. `fastapi/app.py` defines
+`_PALETTE_LIGHT` (a copy of `PALETTE_LIGHT` with `bg="#f4f0e4"`) via
+`dataclasses.replace`; CLI `--white-bg` behaviour is unchanged. `system.html`
+`buildMapUrl()` passes `white_bg=true` when `data-theme=light`; `_applyTheme()`
+re-fetches the map on every theme toggle; map container CSS uses `var(--bg)` so
+the area around the SVG also matches.
+
+**Template disclaimer cleanup.** The Mongoose copyright disclaimer `<p>` was
+present at the bottom of each card template (`system_card.html`,
+`system_detail.html`, `world_card.html`, `world_list.html`) even though it is
+already displayed in the parent page footer. Removed the redundant per-card copy.
+
+**Moon orbital table column alignment.** In both `system_card.html` and
+`system_detail.html`, moon sub-rows now have an empty `#` cell so that the
+orbital distance (`pd_str`) aligns with the Orbit# column, km distance aligns
+with AU, and ecc/incl aligns with the e/i column. Previously the PD distance was
+displayed one column too far left.
+
+**run-gui.command restored.** `run-gui.command` and `run-gui.bat` removed from
+`.gitignore`; `run-gui.command` restored from backup.
 
 ---
 
