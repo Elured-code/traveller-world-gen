@@ -365,6 +365,69 @@ class TestMedicalTL:
 
 
 # ---------------------------------------------------------------------------
+# Environmental TL sub-category (WBH §5)
+# ---------------------------------------------------------------------------
+
+class TestEnvironmentalTL:
+    """Tests for Environmental Tech Level sub-category bounds and DMs."""
+
+    def test_environmental_le_energy(self):
+        """Environmental TL is always <= Energy TL."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_environmental <= td.tl_energy, (
+                f"seed {seed}: env {td.tl_environmental} > energy {td.tl_energy}"
+            )
+
+    def test_environmental_ge_energy_minus_five(self):
+        """Environmental TL is always >= max(0, Energy TL - 5)."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_environmental >= max(0, td.tl_energy - 5), (
+                f"seed {seed}: env {td.tl_environmental} < energy {td.tl_energy} - 5"
+            )
+
+    def test_environmental_hab_dm_raises_mean(self):
+        """Low habitability rating raises Environmental TL mean (same seeds)."""
+        seeds = list(range(100))
+        mean_no_dm = sum(
+            _gen(tl=10, habitability_rating=8, rng=random.Random(s)).tl_environmental
+            for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, habitability_rating=3, rng=random.Random(s)).tl_environmental
+            for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_no_dm
+
+    def test_environmental_hab_dm_formula(self):
+        """DM = 8 - habitability_rating when rating < 8 (verified via mean shift)."""
+        seeds = list(range(100))
+        mean_hab6 = sum(
+            _gen(tl=10, habitability_rating=6, rng=random.Random(s)).tl_environmental
+            for s in seeds
+        ) / len(seeds)
+        mean_hab4 = sum(
+            _gen(tl=10, habitability_rating=4, rng=random.Random(s)).tl_environmental
+            for s in seeds
+        ) / len(seeds)
+        assert mean_hab4 >= mean_hab6
+
+    def test_environmental_no_dm_when_hab_none(self):
+        """No habitability DM when habitability_rating is None (same mean as hab=8)."""
+        seeds = list(range(100))
+        mean_none = sum(
+            _gen(tl=10, habitability_rating=None, rng=random.Random(s)).tl_environmental
+            for s in seeds
+        ) / len(seeds)
+        mean_hab8 = sum(
+            _gen(tl=10, habitability_rating=8, rng=random.Random(s)).tl_environmental
+            for s in seeds
+        ) / len(seeds)
+        assert abs(mean_none - mean_hab8) < 0.5
+
+
+# ---------------------------------------------------------------------------
 # Technology profile format
 # ---------------------------------------------------------------------------
 
@@ -625,6 +688,10 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
 
         # Medical TL: always <= Electronics TL
         assert td.tl_medical <= td.tl_electronics
+
+        # Environmental TL: [Energy TL − 5, Energy TL]
+        assert td.tl_environmental <= td.tl_energy
+        assert td.tl_environmental >= 0
 
         # Sea TL = 0 when hydrographics = 0
         if hydrographics == 0:

@@ -317,9 +317,13 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     med_hi = tl_electronics
     tl_medical = _sub_tl(med_lo, med_hi, med_dm, base=tl_electronics)
 
-    env_lo = max(tl_low, tl_energy - 5)
-    env_hi = min(tl_high, tl_energy)
-    tl_environmental = _sub_tl(env_lo, env_hi)
+    # Environmental TL: Manufacturing TL + TLM + DMs, bounds [Energy TL − 5, Energy TL]
+    env_dm = 0
+    if habitability_rating is not None and habitability_rating < 8:
+        env_dm += 8 - habitability_rating
+    env_lo = tl_energy - 5
+    env_hi = tl_energy
+    tl_environmental = _sub_tl(env_lo, env_hi, env_dm, base=tl_manufacturing)
 
     # ------------------------------------------------------------------
     # Transportation sub-TLs
