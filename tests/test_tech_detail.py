@@ -513,7 +513,7 @@ class TestAirTL:
         assert td.tl_air == 0
 
     def test_atm0_tl6_air_not_forced_zero(self):
-        """Atmosphere 0 at TL 6 no longer forces air TL to zero."""
+        """Atmosphere 0 at TL 6 is not auto-zeroed (gets DM -2 instead)."""
         rng = random.Random(1)
         td = generate_tech_detail(
             tl=6, atmosphere=0, hydrographics=5, population=7,
@@ -526,6 +526,62 @@ class TestAirTL:
         """Standard atmosphere yields non-negative air transport TL."""
         td = _gen(tl=10, atmosphere=6)
         assert td.tl_air >= 0
+
+    def test_air_le_energy(self):
+        """Air TL is always <= Energy TL."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_air <= td.tl_energy, (
+                f"seed {seed}: air {td.tl_air} > energy {td.tl_energy}"
+            )
+
+    def test_air_thin_atm_dm_lowers_mean(self):
+        """Air TL mean is lower for thin atm (4-5) at TL7 vs standard atm (DM -1)."""
+        seeds = list(range(100))
+        mean_std = sum(
+            _gen(tl=7, atmosphere=6, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        mean_thin = sum(
+            _gen(tl=7, atmosphere=4, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        assert mean_thin <= mean_std
+
+    def test_air_trace_atm_dm_lowers_mean(self):
+        """Air TL mean is lower for trace/very-thin atm (0-3) at TL7 vs standard (DM -2)."""
+        seeds = list(range(100))
+        mean_std = sum(
+            _gen(tl=7, atmosphere=6, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        mean_trace = sum(
+            _gen(tl=7, atmosphere=2, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        assert mean_trace <= mean_std
+
+    def test_air_dense_atm_dm_raises_mean(self):
+        """Air TL mean is higher for dense atm (8-9) at TL7 vs standard (DM +1)."""
+        seeds = list(range(100))
+        mean_std = sum(
+            _gen(tl=7, atmosphere=6, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        mean_dense = sum(
+            _gen(tl=7, atmosphere=8, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        assert mean_dense >= mean_std
+
+    def test_air_no_atm_dm_at_tl8(self):
+        """No atmospheric DMs at TL 8+ (grav vehicles work in any atmosphere)."""
+        seeds = list(range(100))
+        mean_std = sum(
+            _gen(tl=8, atmosphere=6, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        mean_thin = sum(
+            _gen(tl=8, atmosphere=4, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        mean_dense = sum(
+            _gen(tl=8, atmosphere=8, rng=random.Random(s)).tl_air for s in seeds
+        ) / len(seeds)
+        assert abs(mean_thin - mean_std) < 1.0
+        assert abs(mean_dense - mean_std) < 1.0
 
 
 class TestSeaTL:
@@ -797,6 +853,13 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
 
         # Sea TL: hydro=0 gets DM -2 (can still be non-zero) but is bounded by Energy TL
         assert td.tl_sea <= td.tl_energy
+
+        # Air TL: auto-zero when atm=0 and TL<=5; otherwise bounded by Energy TL
+        if atmosphere == 0 and tl <= 5:
+            assert td.tl_air == 0
+        else:
+            assert td.tl_air <= td.tl_energy
+            assert td.tl_air >= 0
 
         # Air TL = 0 when atmosphere = 0 and tl <= 5
         if atmosphere == 0 and tl <= 5:

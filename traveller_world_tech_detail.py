@@ -352,10 +352,21 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     sea_hi = tl_energy
     tl_sea = _sub_tl(sea_lo, sea_hi, sea_dm, base=tl_energy)
 
+    # Air TL: Energy TL + TLM + DMs, bounds [Electronics TL − 5, Energy TL]
+    # Auto-zero: Atmosphere 0 and TL ≤ 5 (no aircraft or grav vehicles possible yet)
     if atmosphere == 0 and tl_high <= 5:
         tl_air = 0
     else:
-        tl_air = _sub_tl(land_lo, land_hi)
+        air_dm = 0
+        if (atmosphere <= 3 or atmosphere == 14) and tl_high <= 7:
+            air_dm -= 2   # vacuum / trace / very-thin / thin-low at low TL
+        elif atmosphere in (4, 5) and tl_high <= 7:
+            air_dm -= 1   # thin atmosphere at low TL
+        elif atmosphere in (8, 9) and tl_high <= 7:
+            air_dm += 1   # dense atmosphere easier to fly in at low TL
+        air_lo = tl_electronics - 5
+        air_hi = tl_energy
+        tl_air = _sub_tl(air_lo, air_hi, air_dm, base=tl_energy)
 
     space_base = min(tl_energy, tl_manufacturing)
     space_lo = max(tl_low, space_base - 3)
