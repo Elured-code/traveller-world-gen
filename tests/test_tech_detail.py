@@ -236,6 +236,65 @@ class TestElectronicsTL:
 
 
 # ---------------------------------------------------------------------------
+# Manufacturing TL sub-category (WBH §5)
+# ---------------------------------------------------------------------------
+
+class TestManufacturingTL:
+    """Tests for Manufacturing Tech Level sub-category bounds and DMs."""
+
+    def test_manufacturing_le_max_energy_electronics(self):
+        """Manufacturing TL is always <= max(Energy TL, Electronics TL)."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_manufacturing <= max(td.tl_energy, td.tl_electronics), (
+                f"seed {seed}: mfg {td.tl_manufacturing} > max("
+                f"energy {td.tl_energy}, elec {td.tl_electronics})"
+            )
+
+    def test_manufacturing_ge_electronics_minus_two(self):
+        """Manufacturing TL is always >= max(0, Electronics TL - 2)."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_manufacturing >= max(0, td.tl_electronics - 2), (
+                f"seed {seed}: mfg {td.tl_manufacturing} < elec {td.tl_electronics} - 2"
+            )
+
+    def test_manufacturing_pop16_dm_lowers_mean(self):
+        """Manufacturing mean is lower with pop 1–6 than pop 7 (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, population=7, rng=random.Random(s)).tl_manufacturing for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, population=4, rng=random.Random(s)).tl_manufacturing for s in seeds
+        ) / len(seeds)
+        assert mean_dm <= mean_base
+
+    def test_manufacturing_pop8_dm_raises_mean(self):
+        """Manufacturing mean is higher with pop 8+ than pop 7 (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, population=7, rng=random.Random(s)).tl_manufacturing for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, population=8, rng=random.Random(s)).tl_manufacturing for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_base
+
+    def test_manufacturing_industrial_dm_raises_mean(self):
+        """Manufacturing mean is higher with Industrial code than without (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, population=7, rng=random.Random(s)).tl_manufacturing for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, population=7, trade_codes=["In"], rng=random.Random(s)).tl_manufacturing
+            for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_base
+
+
+# ---------------------------------------------------------------------------
 # Technology profile format
 # ---------------------------------------------------------------------------
 
@@ -489,6 +548,10 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         # Electronics TL bounds: [Energy TL − 3, Energy TL + 1]
         assert td.tl_electronics <= td.tl_energy + 1
         assert td.tl_electronics >= 0
+
+        # Manufacturing TL bounds: [Electronics TL − 2, max(Energy, Electronics)]
+        assert td.tl_manufacturing <= max(td.tl_energy, td.tl_electronics)
+        assert td.tl_manufacturing >= 0
 
         # Sea TL = 0 when hydrographics = 0
         if hydrographics == 0:

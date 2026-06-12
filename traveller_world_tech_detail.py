@@ -295,9 +295,17 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     elec_hi = tl_energy + 1
     tl_electronics = _sub_tl(elec_lo, elec_hi, elec_dm)
 
-    mfg_lo = max(tl_low, tl_electronics - 2)
-    mfg_hi = min(tl_high, max(tl_energy, tl_electronics))
-    tl_manufacturing = _sub_tl(mfg_lo, mfg_hi)
+    # Manufacturing TL: High TL + TLM + DMs, bounds [Electronics TL − 2, max(Energy, Electronics)]
+    mfg_dm = 0
+    if 1 <= population <= 6:
+        mfg_dm -= 1
+    if population >= 8:
+        mfg_dm += 1
+    if "In" in _tc:
+        mfg_dm += 1
+    mfg_lo = tl_electronics - 2
+    mfg_hi = max(tl_energy, tl_electronics)
+    tl_manufacturing = _sub_tl(mfg_lo, mfg_hi, mfg_dm)
 
     med_lo = max(tl_low, _STARPORT_MED_FLOOR.get(starport.upper(), 0))
     med_hi = min(tl_high, tl_electronics)
