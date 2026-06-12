@@ -403,7 +403,18 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     mil_p_hi = tl_electronics
     tl_military_personal = _sub_tl(mil_p_lo, mil_p_hi, mil_p_dm, base=tl_manufacturing)
 
-    tl_military_heavy = _sub_tl(0, tl_manufacturing)
+    heavy_dm = 0
+    if 1 <= population <= 6:
+        heavy_dm -= 1
+    if population >= 8:
+        heavy_dm += 1
+    if government in (7, 10, 11, 15):   # 7, A, B, F
+        heavy_dm += 2
+    if law_level >= 13:                  # D+
+        heavy_dm += 2
+    if "In" in _tc:
+        heavy_dm += 1
+    tl_military_heavy = _sub_tl(0, tl_manufacturing, heavy_dm, base=tl_manufacturing)
 
     # ------------------------------------------------------------------
     # Technology profile: H-L-QQQQQ-TTTT-MM

@@ -793,6 +793,95 @@ class TestMilitaryPersonalTL:
         assert mean_high_law > mean_mid_law
 
 
+class TestMilitaryHeavyTL:
+    """Tests for Heavy Military sub-TL rules (WBH §5)."""
+
+    def test_heavy_le_manufacturing(self):
+        """Heavy military TL never exceeds Manufacturing TL."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_military_heavy <= td.tl_manufacturing
+
+    def test_heavy_nonneg(self):
+        """Heavy military TL is always non-negative."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_military_heavy >= 0
+
+    def test_pop16_dm_lowers_mean(self):
+        """Population 1-6 DM-1 statistically lowers heavy military TL mean."""
+        mean_low = sum(
+            _gen(tl=10, population=3, rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        mean_high = sum(
+            _gen(tl=10, population=8, rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        assert mean_low < mean_high
+
+    def test_pop8plus_dm_raises_mean(self):
+        """Population 8+ DM+1 statistically raises heavy military TL mean."""
+        mean_high_pop = sum(
+            _gen(tl=10, population=9, rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        mean_mid_pop = sum(
+            _gen(tl=10, population=7, rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        assert mean_high_pop > mean_mid_pop
+
+    def test_gov7_dm_raises_mean(self):
+        """Government 7 DM+2 statistically raises heavy military TL mean."""
+        mean_gov7 = sum(
+            _gen(tl=10, government=7, rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        mean_gov6 = sum(
+            _gen(tl=10, government=6, rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        assert mean_gov7 > mean_gov6
+
+    def test_govABF_dm_raises_mean(self):
+        """Government A/B/F DM+2 statistically raises heavy military TL mean."""
+        for gov in (10, 11, 15):
+            mean_strong = sum(
+                _gen(tl=10, government=gov, rng=random.Random(s)).tl_military_heavy
+                for s in range(100)
+            ) / 100
+            mean_mid = sum(
+                _gen(tl=10, government=6, rng=random.Random(s)).tl_military_heavy
+                for s in range(100)
+            ) / 100
+            assert mean_strong > mean_mid, f"Gov {gov} DM+2 did not raise mean"
+
+    def test_law_dplus_dm_raises_mean(self):
+        """Law Level D+ DM+2 statistically raises heavy military TL mean."""
+        mean_high_law = sum(
+            _gen(tl=10, law_level=13, rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        mean_mid_law = sum(
+            _gen(tl=10, law_level=5, rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        assert mean_high_law > mean_mid_law
+
+    def test_industrial_dm_raises_mean(self):
+        """Industrial trade code DM+1 statistically raises heavy military TL mean."""
+        mean_in = sum(
+            _gen(tl=10, trade_codes=["In"], rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        mean_no = sum(
+            _gen(tl=10, trade_codes=[], rng=random.Random(s)).tl_military_heavy
+            for s in range(100)
+        ) / 100
+        assert mean_in > mean_no
+
+
 # ---------------------------------------------------------------------------
 # All sub-TLs non-negative
 # ---------------------------------------------------------------------------
@@ -1010,6 +1099,10 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         # Law 0 lower bound = min(Manufacturing TL, Electronics TL)
         if law_level == 0:
             assert td.tl_military_personal >= min(td.tl_manufacturing, td.tl_electronics)
+
+        # Heavy military TL: bounded [0, Manufacturing TL]
+        assert td.tl_military_heavy <= td.tl_manufacturing
+        assert td.tl_military_heavy >= 0
 
         # Profile format
         assert _PROFILE_RE.match(td.technology_profile)
