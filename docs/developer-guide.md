@@ -17,11 +17,14 @@ A technical reference for developers working on the `traveller-world-gen` codeba
    - [traveller_world_physical.py](#45-traveller_world_physicalpy)
    - [traveller_world_detail.py](#46-traveller_world_detailpy)
    - [traveller_moon_gen.py](#47-traveller_moon_genpy)
-   - [function_app.py and shared/helpers.py](#48-function_apppy-and-sharedhelperspy)
-   - [traveller_map_fetch.py](#49-traveller_map_fetchpy)
-   - [system_map.py](#410-system_mappy)
-   - [gen-ui/app.py](#411-gen-uiapppy)
-   - [render_system_json.py](#412-render_system_jsonpy)
+   - [system_pipeline.py](#48-system_pipelinepy)
+   - [Social detail modules](#49-social-detail-modules)
+   - [fastapi/app.py and fastapi/helpers.py](#410-fastapiapppy-and-fastapihelperspy)
+   - [function_app.py and shared/helpers.py](#411-function_apppy-and-sharedhelperspy)
+   - [traveller_map_fetch.py](#412-traveller_map_fetchpy)
+   - [system_map.py](#413-system_mappy)
+   - [gen-ui/app.py](#414-gen-uiapppy)
+   - [render_system_json.py](#415-render_system_jsonpy)
 5. [Key design decisions](#5-key-design-decisions)
 6. [Compliance audit history](#6-compliance-audit-history)
 7. [Deferred and out-of-scope features](#7-deferred-and-out-of-scope-features)
@@ -47,34 +50,66 @@ Generation is procedural and dice-driven, using Python's `random` module. Every 
 
 ```
 traveller-world-gen/
-├── traveller_stellar_gen.py    # Stars: type, mass, luminosity, multiples, age
-├── traveller_orbit_gen.py      # Orbit placement: MAO, HZCO, spread, world slots
-├── traveller_system_gen.py     # Integration: stellar + orbits + mainworld
-├── traveller_world_gen.py      # Mainworld: all 13 CRB steps, UWP, trade codes
-├── traveller_world_physical.py # WBH pp.74-77,103: diameter, density, gravity, axial tilt, day length
-├── traveller_world_detail.py   # Secondary worlds and satellites: SAH + social
-├── traveller_moon_gen.py       # Moon quantity, sizing, and SAH/social detail
-├── traveller_map_fetch.py      # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
-├── traveller_world_schema.json # JSON Schema (draft 2020-12) for World.to_dict()
-├── render_system_json.py       # Standalone: renders a TravellerSystem JSON file to self-contained HTML
-├── system_map.py               # SVG star system map: per-star arc zones, log-AU radial scale, orbit table
+├── traveller_stellar_gen.py          # Stars: type, mass, luminosity, multiples, age
+├── traveller_orbit_gen.py            # Orbit placement: MAO, HZCO, spread, world slots
+├── traveller_system_gen.py           # Integration: stellar + orbits + mainworld; select_mainworld()
+├── traveller_world_gen.py            # Mainworld: all 13 CRB steps, UWP, trade codes
+├── traveller_world_physical.py       # WBH pp.74-77,103: diameter, density, gravity, axial tilt, day length
+├── traveller_belt_physical.py        # WBH: asteroid belt physical characteristics
+├── traveller_world_atmosphere_detail.py  # Extended atmosphere detail (WBH pp.78-93)
+├── traveller_hydro_detail.py         # Hydrographic detail: ocean types, ice caps, depth
+├── traveller_world_detail.py         # Secondary worlds and satellites: SAH + social
+├── traveller_moon_gen.py             # Moon quantity, sizing, orbit placement, and SAH/social detail
+├── traveller_world_population_detail.py  # WBH §5: population sub-characteristics
+├── traveller_world_government_detail.py  # WBH §5: government type, factions, law variants
+├── traveller_world_law_detail.py         # WBH §5: law level sub-characteristics
+├── traveller_world_tech_detail.py        # WBH §5: tech level breakdown (13 sub-TLs)
+├── system_pipeline.py                # Shared post-generation orchestration (run_detail_pipeline)
+├── traveller_map_fetch.py            # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
+├── traveller_world_schema.json       # JSON Schema (draft 2020-12) for World.to_dict()
+├── render_system_json.py             # Standalone: renders a TravellerSystem JSON file to self-contained HTML
+├── system_map.py                     # SVG star system map: per-star arc zones, log-AU radial scale, orbit table
+├── tables.py                         # Lookup tables and constants shared across generation modules
+├── world_codes.py                    # APP_VERSION, eHex encoding, and world code utilities
+├── html_render.py                    # Shared HTML rendering helpers
 │
-├── function_app.py             # Azure Functions HTTP endpoints (13 routes)
+├── fastapi/
+│   ├── app.py                        # FastAPI HTTP server (primary local/cloud API)
+│   ├── helpers.py                    # Request parsing, response builders for FastAPI
+│   ├── requirements.txt              # FastAPI dependencies
+│   └── static/                       # Static assets served by FastAPI
+├── templates/                        # Jinja2 HTML templates for FastAPI responses
+│
+├── function_app.py                   # Azure Functions HTTP endpoints (alternative deployment)
 ├── shared/
-│   └── helpers.py              # Request parsing, response builders, error codes
+│   └── helpers.py                    # Request parsing, response builders for Azure Functions
+│
 ├── gen-ui/
-│   ├── app.py                  # PySide6 (Qt6) desktop UI — fully working
-│   ├── README.md               # Setup, usage, and keyboard shortcut reference
-│   └── requirements.txt        # Dependency list (PySide6>=6.4.0; bundled Qt, no system libs required)
+│   ├── app.py                        # PySide6 (Qt6) desktop UI
+│   ├── README.md                     # Setup, usage, and keyboard shortcut reference
+│   └── requirements.txt              # Dependency list (PySide6>=6.4.0; bundled Qt, no system libs required)
 │
 ├── tests/
-│   ├── test_traveller_world_gen.py   # Unit tests — mainworld generation
-│   └── test_function_app.py          # Unit tests — API layer
+│   ├── test_traveller_world_gen.py   # Mainworld generation
+│   ├── test_function_app.py          # Azure Functions API layer
+│   ├── test_fastapi_app.py           # FastAPI layer
+│   ├── test_orbit_gen.py             # Orbit placement
+│   ├── test_world_physical.py        # World physical detail
+│   ├── test_belt_physical.py         # Belt physical detail
+│   ├── test_moon_gen.py              # Moon generation
+│   ├── test_hydro_detail.py          # Hydrographic detail
+│   ├── test_biomass.py               # Biomass and biocomplexity
+│   ├── test_habitability.py          # Habitability rating
+│   ├── test_tech_detail.py           # Tech detail sub-TLs
+│   ├── test_system_pipeline.py       # run_detail_pipeline() integration
+│   ├── test_system_roundtrip.py      # JSON serialisation round-trips
+│   └── test_hypothesis.py            # Property-based tests (Hypothesis)
 │
-├── LICENSE                     # MIT Licence + Traveller IP notice
-├── README.md                   # End-user documentation
+├── conftest.py                       # pytest path setup and Azure Functions stub
+├── LICENSE                           # MIT Licence + Traveller IP notice
+├── README.md                         # End-user documentation
 └── docs/
-    └── developer-guide.md      # This file
+    └── developer-guide.md            # This file
 ```
 
 ---
@@ -90,8 +125,11 @@ generate_orbits(stellar_system)  →  SystemOrbits
        ↓
 generate_full_system(name, seed) →  TravellerSystem
        ↓
-attach_detail(system)            →  populates orbit.detail (WorldDetail)
-                                    and moon.detail (WorldDetail) on all slots
+run_detail_pipeline(system, rng, options)   →  mutates system in place:
+       ↓   _attach_physical + attach_detail + attach_body_names + _apply_moon_tidal
+       ↓   [select_mainworld] → apply_mainworld_social → apply_secondary_social
+       ↓   [attach_population_detail + attach_government_detail
+            + attach_law_detail + attach_tech_detail]
 ```
 
 For TravellerMap-seeded systems, the pipeline starts differently:
@@ -135,7 +173,7 @@ TravellerSystem  (assembled)
 attach_detail()
 ```
 
-**RNG state is global.** All modules use `random.seed()` / `random.randint()` directly. The seed is set once at the top of `generate_full_system()` when a seed is provided, and every subsequent roll in the pipeline consumes from that same RNG sequence. This means the order of calls matters: adding or removing any roll anywhere in the pipeline will shift all subsequent results for a given seed.
+**RNG is injectable.** Every generation module exposes an `rng: Optional[random.Random] = None` parameter on its public entry points. When provided, it is written to the module-level `_rng` sentinel and all subsequent rolls in that module use it. `generate_full_system()` always creates a fresh `random.Random(seed)` instance and propagates it. Callers that want a shared RNG stream pass the same instance to every function; callers that want independent streams create separate instances. The order of calls still matters: adding or removing any roll anywhere in the pipeline will shift all subsequent results for a given seed.
 
 ---
 
@@ -601,9 +639,99 @@ For the mainworld, `WorldPhysical.diameter_km` and `WorldPhysical.mass` are used
 
 ---
 
-### 4.8 `function_app.py` and `shared/helpers.py`
+### 4.8 `system_pipeline.py`
 
-The Azure Functions REST API layer. Not required for local use of the generation modules.
+Shared post-generation orchestration used by all three callers (CLI, gen-ui, and FastAPI). Eliminates duplication of the detail attachment sequence across entry points.
+
+**Key public API:**
+
+```python
+@dataclass
+class PipelineOptions:
+    want_detail:            bool = True   # run attach_detail() and physical generation
+    want_select_mw:         bool = False  # run select_mainworld() after detail attachment
+    runaway_greenhouse:     bool = False  # check for runaway greenhouse atmosphere mutation
+    independent_government: bool = False  # secondary worlds may be independently governed
+    optional_biomass:       bool = False  # optional biomass rules
+    optional_inhospitable:  bool = False  # optional inhospitable atmosphere rules
+    settlement_type:        str  = "standard"  # "standard" | "belter" | "corporate" | …
+    want_social_detail:     bool = False  # attach WBH §5 social sub-detail (pop/gov/law/TL)
+
+def run_detail_pipeline(
+    system: TravellerSystem,
+    rng: random.Random,
+    options: Optional[PipelineOptions] = None,
+) -> None
+```
+
+`run_detail_pipeline()` mutates `system` in place. Pipeline order (when `want_detail=True`):
+
+1. `_attach_physical()` — generates `WorldPhysical` / `BeltPhysical` for mainworld and moons
+2. `attach_detail()` — generates `WorldDetail` for all orbit slots and moons
+3. `attach_body_names()` — assigns procedural names to unnamed bodies
+4. `_apply_moon_tidal()` — applies tidal stress effects across the moon system
+5. `select_mainworld()` — optional; scores all inhabited worlds and may swap the mainworld
+6. `apply_mainworld_social()` — applies population, government, law, starport, TL to mainworld
+7. `reattach_mainworld_orbit()` — if mainworld was swapped, re-links orbit slot and moon tidal
+8. `apply_secondary_social()` — applies social generation to inhabited secondaries and moons
+9. Social sub-detail — `attach_population_detail`, `attach_government_detail`, `attach_law_detail`, `attach_tech_detail` (when `want_social_detail=True`)
+
+When `want_detail=False`, only step 6 (`apply_mainworld_social`) runs.
+
+---
+
+### 4.9 Social detail modules
+
+Four modules implement WBH §5 Social Characteristics. Each attaches a typed dataclass to the relevant world object.
+
+| Module | Dataclass | Attached to |
+|--------|-----------|-------------|
+| `traveller_world_population_detail.py` | `PopulationDetail` | `World.population_detail` |
+| `traveller_world_government_detail.py` | `GovernmentDetail` | `World.government_detail` |
+| `traveller_world_law_detail.py` | `LawDetail` | `World.law_detail` |
+| `traveller_world_tech_detail.py` | `TechDetail` | `World.tech_detail` |
+
+All four modules follow the same pattern:
+
+- A module-level `_rng` sentinel and injectable `rng: Optional[random.Random] = None` parameter.
+- A `generate_*_detail()` function that takes the relevant UWP fields and returns the dataclass (or `None` for uninhabited worlds).
+- An `attach_*_detail(system, rng=None)` function that walks the `TravellerSystem` and applies detail to the mainworld and all inhabited secondaries and moons.
+- `to_dict()` / `from_dict()` on each dataclass for JSON serialisation.
+
+**`TechDetail`** is the most structurally complex. It computes 13 TL values: High common TL, Low common TL, and 11 sector-specific sub-TLs (Energy, Electronics, Manufacturing, Medical, Environmental, Land, Sea, Air, Space, Personal Military, Heavy Military). The full specification is in `docs/traveller_world_tech_detail_explained.md`.
+
+---
+
+### 4.10 `fastapi/app.py` and `fastapi/helpers.py`
+
+The FastAPI HTTP server. This is the primary API server for local development and cloud deployment.
+
+**Running locally:**
+
+```bash
+cd fastapi
+uvicorn app:app --reload
+```
+
+**Endpoints:**
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| GET/POST | `/api/world` | Generate one mainworld |
+| GET/POST | `/api/system` | Full star system (optional `detail`) |
+| GET/POST | `/api/system/full` | Complete system with all secondary worlds always attached |
+| GET/POST | `/api/map/system` | TravellerMap world — canonical UWP; procedural orbits |
+| POST | `/api/system/from-world` | Full system around an existing mainworld JSON |
+
+All JSON responses conform to `traveller_world_schema.json`. The endpoints support `seed`, `detail`, `format` (`json` / `html` / `text`), `orbital_eccentricity`, and `orbital_inclination` query parameters where applicable.
+
+**`fastapi/helpers.py`** mirrors the structure of `shared/helpers.py` for the Azure Functions layer but uses FastAPI's `Request` object and `JSONResponse` instead of Azure Functions types. Shared validation logic (UWP parsing, PBG parsing, hex position validation) is kept in sync between the two helper files.
+
+---
+
+### 4.11 `function_app.py` and `shared/helpers.py`
+
+The Azure Functions REST API layer. An alternative deployment target; the FastAPI server (§4.10) is preferred for local development.
 
 **Endpoints:**
 
@@ -639,7 +767,7 @@ Mainworld JSON responses conform to `traveller_world_schema.json`. The `/card` e
 
 ---
 
-### 4.9 `traveller_map_fetch.py`
+### 4.12 `traveller_map_fetch.py`
 
 Fetches canonical world data from the public TravellerMap REST API and uses it
 to seed a full system generation. Uses only Python stdlib (`urllib.request`) —
@@ -753,7 +881,7 @@ python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detai
 
 ---
 
-### 4.10 `system_map.py`
+### 4.13 `system_map.py`
 
 Generates an SVG diagram of a complete star system. The canvas has two zones stacked vertically:
 
@@ -774,7 +902,7 @@ save_output(svg_str: str, path: str) -> None
 
 `build_svg()` does **not** call `attach_detail()` itself. The CLI's `main()` calls it first so that arc colours and detail-table profiles are populated. When calling `build_svg()` programmatically, call `attach_detail(system)` beforehand if you want secondary world and moon data in the table. The returned SVG string is self-contained and can be written to a file or embedded in HTML.
 
-**SVG rendering in Qt (`QSvgWidget`):** Two properties of the SVG are set in ways that browsers support but Qt's SVG renderer does not:
+**SVG rendering in Qt (`QWebEngineView`):** The gen-ui displays the SVG via `QWebEngineView` (full Chromium renderer). Two properties of the SVG are set in ways that the older Qt SVG renderer does not support — these are preserved for correctness when the SVG is displayed in browsers or third-party tools:
 
 - *Background colour* — the CSS `background` property on the root `<svg>` element is ignored by Qt. The SVG output therefore includes an explicit `<rect x="0" y="0" width="…" height="…" fill="{palette.bg}"/>` as the first element inside the root, which all SVG renderers handle correctly.
 - *Font family inheritance* — Qt does not inherit `font-family` from a `style="…"` attribute on the root `<svg>` element. The table zone content is wrapped in `<g font-family="'Courier New', Courier, monospace">` so the monospace font is applied via an SVG presentation attribute, which Qt does inherit.
@@ -809,7 +937,7 @@ python system_map.py --name Mora --seed 7
 
 ---
 
-### 4.11 `gen-ui/app.py`
+### 4.14 `gen-ui/app.py`
 
 PySide6 (Qt6) desktop UI for local interactive use. Run with:
 
@@ -867,17 +995,17 @@ class SystemMapWindow(QMainWindow):
 
     def _render(self) -> None:
         # calls build_svg(system, canvas_w, palette)
-        # loads result into QSvgWidget inside QScrollArea
-        # falls back to browser + hint label if PySide6.QtSvgWidgets unavailable
+        # writes SVG to a temp file and loads it into QWebEngineView
+        # (QSvgWidget is not used — it silently corrupts feGaussianBlur on macOS)
 ```
 
-`_render()` is called once at construction and again on every theme toggle. The `QSvgWidget` is sized to the exact SVG canvas dimensions (`_CANVAS_W × canvas_h`) so the `QScrollArea` provides correct scrollbars for large maps.
+`_render()` is called once at construction and again on every theme toggle. The SVG is written to a temporary file and loaded via `QWebEngineView.load(QUrl.fromLocalFile(...))`. `QSvgWidget` / `QSvgRenderer` was replaced because Qt's SVG renderer silently corrupts `feGaussianBlur` filter effects on macOS, producing visually broken maps. `QWebEngineView` uses the full Chromium rendering engine and handles all SVG features correctly.
 
 **Keyboard shortcuts** — `QKeySequence::Quit` (Cmd+Q on macOS, Ctrl+Q on Windows/Linux) and `QKeySequence::Close` (Cmd+W / Ctrl+W) are registered globally on `AppWindow`. Qt resolves the correct platform key automatically.
 
 ---
 
-### 4.12 `render_system_json.py`
+### 4.15 `render_system_json.py`
 
 Standalone script that reads any system JSON file produced by `TravellerSystem.to_dict()` and renders it as a rich, self-contained HTML document. Requires no project module imports — stdlib only (`json`, `sys`, `html`, `pathlib`).
 
@@ -925,13 +1053,13 @@ def render(data: dict) -> str           # top-level entry point
 
 **Orbital temperature over random temperature.** All worlds — mainworld, secondary worlds, and moons — derive their temperature from orbital HZ deviation rather than an independent dice roll. This ensures physical consistency: a world's temperature matches where it actually sits relative to its star. The `generate_temperature_from_orbit()` function in `traveller_system_gen.py` is the single source of truth for this conversion.
 
-**Single RNG stream.** Python's `random` module state is global. All generation code shares one stream. This keeps the seeding model simple but means any change to the number of dice rolls in any module will shift all subsequent rolls for every affected seed. When adding new generation steps, place them at the end of the pipeline to minimise seed disruption.
+**Injectable RNG.** Each generation module exposes an `rng: Optional[random.Random] = None` parameter. When provided, the module writes it to a module-level `_rng` sentinel; all dice rolls within that call use `_rng`. `generate_full_system()` creates a fresh `random.Random(seed)` instance and propagates it to every downstream call. This makes RNG streams explicit and testable, and lets callers create independent streams where needed. Any change to the number of dice rolls in any module will still shift all subsequent rolls for a given seed, so new generation steps should be placed at the end of the pipeline.
 
 **`attach_detail()` is a separate step.** Secondary world and moon generation is expensive — O(total moons) additional RNG calls. `generate_full_system()` does not call it automatically. Code that only needs the mainworld UWP should not call `attach_detail()`.
 
 **Orbit# scale is not linear with AU.** The WBH Orbit# table maps orbital positions to a scale that is approximately logarithmic in AU. Orbit# 1.0 ≈ 0.400 AU; Orbit# 2.0 ≈ 0.700 AU; Orbit# 3.0 ≈ 1.000 AU. When computing habitable zone boundaries for display, always convert Orbit# values to AU using `_orbit_to_au()`, then build radius scales from AU. Do not use Orbit# values directly as radial distances.
 
-**Secondary world government defaults to dependent (Case 1).** The WBH provides two government procedures for secondary worlds: dependent (roll 1D on the Secondary World Government table) and independent (roll 2D-7 + Population). The current implementation uses the dependent (Case 1) table for all secondary worlds. This is the most common case and keeps the social generation self-contained without requiring Referee input about political independence.
+**Secondary world government: dependent (Case 1) by default, independent (Case 2) optional.** The WBH provides two government procedures for secondary worlds: dependent (roll 1D on the Secondary World Government table) and independent (roll 2D-7 + Population). The default is dependent. Passing `independent_government=True` to `attach_detail()` (or setting `PipelineOptions.independent_government=True`) enables Case 2 rolls for secondary worlds whose government is not 6. The flag is wired through to the API endpoints and the gen-ui.
 
 **Gas giant SAH is rolled at orbit-gen time.** `_gg_sah_roll()` in `traveller_orbit_gen.py` rolls and stores the gas giant SAH (GS/GM/GL + diameter digit) in `OrbitSlot.gg_sah` during `generate_orbits()`. This solves two problems: (1) `generate_mainworld_at_orbit()` needs the gas giant diameter to constrain satellite size, but importing `traveller_world_detail` would create a circular import; (2) the SAH value must be the same whether it is accessed for satellite sizing (in system_gen) or for the detail table (in world_detail), so it must be rolled once and shared. Inlining the roll in orbit_gen avoids the circular import and ensures consistency. The RNG sequence shifts for any system that contains a gas giant — an unavoidable consequence of inserting new dice rolls earlier in the pipeline.
 
@@ -977,21 +1105,17 @@ The following WBH features are explicitly noted as not yet implemented. Page ref
 
 **Anomalous orbits (Step 7, WBH p.49–50).** Random, eccentric, inclined, retrograde, and trojan orbits. These add terrestrial planet count to the system after normal orbit placement. Not implemented in `traveller_orbit_gen.py`.
 
-**Eccentricity (Step 9, WBH p.51).** Orbital eccentricity for planets. This would affect the moon quantity DM for planets near exclusion zones (currently only the `orbit_number < 1.0` DM is applied), and would affect Hill sphere calculations for moons. Not implemented.
-
 **Orbital periods — planet mass correction.** World orbital periods use `P = √(AU³ / M_central)` without the WBH planet-mass correction `(mE × 0.000003)`. For superjovian planets the correction is ≤ 0.17% of the period (≈ 1000 M⊕ around a G-type star) and is omitted.
 
 **Moon orbit adjacency DMs.** Three of the four DM conditions for moon quantity (WBH p.56) require knowledge of whether an orbit slot is adjacent to a companion-induced MAO, a Close/Near star unavailability zone, or the outermost slot of a Far star. These require eccentricity data and spread values that are not currently passed through to `traveller_moon_gen.py`. Only the `orbit_number < 1.0` condition is implemented.
 
 **Post-stellar special circumstances (WBH p.219+).** White dwarfs, neutron stars, black holes, and pulsars are detected and labelled during stellar generation but not physically characterised (no mass, radius, or magnetic field generation).
 
-**Secondary world independent government (Case 2).** Secondary worlds with `Government != 6` can be independent, with government rolled as `2D-7 + Population`. Currently all secondary worlds use the dependent (Case 1) table.
+**WBH §5 Novelty TL** (issue #137). A world's Novelty TL reflects cutting-edge research rather than common availability. Deferred to a future session.
 
-**Secondary world classifications** (WBH p.163). Colony, Farming, Freeport, Military Base, Mining Facility, Penal Colony, Research Base — trade codes for secondary worlds based on their characteristics and relationship to the mainworld. Not implemented.
+**Balkanised worlds: per-nation WBH §5 DMs.** When Government = 7 (Balkanised), WBH §5 specifies that some DMs (law level, population, government subtype) should be applied per nation rather than at the world level. Currently the world-level DM+2 for Gov 7 is applied but all per-nation DM variations are deferred.
 
-**World physical detail beyond basic** (WBH pp. 78–130). Basic physical characteristics (diameter, density, composition, mass, gravity, escape velocity, axial tilt, day length, tidal lock) are implemented in `traveller_world_physical.py`. Stellar day vs sidereal day correction (WBH p.106) is implemented. Atmosphere detail through Phase 5 (pressure, O₂, scale height, taints, exotic/CI subtypes, gas composition, altitude bands, and Unusual subtypes) is implemented in `traveller_world_gen.py`. Seismic stress, tidal heating, surface tidal amplitude, biomass rating, biocomplexity rating, and native/extinct sophonts are all implemented. Remaining: hydrographic composition beyond surface liquid % (ocean type, ice caps, depth). Biologic taint (WBH p.83) is blocked on native-life ratings.
-
-**Moon orbit placement** (WBH pp. 74–77). Hill sphere calculation, Roche limit, Moon Orbit Range, and orbital distances in planetary diameters. Moons are sized and detailed but not given orbital positions within their parent's system.
+**World physical detail: hydrographic composition.** Hydrographic detail beyond surface liquid percentage (ocean type, ice caps, depth) is deferred. The core WBH pp. 78–130 pipeline — physical characteristics, atmosphere detail, seismic stress, tidal heating, biomass, biocomplexity, native/extinct sophonts — is fully implemented.
 
 ---
 
@@ -1006,11 +1130,19 @@ system = generate_full_system(name="Ardenne", seed=1000)
 # Calling with seed=1000 again always produces the same result.
 ```
 
-Seed is set with `random.seed(seed)` at the top of `generate_full_system()`. All subsequent calls to `random.randint()` or `random.randrange()` across all modules draw from that same sequence.
+`generate_full_system()` creates a `random.Random(seed)` instance and propagates it to every downstream call via the `rng=` parameter. All modules expose `rng: Optional[random.Random] = None` on their public entry points; when an `rng` instance is provided, it is written to the module-level `_rng` sentinel and all rolls in that call use it.
 
-If calling generation modules individually (e.g., `generate_stellar_data()` directly), set the seed yourself with `random.seed(seed)` before the call.
+If calling generation modules individually (e.g., `generate_stellar_data()` directly), create a `random.Random(seed)` instance yourself and pass it as `rng=`:
 
-Adding any dice roll anywhere in the pipeline will shift all results for seeds that pass through the modified code path. This is unavoidable given the shared global RNG. If seed stability across releases is important, the safest strategy is to add new rolls at the very end of the pipeline (e.g., in `attach_detail()` after all existing rolls), so that the mainworld UWP is unaffected.
+```python
+import random
+from traveller_stellar_gen import generate_stellar_data
+
+rng = random.Random(42)
+stellar = generate_stellar_data(rng=rng)
+```
+
+Adding any dice roll anywhere in the pipeline will shift all results for seeds that pass through the modified code path. The safest strategy is to add new rolls at the very end of the pipeline, so that the mainworld UWP is unaffected for existing seeds.
 
 ---
 
@@ -1090,24 +1222,31 @@ python system_map.py --seed 42 --width 2400 --out multi-star.svg
 ### Running the tests
 
 ```bash
-pip install pytest jsonschema hypothesis
+# Run the full suite (2100+ tests)
+.venv/bin/pytest tests/ -q
 
-# All tests (includes property-based tests in tests/test_hypothesis.py)
-pytest tests/ -v
+# Verbose output
+.venv/bin/pytest tests/ -v
 
-# Mainworld generation only
-pytest tests/test_traveller_world_gen.py -v
-
-# API layer only
-pytest tests/test_function_app.py -v
+# Single module
+.venv/bin/pytest tests/test_traveller_world_gen.py -v
+.venv/bin/pytest tests/test_tech_detail.py -v
 
 # Property-based tests only
-pytest tests/test_hypothesis.py -v
+.venv/bin/pytest tests/test_hypothesis.py -v
 ```
 
-The Azure Functions SDK is stubbed automatically by `conftest.py` if not installed. The test suite does not require a live Azure runtime.
+The Azure Functions SDK is stubbed automatically by `conftest.py` if not installed. The test suite does not require a live Azure or FastAPI runtime.
 
-### Local API server
+### Local FastAPI server
+
+```bash
+cd fastapi
+uvicorn app:app --reload
+# API available at http://127.0.0.1:8000
+```
+
+### Local Azure Functions server (alternative)
 
 ```bash
 pip install -r requirements.txt
@@ -1116,7 +1255,7 @@ func start   # requires Azure Functions Core Tools v4
 
 ### Linting (Pylint)
 
-All six generation modules target **10.00/10 per file** with Pylint 4.x. Check a single file:
+All generation modules target **10.00/10 per file** with Pylint. Check a single file:
 
 ```bash
 .venv/bin/pylint traveller_stellar_gen.py
@@ -1154,8 +1293,7 @@ This mirrors what `conftest.py` does at pytest runtime via `sys.path.insert(0, .
 ensuring that `from traveller_belt_physical import ...` resolves in both the IDE and
 under static analysis.
 
-Type checking mode is `"basic"` (set in `.vscode/settings.json`). All six test
-files are fully Pyright-clean. Run a check with:
+Type checking mode is `"basic"` (set in `.vscode/settings.json`). Test files target Pyright-clean output. Run a check with:
 
 ```bash
 .venv/bin/pyright tests/
