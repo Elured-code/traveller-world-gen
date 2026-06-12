@@ -40,14 +40,14 @@ _PROFILE_RE = re.compile(r"^[0-9A-Z]-[0-9A-Z]-[0-9A-Z]{5}-[0-9A-Z]{4}-[0-9A-Z]{2
 def _gen(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     tl=10, atmosphere=6, hydrographics=7, population=8,
     government=6, law_level=5, starport="A", pcr=4,
-    habitability_rating=None, rng=None,
+    habitability_rating=None, trade_codes=None, rng=None,
 ) -> TechDetail:
     """Convenience wrapper: generate a TechDetail with sensible defaults."""
     result = generate_tech_detail(
         tl=tl, atmosphere=atmosphere, hydrographics=hydrographics,
         population=population, government=government, law_level=law_level,
         starport=starport, pcr=pcr, habitability_rating=habitability_rating,
-        rng=rng,
+        trade_codes=trade_codes, rng=rng,
     )
     assert result is not None
     return result
@@ -106,6 +106,75 @@ class TestCommonTL:
         assert td is not None
         assert td.tl_high_common == 10
         assert td.tl_low_common <= 10
+
+
+# ---------------------------------------------------------------------------
+# Energy TL sub-category (WBH §5)
+# ---------------------------------------------------------------------------
+
+class TestEnergyTL:
+    """Tests for Energy Tech Level sub-category bounds and DMs."""
+
+    def test_energy_ge_half_tl(self):
+        """Energy TL is always >= tl_high // 2."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_energy >= 5, f"seed {seed}: energy {td.tl_energy} < 5"
+
+    def test_energy_le_120pct_tl(self):
+        """Energy TL is always <= int(tl_high * 1.2)."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_energy <= 12, f"seed {seed}: energy {td.tl_energy} > 12"
+
+    def test_energy_can_exceed_tl_high_with_pop9(self):
+        """Energy TL can exceed tl_high when pop >= 9 and TLM roll is favourable."""
+        found_above = False
+        for seed in range(200):
+            td = _gen(tl=10, population=9, rng=random.Random(seed))
+            if td.tl_energy > 10:
+                found_above = True
+                break
+        assert found_above, "Energy TL never exceeded tl_high across 200 seeds with pop 9"
+
+    def test_energy_can_exceed_tl_high_with_industrial(self):
+        """Energy TL can exceed tl_high when Industrial trade code is present."""
+        found_above = False
+        for seed in range(200):
+            td = _gen(tl=10, population=6, trade_codes=["In"], rng=random.Random(seed))
+            if td.tl_energy > 10:
+                found_above = True
+                break
+        assert found_above, "Energy TL never exceeded tl_high across 200 seeds with In"
+
+    def test_energy_pop9_dm_raises_mean(self):
+        """Energy TL mean is statistically higher with pop 9+ than pop 8 (same seeds)."""
+        seeds = list(range(100))
+        mean_no_dm = sum(
+            _gen(tl=10, population=8, rng=random.Random(s)).tl_energy for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, population=9, rng=random.Random(s)).tl_energy for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_no_dm
+
+    def test_energy_industrial_dm_raises_mean(self):
+        """Energy TL mean is higher with Industrial code than without (same seeds)."""
+        seeds = list(range(100))
+        mean_no_dm = sum(
+            _gen(tl=10, population=6, rng=random.Random(s)).tl_energy for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, population=6, trade_codes=["In"], rng=random.Random(s)).tl_energy
+            for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_no_dm
+
+    def test_energy_tl_zero(self):
+        """TL 0 world: energy TL is 0 (bounds collapse to [0, 0])."""
+        for seed in range(20):
+            td = _gen(tl=0, atmosphere=6, rng=random.Random(seed))
+            assert td.tl_energy == 0
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +422,11 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
             td.tl_military_personal, td.tl_military_heavy,
         ):
             assert val >= 0
+
+        # Energy TL bounds: [tl // 2, int(tl * 1.2)]
+        # (no trade_codes passed here so DM is at most +1 from pop, still clamped)
+        assert td.tl_energy <= int(tl * 1.2)
+        assert td.tl_energy >= 0
 
         # Sea TL = 0 when hydrographics = 0
         if hydrographics == 0:

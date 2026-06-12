@@ -193,6 +193,7 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
         starport: str,
         pcr: int = 0,
         habitability_rating: Optional[int] = None,
+        trade_codes: Optional[list] = None,
         rng: Optional[random.Random] = None,
 ) -> Optional[TechDetail]:
     """Generate a full WBH tech level profile for one inhabited world.
@@ -221,6 +222,8 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     habitability_rating : Optional[int]
         Habitability rating from WorldPhysical.  Used to determine environment
         minimum TL.  Defaults to None (atmosphere-only minimum used).
+    trade_codes : Optional[list]
+        Trade code strings (e.g. ["In", "Ag"]).  Used for subcategory DMs.
     rng : Optional[random.Random]
         Injectable RNG.  When provided, replaces the module-level ``_rng``.
     """
@@ -259,19 +262,26 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     tl_low = _clamp(tl_high + _tlm() + low_dm, low_floor, tl_high)
 
     # ------------------------------------------------------------------
-    # Sub-TL generation helper (TLM-only; sub-TL DM tables from WBH §5
-    # to be added when confirmed from source)
+    # Sub-TL generation helper
     # ------------------------------------------------------------------
-    def _sub_tl(lo: int, hi: int) -> int:
-        raw = tl_high + _tlm()
+    _tc = list(trade_codes or [])
+
+    def _sub_tl(lo: int, hi: int, dm: int = 0) -> int:
+        raw = tl_high + _tlm() + dm
         return max(0, _clamp(raw, lo, hi))
 
     # ------------------------------------------------------------------
     # Quality-of-life sub-TLs (WBH §5, dependency order)
     # ------------------------------------------------------------------
-    energy_lo = max(tl_low, tl_high // 2)
-    energy_hi = min(tl_high, int(tl_high * 1.2))
-    tl_energy = _sub_tl(energy_lo, energy_hi)
+    # Energy TL: High TL + TLM + DMs, bounds [High TL ÷ 2, High TL × 1.2]
+    energy_dm = 0
+    if population >= 9:
+        energy_dm += 1
+    if "In" in _tc:
+        energy_dm += 1
+    energy_lo = tl_high // 2
+    energy_hi = int(tl_high * 1.2)
+    tl_energy = _sub_tl(energy_lo, energy_hi, energy_dm)
 
     elec_lo = max(tl_low, tl_energy - 3)
     elec_hi = min(tl_high, tl_energy + 1)
@@ -374,10 +384,11 @@ def _tech_detail_for_det(det: object) -> Optional[TechDetail]:
     port:  str = getattr(det, "spaceport", "-")
     pop_detail = getattr(det, "population_detail", None)
     pcr: int = pop_detail.pcr if pop_detail is not None else 0
+    tc: list = list(getattr(det, "trade_codes", []) or [])
     return generate_tech_detail(
         tl=tl, atmosphere=atm, hydrographics=hydro,
         population=pop, government=gov, law_level=law,
-        starport=port, pcr=pcr, rng=None,
+        starport=port, pcr=pcr, trade_codes=tc, rng=None,
     )
 
 
@@ -425,6 +436,7 @@ def attach_tech_detail(
             starport=mw.starport,  # type: ignore[attr-defined]
             pcr=pcr,
             habitability_rating=hab,
+            trade_codes=list(mw.trade_codes or []),  # type: ignore[attr-defined]
             rng=None,
         )
 
