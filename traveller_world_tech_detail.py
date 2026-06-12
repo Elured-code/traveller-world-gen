@@ -356,12 +356,19 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
 # Attach function
 # ---------------------------------------------------------------------------
 
+def _sah_digit(sah: str, idx: int) -> int:
+    ch = sah[idx:idx + 1].upper()
+    pos = _EHEX.find(ch)
+    return pos if pos >= 0 else 0
+
+
 def _tech_detail_for_det(det: object) -> Optional[TechDetail]:
     """Generate TechDetail for a WorldDetail (secondary world)."""
     pop:   int = getattr(det, "population", 0)
     tl:    int = getattr(det, "tech_level", 0)
-    atm:   int = int(getattr(det, "sah", "000")[1:2] or "0", 16)
-    hydro: int = int(getattr(det, "sah", "000")[2:3] or "0", 16)
+    sah_  = getattr(det, "sah", "000")
+    atm:   int = _sah_digit(sah_, 1)
+    hydro: int = _sah_digit(sah_, 2)
     gov:   int = getattr(det, "government", 0)
     law:   int = getattr(det, "law_level", 0)
     port:  str = getattr(det, "spaceport", "-")

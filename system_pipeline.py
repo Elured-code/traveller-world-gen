@@ -14,6 +14,7 @@ import random
 from dataclasses import dataclass
 from typing import Optional
 
+from traveller_belt_physical import BeltPhysical
 from traveller_world_gen import generate_hydrographics, apply_mainworld_social
 from traveller_world_physical import generate_world_physical, apply_moon_tidal_effects
 from traveller_world_atmosphere_detail import (
@@ -185,6 +186,8 @@ def _apply_moon_tidal(system) -> None:
     mw = system.mainworld
     mw_orbit = system.mainworld_orbit
     if mw is None or mw.size_detail is None or mw_orbit is None:
+        return
+    if isinstance(mw.size_detail, BeltPhysical):
         return
     moons = _get_mainworld_moons(system)
     is_moon = mw_orbit.world_type == "gas_giant"

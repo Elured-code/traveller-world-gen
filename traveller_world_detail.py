@@ -201,7 +201,9 @@ def _minimal_tl(atmosphere: int) -> int:
         return 3    # thin — filter mask
     if atmosphere <= 9:
         return 0    # standard / dense — no special gear
-    return 8        # A+ exotic / corrosive / insidious — hostile env suits
+    if atmosphere >= 16:
+        return 99   # Gas, Helium / Gas, Hydrogen — not colonisable at any TL
+    return 8        # A-F exotic / corrosive / insidious — hostile env suits
 
 
 # ---------------------------------------------------------------------------

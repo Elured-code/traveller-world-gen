@@ -389,6 +389,14 @@
 
   <!-- Secondary options sub-row -->
   <div class="controls-sub">
+    <span class="sub-label">Orbital</span>
+    <label class="checkbox-label" title="Rolls eccentricity for each orbit slot (WBH p.27); orbits become elliptical on the system map">
+      <input type="checkbox" id="s-ecc"> Eccentricity
+    </label>
+    <label class="checkbox-label" title="Rolls inclination for each orbit slot (WBH p.28); orbits tilt out of the reference plane on the perspective map">
+      <input type="checkbox" id="s-incl"> Inclination
+    </label>
+    <div class="sub-sep"></div>
     <span class="sub-label">System</span>
     <label class="checkbox-label" id="lbl-nhz" title="Applies specialised atmosphere tables to worlds outside the habitable zone, producing more varied exotic and trace atmospheres (WBH pp.42–48)">
       <input type="checkbox" id="s-nhz" disabled> NHZ Atm
@@ -521,6 +529,7 @@
 
   const _PREF_KEY = "traveller-sys-prefs";
   const _PREF_IDS = ["s-format", "s-detail", "s-full", "s-select-mw",
+                     "s-ecc", "s-incl",
                      "s-nhz", "s-bio", "s-rg", "s-indep",
                      "s-social-detail", "s-settlement", "s-sector",
                      "map-perspective"];
@@ -646,7 +655,7 @@
 
   function buildMapUrl(seed) {
     if (!_lastGen) return null;
-    const { name, detail, full, isMap, sector, hex } = _lastGen;
+    const { name, detail, full, isMap, sector, hex, ecc, incl } = _lastGen;
     const persp = document.getElementById("map-perspective").checked;
     if (isMap) {
       const p = new URLSearchParams({ seed });
@@ -655,11 +664,15 @@
       if (hex)    p.set("hex",    hex);
       if (full)   p.set("detail", "true");
       if (persp)  p.set("perspective", "true");
+      if (ecc)    p.set("orbital_eccentricity", "true");
+      if (incl)   p.set("orbital_inclination",  "true");
       return `/api/map/system/svg?${p.toString()}`;
     }
     const p = new URLSearchParams({ name, seed });
     if (detail) p.set("detail", "true");
     if (persp)  p.set("perspective", "true");
+    if (ecc)    p.set("orbital_eccentricity", "true");
+    if (incl)   p.set("orbital_inclination",  "true");
     return `/api/system/svg?${p.toString()}`;
   }
 
@@ -723,7 +736,7 @@
   function buildSysUrl(seed, fmt) {
     if (!_lastGen) return null;
     const { name, isMap, sector, hex,
-            full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement } = _lastGen;
+            full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement } = _lastGen;
 
     if (isMap) {
       // TravellerMap save path
@@ -731,7 +744,9 @@
       if (sector) p.set("sector", sector);
       if (name)   p.set("name",   name);
       if (hex)    p.set("hex",    hex);
-      if (nhz)         p.set("nhz_atmospheres",       "true");
+      if (ecc)         p.set("orbital_eccentricity",   "true");
+      if (incl)        p.set("orbital_inclination",    "true");
+      if (nhz)         p.set("nhz_atmospheres",        "true");
       if (bio)         p.set("optional_biomass_rule",  "true");
       if (rg)          p.set("runaway_greenhouse",     "true");
       if (indep)       p.set("independent_government", "true");
@@ -749,7 +764,9 @@
     if (full) {
       const p = new URLSearchParams({ seed, format: fmt });
       if (name !== "World-1") p.set("name", name);
-      if (selectMw)    p.set("select_mainworld",      "true");
+      if (selectMw)    p.set("select_mainworld",       "true");
+      if (ecc)         p.set("orbital_eccentricity",   "true");
+      if (incl)        p.set("orbital_inclination",    "true");
       if (nhz)         p.set("nhz_atmospheres",        "true");
       if (bio)         p.set("optional_biomass_rule",  "true");
       if (rg)          p.set("runaway_greenhouse",     "true");
@@ -760,7 +777,9 @@
     }
     if (fmt === "html") {
       const p = new URLSearchParams({ seed, detail: detail ? "true" : "false" });
-      if (selectMw)    p.set("select_mainworld",      "true");
+      if (selectMw)    p.set("select_mainworld",       "true");
+      if (ecc)         p.set("orbital_eccentricity",   "true");
+      if (incl)        p.set("orbital_inclination",    "true");
       if (nhz)         p.set("nhz_atmospheres",        "true");
       if (bio)         p.set("optional_biomass_rule",  "true");
       if (rg)          p.set("runaway_greenhouse",     "true");
@@ -771,7 +790,9 @@
     }
     const p = new URLSearchParams({ seed, format: fmt, detail: detail ? "true" : "false" });
     if (name !== "World-1") p.set("name", name);
-    if (selectMw)    p.set("select_mainworld",      "true");
+    if (selectMw)    p.set("select_mainworld",       "true");
+    if (ecc)         p.set("orbital_eccentricity",   "true");
+    if (incl)        p.set("orbital_inclination",    "true");
     if (nhz)         p.set("nhz_atmospheres",        "true");
     if (bio)         p.set("optional_biomass_rule",  "true");
     if (rg)          p.set("runaway_greenhouse",     "true");
@@ -925,6 +946,8 @@
     const detail     = document.getElementById("s-detail").checked;
     const full       = document.getElementById("s-full").checked;
     const selectMw   = document.getElementById("s-select-mw").checked;
+    const ecc        = document.getElementById("s-ecc").checked;
+    const incl       = document.getElementById("s-incl").checked;
     const nhz        = document.getElementById("s-nhz").checked;
     const bio        = document.getElementById("s-bio").checked;
     const rg         = document.getElementById("s-rg").checked;
@@ -955,6 +978,8 @@
 
     // Shared optional-flag params for all system endpoints
     function sysParams(base) {
+      if (ecc)          base.set("orbital_eccentricity",   "true");
+      if (incl)         base.set("orbital_inclination",    "true");
       if (nhz)          base.set("nhz_atmospheres",        "true");
       if (bio)          base.set("optional_biomass_rule",  "true");
       if (rg)           base.set("runaway_greenhouse",     "true");
@@ -981,7 +1006,7 @@
 
         const resolvedName = name || hex || "World-1";
         _lastGen = { name: resolvedName, seed, isMap: true, sector, hex,
-                     full: isFullDetail, detail, nhz, bio, rg, indep, socialDetail };
+                     full: isFullDetail, detail, ecc, incl, nhz, bio, rg, indep, socialDetail };
 
         if (format === "html") {
           if (isFullDetail) {
@@ -1070,7 +1095,7 @@
             }
             const data = await sysResp.json();
             _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
-                         full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
+                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
             showTabs(data.mw_html, data.sys_html, seed);
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
@@ -1096,7 +1121,7 @@
 
             const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
             _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
-                         full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
+                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
             showTabs(mwHtml, sysHtml, seed);
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
@@ -1127,14 +1152,14 @@
           const contentType = resp.headers.get("content-type") || "";
           if (contentType.includes("text/plain")) {
             _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
-                         full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
+                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
             showText(await resp.text());
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
           } else {
             const data = await resp.json();
             _lastGen = { name: name || "World-1", seed: data.seed ?? seed, isMap: false, sector: "", hex: "",
-                         full, detail, selectMw, nhz, bio, rg, indep, socialDetail, settlement };
+                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
             showJson(data);
             showSeed(data.seed ?? seed);
             if (!seedIn) document.getElementById("s-seed").value = data.seed ?? seed;
