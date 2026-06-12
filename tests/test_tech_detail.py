@@ -39,14 +39,15 @@ _PROFILE_RE = re.compile(r"^[0-9A-Z]-[0-9A-Z]-[0-9A-Z]{5}-[0-9A-Z]{4}-[0-9A-Z]{2
 
 def _gen(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     tl=10, atmosphere=6, hydrographics=7, population=8,
-    government=6, law_level=5, starport="A", pcr=4,
+    government=6, law_level=5, starport="A", size=6, pcr=4,
     habitability_rating=None, trade_codes=None, rng=None,
 ) -> TechDetail:
     """Convenience wrapper: generate a TechDetail with sensible defaults."""
     result = generate_tech_detail(
         tl=tl, atmosphere=atmosphere, hydrographics=hydrographics,
         population=population, government=government, law_level=law_level,
-        starport=starport, pcr=pcr, habitability_rating=habitability_rating,
+        starport=starport, size=size, pcr=pcr,
+        habitability_rating=habitability_rating,
         trade_codes=trade_codes, rng=rng,
     )
     assert result is not None
@@ -646,6 +647,82 @@ class TestSeaTL:
         assert mean_dm >= mean_base
 
 
+class TestSpaceTL:
+    """Tests for Space Transport sub-TL rules (WBH §5)."""
+
+    def test_space_le_min_energy_mfg(self):
+        """Space TL never exceeds min(Energy TL, Manufacturing TL)."""
+        for seed in range(50):
+            td = _gen(tl=12, rng=random.Random(seed))
+            assert td.tl_space <= min(td.tl_energy, td.tl_manufacturing)
+
+    def test_space_nonneg(self):
+        """Space TL is always non-negative."""
+        for seed in range(50):
+            td = _gen(tl=8, rng=random.Random(seed))
+            assert td.tl_space >= 0
+
+    def test_size01_dm_raises_mean(self):
+        """Size 0-1 DM +2 statistically raises Space TL mean."""
+        mean_small = sum(
+            _gen(tl=10, size=1, rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        mean_normal = sum(
+            _gen(tl=10, size=6, rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        assert mean_small > mean_normal
+
+    def test_pop15_dm_lowers_mean(self):
+        """Pop 1-5 DM -1 statistically lowers Space TL mean."""
+        mean_low = sum(
+            _gen(tl=10, population=3, rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        mean_high = sum(
+            _gen(tl=10, population=8, rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        assert mean_low < mean_high
+
+    def test_pop9plus_dm_raises_mean(self):
+        """Pop 9+ DM +1 statistically raises Space TL mean."""
+        mean_high_pop = sum(
+            _gen(tl=10, population=9, rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        mean_mid_pop = sum(
+            _gen(tl=10, population=6, rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        assert mean_high_pop > mean_mid_pop
+
+    def test_starportA_dm_raises_mean(self):
+        """Starport A DM +2 statistically raises Space TL mean vs Starport E."""
+        mean_a = sum(
+            _gen(tl=10, starport="A", rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        mean_e = sum(
+            _gen(tl=10, starport="E", rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        assert mean_a > mean_e
+
+    def test_starportB_dm_raises_mean(self):
+        """Starport B DM +1 statistically raises Space TL mean vs Starport E."""
+        mean_b = sum(
+            _gen(tl=10, starport="B", rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        mean_e = sum(
+            _gen(tl=10, starport="E", rng=random.Random(s)).tl_space
+            for s in range(100)
+        ) / 100
+        assert mean_b > mean_e
+
+
 class TestMilitaryPersonalTL:
     """Tests for military personal TL special rules."""
 
@@ -790,19 +867,20 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         government=st.integers(min_value=0, max_value=15),
         law_level=st.integers(min_value=0, max_value=9),
         starport=st.sampled_from(["A", "B", "C", "D", "E", "X"]),
+        size=st.integers(min_value=0, max_value=10),
         pcr=st.integers(min_value=0, max_value=9),
         seed=st.integers(min_value=0, max_value=2**31 - 1),
     )
     @settings(max_examples=200)
     def test_bounds_invariants(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, tl, atmosphere, hydrographics, population, government,
-            law_level, starport, pcr, seed,
+            law_level, starport, size, pcr, seed,
     ):
         """All sub-TL bound invariants hold across the full input space."""
         td = generate_tech_detail(
             tl=tl, atmosphere=atmosphere, hydrographics=hydrographics,
             population=population, government=government, law_level=law_level,
-            starport=starport, pcr=pcr,
+            starport=starport, size=size, pcr=pcr,
             rng=random.Random(seed),
         )
         assert td is not None
@@ -864,6 +942,10 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         # Air TL = 0 when atmosphere = 0 and tl <= 5
         if atmosphere == 0 and tl <= 5:
             assert td.tl_air == 0
+
+        # Space TL: bounded [min(energy,mfg) - 3, min(energy,mfg)]
+        assert td.tl_space <= min(td.tl_energy, td.tl_manufacturing)
+        assert td.tl_space >= 0
 
         # Personal military TL = 0 when law level = 0
         if law_level == 0:

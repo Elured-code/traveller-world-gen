@@ -191,6 +191,7 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
         government: int,
         law_level: int,
         starport: str,
+        size: int = 0,
         pcr: int = 0,
         habitability_rating: Optional[int] = None,
         trade_codes: Optional[list] = None,
@@ -216,6 +217,8 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
         UWP Law Level.
     starport : str
         UWP Starport letter (A–E, X).
+    size : int
+        UWP Size digit (0–A+).  Defaults to 0.  Used for space transport DM.
     pcr : int
         Population Concentration Rating (0–9).  Defaults to 0 when population
         detail has not been generated.
@@ -368,10 +371,22 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
         air_hi = tl_energy
         tl_air = _sub_tl(air_lo, air_hi, air_dm, base=tl_energy)
 
+    space_dm = 0
+    if size <= 1:
+        space_dm += 2
+    if 1 <= population <= 5:
+        space_dm -= 1
+    if population >= 9:
+        space_dm += 1
+    _sp = starport.upper()
+    if _sp == "A":
+        space_dm += 2
+    elif _sp == "B":
+        space_dm += 1
     space_base = min(tl_energy, tl_manufacturing)
-    space_lo = max(tl_low, space_base - 3)
-    space_hi = min(tl_high, space_base)
-    tl_space = _sub_tl(space_lo, space_hi)
+    space_lo = space_base - 3
+    space_hi = space_base
+    tl_space = _sub_tl(space_lo, space_hi, space_dm, base=tl_manufacturing)
 
     # ------------------------------------------------------------------
     # Military sub-TLs
@@ -437,10 +452,11 @@ def _tech_detail_for_det(det: object) -> Optional[TechDetail]:
     pop_detail = getattr(det, "population_detail", None)
     pcr: int = pop_detail.pcr if pop_detail is not None else 0
     tc: list = list(getattr(det, "trade_codes", []) or [])
+    sz: int = _sah_digit(sah_, 0)
     return generate_tech_detail(
         tl=tl, atmosphere=atm, hydrographics=hydro,
         population=pop, government=gov, law_level=law,
-        starport=port, pcr=pcr, trade_codes=tc, rng=None,
+        starport=port, size=sz, pcr=pcr, trade_codes=tc, rng=None,
     )
 
 
@@ -486,6 +502,7 @@ def attach_tech_detail(
             government=mw.government,  # type: ignore[attr-defined]
             law_level=mw.law_level,  # type: ignore[attr-defined]
             starport=mw.starport,  # type: ignore[attr-defined]
+            size=mw.size,  # type: ignore[attr-defined]
             pcr=pcr,
             habitability_rating=hab,
             trade_codes=list(mw.trade_codes or []),  # type: ignore[attr-defined]

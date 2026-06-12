@@ -1,10 +1,45 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–120
-**Tests:** 2060
+**Sessions:** 88–121
+**Tests:** 2109
 
 ---
+
+## WBH §5 Sub-Tech Level Corrections (Session 121)
+
+All nine Quality-of-Life and Transportation sub-TL categories in
+`traveller_world_tech_detail.py` now correctly implement WBH §5 rules.
+
+**Bounds and base TL corrections** — every sub-TL previously used `tl_high` as
+both base and clamp; each now uses the correct base TL specified in WBH:
+- Energy: base = High TL; bounds = [High TL / 2, High TL × 1.2]
+- Electronics: base = Energy TL; bounds = [Energy − 3, Energy + 1]
+- Manufacturing: base = Electronics TL; bounds = [Electronics − 2, max(Energy, Electronics)]
+- Medical: base = Electronics TL; bounds = [starport floor or 0, Electronics TL]
+- Environmental: base = Manufacturing TL; bounds = [Energy − 5, Energy]
+- Land Transport: base = Energy TL; bounds = [Electronics − 5, Energy]
+- Sea Transport: base = Energy TL; bounds = [Electronics − 5 or 0, Energy]; hydro=0 uses DM −2 (no longer forced to 0)
+- Air Transport: base = Energy TL; bounds = [Electronics − 5, Energy]; atm DMs only applied at TL 0–7
+- Space Transport: base = Manufacturing TL; bounds = [min(Energy,Mfg) − 3, min(Energy,Mfg)]
+
+**DMs added per WBH** — Pop9+/Industrial for Energy; Pop1-5/Pop9+/Industrial for
+Electronics; Pop1-6/Pop8+/Industrial for Manufacturing; Rich/Poor for Medical;
+habitability for Environmental; Hydro10/PCR for Land; Hydro8/9+/PCR for Sea;
+atmosphere type for Air; Size0/1/+2, Pop1-5/-1, Pop9+/+1, StarportA/+2,
+StarportB/+1 for Space.
+
+**`_STARPORT_MED_FLOOR`** corrected: A→6, B→4, C→2 (was A→4, B→3, D→1, E→1, X→0).
+Medical starport floor is also capped at Electronics TL to prevent floor > ceiling.
+
+`generate_tech_detail()` gained `size: int = 0` and `trade_codes: Optional[list]`
+parameters; both callers (`_tech_detail_for_det()` and `attach_tech_detail()`)
+updated to pass them. Space isolated regions optional rule deferred.
+
+49 new tests across `TestEnergyTL`, `TestElectronicsTL`, `TestManufacturingTL`,
+`TestMedicalTL`, `TestEnvironmentalTL`, `TestLandTL`, `TestSeaTL`, `TestAirTL`,
+`TestSpaceTL`; `TestBoundsInvariants` Hypothesis test expanded with `size` and
+space TL bounds assertion.
 
 ## Pipeline Unification via `system_pipeline.py` (Session 120)
 
