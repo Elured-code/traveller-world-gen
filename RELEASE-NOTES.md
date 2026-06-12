@@ -2,7 +2,7 @@
 
 **Branch:** `v1.5.0` → `main`
 **Sessions:** 88–121
-**Tests:** 2109
+**Tests:** 2114
 
 ---
 
@@ -36,10 +36,17 @@ Medical starport floor is also capped at Electronics TL to prevent floor > ceili
 parameters; both callers (`_tech_detail_for_det()` and `attach_tech_detail()`)
 updated to pass them. Space isolated regions optional rule deferred.
 
-49 new tests across `TestEnergyTL`, `TestElectronicsTL`, `TestManufacturingTL`,
+**Personal Military TL** (WBH §5) corrected: base = Manufacturing TL, upper bound
+= Electronics TL, lower bound = 0 (or min(Manufacturing, Electronics) when
+Law Level = 0). DMs: Government 0 or 7 → +2; Law 0 or D+ (≥13) → +2; Law 1–4
+or 9–C → +1. Old code forced personal military TL to 0 when Law Level = 0 — the
+WBH rule instead raises the floor to Manufacturing TL. Government 7 (balkanised)
+DM applies at world level; per-nation law/population DM variation is deferred.
+
+54 new tests across `TestEnergyTL`, `TestElectronicsTL`, `TestManufacturingTL`,
 `TestMedicalTL`, `TestEnvironmentalTL`, `TestLandTL`, `TestSeaTL`, `TestAirTL`,
-`TestSpaceTL`; `TestBoundsInvariants` Hypothesis test expanded with `size` and
-space TL bounds assertion.
+`TestSpaceTL`, `TestMilitaryPersonalTL`; `TestBoundsInvariants` Hypothesis test
+expanded with `size` and all new sub-TL bounds assertions.
 
 ## Pipeline Unification via `system_pipeline.py` (Session 120)
 

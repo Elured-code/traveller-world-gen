@@ -391,12 +391,17 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     # ------------------------------------------------------------------
     # Military sub-TLs
     # ------------------------------------------------------------------
-    if law_level == 0:
-        tl_military_personal = 0
-    else:
-        mil_p_lo = max(tl_low, tl_electronics)
-        mil_p_hi = min(tl_high, tl_manufacturing)
-        tl_military_personal = _sub_tl(mil_p_lo, mil_p_hi)
+    mil_p_dm = 0
+    if government in (0, 7):
+        mil_p_dm += 2
+    if law_level == 0 or law_level >= 13:       # Law 0 or D+
+        mil_p_dm += 2
+    elif 1 <= law_level <= 4 or 9 <= law_level <= 12:  # Law 1-4 or 9-C
+        mil_p_dm += 1
+    # Lower bound raised to Manufacturing TL (capped at Electronics) when Law=0
+    mil_p_lo = min(tl_manufacturing, tl_electronics) if law_level == 0 else 0
+    mil_p_hi = tl_electronics
+    tl_military_personal = _sub_tl(mil_p_lo, mil_p_hi, mil_p_dm, base=tl_manufacturing)
 
     tl_military_heavy = _sub_tl(0, tl_manufacturing)
 

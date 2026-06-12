@@ -724,17 +724,73 @@ class TestSpaceTL:
 
 
 class TestMilitaryPersonalTL:
-    """Tests for military personal TL special rules."""
+    """Tests for military personal TL rules (WBH §5)."""
 
-    def test_law0_personal_military_is_zero(self):
-        """Law Level 0 forces personal military TL to zero."""
-        td = _gen(tl=10, law_level=0)
-        assert td.tl_military_personal == 0
+    def test_personal_le_electronics(self):
+        """Personal military TL never exceeds Electronics TL."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_military_personal <= td.tl_electronics
 
-    def test_law_nonzero_personal_military_nonneg(self):
-        """Non-zero law level yields non-negative personal military TL."""
-        td = _gen(tl=10, law_level=5)
-        assert td.tl_military_personal >= 0
+    def test_personal_nonneg(self):
+        """Personal military TL is always non-negative."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_military_personal >= 0
+
+    def test_law0_floor_is_min_mfg_elec(self):
+        """Law Level 0 raises lower bound to min(Manufacturing TL, Electronics TL)."""
+        for seed in range(50):
+            td = _gen(tl=10, law_level=0, rng=random.Random(seed))
+            assert td.tl_military_personal >= min(td.tl_manufacturing, td.tl_electronics)
+
+    def test_gov0_dm_raises_mean(self):
+        """Government 0 DM+2 statistically raises personal military TL mean."""
+        mean_gov0 = sum(
+            _gen(tl=10, government=0, law_level=5, rng=random.Random(s)).tl_military_personal
+            for s in range(100)
+        ) / 100
+        mean_gov6 = sum(
+            _gen(tl=10, government=6, law_level=5, rng=random.Random(s)).tl_military_personal
+            for s in range(100)
+        ) / 100
+        assert mean_gov0 > mean_gov6
+
+    def test_gov7_dm_raises_mean(self):
+        """Government 7 (balkanised) DM+2 statistically raises personal military TL mean."""
+        mean_gov7 = sum(
+            _gen(tl=10, government=7, law_level=5, rng=random.Random(s)).tl_military_personal
+            for s in range(100)
+        ) / 100
+        mean_gov6 = sum(
+            _gen(tl=10, government=6, law_level=5, rng=random.Random(s)).tl_military_personal
+            for s in range(100)
+        ) / 100
+        assert mean_gov7 > mean_gov6
+
+    def test_law_low_dm_raises_mean(self):
+        """Law Level 1-4 DM+1 statistically raises personal military TL vs Law 5."""
+        mean_low_law = sum(
+            _gen(tl=10, government=6, law_level=2, rng=random.Random(s)).tl_military_personal
+            for s in range(100)
+        ) / 100
+        mean_mid_law = sum(
+            _gen(tl=10, government=6, law_level=5, rng=random.Random(s)).tl_military_personal
+            for s in range(100)
+        ) / 100
+        assert mean_low_law > mean_mid_law
+
+    def test_law_high_dm_raises_mean(self):
+        """Law Level 9-C DM+1 statistically raises personal military TL vs Law 5."""
+        mean_high_law = sum(
+            _gen(tl=10, government=6, law_level=9, rng=random.Random(s)).tl_military_personal
+            for s in range(100)
+        ) / 100
+        mean_mid_law = sum(
+            _gen(tl=10, government=6, law_level=5, rng=random.Random(s)).tl_military_personal
+            for s in range(100)
+        ) / 100
+        assert mean_high_law > mean_mid_law
 
 
 # ---------------------------------------------------------------------------
@@ -947,9 +1003,13 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         assert td.tl_space <= min(td.tl_energy, td.tl_manufacturing)
         assert td.tl_space >= 0
 
-        # Personal military TL = 0 when law level = 0
+        # Personal military TL: upper bound = Electronics TL
+        assert td.tl_military_personal <= td.tl_electronics
+        assert td.tl_military_personal >= 0
+
+        # Law 0 lower bound = min(Manufacturing TL, Electronics TL)
         if law_level == 0:
-            assert td.tl_military_personal == 0
+            assert td.tl_military_personal >= min(td.tl_manufacturing, td.tl_electronics)
 
         # Profile format
         assert _PROFILE_RE.match(td.technology_profile)
