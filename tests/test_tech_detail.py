@@ -178,6 +178,64 @@ class TestEnergyTL:
 
 
 # ---------------------------------------------------------------------------
+# Electronics TL sub-category (WBH §5)
+# ---------------------------------------------------------------------------
+
+class TestElectronicsTL:
+    """Tests for Electronics Tech Level sub-category bounds and DMs."""
+
+    def test_electronics_le_energy_plus_one(self):
+        """Electronics TL is always <= Energy TL + 1."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_electronics <= td.tl_energy + 1, (
+                f"seed {seed}: elec {td.tl_electronics} > energy {td.tl_energy} + 1"
+            )
+
+    def test_electronics_ge_energy_minus_three(self):
+        """Electronics TL is always >= max(0, Energy TL - 3)."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_electronics >= max(0, td.tl_energy - 3), (
+                f"seed {seed}: elec {td.tl_electronics} < energy {td.tl_energy} - 3"
+            )
+
+    def test_electronics_pop15_dm_raises_mean(self):
+        """Electronics mean is higher with pop 1–5 than pop 8 (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, population=8, rng=random.Random(s)).tl_electronics for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, population=3, rng=random.Random(s)).tl_electronics for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_base
+
+    def test_electronics_pop9_dm_lowers_mean(self):
+        """Electronics mean is lower with pop 9+ than pop 8 (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, population=8, rng=random.Random(s)).tl_electronics for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, population=9, rng=random.Random(s)).tl_electronics for s in seeds
+        ) / len(seeds)
+        assert mean_dm <= mean_base
+
+    def test_electronics_industrial_dm_raises_mean(self):
+        """Electronics mean is higher with Industrial code than without (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, population=6, rng=random.Random(s)).tl_electronics for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, population=6, trade_codes=["In"], rng=random.Random(s)).tl_electronics
+            for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_base
+
+
+# ---------------------------------------------------------------------------
 # Technology profile format
 # ---------------------------------------------------------------------------
 
@@ -427,6 +485,10 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         # (no trade_codes passed here so DM is at most +1 from pop, still clamped)
         assert td.tl_energy <= int(tl * 1.2)
         assert td.tl_energy >= 0
+
+        # Electronics TL bounds: [Energy TL − 3, Energy TL + 1]
+        assert td.tl_electronics <= td.tl_energy + 1
+        assert td.tl_electronics >= 0
 
         # Sea TL = 0 when hydrographics = 0
         if hydrographics == 0:
