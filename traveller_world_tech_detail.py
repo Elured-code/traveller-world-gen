@@ -338,10 +338,19 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     land_hi = tl_energy
     tl_land = _sub_tl(land_lo, land_hi, land_dm, base=tl_energy)
 
+    # Sea TL: Energy TL + TLM + DMs, bounds [Electronics TL − 5 (or 0 if hydro=0), Energy TL]
+    sea_dm = 0
     if hydrographics == 0:
-        tl_sea = 0
-    else:
-        tl_sea = _sub_tl(land_lo, land_hi)
+        sea_dm -= 2
+    elif hydrographics == 8:
+        sea_dm += 1
+    elif hydrographics >= 9:
+        sea_dm += 2
+    if pcr <= 2:
+        sea_dm += 1
+    sea_lo = 0 if hydrographics == 0 else tl_electronics - 5
+    sea_hi = tl_energy
+    tl_sea = _sub_tl(sea_lo, sea_hi, sea_dm, base=tl_energy)
 
     if atmosphere == 0 and tl_high <= 5:
         tl_air = 0

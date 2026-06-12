@@ -531,15 +531,63 @@ class TestAirTL:
 class TestSeaTL:
     """Tests for sea transport TL special rules."""
 
-    def test_hydro0_sea_is_zero(self):
-        """Hydrographics 0 forces sea transport TL to zero."""
-        td = _gen(tl=10, hydrographics=0)
-        assert td.tl_sea == 0
+    def test_sea_le_energy(self):
+        """Sea TL is always <= Energy TL."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_sea <= td.tl_energy, (
+                f"seed {seed}: sea {td.tl_sea} > energy {td.tl_energy}"
+            )
 
-    def test_hydro_nonzero_sea_nonneg(self):
-        """Non-zero hydrographics yields non-negative sea transport TL."""
-        td = _gen(tl=10, hydrographics=7)
-        assert td.tl_sea >= 0
+    def test_sea_nonneg(self):
+        """Sea TL is always non-negative."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_sea >= 0
+
+    def test_hydro0_dm_lowers_mean(self):
+        """Sea TL mean is lower with Hydrographics 0 than Hydrographics 5 (DM -2)."""
+        seeds = list(range(100))
+        mean_h5 = sum(
+            _gen(tl=10, hydrographics=5, rng=random.Random(s)).tl_sea for s in seeds
+        ) / len(seeds)
+        mean_h0 = sum(
+            _gen(tl=10, hydrographics=0, rng=random.Random(s)).tl_sea for s in seeds
+        ) / len(seeds)
+        assert mean_h0 <= mean_h5
+
+    def test_hydro8_dm_raises_mean(self):
+        """Sea TL mean is higher with Hydrographics 8 than Hydrographics 5 (DM +1)."""
+        seeds = list(range(100))
+        mean_h5 = sum(
+            _gen(tl=10, hydrographics=5, rng=random.Random(s)).tl_sea for s in seeds
+        ) / len(seeds)
+        mean_h8 = sum(
+            _gen(tl=10, hydrographics=8, rng=random.Random(s)).tl_sea for s in seeds
+        ) / len(seeds)
+        assert mean_h8 >= mean_h5
+
+    def test_hydro9plus_dm_raises_mean(self):
+        """Sea TL mean is higher with Hydrographics 9+ than Hydrographics 8 (DM +2 vs +1)."""
+        seeds = list(range(100))
+        mean_h8 = sum(
+            _gen(tl=10, hydrographics=8, rng=random.Random(s)).tl_sea for s in seeds
+        ) / len(seeds)
+        mean_h9 = sum(
+            _gen(tl=10, hydrographics=9, rng=random.Random(s)).tl_sea for s in seeds
+        ) / len(seeds)
+        assert mean_h9 >= mean_h8
+
+    def test_sea_pcr02_dm_raises_mean(self):
+        """Sea TL mean is higher with PCR 0–2 than PCR 5 (DM +1)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, pcr=5, rng=random.Random(s)).tl_sea for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, pcr=1, rng=random.Random(s)).tl_sea for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_base
 
 
 class TestMilitaryPersonalTL:
@@ -743,9 +791,12 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         assert td.tl_land <= td.tl_energy
         assert td.tl_land >= 0
 
-        # Sea TL = 0 when hydrographics = 0
-        if hydrographics == 0:
-            assert td.tl_sea == 0
+        # Sea TL: [Electronics TL − 5 or 0 if hydro=0, Energy TL]
+        assert td.tl_sea <= td.tl_energy
+        assert td.tl_sea >= 0
+
+        # Sea TL: hydro=0 gets DM -2 (can still be non-zero) but is bounded by Energy TL
+        assert td.tl_sea <= td.tl_energy
 
         # Air TL = 0 when atmosphere = 0 and tl <= 5
         if atmosphere == 0 and tl <= 5:
