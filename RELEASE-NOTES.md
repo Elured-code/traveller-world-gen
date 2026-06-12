@@ -1,10 +1,42 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–119
-**Tests:** 2044
+**Sessions:** 88–120
+**Tests:** 2060
 
 ---
+
+## Pipeline Unification via `system_pipeline.py` (Session 120)
+
+New `system_pipeline.py` module consolidates the post-`generate_full_system()`
+orchestration that was previously duplicated across all three entry points (CLI,
+gen-ui, FastAPI).
+
+**`PipelineOptions` dataclass** carries all generation flags:
+`want_detail`, `want_select_mw`, `runaway_greenhouse`, `independent_government`,
+`optional_biomass`, `optional_inhospitable`, `settlement_type`, `want_social_detail`.
+
+**`run_detail_pipeline(system, rng, options)`** executes the full ordered pipeline:
+`_attach_physical` → `attach_detail` → `attach_body_names` → `_apply_moon_tidal`
+→ [optional `select_mainworld`] → `apply_mainworld_social`
+→ [if swapped: `reattach_mainworld_orbit` + `_apply_moon_tidal`]
+→ `apply_secondary_social`
+→ [optional: `attach_population_detail` / `attach_government_detail` /
+   `attach_law_detail` / `attach_tech_detail`]
+
+This replaces approximately 130 lines of duplicated inline pipeline code in
+`gen-ui/app.py` (`_finish_system_generation` + `_maybe_apply_runaway_greenhouse`),
+`fastapi/app.py` (`_run_select_mainworld`), and `traveller_system_gen.py` `main()`.
+The Advanced Mean Temperature calculation now always runs (previously was opt-in
+in gen-ui via a checkbox that was removed).
+
+**BeltPhysical guard**: `_apply_moon_tidal()` now skips worlds where
+`mw.size_detail` is a `BeltPhysical` instance (belts have no diameter/mass
+fields). Same guard added to `fastapi/app.py`'s `_apply_mainworld_moon_tidal()`.
+
+16 new tests in `tests/test_system_pipeline.py` covering social-only, full detail,
+`select_mainworld` swap, social detail sub-modules, RNG continuity, and
+`None`-mainworld guard.
 
 ## Generation Pipeline Alignment — CLI, gen-ui, FastAPI (Session 119)
 

@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-06-11 (Session 119)  
+**Last updated:** 2026-06-12 (Session 120)  
 **Branch:** `v1.5.0` · **Main:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -30,6 +30,7 @@ read only the context files listed below for the specific task at hand.
 | `traveller_map_fetch.py` | [`context/map-fetch.md`](context/map-fetch.md) + [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `azure-api/function_app.py` or `azure-api/shared/helpers.py` | [`context/api-layer.md`](context/api-layer.md) |
 | `fastapi/app.py` or `fastapi/helpers.py` | [`context/api-layer.md`](context/api-layer.md) |
+| `system_pipeline.py` | [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `system_map.py` | [`context/system-map.md`](context/system-map.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `gen-ui/app.py` | [`context/gen-ui.md`](context/gen-ui.md) + [`context/data-structures.md`](context/data-structures.md) |
 | Bug investigation or compliance review | [`context/compliance-audit.md`](context/compliance-audit.md) + relevant module file(s) above |
@@ -41,7 +42,7 @@ read only the context files listed below for the specific task at hand.
 ## Always-needed facts (no file read required)
 
 - **Pylint:** `.venv/bin/pylint <file>` — target **10.00/10 per file**
-- **Tests:** `.venv/bin/pytest tests/ -q` — **1884 tests**, all must pass
+- **Tests:** `.venv/bin/pytest tests/ -q` — **2060 tests**, all must pass
 - **RNG:** Injectable `random.Random` instance; each generation module has a
   module-level `_rng` sentinel (initially `random` the module). Public
   entry-point functions accept `rng: Optional[random.Random] = None`; when
