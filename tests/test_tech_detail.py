@@ -295,6 +295,76 @@ class TestManufacturingTL:
 
 
 # ---------------------------------------------------------------------------
+# Medical TL sub-category (WBH §5)
+# ---------------------------------------------------------------------------
+
+class TestMedicalTL:
+    """Tests for Medical Tech Level sub-category bounds and DMs."""
+
+    def test_medical_le_electronics(self):
+        """Medical TL is always <= Electronics TL."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_medical <= td.tl_electronics, (
+                f"seed {seed}: medical {td.tl_medical} > electronics {td.tl_electronics}"
+            )
+
+    def test_medical_starport_a_floor_6(self):
+        """Starport A floor is 6 — medical >= min(6, electronics)."""
+        for seed in range(50):
+            td = _gen(tl=10, starport="A", rng=random.Random(seed))
+            assert td.tl_medical >= min(6, td.tl_electronics), (
+                f"seed {seed}: medical {td.tl_medical} < min(6, elec {td.tl_electronics})"
+            )
+
+    def test_medical_starport_b_floor_4(self):
+        """Starport B floor is 4 — medical >= min(4, electronics)."""
+        for seed in range(50):
+            td = _gen(tl=10, starport="B", rng=random.Random(seed))
+            assert td.tl_medical >= min(4, td.tl_electronics), (
+                f"seed {seed}: medical {td.tl_medical} < min(4, elec {td.tl_electronics})"
+            )
+
+    def test_medical_starport_c_floor_2(self):
+        """Starport C floor is 2 — medical >= min(2, electronics)."""
+        for seed in range(50):
+            td = _gen(tl=10, starport="C", rng=random.Random(seed))
+            assert td.tl_medical >= min(2, td.tl_electronics)
+
+    def test_medical_starport_x_no_floor(self):
+        """Starport X has no minimum medical floor (can reach 0)."""
+        found_zero = False
+        for seed in range(200):
+            td = _gen(tl=3, atmosphere=0, starport="X", rng=random.Random(seed))
+            if td.tl_medical == 0:
+                found_zero = True
+                break
+        assert found_zero, "Medical TL never reached 0 with Starport X across 200 seeds"
+
+    def test_medical_rich_dm_raises_mean(self):
+        """Medical mean is higher with Rich trade code than without (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, rng=random.Random(s)).tl_medical for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, trade_codes=["Ri"], rng=random.Random(s)).tl_medical for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_base
+
+    def test_medical_poor_dm_lowers_mean(self):
+        """Medical mean is lower with Poor trade code than without (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, rng=random.Random(s)).tl_medical for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, trade_codes=["Po"], rng=random.Random(s)).tl_medical for s in seeds
+        ) / len(seeds)
+        assert mean_dm <= mean_base
+
+
+# ---------------------------------------------------------------------------
 # Technology profile format
 # ---------------------------------------------------------------------------
 
@@ -552,6 +622,9 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         # Manufacturing TL bounds: [Electronics TL − 2, max(Energy, Electronics)]
         assert td.tl_manufacturing <= max(td.tl_energy, td.tl_electronics)
         assert td.tl_manufacturing >= 0
+
+        # Medical TL: always <= Electronics TL
+        assert td.tl_medical <= td.tl_electronics
 
         # Sea TL = 0 when hydrographics = 0
         if hydrographics == 0:

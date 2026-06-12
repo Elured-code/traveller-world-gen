@@ -77,7 +77,7 @@ _TLM_TABLE: dict[int, int] = {2: -3, 3: -2, 4: -1, 10: 1, 11: 2, 12: 3}
 # Medical lower bound by starport quality: starport reflects minimum medical
 # support infrastructure available.
 _STARPORT_MED_FLOOR: dict[str, int] = {
-    "A": 4, "B": 3, "C": 2, "D": 1, "E": 1, "X": 0,
+    "A": 6, "B": 4, "C": 2,
 }
 
 
@@ -266,8 +266,8 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     # ------------------------------------------------------------------
     _tc = list(trade_codes or [])
 
-    def _sub_tl(lo: int, hi: int, dm: int = 0) -> int:
-        raw = tl_high + _tlm() + dm
+    def _sub_tl(lo: int, hi: int, dm: int = 0, base: Optional[int] = None) -> int:
+        raw = (tl_high if base is None else base) + _tlm() + dm
         return max(0, _clamp(raw, lo, hi))
 
     # ------------------------------------------------------------------
@@ -307,9 +307,15 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     mfg_hi = max(tl_energy, tl_electronics)
     tl_manufacturing = _sub_tl(mfg_lo, mfg_hi, mfg_dm)
 
-    med_lo = max(tl_low, _STARPORT_MED_FLOOR.get(starport.upper(), 0))
-    med_hi = min(tl_high, tl_electronics)
-    tl_medical = _sub_tl(med_lo, med_hi)
+    # Medical TL: Electronics TL + TLM + DMs, bounds [starport floor, Electronics TL]
+    med_dm = 0
+    if "Ri" in _tc:
+        med_dm += 1
+    if "Po" in _tc:
+        med_dm -= 1
+    med_lo = min(_STARPORT_MED_FLOOR.get(starport.upper(), 0), tl_electronics)
+    med_hi = tl_electronics
+    tl_medical = _sub_tl(med_lo, med_hi, med_dm, base=tl_electronics)
 
     env_lo = max(tl_low, tl_energy - 5)
     env_hi = min(tl_high, tl_energy)
