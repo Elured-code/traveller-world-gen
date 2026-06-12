@@ -428,6 +428,52 @@ class TestEnvironmentalTL:
 
 
 # ---------------------------------------------------------------------------
+# Land Transport TL sub-category (WBH §5)
+# ---------------------------------------------------------------------------
+
+class TestLandTL:
+    """Tests for Land Transport Tech Level sub-category bounds and DMs."""
+
+    def test_land_le_energy(self):
+        """Land TL is always <= Energy TL."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_land <= td.tl_energy, (
+                f"seed {seed}: land {td.tl_land} > energy {td.tl_energy}"
+            )
+
+    def test_land_ge_electronics_minus_five(self):
+        """Land TL is always >= max(0, Electronics TL - 5)."""
+        for seed in range(50):
+            td = _gen(tl=10, rng=random.Random(seed))
+            assert td.tl_land >= max(0, td.tl_electronics - 5), (
+                f"seed {seed}: land {td.tl_land} < elec {td.tl_electronics} - 5"
+            )
+
+    def test_land_hydro10_dm_lowers_mean(self):
+        """Land TL mean is lower with Hydrographics 10 than 7 (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, hydrographics=7, rng=random.Random(s)).tl_land for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, hydrographics=10, rng=random.Random(s)).tl_land for s in seeds
+        ) / len(seeds)
+        assert mean_dm <= mean_base
+
+    def test_land_pcr02_dm_raises_mean(self):
+        """Land TL mean is higher with PCR 0–2 than PCR 5 (same seeds)."""
+        seeds = list(range(100))
+        mean_base = sum(
+            _gen(tl=10, pcr=5, rng=random.Random(s)).tl_land for s in seeds
+        ) / len(seeds)
+        mean_dm = sum(
+            _gen(tl=10, pcr=1, rng=random.Random(s)).tl_land for s in seeds
+        ) / len(seeds)
+        assert mean_dm >= mean_base
+
+
+# ---------------------------------------------------------------------------
 # Technology profile format
 # ---------------------------------------------------------------------------
 
@@ -692,6 +738,10 @@ class TestBoundsInvariants:  # pylint: disable=too-few-public-methods
         # Environmental TL: [Energy TL − 5, Energy TL]
         assert td.tl_environmental <= td.tl_energy
         assert td.tl_environmental >= 0
+
+        # Land TL: [Electronics TL − 5, Energy TL]
+        assert td.tl_land <= td.tl_energy
+        assert td.tl_land >= 0
 
         # Sea TL = 0 when hydrographics = 0
         if hydrographics == 0:

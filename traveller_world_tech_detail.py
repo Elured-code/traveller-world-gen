@@ -328,9 +328,15 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     # ------------------------------------------------------------------
     # Transportation sub-TLs
     # ------------------------------------------------------------------
-    land_lo = max(tl_low, tl_electronics - 5)
-    land_hi = min(tl_high, tl_energy)
-    tl_land = _sub_tl(land_lo, land_hi)
+    # Land TL: Energy TL + TLM + DMs, bounds [Electronics TL − 5, Energy TL]
+    land_dm = 0
+    if hydrographics == 10:
+        land_dm -= 1
+    if pcr <= 2:
+        land_dm += 1
+    land_lo = tl_electronics - 5
+    land_hi = tl_energy
+    tl_land = _sub_tl(land_lo, land_hi, land_dm, base=tl_energy)
 
     if hydrographics == 0:
         tl_sea = 0
