@@ -417,3 +417,30 @@ BUG FIXES
   at startup. PySide6-Addons (which provides QtWebEngineWidgets) was missing
   from gen-ui/requirements.txt. It is now listed with a compatible version
   constraint alongside PySide6.
+
+- Fixed: all eleven tech-level sub-categories in the Technology Profile now use
+  the correct base TL, bounds, and dice modifiers from WBH §5. Previously each
+  sub-TL was rolled from the world's High common TL with no DMs and approximate
+  bounds; now each uses the base TL specified in the rules (e.g. Medical rolls
+  from Electronics TL, not High TL) with the full DM table applied. Affected
+  categories: Energy, Electronics, Manufacturing, Medical, Environmental, Land
+  Transport, Sea Transport, Air Transport, Space Transport, Personal Military,
+  and Heavy Military. The technology profile string displayed on the world card
+  will differ from earlier versions for most worlds.
+
+- Fixed: Sea Transport sub-TL was forced to 0 on worlds with no surface water
+  (Hydrographics 0). The correct WBH rule applies a DM −2 penalty instead,
+  representing minimal maritime capability — some dry worlds have subsurface
+  oceans or exotic surface liquids.
+
+- Fixed: Personal Military sub-TL was forced to 0 on worlds with Law Level 0
+  (no restrictions on weapons). The correct WBH rule raises the lower bound to
+  Manufacturing TL on such worlds, reflecting that weapons are freely available
+  at manufacturing quality. A DM +2 is also applied, so low-law worlds tend to
+  have better personal military hardware than moderate-law worlds.
+
+- Fixed: Military sub-TLs now apply the correct government and law level DMs.
+  Government 0 and Government 7 (Balkanised) worlds receive DM +2 to Personal
+  Military TL. Governments 7, A, B, and F receive DM +2 to Heavy Military TL.
+  Law Level 0 or D+ receives DM +2; Law Levels 1–4 or 9–C receive DM +1.
+  These DMs were entirely absent in the previous implementation.

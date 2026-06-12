@@ -29,13 +29,21 @@ order:
    small population, low PCR, and certain government types lower the floor; a high
    PCR (concentrated urban population) raises it.
 3. **Five quality-of-life sub-TLs** (Energy, Electronics, Manufacturing, Medical,
-   Environmental) — each rolled as `tl_high + TLM_roll`, then clamped to bounds
-   computed in dependency order: Energy first, then Electronics (bounded by Energy),
-   then Manufacturing (bounded by Electronics), and so on.
-4. **Four transportation sub-TLs** (Land, Sea, Air, Space) — Sea is forced to 0 if
-   there is no water; Air is forced to 0 if there is no atmosphere and TL ≤ 5.
-5. **Two military sub-TLs** (Personal, Heavy) — Personal military TL is forced to 0
-   if law level is 0 (a world with no law has no military).
+   Environmental) — each rolled as `base_TL + TLM_roll + DMs`, clamped to bounds
+   computed in dependency order. Each sub-TL uses a different base TL: Energy uses
+   High TL, Electronics uses Energy TL, Manufacturing uses Electronics TL, Medical
+   uses Electronics TL (with a starport-derived floor), and Environmental uses
+   Manufacturing TL. Population, trade codes, and habitability rating affect DMs.
+4. **Four transportation sub-TLs** (Land, Sea, Air, Space) — Air is forced to 0 if
+   atmosphere is 0 and TL ≤ 5. Sea is not forced to 0 on dry worlds — instead,
+   Hydrographics 0 applies a DM −2 penalty, reflecting very low capability rather
+   than none. Space uses `min(Energy TL, Manufacturing TL)` as both its base and
+   upper bound; size, population, and starport class affect DMs.
+5. **Two military sub-TLs** (Personal, Heavy) — both use Manufacturing TL as base.
+   Personal military is bounded above by Electronics TL; when Law Level is 0
+   (weapons freely available), its lower bound is raised to Manufacturing TL rather
+   than being forced to zero. Both sub-TLs receive DMs from government code, law
+   level, population, and trade codes.
 6. **Technology profile string** — formatted as `H-L-QQQQQ-TTTT-MM` using eHex
    digits (see "The technology profile string" section below).
 
@@ -114,13 +122,16 @@ it never falls below the floor. The function also handles the degenerate case wh
 Inside `generate_tech_detail()`, a local closure called `_sub_tl` uses this pattern:
 
 ```python
-def _sub_tl(lo: int, hi: int) -> int:
-    raw = tl_high + _tlm()
+def _sub_tl(lo: int, hi: int, dm: int = 0, base: Optional[int] = None) -> int:
+    raw = (tl_high if base is None else base) + _tlm() + dm
     return max(0, _clamp(raw, lo, hi))
 ```
 
-The outer `max(0, ...)` ensures sub-TLs are never negative even if the clamp
-produces a result below zero.
+The `base` parameter lets each sub-TL roll from a different starting TL (e.g.
+Medical rolls from Electronics TL, not High TL). The `dm` parameter applies
+DMs for population, trade codes, government, and similar factors. The outer
+`max(0, ...)` ensures sub-TLs are never negative even if the clamp produces a
+result below zero.
 
 ---
 
@@ -174,15 +185,18 @@ without the electronics to run the diagnostics.
 
 ---
 
-## Special zero-forcing rules
+## Special zero-forcing and floor-raising rules
 
-Three sub-TLs are forced to 0 under specific conditions regardless of the dice:
+Some sub-TLs have conditions that force them to zero or raise their lower bound:
 
-| Sub-TL | Forced to 0 when | Why |
-|--------|-----------------|-----|
-| Sea | `hydrographics == 0` | No water, no boats |
-| Air | `atmosphere == 0` and `tl_high <= 5` | No air, no aeroplanes; high TL allows spacecraft that count as air-capable |
-| Personal military | `law_level == 0` | No law = no standing military force |
+| Sub-TL | Condition | Effect | Why |
+|--------|-----------|--------|-----|
+| Air | `atmosphere == 0` and `tl_high <= 5` | Forced to 0 | No air, no aeroplanes; high TL allows spacecraft that count as air-capable |
+| Personal military | `law_level == 0` | Lower bound raised to `min(Manufacturing TL, Electronics TL)` | Weapons freely available → locally-made weapons are at least manufacturing-grade |
+
+Sea transport is **not** forced to zero on dry worlds (Hydrographics 0). Instead,
+Hydrographics 0 applies a DM −2 to the Sea TL roll, reflecting minimal maritime
+capability rather than none (some worlds have other liquids, or subsurface oceans).
 
 ---
 
@@ -212,7 +226,25 @@ Example: `C-9-A9A87-9079-95`
 
 | Method / function | What it does |
 |-------------------|-------------|
-| `generate_tech_detail(tl, atmosphere, hydrographics, population, government, law_level, starport, pcr=0, habitability_rating=None, rng=None)` | Main entry point: computes all 13 TL values and the profile string; returns `TechDetail` or `None` for pop 0 |
+| `generate_tech_detail(tl, atmosphere, hydrographics, population, government, law_level, starport, size=0, pcr=0, habitability_rating=None, trade_codes=None, rng=None)` | Main entry point: computes all 13 TL values and the profile string; returns `TechDetail` or `None` for pop 0 |
 | `attach_tech_detail(system, rng=None)` | Walks the system, attaching tech detail to the mainworld and all inhabited secondaries and moons |
 | `TechDetail.to_dict()` | Serialises all 14 fields to a JSON-compatible dict |
 | `TechDetail.from_dict(d)` | Reconstructs from a saved dict |
+
+### DM summary
+
+Each sub-TL's DMs in brief:
+
+| Sub-TL | Base | DMs |
+|--------|------|-----|
+| Energy | High TL | Pop 9+ +1; Industrial +1 |
+| Electronics | Energy TL | Pop 1–5 +1; Pop 9+ −1; Industrial +1 |
+| Manufacturing | Electronics TL | Pop 1–6 −1; Pop 8+ +1; Industrial +1 |
+| Medical | Electronics TL | Rich +1; Poor −1; starport floor (A→6, B→4, C→2) |
+| Environmental | Manufacturing TL | Habitability < 8: +(8 − habitability) |
+| Land | Energy TL | Hydro 10 −1; PCR ≤ 2 +1 |
+| Sea | Energy TL | Hydro 0 −2; Hydro 8 +1; Hydro 9+ +2; PCR ≤ 2 +1 |
+| Air | Energy TL | Atm 0/1/2/3/E at TL 0–7 −2; Atm 4/5 at TL 0–7 −1; Atm 8/9 at TL 0–7 +1 |
+| Space | Manufacturing TL | Size 0–1 +2; Pop 1–5 −1; Pop 9+ +1; Starport A +2; Starport B +1 |
+| Personal military | Manufacturing TL | Gov 0 or 7 +2; Law 0 or D+ +2; Law 1–4 or 9–C +1 |
+| Heavy military | Manufacturing TL | Pop 1–6 −1; Pop 8+ +1; Gov 7/A/B/F +2; Law D+ +2; Industrial +1 |
