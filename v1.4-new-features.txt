@@ -388,6 +388,36 @@ Diameters) were displaying one column too far left. They now appear under the
 Orbit# heading, and the km distance and period columns are similarly aligned with
 their correct headers.
 
+GEN-UI — IISS SURVEY FORM
+--------------------------
+A new "Survey Form" button appears in the status bar after any Full System
+generation. Clicking it opens a non-modal window showing an IISS Class 0/I
+Survey form for the generated system.
+
+- The form is rendered as a styled HTML page (dark or light theme to match the
+  app) and displayed in a web-view window.
+- It lists every star in the system with its spectral classification, mass,
+  temperature, diameter, luminosity, orbital data (Orbit#, AU, eccentricity,
+  period), and Habitable Zone centre orbit.
+- Stars with an orbital period under one standard year are footnoted with the
+  period in standard days.
+- A dropdown to the right of the button selects the form type; currently only
+  "Class 0/I Survey" is available.
+- Multiple survey windows can be open at the same time.
+
+ORBIT TABLE — BELT PROFILE STRINGS
+------------------------------------
+Asteroid belt orbit slots in the system detail table now show a compact profile
+string in the Notes column. The string uses the WBH Class III shorthand format:
+
+  S-CC.CC.CC.CC-B-R-#-s
+
+where S is the belt span in AU, CC.CC.CC.CC is the composition split (metallic /
+silicate / carbonaceous / other as percentages), B is the bulk, R is the resource
+rating, # is the count of Size 1 significant bodies, and s is the count of Size S
+significant bodies. The same string is used in both the HTML system card and the
+plain-text summary output.
+
 BUG FIXES
 ---------
 - Fixed: The mainworld card in the Full System page sometimes displayed as blank on

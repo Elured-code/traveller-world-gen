@@ -1,6 +1,68 @@
 # Traveller World Generator — v1.4.0 Release Notes
 
-**2044 tests pass. Pylint 10.00/10.**
+**2250 tests pass. Pylint 10.00/10.**
+
+---
+
+## pytest-qt GUI Test Suite (Session 124)
+
+121 automated GUI tests in `tests/test_genui_app.py` covering the `gen-ui/app.py`
+`AppWindow`, `_OptionsDialog`, `SystemMapWindow`, and `SurveyFormWindow`.
+
+Key implementation details:
+
+- **Module loading**: `gen-ui/app.py` is loaded via `importlib.util.spec_from_file_location("genui_app", path)` to avoid a name clash with `fastapi/app.py`
+- **`_FakeSettings`**: in-memory stub for `QSettings` — no disk I/O during tests
+- **`_MockWebView`**: `QWidget` subclass that captures HTML via `setHtml()` — never launches a Chromium subprocess
+- **`QT_QPA_PLATFORM=offscreen`**: headless Qt rendering; `QTWEBENGINE_CHROMIUM_FLAGS=--log-level=3 --disable-gpu` suppresses Chromium noise
+- **`isVisibleTo(parent)`** used instead of `isVisible()` for dialog sub-widgets (parent not shown)
+- **`blockSignals` + `_seed_auto=False`** pattern used in reproducibility helpers to reliably set a seed value when the text field already holds the same string
+
+13 test classes covering: initial state, name/seed fields, options dialog, generate triggers, output tabs, file menu, system map window, survey form window, dark mode, reproducibility, `_OptionsDialog` state, and integration tests.
+
+pytest.ini gains `qt_api = pyside6` to configure pytest-qt bindings.
+
+---
+
+## Belt Profile Strings and IISS Survey Form (Session 123)
+
+### `BeltPhysical.profile_str` (computed property)
+
+New read-only property returning the WBH Class III belt shorthand:
+
+```
+S-CC.CC.CC.CC-B-R-#-s
+```
+
+where `S` = span in AU, `CC.CC.CC.CC` = M/S/C/O composition percentages
+(dot-separated), `B` = bulk, `R` = resource rating, `#` = Size 1 body count,
+`s` = Size S body count. Not emitted to JSON (`to_dict()` is unchanged).
+
+### Belt profile in orbit tables
+
+`system_body_table()` (text output) and `TravellerSystem.to_html()` (HTML orbit
+table) both append `Profile: <profile_str>` to the Notes column for every belt
+orbit slot that has a `BeltPhysical` attached.
+
+### `TravellerSystem.to_survey_form_html()`
+
+Renders `templates/survey_class0i.html` via Jinja2 and returns a self-contained
+HTML page. Template data: `designation`, `age_gyr`, `stellar_count`, `star_rows`
+(one dict per star with spectral data and orbital parameters), and `notes`
+(footnote lines for sub-year periods in standard days).
+
+### gen-ui Survey Form window
+
+`SurveyFormWindow(title, html)` — a non-modal `QMainWindow` (980×700) containing
+a `QWebEngineView`. `AppWindow` gains `_survey_btn`, `_survey_combo`, and
+`_survey_windows` state. `_on_survey_clicked()` calls `_themed_html()` before
+passing to `SurveyFormWindow` so the dark/light theme is applied.
+
+### FastAPI — `survey_class0i_html` in JSON response
+
+`/api/system/full` and `/api/map/system/full` now include a
+`survey_class0i_html` key in the `include_mw_card` JSON response alongside
+`sys_html` and `mw_html`.
 
 ---
 
@@ -330,8 +392,9 @@ Removed field: `advanced_seismic_temperature_k` (seismic heating now baked into
 | v1.4.0 (Sessions 80–82) | 1644 |
 | v1.5.0 (Sessions 88–112) | **1946** |
 | v1.5.0 (Sessions 113–119) | **2044** |
+| v1.5.0 (Sessions 120–124) | **2250** |
 
-All 2044 tests pass.
+All 2250 tests pass.
 
 ---
 

@@ -1,8 +1,83 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–122
-**Tests:** 2122
+**Sessions:** 88–124
+**Tests:** 2250
+
+---
+
+## Belt Profile Strings + IISS Survey Form (Session 123)
+
+**Belt profile strings in system detail.** `BeltPhysical` gained a `profile_str`
+computed property returning the WBH Class III shorthand `S-CC.CC.CC.CC-B-R-#-s`
+(span in AU; M/S/C/Other composition percentages dot-separated; bulk; resource
+rating; Size 1 body count; Size S body count). The profile string is displayed in
+the Notes column of the system body table in all three interfaces — CLI
+(`system_body_table()` in `traveller_world_detail.py`), gen-ui and FastAPI (both
+via `TravellerSystem.to_html()`).
+
+**IISS Class 0/I Survey form.** New `TravellerSystem.to_survey_form_html()` method
+renders `templates/survey_class0i.html` — a structured HTML table matching the WBH
+paper form. The form shows system designation, age (Gyr), stellar component count,
+and a star table with columns for component, spectral class, mass, temperature,
+diameter, luminosity, orbit number, AU, eccentricity, orbital period (always in
+years), and HZCO. The Notes field lists sub-year orbital periods converted to
+standard days with footnote superscripts. Notes and Comments boxes are 180 px tall.
+Field labels use sans-serif; data fields use Courier New italic. Full light/dark
+theming via CSS variables and `[data-theme]` attribute — same pattern as other card
+templates.
+
+In **gen-ui**, a "Survey Form" `QPushButton` and `QComboBox` (dropdown) appear in
+the system result header before the "System Map" button. Clicking the button opens
+a `SurveyFormWindow` (new class, `QMainWindow` + `QWebEngineView`) with the themed
+HTML applied via `_themed_html()`. Multiple windows can coexist.
+
+In **FastAPI**, the `include_mw_card` JSON response for `/api/system/full` and
+`/api/map/system/full` now includes a third key `survey_class0i_html`. A new
+Survey tab and seed-bar button/dropdown in `system.html` display the form in an
+inline iframe; the iframe is reloaded on theme change.
+
+7 new tests in `TestBeltPhysicalProfileStr`.
+
+---
+
+## pytest-qt GUI Test Suite (Session 124)
+
+New `tests/test_genui_app.py` adds 121 automated GUI tests covering the
+`gen-ui/app.py` desktop UI via pytest-qt.  Two stubs keep the suite fast and
+self-contained: `_FakeSettings` (replaces `QSettings` — never touches disk)
+and `_MockWebView` (replaces `QWebEngineView` — captures HTML without
+launching Chromium).
+
+The module is loaded via `importlib.util.spec_from_file_location` under the
+name `genui_app` to avoid collision with `fastapi/app.py` when both are on
+`sys.path` during the full test run.
+
+Test classes and coverage:
+- **TestAppWindowStartup** (19) — title, radio state, panel visibility,
+  button/action initial state, empty window/system lists
+- **TestSourceRadioToggle** (7) — TM panel show/hide on radio switch,
+  entry widget presence
+- **TestOptionsDialogConstruction** (12) — sub-widget visibility
+  (`isVisibleTo()`), sub-option clearing, settlement buttons
+- **TestOptionsDialogProperties** (11) — all property accessors, settlement
+  type keys, sub-option behaviour when `full_system=False`
+- **TestOptionsIntegration** (3) — OK/Cancel wired to `AppWindow._opt_*` via
+  monkeypatched `_OptionsDialog` subclass
+- **TestSeedHandling** (6) — invalid seed error, auto-population
+- **TestTravellerMapErrors** (4) — missing sector / name+hex error paths,
+  no worker started
+- **TestProceduralWorldGeneration** (9) — world set, no system buttons,
+  save enabled, reproducibility, name/empty-name
+- **TestProceduralSystemGeneration** (14) — system set, tabs, buttons,
+  survey combo, reproducibility
+- **TestDarkMode** (8) — flag toggle, `_themed_html` injection, idempotency
+- **TestSystemMapWindow** (12) — theme toggle, perspective toggle, SVG content
+- **TestSurveyFormWindow** (4) — title, size, HTML delivered to stub view
+- **TestHeaderButtons** (11) — click counts, window types, dark-mode HTML,
+  no-op when no system
+
+`pytest.ini` updated with `qt_api = pyside6`.
 
 ---
 

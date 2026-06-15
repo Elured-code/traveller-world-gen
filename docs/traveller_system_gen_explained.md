@@ -104,6 +104,7 @@ seed that produced it.
 | `.to_dict()` | `TravellerSystem` | Full system as a nested dict (JSON-ready) |
 | `.to_json()` | `TravellerSystem` | JSON string of the full system |
 | `.to_html()` | `TravellerSystem` | HTML system card (Jinja2 template) |
+| `.to_survey_form_html()` | `TravellerSystem` | Self-contained IISS Class 0/I Survey form HTML page (Session 123) |
 | `.summary()` | `TravellerSystem` | Human-readable multi-line text |
 | `.from_dict(d)` | `TravellerSystem` | Reconstructs the full system from a saved dict |
 | `generate_full_system(...)` | module | Procedural entry point — returns physical-only mainworld |
@@ -231,6 +232,36 @@ deterministic (no dice) and idempotent.
 
 `orbit.detail.name` and `moon.detail.name` are also set to mirror the parent
 slot/moon name, so `WorldDetail` objects carry their own name for JSON output.
+
+---
+
+## `to_survey_form_html()` — IISS Class 0/I Survey form (Session 123)
+
+`TravellerSystem.to_survey_form_html()` renders the `survey_class0i.html` Jinja2
+template and returns a self-contained HTML page suitable for display in a
+`QWebEngineView` or a browser tab.
+
+The template receives:
+
+- **`designation`** — mainworld name (or `"Unknown"`)
+- **`age_gyr`** — system age formatted to 2 decimal places
+- **`stellar_count`** — number of stars in the system
+- **`star_rows`** — one dict per star, with keys:
+  `component`, `footnote`, `star_class`, `mass`, `temp`, `diameter`,
+  `luminosity`, `orbit`, `au`, `ecc`, `period`, `hzco`
+- **`notes`** — newline-joined footnote lines for sub-year orbital periods
+  (each formatted as `"¹ 42.195 standard days"`)
+
+**Footnote rule:** stars with an orbital period under 1 year get a superscript
+symbol (¹²³…). The corresponding note line shows the period in standard days
+(365.25 days/year). The primary star always shows `"—"` for orbit, AU, and
+period.
+
+The method is called by:
+- `AppWindow._on_survey_clicked()` in `gen-ui/app.py` — displayed in a
+  `SurveyFormWindow`
+- The FastAPI `/api/system/full` and `/api/map/system/full` endpoints — returned
+  as `survey_class0i_html` in the JSON response when `include_mw_card=true`
 
 ---
 
