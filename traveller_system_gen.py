@@ -313,6 +313,10 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                     note_parts.append(
                         f"{o.gg_mass_earth:.0f} M⊕ · {gg_density:.2f} g/cm³"
                     )
+            if (o.world_type == "belt"
+                    and detail is not None
+                    and detail.physical is not None):
+                note_parts.append(f"Profile: {detail.physical.profile_str}")
 
             if o.is_mainworld_candidate and mw:
                 orbit_codes = list(mw.trade_codes)
@@ -414,6 +418,66 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             json_str=self.to_json(),
         )
 
+    def to_survey_form_html(self) -> str:  # pylint: disable=too-many-locals
+        """Return a self-contained IISS Class 0/I Survey form HTML page."""
+        footnote_syms = "¹²³⁴⁵⁶⁷⁸⁹"
+
+        mw = self.mainworld
+        designation = mw.name if mw else "Unknown"
+        age_gyr = f"{self.stellar_system.age_gyr:.2f}"
+        stellar_count = len(self.stellar_system.stars)
+
+        footnote_idx = 0
+        notes_lines: list[str] = []
+        star_rows = []
+
+        for star in self.stellar_system.stars:
+            period_yr = star.orbit_period_yr
+            is_primary = star.orbit_number == 0.0
+
+            # Period formatted: always years in the table column
+            if is_primary or period_yr is None:
+                period_str = "—"
+            else:
+                period_str = f"{period_yr:.3f}y"
+
+            # Footnote only for sub-year periods; note in standard days
+            footnote = ""
+            if (not is_primary
+                    and period_yr is not None
+                    and period_yr < 1.0
+                    and footnote_idx < len(footnote_syms)):
+                footnote = footnote_syms[footnote_idx]
+                footnote_idx += 1
+                notes_lines.append(
+                    f"{footnote} {period_yr * 365.25:.3f} standard days"
+                )
+
+            ecc_v = star.orbit_eccentricity
+            hzco_v = self.system_orbits.star_hzco.get(star.designation)
+
+            star_rows.append({
+                "component": star.designation,
+                "footnote": footnote,
+                "star_class": star.classification(),
+                "mass": f"{star.mass:.3f}",
+                "temp": f"{star.temperature:,}" if star.temperature > 0 else "—",
+                "diameter": f"{star.diameter:.3f}",
+                "luminosity": f"{star.luminosity:.4g}",
+                "orbit": "0" if is_primary else f"{star.orbit_number:.2f}",
+                "au": "—" if is_primary else f"{star.orbit_au:.3f}",
+                "ecc": "—" if ecc_v == 0.0 else f"{ecc_v:.2f}",
+                "period": period_str,
+                "hzco": f"{hzco_v:.2f}" if hzco_v is not None else "—",
+            })
+
+        return render("survey_class0i.html",
+            designation=designation,
+            age_gyr=age_gyr,
+            stellar_count=stellar_count,
+            star_rows=star_rows,
+            notes="\n".join(notes_lines),
+        )
 
 
 def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements

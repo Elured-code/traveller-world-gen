@@ -442,6 +442,11 @@
   <button class="btn-save" id="s-save-html" title="Download system card as HTML">HTML</button>
   <button class="btn-save" id="s-save-text" title="Download system summary as text">Text</button>
   <button class="btn-save" id="s-save-json" title="Download system data as JSON">JSON</button>
+  <div class="badge-divider"></div>
+  <button class="btn-save" id="s-survey-btn" title="Open the selected IISS survey form">Survey Form</button>
+  <select id="s-survey-type" title="Survey form type" style="background:var(--input-bg);border:1px solid var(--border);border-radius:3px;color:var(--text);padding:0.1rem 0.35rem;font-size:0.72rem;cursor:pointer;">
+    <option value="class0i">Class 0/I Survey</option>
+  </select>
 </div>
 
 <div class="result" id="s-result">
@@ -457,6 +462,7 @@
     <button class="tab-btn active" data-tab="mw">Mainworld</button>
     <button class="tab-btn"        data-tab="sys">System</button>
     <button class="tab-btn"        data-tab="map">System Map</button>
+    <button class="tab-btn hidden" data-tab="survey" id="tab-btn-survey">Survey Form</button>
   </div>
 
   <!-- Mainworld tab -->
@@ -467,6 +473,11 @@
   <!-- System tab -->
   <div class="tab-panel" id="tab-sys">
     <iframe class="result-frame" id="sys-frame" title="System card" sandbox="allow-scripts"></iframe>
+  </div>
+
+  <!-- Survey Form tab -->
+  <div class="tab-panel" id="tab-survey">
+    <iframe class="result-frame" id="survey-frame" title="Survey form" sandbox="allow-scripts"></iframe>
   </div>
 
   <!-- System Map tab -->
@@ -587,6 +598,7 @@
   let _lastGen = null;
   let _lastMwHtml = null;
   let _lastSysHtml = null;
+  let _lastSurveyHtmls = {}; // keyed by survey type ("class0i", …)
 
   function _injectTheme(html) {
     const t = document.documentElement.getAttribute("data-theme") || "dark";
@@ -626,13 +638,17 @@
     document.getElementById("tab-mw").classList.remove("active");
     document.getElementById("tab-sys").classList.remove("active");
     document.getElementById("tab-map").classList.remove("active");
+    document.getElementById("tab-survey").classList.remove("active");
     document.getElementById("mw-frame").classList.remove("visible");
     document.getElementById("sys-frame").classList.remove("visible");
+    document.getElementById("survey-frame").classList.remove("visible");
     document.getElementById("s-json").classList.remove("visible");
     document.getElementById("s-text").classList.remove("visible");
     document.getElementById("s-seed-badge").classList.remove("visible");
     document.getElementById("map-img").style.display = "none";
+    document.getElementById("tab-btn-survey").classList.add("hidden");
     _lastGen = null;
+    _lastSurveyHtmls = {};
   }
 
   function loadFrame(frameId, html) {
@@ -705,9 +721,10 @@
 
   // ── Tab display helper ───────────────────────────────
 
-  function showTabs(mwHtml, sysHtml, seed) {
+  function showTabs(mwHtml, sysHtml, seed, surveyHtmls) {
     _lastMwHtml = mwHtml;
     _lastSysHtml = sysHtml;
+    _lastSurveyHtmls = surveyHtmls || {};
     document.getElementById("s-empty").style.display = "none";
     loadFrame("mw-frame", mwHtml);
     loadFrame("sys-frame", sysHtml);
@@ -715,6 +732,7 @@
     document.getElementById("tab-mw").classList.add("active");
     document.getElementById("tab-sys").classList.remove("active");
     document.getElementById("tab-map").classList.remove("active");
+    document.getElementById("tab-survey").classList.remove("active");
     document.getElementById("s-tab-bar").classList.add("visible");
     if (seed !== undefined) loadMap(seed);
   }
@@ -848,9 +866,25 @@
     if (!btn) return;
     const tab = btn.dataset.tab;
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === btn));
-    document.getElementById("tab-mw").classList.toggle("active",  tab === "mw");
-    document.getElementById("tab-sys").classList.toggle("active", tab === "sys");
-    document.getElementById("tab-map").classList.toggle("active", tab === "map");
+    document.getElementById("tab-mw").classList.toggle("active",     tab === "mw");
+    document.getElementById("tab-sys").classList.toggle("active",    tab === "sys");
+    document.getElementById("tab-map").classList.toggle("active",    tab === "map");
+    document.getElementById("tab-survey").classList.toggle("active", tab === "survey");
+  });
+
+  document.getElementById("s-survey-btn").addEventListener("click", () => {
+    const type = document.getElementById("s-survey-type").value;
+    const html = _lastSurveyHtmls[type];
+    if (!html) return;
+    loadFrame("survey-frame", html);
+    document.getElementById("tab-btn-survey").classList.remove("hidden");
+    document.querySelectorAll(".tab-btn").forEach(b =>
+      b.classList.toggle("active", b.id === "tab-btn-survey")
+    );
+    document.getElementById("tab-mw").classList.remove("active");
+    document.getElementById("tab-sys").classList.remove("active");
+    document.getElementById("tab-map").classList.remove("active");
+    document.getElementById("tab-survey").classList.add("active");
   });
 
   // ── Perspective toggle re-fetches the map ────────────
@@ -930,6 +964,8 @@
     document.getElementById("theme-toggle").textContent = theme === "dark" ? "☀" : "☾";
     if (_lastMwHtml) loadFrame("mw-frame", _lastMwHtml);
     if (_lastSysHtml) loadFrame("sys-frame", _lastSysHtml);
+    const type = document.getElementById("s-survey-type").value;
+    if (_lastSurveyHtmls[type]) loadFrame("survey-frame", _lastSurveyHtmls[type]);
     if (_lastGen) loadMap(_lastGen.seed);
   }
 
@@ -1024,7 +1060,8 @@
               throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
             }
             const data = await sysResp.json();
-            showTabs(data.mw_html, data.sys_html, seed);
+            showTabs(data.mw_html, data.sys_html, seed,
+              data.survey_class0i_html ? { class0i: data.survey_class0i_html } : {});
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
 
@@ -1043,7 +1080,7 @@
             }
 
             const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
-            showTabs(mwHtml, sysHtml, seed);
+            showTabs(mwHtml, sysHtml, seed, {});
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
           }
@@ -1099,7 +1136,8 @@
             const data = await sysResp.json();
             _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
                          full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
-            showTabs(data.mw_html, data.sys_html, seed);
+            showTabs(data.mw_html, data.sys_html, seed,
+              data.survey_class0i_html ? { class0i: data.survey_class0i_html } : {});
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
 
@@ -1125,7 +1163,7 @@
             const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
             _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
                          full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
-            showTabs(mwHtml, sysHtml, seed);
+            showTabs(mwHtml, sysHtml, seed, {});
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
           }

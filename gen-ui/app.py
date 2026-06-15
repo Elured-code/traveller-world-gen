@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -58,7 +59,6 @@ from PySide6.QtWidgets import (  # noqa: E402
     QMessageBox,
     QPushButton,
     QRadioButton,
-
     QSizePolicy,
     QTabWidget,
     QVBoxLayout,
@@ -264,6 +264,19 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
                 fh.write(self._svg_str)
         except OSError as exc:
             QMessageBox.critical(self, "Save Failed", str(exc))
+
+
+class SurveyFormWindow(QMainWindow):  # pylint: disable=too-few-public-methods
+    """Non-modal window that displays an IISS survey form for the system."""
+
+    def __init__(self, title: str, html: str) -> None:
+        super().__init__()
+        self.setWindowTitle(title)
+        self.resize(980, 700)
+
+        self._view = QWebEngineView()
+        self.setCentralWidget(self._view)
+        self._view.setHtml(html)
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +494,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._detail_attached: bool = False
         self._seed_auto: bool = False
         self._map_windows: list[object] = []
+        self._survey_windows: list[object] = []
         self._map_btn: QPushButton | None = None
+        self._survey_btn: QPushButton | None = None
+        self._survey_combo: QComboBox | None = None
         self._generate_btn: QPushButton | None = None
         self._worker: _TravMapWorker | None = None
         self._pending_full_system: bool = False
@@ -967,6 +983,23 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_windows.append(win)
         win.show()
 
+    def _on_survey_clicked(self) -> None:
+        if self._current_system is None:
+            return
+        form_type = (
+            self._survey_combo.currentText()
+            if self._survey_combo is not None
+            else "Class 0/I Survey"
+        )
+        mw = self._current_system.mainworld  # type: ignore[attr-defined]
+        name = mw.name if mw else "System"
+        html = self._themed_html(
+            self._current_system.to_survey_form_html()  # type: ignore[attr-defined]
+        )
+        win = SurveyFormWindow(f"{form_type} — {name}", html)
+        self._survey_windows.append(win)
+        win.show()
+
     def _build_menu_bar(self) -> None:
         # pylint: disable=attribute-defined-outside-init
         file_menu = self.menuBar().addMenu("&File")
@@ -1080,6 +1113,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _clear_status(self) -> None:
         self._map_btn = None
+        self._survey_btn = None
+        self._survey_combo = None
         while self._status_layout.count():
             item = self._status_layout.takeAt(0)
             if item is not None:
@@ -1280,6 +1315,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
         layout.addWidget(spacer)
+
+        survey_btn = QPushButton("Survey Form")
+        survey_btn.clicked.connect(self._on_survey_clicked)
+        self._survey_btn = survey_btn
+        layout.addWidget(survey_btn)
+
+        survey_combo = QComboBox()
+        survey_combo.addItem("Class 0/I Survey")
+        self._survey_combo = survey_combo
+        layout.addWidget(survey_combo)
 
         map_btn = QPushButton("System Map")
         map_btn.clicked.connect(self._on_map_clicked)

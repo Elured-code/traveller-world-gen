@@ -258,6 +258,24 @@ class BeltPhysical:  # pylint: disable=too-many-instance-attributes
     size_s_bodies: int   # count of Size S significant planetoids
     mean_temperature_k: int  # Basic Mean Temperature (WBH p.47); atmosphere DM = 0 for belts
 
+    @property
+    def profile_str(self) -> str:
+        """Belt profile: S-CC.CC.CC.CC-B-R-#-s (WBH Class III shorthand).
+
+        S = span in AU; CC.CC.CC.CC = M/S/C/O composition percentages;
+        B = bulk; R = resource rating; # = Size 1 bodies; s = Size S bodies.
+        """
+        span = round(self.outer_au - self.inner_au, 3)
+        comp = (
+            f"{self.m_type_pct}.{self.s_type_pct}"
+            f".{self.c_type_pct}.{self.other_pct}"
+        )
+        return (
+            f"{span}-{comp}"
+            f"-{self.bulk}-{self.resource_rating}"
+            f"-{self.size_1_bodies}-{self.size_s_bodies}"
+        )
+
     def to_dict(self) -> dict:
         """Return belt physical characteristics as a JSON-compatible dict."""
         return {

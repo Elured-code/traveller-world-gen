@@ -2149,13 +2149,18 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
             else ""
         )
         cl_suffix = f"  [{cl_name}]" if cl_name else ""
+        notes_suffix = ""
+        if (o.world_type == "belt"
+                and detail is not None
+                and detail.physical is not None):
+            notes_suffix = f"  Profile: {detail.physical.profile_str}"
         lines.append(
             f"  {o.star_designation:<5} {o.slot_index:<4} "
             f"{o.orbit_number:<8.2f} {o.orbit_au:<9.3f} "
             f"{o.world_type:<14} {profile:<22} "
             f"{codes_str:<18} "
             f"{moons_display:<20} "
-            f"{o.temperature_zone}{mw_mark}{cl_suffix}"
+            f"{o.temperature_zone}{mw_mark}{cl_suffix}{notes_suffix}"
         )
         # Moon sub-rows: indented, showing SAH+social profile and trade codes
         for mi, moon in enumerate(moon_list, 1):

@@ -442,7 +442,8 @@ def _apply_mainworld_moon_tidal(system) -> None:
     """
     mw = system.mainworld
     mw_orbit = system.mainworld_orbit
-    if mw is None or mw.size_detail is None or isinstance(mw.size_detail, BeltPhysical) or mw_orbit is None:
+    if (mw is None or mw.size_detail is None  # pylint: disable=too-many-boolean-expressions
+            or isinstance(mw.size_detail, BeltPhysical) or mw_orbit is None):
         return
     moons = _get_mainworld_moons(system)
     is_moon = mw_orbit.world_type == "gas_giant"
@@ -732,7 +733,11 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
     if fmt == "html":
         sys_html = system.to_html(detail_attached=True)
         if want_mw_card and mw is not None:
-            return JSONResponse({"sys_html": sys_html, "mw_html": mw.to_html()})
+            return JSONResponse({
+                "sys_html": sys_html,
+                "mw_html": mw.to_html(),
+                "survey_class0i_html": system.to_survey_form_html(),
+            })
         return HTMLResponse(content=sys_html, status_code=200)
     if fmt == "text":
         return PlainTextResponse(content=system.summary(), status_code=200)
@@ -1293,7 +1298,11 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
     if fmt == "html":
         sys_html = system.to_html(detail_attached=True)
         if want_mw_card and mw is not None:
-            return JSONResponse({"sys_html": sys_html, "mw_html": mw.to_html()})
+            return JSONResponse({
+                "sys_html": sys_html,
+                "mw_html": mw.to_html(),
+                "survey_class0i_html": system.to_survey_form_html(),
+            })
         return HTMLResponse(content=sys_html, status_code=200)
     if fmt == "text":
         return PlainTextResponse(content=system.summary(), status_code=200)
