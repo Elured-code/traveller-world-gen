@@ -136,7 +136,7 @@ from helpers import (
 from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT
 
 try:
-    import _version as _ver
+    import _version as _ver  # type: ignore[import]
     _APP_VERSION = _ver.__version__
 except ImportError:
     _APP_VERSION = "0.0.0+dev"
