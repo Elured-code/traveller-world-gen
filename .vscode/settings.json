@@ -45,5 +45,10 @@
             "pattern": "**/SkinDefinition.xml",
             "systemId": "/Users/michaelbailey/.vscode/extensions/lunarwtr.lotro-api-1.0.18/resources/xsds/lotro-skin.xsd"
         }
-    ]
+    ],
+    "python.testing.pytestArgs": [
+        "tests"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }
