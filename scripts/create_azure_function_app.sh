@@ -21,6 +21,9 @@ FUNCTIONAPP_NAME="traveller-world-gen"
 STORAGE_ACCOUNT="travellerworldgen"     # 3-24 chars, lowercase alphanumeric
 UAMI_NAME="traveller-world-gen-uami"
 APPINSIGHTS_NAME="traveller-world-gen"
+# 1,000 GB-seconds/day expressed in MB-milliseconds (1000 × 1024 × 1000).
+# Protects against runaway loops; well within the 400,000 GB-s/month free tier.
+DAILY_QUOTA_MB_MS=1024000000
 # ─────────────────────────────────────────────────────────────────────────────
 
 echo "==> Creating resource group: $RESOURCE_GROUP"
@@ -103,6 +106,13 @@ az functionapp config appsettings set \
     "TRAVELLER_MAX_BATCH_SIZE=20" \
     "APPLICATIONINSIGHTS_CONNECTION_STRING=$APPINSIGHTS_CONNECTION_STRING" \
     "WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT=1" \
+  --output none
+
+echo "==> Setting daily execution quota: 1,000 GB-s/day"
+az functionapp update \
+  --name "$FUNCTIONAPP_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
+  --set dailyMemoryTimeQuota="$DAILY_QUOTA_MB_MS" \
   --output none
 
 echo "==> Enabling basic auth (required for publish profile deployment)"
