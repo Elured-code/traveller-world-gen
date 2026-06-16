@@ -36,6 +36,10 @@ azure-api/tables.py
 azure-api/traveller_*.py
 azure-api/world_codes.py
 azure-api/traveller_world_schema.json
+azure-api/_version.py
+
+# Auto-generated version file — run scripts/compute_version.sh to create
+_version.py
 
 # ── Editors ─────────────────────────────────────────────────────────────────
 

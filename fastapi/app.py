@@ -135,6 +135,12 @@ from helpers import (
 
 from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT
 
+try:
+    import _version as _ver
+    _APP_VERSION = _ver.__version__
+except ImportError:
+    _APP_VERSION = "0.0.0+dev"
+
 # FastAPI light-mode background matches the page (#f4f0e4), not pure white.
 _PALETTE_LIGHT = dataclasses.replace(PALETTE_LIGHT, bg="#f4f0e4")
 
@@ -252,7 +258,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few
 app = FastAPI(
     title="Traveller World & System Generator",
     description="Procedural star system generator for the Traveller RPG.",
-    version="1.5.0",
+    version=_APP_VERSION,
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
@@ -264,6 +270,12 @@ app.mount("/static", StaticFiles(directory=os.path.join(_here, "static")), name=
 async def root() -> RedirectResponse:
     """Redirect the browser root to the web UI."""
     return RedirectResponse(url="/static/index.html")
+
+
+@app.get("/api/version")
+async def get_version() -> JSONResponse:
+    """Return the running application version."""
+    return JSONResponse({"version": _APP_VERSION})
 
 
 # ---------------------------------------------------------------------------

@@ -9,8 +9,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DEST="$REPO_ROOT/azure-api"
 
+echo "Computing version ..."
+bash "$REPO_ROOT/scripts/compute_version.sh"
+
 echo "Copying generator modules to $DEST ..."
 cp \
+  "$REPO_ROOT/_version.py" \
   "$REPO_ROOT/html_render.py" \
   "$REPO_ROOT/system_map.py" \
   "$REPO_ROOT/system_pipeline.py" \

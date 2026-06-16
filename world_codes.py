@@ -78,7 +78,11 @@ class AtmosphereCode(IntEnum):
     GAS_GIANT_I       = 17
 
 
-APP_VERSION = "1.5.1"
+try:
+    import _version as _v
+    APP_VERSION = ".".join(str(x) for x in _v.__version_tuple__)
+except ImportError:
+    APP_VERSION = "1.5.27"
 
 _EHEX = "0123456789ABCDEFGHIJ"
 

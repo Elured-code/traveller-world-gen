@@ -82,6 +82,12 @@ from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
 from system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
 from world_codes import APP_VERSION  # noqa: E402
 
+try:
+    import _version as _genui_ver  # noqa: E402
+    _DISPLAY_VERSION = _genui_ver.__version__
+except ImportError:
+    _DISPLAY_VERSION = APP_VERSION
+
 # ---------------------------------------------------------------------------
 # Stylesheet
 # ---------------------------------------------------------------------------
@@ -486,7 +492,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Traveller World Generator")
+        self.setWindowTitle(f"Traveller World Generator {_DISPLAY_VERSION}")
         self.resize(1100, 700)
         self.setMinimumSize(780, 500)
         self._current_world: object | None = None
@@ -1037,7 +1043,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             return
 
         file_ver = data.get("_app_version")
-        if file_ver != APP_VERSION:
+        def _ver_tuple(v: object) -> tuple:
+            try:
+                return tuple(int(x) for x in str(v).split("+", maxsplit=1)[0].split("."))
+            except (ValueError, AttributeError):
+                return ()
+        if _ver_tuple(file_ver) != _ver_tuple(APP_VERSION):
             result = QMessageBox.warning(
                 self,
                 "Version mismatch",

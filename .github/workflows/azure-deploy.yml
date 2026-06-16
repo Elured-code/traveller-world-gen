@@ -22,6 +22,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history needed for schema-commit patch count
+
+      - name: Compute version
+        run: bash scripts/compute_version.sh ${{ github.run_number }}
 
       - name: Assemble deployment package
         run: |
@@ -29,6 +34,7 @@ jobs:
           # so that function_app.py can import them.  These files are git-ignored
           # inside azure-api/ to avoid duplication in the repo.
           cp \
+            _version.py \
             html_render.py \
             system_map.py \
             system_pipeline.py \
