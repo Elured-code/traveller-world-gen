@@ -307,6 +307,8 @@ def _get_mi_token() -> str:
 
 def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> None:
     """Post one RequestData telemetry item; called from a thread pool."""
+    if status == 429:
+        return
     envelope = json.dumps([{
         "name": f"Microsoft.ApplicationInsights.{_AI_IKEY}.Request",
         "time": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
