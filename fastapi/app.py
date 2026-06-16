@@ -193,16 +193,15 @@ logging.config.dictConfig({
             "stream": "ext://sys.stderr",
         }
     },
-    "root": {
-        "level": "INFO",
-        "handlers": ["console"],
-    },
     "loggers": {
         "uvicorn":        {"handlers": ["console"], "level": "INFO",    "propagate": False},
         "uvicorn.access": {"handlers": ["console"], "level": "INFO",    "propagate": False},
         "uvicorn.error":  {"handlers": ["console"], "level": "WARNING", "propagate": False},
     },
 })
+# Set root level without replacing its handlers — Azure Functions attaches its
+# own App Insights handler to the root logger before this module is imported.
+logging.getLogger().setLevel(logging.INFO)
 
 # ---------------------------------------------------------------------------
 # Rate limiting
