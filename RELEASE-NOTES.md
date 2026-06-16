@@ -1,8 +1,22 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–124
-**Tests:** 2250
+**Sessions:** 88–125
+**Tests:** 2124
+
+---
+
+## Bug Fix: Vacuum World Temperature Range (Session 125)
+
+**Issue #144.** Vacuum worlds (atmosphere code 0) incorrectly showed near-zero
+temperature variance in the advanced high/low temperature fields. Root cause:
+`ATMOSPHERE_PRESSURE_SPAN_BAR` has no entry for code 0, so `pressure_bar` was
+`None`, triggering the 10-bar fallback in `generate_advanced_mean_temperature()`
+intended for unbound high-pressure subtypes. This divided the luminosity variance
+modifier by 11 instead of 1, collapsing the temperature range to ±6 K. Fixed in
+`traveller_world_atmosphere_detail.py` — atmosphere 0 now always uses
+`eff_pressure = 0.0`, producing physically correct extremes (e.g. 3 K night /
+420 K day for a 720-hour-day vacuum world at 0.58 AU).
 
 ---
 

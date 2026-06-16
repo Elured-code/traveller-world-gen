@@ -291,7 +291,13 @@ def generate_advanced_mean_temperature(  # pylint: disable=too-many-arguments,to
         _rng = rng
     if not hasattr(physical, "density"):
         return
-    eff_pressure = pressure_bar if pressure_bar is not None else 10.0
+    # atmosphere 0 has no pressure entry in ATMOSPHERE_PRESSURE_SPAN_BAR, so
+    # pressure_bar arrives as None — but vacuum means zero damping, not 10 bar.
+    # The 10.0 fallback is only correct for unbound high-pressure subtypes.
+    if atmosphere == 0:
+        eff_pressure = 0.0
+    else:
+        eff_pressure = pressure_bar if pressure_bar is not None else 10.0
     albedo = _roll_albedo(atmosphere, hydrographics, physical.density, hz_deviation)
     greenhouse = _roll_greenhouse_factor(atmosphere, eff_pressure)
 
