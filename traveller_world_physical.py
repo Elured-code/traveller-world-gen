@@ -780,6 +780,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     axial_tilt: float       # Degrees (0–180; >90° = retrograde; post-tidal final value)
     day_length: float       # Rotation period in standard hours (post-tidal final value)
     tidal_status: str       # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
+    basic_day_length: float = field(default=0.0, init=False)  # Pre-tidal basic rotation rate
     eccentricity_adjusted: Optional[float] = field(default=None, init=False)
     mean_temperature_k: Optional[int] = field(default=None, init=False)
     residual_seismic_stress: Optional[int] = field(default=None, init=False)
@@ -815,6 +816,10 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             return float(d[k]) if d.get(k) is not None else None
         def _ii(k):
             return int(d[k]) if d.get(k) is not None else None
+        obj.basic_day_length = float(
+            d["basic_day_length_hours"] if d.get("basic_day_length_hours") is not None
+            else d.get("day_length_hours", 0.0)
+        )
         obj.eccentricity_adjusted         = _fi("eccentricity_adjusted")
         obj.mean_temperature_k            = _ii("mean_temperature_k")
         obj.residual_seismic_stress       = _ii("residual_seismic_stress")
@@ -845,8 +850,9 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             "gravity_g":            self.gravity,
             "escape_velocity_km_s": self.escape_velocity,
             "axial_tilt_deg":       self.axial_tilt,
-            "day_length_hours":     self.day_length,
-            "tidal_status":         self.tidal_status,
+            "day_length_hours":       self.day_length,
+            "basic_day_length_hours": self.basic_day_length,
+            "tidal_status":           self.tidal_status,
         }
         if self.eccentricity_adjusted is not None:
             d["eccentricity_adjusted"] = round(self.eccentricity_adjusted, 4)
@@ -982,7 +988,8 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
     diameter_km = _roll_diameter(world.size)
     density = _roll_density(composition)
     axial_tilt = _roll_axial_tilt()
-    day_length = _roll_day_length(age_gyr)
+    basic_day = _roll_day_length(age_gyr)
+    day_length = basic_day
 
     rel_d = diameter_km / _EARTH_DIAMETER_KM
     rel_rho = density / _EARTH_DENSITY_G_CM3
@@ -1016,6 +1023,7 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         day_length=day_length,
         tidal_status=tidal_status,
     )
+    wp.basic_day_length = basic_day
     if tidal_status == "1:1_lock" and orbit_eccentricity > 0.1:
         new_ecc = _reroll_eccentricity_tidal(orbit_number or 0.0, age_gyr)
         wp.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
@@ -1060,6 +1068,9 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
     if not isinstance(physical, WorldPhysical):
         return
     if moons:
+        # Use the original pre-tidal basic rotation so multiplier results don't
+        # compound on top of the moonless first-pass result (issue #145).
+        basic = physical.basic_day_length if physical.basic_day_length > 0 else physical.day_length
         day_h, tilt, status = _roll_tidal_lock_status(
             size=world_size,
             axial_tilt=physical.axial_tilt,
@@ -1068,7 +1079,7 @@ def apply_moon_tidal_effects(  # pylint: disable=too-many-arguments,too-many-pos
             orbit_number=orbit_number,
             orbit_au=orbit_au,
             star_mass=star_mass,
-            basic_day_h=physical.day_length,
+            basic_day_h=basic,
             orbit_eccentricity=orbit_eccentricity,
             moons=moons,
             num_stars_orbited=num_stars_orbited,

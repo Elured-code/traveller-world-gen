@@ -549,6 +549,7 @@
             "escape_velocity_km_s",
             "axial_tilt_deg",
             "day_length_hours",
+            "basic_day_length_hours",
             "tidal_status"
           ],
           "additionalProperties": false,
@@ -592,7 +593,12 @@
             "day_length_hours": {
               "type": "number",
               "exclusiveMinimum": 0,
-              "description": "Rotation period in hours."
+              "description": "Rotation period in hours (post-tidal final value)."
+            },
+            "basic_day_length_hours": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Pre-tidal basic rotation period in hours, before tidal lock braking is applied."
             },
             "tidal_status": {
               "type": "string",
