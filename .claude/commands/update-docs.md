@@ -1,3 +1,7 @@
+---
+model: claude-haiku-4-5-20251001
+---
+
 # update-docs
 
 Update all project documentation to reflect the most recent code changes, then
