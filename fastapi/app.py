@@ -228,9 +228,9 @@ async def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
 
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline'; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' blob:; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' blob: data:; "
     "connect-src 'self'; "
     "frame-src 'none'; "
     "frame-ancestors 'none'; "

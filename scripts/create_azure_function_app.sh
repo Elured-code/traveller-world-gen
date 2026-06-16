@@ -16,7 +16,7 @@ set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────────────
 RESOURCE_GROUP="traveller-world-gen"
-LOCATION="uksouth"                      # Change to your preferred region
+LOCATION="australiaeast"                      # Change to your preferred region
 FUNCTIONAPP_NAME="traveller-world-gen"
 STORAGE_ACCOUNT="travellerworldgen"     # 3-24 chars, lowercase alphanumeric
 UAMI_NAME="traveller-world-gen-uami"
