@@ -39,5 +39,5 @@ import app as _fastapi_module   # resolves to azure-api/fastapi/app.py  # pylint
 
 func_app = func.AsgiFunctionApp(
     app=_fastapi_module.app,
-    http_auth_level=func.AuthLevel.FUNCTION,
+    http_auth_level=func.AuthLevel.ANONYMOUS,
 )
