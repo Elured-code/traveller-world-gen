@@ -503,6 +503,7 @@
 <footer>
   The Traveller game in all forms is owned by Mongoose Publishing. Copyright 1977–2025 Mongoose Publishing. All rights reserved.
   This is an unofficial fan work, not affiliated with Mongoose Publishing.
+  <span id="app-version" style="margin-left:1.5em; opacity:0.6;"></span>
 </footer>
 
 <script>
@@ -1218,6 +1219,11 @@
       btn.disabled = false;
     }
   }
+
+  fetch("/api/version").then(r => r.json()).then(d => {
+    const el = document.getElementById("app-version");
+    if (el && d.version) el.textContent = "v" + d.version;
+  }).catch(() => {});
 </script>
 </body>
 </html>

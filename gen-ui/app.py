@@ -119,6 +119,7 @@ QLabel#table-dim    { font-size: 10pt; color: #9BA3AD; }
 QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 QFrame#onboard-card { border: 1px solid #cccccc; border-radius: 8px; }
+QLabel#version-label { font-size: 9pt; color: #888888; }
 """
 
 _CSS_DARK = """
@@ -587,6 +588,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.setSpacing(10)
         self._status_layout.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._status_widget, stretch=1)
+
+        ver_label = QLabel(_DISPLAY_VERSION)
+        ver_label.setObjectName("version-label")
+        self.statusBar().addPermanentWidget(ver_label)
 
         self._show_placeholder()
 
