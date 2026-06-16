@@ -14,5 +14,3 @@ jsonschema>=4.21.0,<5.0.0
 # HTML templating — used by World.to_html() and TravellerSystem.to_html()
 Jinja2>=3.1.0
 
-# Azure Monitor OpenTelemetry — per-request traces and logs to Application Insights
-azure-monitor-opentelemetry>=1.6.0
