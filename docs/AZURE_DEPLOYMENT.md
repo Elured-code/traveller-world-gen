@@ -1,844 +1,475 @@
-# Traveller World & System Generator — REST API Reference
+# Traveller World & System Generator — Azure Functions Deployment
 
-An HTTP REST API exposing the Traveller 2022 Core Rulebook and World
-Builder's Handbook generation procedures, built on Azure Functions Python v2.
+This document covers provisioning, deploying, and operating the Traveller World
+& System Generator on Azure Functions. The Azure deployment wraps the FastAPI
+application using `AsgiFunctionApp`, so every FastAPI route — including the
+interactive API documentation at `/docs` and `/redoc` — is available through
+the function app URL.
 
 ---
 
 ## Contents
 
-1. [Endpoint summary](#1-endpoint-summary)
-2. [Parameters](#2-parameters)
-3. [Mainworld endpoints](#3-mainworld-endpoints)
-4. [System endpoints](#4-system-endpoints)
-5. [TravellerMap endpoints](#5-travellermap-endpoints)
-6. [Response schemas](#6-response-schemas)
-7. [Error responses](#7-error-responses)
+1. [Architecture overview](#1-architecture-overview)
+2. [Prerequisites](#2-prerequisites)
+3. [One-time Azure resource provisioning](#3-one-time-azure-resource-provisioning)
+4. [GitHub Actions CI/CD](#4-github-actions-cicd)
+5. [Local development with Azure Functions Core Tools](#5-local-development-with-azure-functions-core-tools)
+6. [Verifying the deployment](#6-verifying-the-deployment)
+7. [Environment variables and application settings](#7-environment-variables-and-application-settings)
 8. [Authentication](#8-authentication)
-9. [Local development](#9-local-development)
-10. [Deployment](#10-deployment)
-11. [Environment variables](#11-environment-variables)
-12. [Notes on seeding and determinism](#notes-on-seeding-and-determinism)
+9. [API documentation](#9-api-documentation)
+10. [Endpoint reference](#10-endpoint-reference)
+11. [Error responses](#11-error-responses)
 
 ---
 
-## 1. Endpoint summary
+## 1. Architecture overview
 
-### Mainworld endpoints — CRB generation only
+```
+Client
+  │
+  └──► Azure Functions (Consumption plan, Linux, Python 3.11)
+           │
+           └──► azure-api/function_app.py
+                    AsgiFunctionApp wraps fastapi/app.py
+                         │
+                         └──► FastAPI application
+                                  All routes, rate limiting (SlowAPI),
+                                  security headers, and API docs
+```
 
-These endpoints run the 13-step Core Rulebook mainworld generation procedure.
-They do not generate stellar data or orbital structure. Response times are
-fast (< 5 ms typical).
+`azure-api/function_app.py` is a thin adapter — it imports the FastAPI `app`
+object from `fastapi/app.py` and passes it to `AsgiFunctionApp`. All route
+logic lives in `fastapi/app.py`, which is the authoritative implementation
+shared by both the Azure Functions deployment and the standalone Docker/uvicorn
+deployment.
+
+Generator modules (`traveller_*.py`, `system_pipeline.py`, etc.) are kept in
+the repository root and are copied into `azure-api/` at deploy time by the CI
+workflow (or by `scripts/prepare_azure.sh` for local development). They are not
+committed inside `azure-api/` to avoid duplication.
+
+---
+
+## 2. Prerequisites
+
+| Tool | Version | Notes |
+|------|---------|-------|
+| Azure CLI | latest | `az login` before running any `az` commands |
+| Azure Functions Core Tools | v4 | For local development only |
+| Python | 3.11 | Same version as the function app runtime |
+| GitHub repository | — | Secrets must be configured (see section 4) |
+
+Install Azure CLI: <https://learn.microsoft.com/cli/azure/install-azure-cli>
+
+Install Azure Functions Core Tools:
+
+```bash
+npm install -g azure-functions-core-tools@4 --unsafe-perm true
+```
+
+---
+
+## 3. One-time Azure resource provisioning
+
+Run `scripts/create_azure_function_app.sh` to create all required Azure
+resources in a single step. Edit the configuration variables at the top of the
+script if you want a different resource group name, region, or app name.
+
+```bash
+az login
+bash scripts/create_azure_function_app.sh
+```
+
+The script creates:
+
+| Resource | Name (default) | Purpose |
+|----------|---------------|---------|
+| Resource group | `traveller-world-gen` | Container for all resources |
+| Storage account | `travellerworldgen` | Required by Azure Functions runtime |
+| User-assigned managed identity | `traveller-world-gen-uami` | Grants the function app access to storage |
+| Application Insights | `traveller-world-gen` | Telemetry and logging |
+| Function App | `traveller-world-gen` | Consumption plan, Linux, Python 3.11 |
+
+Application settings configured by the script:
+
+| Setting | Value |
+|---------|-------|
+| `RATE_LIMIT_PER_MINUTE` | `100/minute` |
+| `TRAVELLER_MAX_BATCH_SIZE` | `20` |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | populated from the new resource |
+| `WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT` | `1` |
+
+The script also enables basic auth publishing credentials (required for
+publish-profile-based GitHub Actions deployment) and prints the commands needed
+to retrieve the publish profile.
+
+### After the script completes
+
+Retrieve the publish profile XML and store it as a GitHub secret:
+
+```bash
+az webapp deployment list-publishing-profiles \
+    --name traveller-world-gen \
+    --resource-group traveller-world-gen \
+    --xml
+```
+
+Copy the XML output and add it as a GitHub repository secret named
+`AZURE_FUNCTIONAPP_PUBLISH_PROFILE` (Settings → Secrets and variables →
+Actions → New repository secret).
+
+Also add a second secret:
+
+| Secret name | Value |
+|-------------|-------|
+| `AZURE_FUNCTIONAPP_PUBLISH_PROFILE` | Publish profile XML from the command above |
+| `AZURE_FUNCTIONAPP_NAME` | `traveller-world-gen` (or your chosen app name) |
+
+---
+
+## 4. GitHub Actions CI/CD
+
+The workflow file is `.github/workflows/azure-deploy.yml`. It triggers
+automatically on every push to `main` and can also be triggered manually from
+the Actions UI.
+
+### What the workflow does
+
+1. **Checkout** — full git history (`fetch-depth: 0`) is required for the
+   version script to count schema-touching commits.
+2. **Compute version** — runs `scripts/compute_version.sh ${{ github.run_number }}`
+   to generate `_version.py` with `major.minor.patch+build.N`. The version is
+   derived from the branch name (`main` → reads `VERSION` file) and the count
+   of commits that have touched `traveller_world_schema.json`.
+3. **Assemble deployment package** — copies all generator modules, `fastapi/`,
+   `templates/`, and `_version.py` into `azure-api/` so that `function_app.py`
+   can import them. These files are `.gitignore`d inside `azure-api/` and only
+   exist there at deploy time.
+4. **Install dependencies** — `pip install --target azure-api/.python_packages/lib/site-packages`
+   pre-installs all packages listed in `azure-api/requirements.txt` into the
+   deployment package so the function app does not perform a remote build.
+5. **Deploy** — `azure/functions-action@v1` publishes `azure-api/` to the
+   function app using the publish profile secret.
+
+### Triggering a manual deployment
+
+Actions → Deploy to Azure Functions → Run workflow → Run workflow (on `main`).
+
+An optional `functionapp_name` input overrides the `AZURE_FUNCTIONAPP_NAME`
+secret for one-off deployments to a different app.
+
+---
+
+## 5. Local development with Azure Functions Core Tools
+
+Use `scripts/prepare_azure.sh` to mirror what the CI workflow does locally,
+then start the function runtime.
+
+```bash
+# 1. Install dependencies
+pip install -r azure-api/requirements.txt
+
+# 2. Create local settings (only needed once)
+cp azure-api/local.settings.json.example azure-api/local.settings.json
+
+# 3. Assemble the deployment package locally
+bash scripts/prepare_azure.sh
+
+# 4. Start the function runtime
+cd azure-api && func start
+```
+
+```powershell
+pip install -r azure-api/requirements.txt
+Copy-Item azure-api/local.settings.json.example azure-api/local.settings.json
+bash scripts/prepare_azure.sh
+Set-Location azure-api; func start
+```
+
+The local API is available at `http://localhost:7071`. Authentication is not
+enforced locally — omit the `?code=` parameter.
+
+`scripts/prepare_azure.sh` runs `scripts/compute_version.sh` first (generating
+`_version.py`), then copies the generator modules and `fastapi/` and
+`templates/` directories into `azure-api/`. Re-run it whenever you change any
+generator module, the FastAPI app, or the templates.
+
+### Example requests against the local runtime
+
+```bash
+curl "http://localhost:7071/api/world?name=Cogri&seed=42"
+curl "http://localhost:7071/api/system/Mora?seed=7&detail=true"
+curl "http://localhost:7071/api/system/full?name=Ardenne&seed=1000&format=html" -o ardenne.html
+curl "http://localhost:7071/api/map/system?name=Regina&sector=Spinward+Marches&seed=42"
+```
+
+---
+
+## 6. Verifying the deployment
+
+After deployment completes, retrieve your function key and smoke-test the API:
+
+```bash
+# Get function keys
+az functionapp keys list \
+    --name traveller-world-gen \
+    --resource-group traveller-world-gen
+
+# Smoke tests
+BASE="https://traveller-world-gen.azurewebsites.net"
+KEY="<your-function-key>"
+
+curl "$BASE/api/world?name=Mora&seed=7&code=$KEY"
+curl "$BASE/api/system/Ardenne?seed=1000&detail=true&code=$KEY"
+curl "$BASE/api/system/full?name=Ardenne&seed=1000&format=html&code=$KEY" -o ardenne.html
+curl "$BASE/api/map/system?name=Regina&sector=Spinward+Marches&seed=42&code=$KEY"
+```
+
+```powershell
+$BASE = "https://traveller-world-gen.azurewebsites.net"
+$KEY  = "<your-function-key>"
+
+Invoke-RestMethod "$BASE/api/world?name=Mora&seed=7&code=$KEY"
+Invoke-RestMethod "$BASE/api/system/Ardenne?seed=1000&detail=true&code=$KEY"
+Invoke-WebRequest "$BASE/api/system/full?name=Ardenne&seed=1000&format=html&code=$KEY" -OutFile ardenne.html
+```
+
+Check the application version:
+
+```bash
+curl "$BASE/api/version?code=$KEY"
+```
+
+---
+
+## 7. Environment variables and application settings
+
+Configure in Azure Portal → Function App → Settings → Environment variables, or
+with `az functionapp config appsettings set`.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRAVELLER_MAX_BATCH_SIZE` | `20` | Maximum worlds per `/api/worlds` batch. Accepted range 1–1000; values outside this range fall back to the default. |
+| `RATE_LIMIT_PER_MINUTE` | `100/minute` | SlowAPI rate limit applied per client IP. Format: `N/minute`. |
+| `WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT` | _(unlimited)_ | Caps Consumption plan scale-out. Set to `1` to prevent cost runaway from burst traffic. |
+| `APPLICATIONINSIGHTS_CONNECTION_STRING` | _(empty)_ | Enables Application Insights telemetry. Populated automatically by `scripts/create_azure_function_app.sh`. |
+
+### HTTP concurrency limits
+
+`azure-api/host.json` sets concurrency limits that apply without any additional
+configuration:
+
+| Setting | Value | Effect |
+|---------|-------|--------|
+| `maxConcurrentRequests` | `10` | Maximum parallel requests per instance. Excess are queued. |
+| `maxOutstandingRequests` | `50` | Maximum queued requests. Beyond this, callers receive `429 Too Many Requests` immediately. |
+
+With `WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT=1` the effective global ceiling
+is 10 concurrent + 50 queued requests.
+
+---
+
+## 8. Authentication
+
+The function app runs with `AuthLevel.ANONYMOUS` — no function key is required.
+This matches the FastAPI standalone deployment and allows the web UI and
+interactive API docs to work without credentials.
+
+To retrieve the host key if you change `http_auth_level` to `FUNCTION`:
+
+```bash
+az functionapp keys list \
+    --name traveller-world-gen \
+    --resource-group traveller-world-gen
+```
+
+Supply the key as a query parameter or header:
+
+```
+?code=<key>
+x-functions-key: <key>
+```
+
+---
+
+## 9. API documentation
+
+Because the Azure deployment wraps the FastAPI app via `AsgiFunctionApp`, the
+auto-generated interactive API docs are available at the same base URL:
+
+| URL | Interface |
+|-----|-----------|
+| `https://<app>.azurewebsites.net/docs` | Swagger UI — interactive, try-it-now |
+| `https://<app>.azurewebsites.net/redoc` | ReDoc — read-only reference |
+| `https://<app>.azurewebsites.net/openapi.json` | Raw OpenAPI schema (JSON) |
+
+These pages require an internet connection to `cdn.jsdelivr.net` to load their
+CSS and JavaScript assets. The Content Security Policy in `fastapi/app.py`
+already permits this domain.
+
+---
+
+## 10. Endpoint reference
+
+### Endpoint summary
+
+**Mainworld endpoints** — CRB 13-step generation, no stellar data.
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| `GET` | `/api/world` | Generate one world |
-| `POST` | `/api/world` | Generate one world (parameters in JSON body) |
-| `GET` | `/api/world/{name}` | Generate one world; name from URL path |
-| `POST` | `/api/worlds` | Batch generation (up to 20 worlds) |
+| `GET/POST` | `/api/world` | Generate one mainworld |
+| `GET` | `/api/world/{name}` | Generate one mainworld; name from URL path |
+| `POST` | `/api/worlds` | Batch generation (up to `TRAVELLER_MAX_BATCH_SIZE` worlds) |
 | `GET` | `/api/world/{name}/card` | Standalone HTML display card |
 
-### System endpoints — WBH stellar + orbit + CRB mainworld
-
-These endpoints generate a complete star system: primary and secondary stars,
-orbital structure (world counts, habitable zone, slot placement), and a fully
-characterised mainworld. The optional `detail` parameter adds secondary world
-SAH/social profiles and satellite data for every orbit.
+**System endpoints** — WBH stellar + orbit + CRB mainworld.
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| `GET` | `/api/system` | Generate a full star system |
-| `POST` | `/api/system` | Generate a full star system (parameters in JSON body) |
+| `GET/POST` | `/api/system` | Generate a full star system |
 | `GET` | `/api/system/{name}` | Generate a full star system; name from URL path |
 | `GET` | `/api/system/{name}/card` | Standalone HTML system card |
-| `GET` | `/api/system/full` | Complete system — all secondary worlds and moons always included |
-| `POST` | `/api/system/full` | Complete system (parameters in JSON body) |
+| `GET/POST` | `/api/system/full` | Complete system — all secondary worlds and moons; detail always on |
 | `POST` | `/api/system/from-world` | Full system around an existing mainworld JSON; UWP and PBG preserved |
 
-### TravellerMap endpoints — canonical UWP + procedural orbital structure
-
-These endpoints fetch the canonical UWP and stellar classification string from
-[travellermap.com](https://travellermap.com), then generate a full procedural
-system. The mainworld UWP is the exact canonical data; the orbital structure is
-generated by the same WBH procedures as the system endpoints.
+**TravellerMap endpoints** — canonical UWP + procedural orbital structure.
 
 | Method | Route | Description |
 |--------|-------|-------------|
-| `GET` | `/api/map/system` | Fetch world from TravellerMap, generate full system |
-| `POST` | `/api/map/system` | Same (parameters in JSON body) |
-| `GET` | `/api/map/system/{name}` | World name from URL path |
+| `GET/POST` | `/api/map/system` | Fetch world from TravellerMap, generate full system |
+| `GET` | `/api/map/system/{name}` | World name from URL path; `sector` still required as query param |
+| `GET/POST` | `/api/map/system/full` | TravellerMap fetch + full detail pipeline |
+| `GET` | `/api/map/system/svg` | TravellerMap fetch + SVG system map |
+
+**Utility endpoints**
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/version` | Returns `{"version": "1.5.27+build.N"}` |
+| `GET` | `/` | Web UI (HTML) |
 
 ---
 
-## 2. Parameters
+### Parameters
 
-### Common parameters
+#### Common parameters
 
-| Parameter | Endpoints | Where | Type | Description |
-|-----------|-----------|-------|------|-------------|
-| `name` | All except `/worlds` | query / body / path | string | World name (max 64 chars). Defaults to `World-1`. |
-| `seed` | All | query / body | integer | RNG seed for fully deterministic output. Omit for a random result. |
+| Parameter | Endpoints | Type | Description |
+|-----------|-----------|------|-------------|
+| `name` | All except `/worlds` | string | World name (max 64 chars). Defaults to `World-1`. |
+| `seed` | All | integer | RNG seed for deterministic output. Omit for a random result. |
 
-### Mainworld-only parameters
+#### Mainworld-only parameters
 
-| Parameter | Endpoint | Where | Type | Description |
-|-----------|----------|-------|------|-------------|
-| `count` | `/worlds` | query / body | integer | Worlds to generate (1–`TRAVELLER_MAX_BATCH_SIZE`, default 1). |
-| `prefix` | `/worlds` | query / body | string | Name prefix, e.g. `Spinward-` → `Spinward-1`, `Spinward-2`, … (max 32 chars). |
+| Parameter | Endpoint | Type | Description |
+|-----------|----------|------|-------------|
+| `count` | `/worlds` | integer | Worlds to generate (1–`TRAVELLER_MAX_BATCH_SIZE`, default 1). |
+| `prefix` | `/worlds` | string | Name prefix, e.g. `Spinward-` → `Spinward-1`, `Spinward-2`, … (max 32 chars). |
 
-### System parameters
+#### System parameters
 
-| Parameter | Endpoints | Where | Type | Default | Description |
-|-----------|-----------|-------|------|---------|-------------|
-| `detail` | `/system`, `/system/{name}`, `/system/{name}/card`, `/map/system`, `/map/system/{name}`, `/system/from-world` | query / body | boolean | `false` | When `true`, generate secondary world SAH/social profiles and satellite data for every orbit slot and moon. Adds ~10–50 ms depending on system size. |
-| `runaway_greenhouse` | All system endpoints | query / body | boolean | `false` | When `true`, applies the optional runaway greenhouse check (WBH p.79) after computing advanced mean temperature. May override the mainworld's atmosphere code, temperature, and hydrographics. |
-| `independent_government` | All system endpoints | query / body | boolean | `false` | When `true` (and `detail=true`), secondary worlds use Case 2 government — `2D−7+Population` — instead of the dependent government table (WBH p.162). |
-| `optional_biomass_rule` | All system endpoints | query / body | boolean | `false` | When `true` (and `detail=true`), oxygenated-atmosphere worlds with a rolled biomass of 0 have their biomass raised to 1 (WBH p.131 optional rule). |
-| `optional_inhospitable_rule` | All system endpoints | query / body | boolean | `false` | When `true` (and `detail=true`), a single 2D is made for all non-HZ secondaries; only on a natural 12 does one randomly chosen world receive a biomass roll — all others get 0 (WBH p.130 Suggested Usage). |
-| `format` | `/system/full`, `/map/system`, `/map/system/{name}`, `/system/from-world` | query / body | string | `json` | Output format: `json`, `html`, or `text`. |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `detail` | `false` | Attach secondary world SAH/social profiles and satellite data. Adds ~10–50 ms. |
+| `runaway_greenhouse` | `false` | Apply the optional runaway greenhouse check (WBH p.79). May override atmosphere, temperature, and hydrographics. |
+| `independent_government` | `false` | Secondary worlds use Case 2 government when `detail=true`. |
+| `optional_biomass_rule` | `false` | Raise oxygenated biomass 0→1 when `detail=true` (WBH p.131). |
+| `optional_inhospitable_rule` | `false` | Roll once for all non-HZ secondaries; only a natural 12 grants a biomass roll. |
+| `format` | `json` | Output format for endpoints that support it: `json`, `html`, or `text`. |
+| `orbital_eccentricity` | `false` | Include orbital eccentricity in generation. |
+| `orbital_inclination` | `false` | Include orbital inclination in generation. |
 
-### `POST /api/system/from-world` body
+#### TravellerMap parameters
 
-The request body must be a mainworld JSON object as returned by any world or system endpoint. Required fields: `uwp` **or** `size` + `atmosphere` + `hydrographics` + `population`. All other world fields (`starport`, `government`, `law_level`, `tech_level`, `bases`, `trade_codes`, `gas_giant_count`, `belt_count`, `population_multiplier`, `travel_zone`, `notes`) are preserved when present. Additional parameters (`seed`, `detail`, `format`) are accepted as query parameters or alongside the world object in the body.
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `sector` | **Always** | Sector name, e.g. `Spinward Marches`. Required on all `/api/map/*` endpoints. |
+| `name` | One of name/hex | World name to search. |
+| `hex` | One of name/hex | 4-digit hex position, e.g. `1910`. |
 
-### TravellerMap parameters
-
-| Parameter | Endpoints | Where | Type | Description |
-|-----------|-----------|-------|------|-------------|
-| `name` | `/map/system`, `/map/system/{name}` | query / body / path | string | World name to search on TravellerMap (max 64 chars). Required unless `hex` is supplied. |
-| `sector` | `/map/system`, `/map/system/{name}` | query / body | string | **Always required.** Sector name, e.g. `Spinward Marches`. Prevents ambiguity — many world names appear in multiple sectors (e.g. "Regina", "Mora"). Returns `400 MISSING_PARAM` if absent. |
-| `hex` | `/map/system` | query / body | string | 4-digit hex position, e.g. `1910`. Must match `[0-9A-Fa-f]{4}` — returns `400 INVALID_HEX` if the format is wrong. Use with `sector` to locate a world precisely without searching by name. |
-
-**`sector` is always required** for all TravellerMap endpoints. Identify the world by `name` + `sector` (name search), or by `sector` + `hex` (direct hex lookup).
-
-**Accepted boolean values** (applies to `detail`, `runaway_greenhouse`, `independent_government`, `optional_biomass_rule`, `optional_inhospitable_rule`, `nhz_atmospheres`, `orbital_eccentricity`, `orbital_inclination`): `true`, `1`, `yes` (case-insensitive string) or JSON boolean `true`.
-
-**`format` values:** `json` (application/json, default), `html` (text/html), `text` (text/plain).
+**Accepted boolean values:** `true`, `1`, `yes` (case-insensitive) or JSON `true`.
 
 **Parameter priority** (highest to lowest): URL path → query string → JSON body.
 
 ---
 
-## 3. Mainworld endpoints
-
-### `GET /api/world` and `POST /api/world`
-
-Generate a single Traveller mainworld.
+### Example requests
 
 ```bash
-# GET — query string
-curl "https://<app>.azurewebsites.net/api/world?name=Cogri&seed=42&code=<key>"
+BASE="https://traveller-world-gen.azurewebsites.net"
+# Omit ?code= if auth level is ANONYMOUS (the default)
 
-# POST — JSON body
-curl -X POST "https://<app>.azurewebsites.net/api/world?code=<key>" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "Cogri", "seed": 42}'
-```
-
-```powershell
-# GET — query string
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/world?name=Cogri&seed=42&code=<key>"
-
-# POST — JSON body
-$body = '{"name": "Cogri", "seed": 42}'
-Invoke-RestMethod -Method Post `
-    -Uri "https://<app>.azurewebsites.net/api/world?code=<key>" `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**Response — 200 OK:**
-
-```json
-{
-  "name": "Cogri",
-  "uwp": "B5525A9-7",
-  "starport": {
-    "code": "B",
-    "description": "Good (Refined fuel, spacecraft shipyard, repair)"
-  },
-  "size": { "code": 5, "diameter_km": "8,000", "surface_gravity": "0.45G" },
-  "atmosphere": { "code": 5, "name": "Thin", "survival_gear": "None" },
-  "temperature": "Cold",
-  "hydrographics": { "code": 2, "description": "A few small seas (16-25%)" },
-  "population": { "code": 5, "range": "Hundreds of thousands" },
-  "government": { "code": 10, "name": "Charismatic Dictator" },
-  "law_level": 9,
-  "tech_level": 7,
-  "has_gas_giant": true,
-  "gas_giant_count": 5,
-  "belt_count": 2,
-  "population_multiplier": 8,
-  "pbg": "825",
-  "bases": ["S"],
-  "trade_codes": ["Ni", "Po"],
-  "travel_zone": "Amber",
-  "notes": []
-}
-```
-
-The JSON structure is formally specified in `traveller_world_schema.json`
-(JSON Schema draft 2020-12).
-
----
-
-### `GET /api/world/{name}`
-
-Generate a mainworld; name taken from the URL path.
-
-```bash
-curl "https://<app>.azurewebsites.net/api/world/Mora?code=<key>"
-curl "https://<app>.azurewebsites.net/api/world/Regina?seed=5&code=<key>"
-```
-
-```powershell
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/world/Mora?code=<key>"
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/world/Regina?seed=5&code=<key>"
-```
-
-Response is the same world object as above.
-
----
-
-### `POST /api/worlds`
-
-Generate a batch of mainworlds in a single request.
-
-```bash
-curl -X POST "https://<app>.azurewebsites.net/api/worlds?code=<key>" \
+# Mainworld
+curl "$BASE/api/world?name=Cogri&seed=42"
+curl "$BASE/api/world/Mora?seed=7"
+curl "$BASE/api/world/Jae-Tellona/card" -o world.html
+curl -X POST "$BASE/api/worlds" \
      -H "Content-Type: application/json" \
      -d '{"count": 5, "prefix": "Spinward-", "seed": 1}'
-```
 
-```powershell
-$body = '{"count": 5, "prefix": "Spinward-", "seed": 1}'
-Invoke-RestMethod -Method Post `
-    -Uri "https://<app>.azurewebsites.net/api/worlds?code=<key>" `
-    -ContentType "application/json" `
-    -Body $body
-```
+# System — orbital structure only
+curl "$BASE/api/system?name=Ardenne&seed=1000"
+curl "$BASE/api/system/Mora?seed=7"
 
-**Response — 200 OK:**
-
-```json
-{
-  "count": 5,
-  "worlds": [
-    { "name": "Spinward-1", "uwp": "B663259-7" },
-    { "name": "Spinward-2", "uwp": "C656597-5" }
-  ]
-}
-```
-
-The batch is seeded once before generation begins. All worlds in the batch
-are deterministic for the same seed, count, and prefix.
-
----
-
-### `GET /api/world/{name}/card`
-
-Return a self-contained HTML display card for one mainworld. The card includes
-the UWP, all physical and social characteristics, trade code badges, travel
-zone badge, and a collapsible Raw JSON section. It uses system colour scheme
-variables and works correctly in both light and dark browser themes.
-
-```bash
-curl "https://<app>.azurewebsites.net/api/world/Jae-Tellona/card?code=<key>" \
-     -o world.html
-```
-
-```powershell
-Invoke-WebRequest "https://<app>.azurewebsites.net/api/world/Jae-Tellona/card?code=<key>" `
-    -OutFile world.html
-```
-
-**Response — 200 OK** — `Content-Type: text/html; charset=utf-8`
-
----
-
-## 4. System endpoints
-
-### `GET /api/system` and `POST /api/system`
-
-Generate a full Traveller star system.
-
-```bash
-# Minimal — mainworld + stellar + orbital structure only
-curl "https://<app>.azurewebsites.net/api/system?name=Ardenne&seed=1000&code=<key>"
-
-# Full detail — secondary worlds + satellites included
-curl "https://<app>.azurewebsites.net/api/system?name=Ardenne&seed=1000&detail=true&code=<key>"
-
-# POST
-curl -X POST "https://<app>.azurewebsites.net/api/system?code=<key>" \
+# System — with secondary world and satellite detail
+curl "$BASE/api/system?name=Ardenne&seed=1000&detail=true"
+curl -X POST "$BASE/api/system" \
      -H "Content-Type: application/json" \
      -d '{"name": "Varanthos", "seed": 6056, "detail": true}'
-```
 
-```powershell
-# Minimal
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/system?name=Ardenne&seed=1000&code=<key>"
+# Complete system — always includes all worlds and moons
+curl "$BASE/api/system/full?name=Ardenne&seed=1000"
+curl "$BASE/api/system/full?name=Ardenne&seed=1000&format=html" -o ardenne-full.html
+curl "$BASE/api/system/full?name=Ardenne&seed=1000&format=text"
 
-# Full detail
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/system?name=Ardenne&seed=1000&detail=true&code=<key>"
+# TravellerMap — canonical UWP + procedural orbital structure (sector always required)
+curl "$BASE/api/map/system?name=Regina&sector=Spinward+Marches&seed=42"
+curl "$BASE/api/map/system/Mora?sector=Spinward+Marches&seed=7&detail=true"
+curl "$BASE/api/map/system?sector=Spinward+Marches&hex=1910&format=html" -o regina.html
 
-# POST
-$body = '{"name": "Varanthos", "seed": 6056, "detail": true}'
-Invoke-RestMethod -Method Post `
-    -Uri "https://<app>.azurewebsites.net/api/system?code=<key>" `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-**Response — 200 OK (without `detail`):**
-
-The top-level object contains stellar data, orbital structure, and mainworld.
-Orbit entries contain only planning data (no `detail` key).
-
-```json
-{
-  "star_count": 1,
-  "age_gyr": 4.593,
-  "stars": [
-    {
-      "designation": "A",
-      "role": "primary",
-      "classification": "G5 V",
-      "spectral_type": "G",
-      "subtype": 5,
-      "luminosity_class": "V",
-      "mass_solar": 0.9,
-      "temperature_k": 5600,
-      "diameter_solar": 0.95,
-      "luminosity_solar": 0.7996,
-      "orbit_number": 0.0,
-      "orbit_au": 0.0,
-      "age_gyr": 4.593,
-      "ms_lifespan_gyr": 13.01,
-      "colour": "Yellow",
-      "special_notes": ""
-    }
-  ],
-  "orbits": {
-    "gas_giant_count": 2,
-    "belt_count": 1,
-    "terrestrial_count": 4,
-    "total_worlds": 7,
-    "empty_orbits": 0,
-    "star_zones": {
-      "A": { "mao": 0.02, "hzco": 2.65, "hz_inner": 1.65, "hz_outer": 3.65 }
-    },
-    "orbits": [
-      {
-        "star": "A",
-        "orbit_number": 0.68,
-        "orbit_au": 0.272,
-        "slot_index": 1,
-        "world_type": "gas_giant",
-        "is_habitable_zone": false,
-        "hz_deviation": -1.97,
-        "temperature_zone": "boiling",
-        "is_mainworld_candidate": false,
-        "notes": ""
-      }
-    ],
-    "mainworld_orbit": {
-      "star": "A",
-      "orbit_number": 3.0,
-      "orbit_au": 1.0,
-      "slot_index": 6,
-      "world_type": "terrestrial",
-      "is_habitable_zone": true,
-      "hz_deviation": 0.35,
-      "temperature_zone": "cold",
-      "is_mainworld_candidate": true,
-      "notes": "in HZ"
-    }
-  },
-  "mainworld": {
-    "name": "Ardenne",
-    "uwp": "C473574-8",
-    "starport": { "code": "C", "description": "Routine (Unrefined fuel, small craft shipyard, repair)" }
-  }
-}
-```
-
-**Response — 200 OK (with `detail=true`):**
-
-Each non-empty orbit entry gains a `detail` object. Each moon entry within
-that object has a nested `detail` object with the satellite's own profile.
-
-```json
-{
-  "star": "A",
-  "orbit_number": 0.57,
-  "orbit_au": 0.228,
-  "slot_index": 2,
-  "world_type": "gas_giant",
-  "is_habitable_zone": true,
-  "hz_deviation": -0.65,
-  "temperature_zone": "boiling",
-  "is_mainworld_candidate": false,
-  "notes": "",
-  "detail": {
-    "sah": "GS4",
-    "population": 0,
-    "government": 0,
-    "law_level": 0,
-    "tech_level": 0,
-    "spaceport": "-",
-    "inhabited": false,
-    "profile": "GS4",
-    "moons_str": "S, S, 3, 3",
-    "moons": [
-      {
-        "size": "S",
-        "is_ring": false,
-        "is_gas_giant_moon": false,
-        "detail": {
-          "sah": "S00",
-          "population": 0,
-          "government": 0,
-          "law_level": 0,
-          "tech_level": 0,
-          "spaceport": "-",
-          "inhabited": false,
-          "profile": "YS00000-0",
-          "moons_str": "\u2014",
-          "moons": []
-        }
-      },
-      {
-        "size": "3",
-        "is_ring": false,
-        "is_gas_giant_moon": false,
-        "detail": {
-          "sah": "325",
-          "population": 1,
-          "government": 2,
-          "law_level": 0,
-          "tech_level": 6,
-          "spaceport": "G",
-          "inhabited": true,
-          "profile": "G325120-6",
-          "moons_str": "\u2014",
-          "moons": []
-        }
-      }
-    ]
-  }
-}
-```
-
-Empty orbit slots (`world_type: "empty"`) never have a `detail` key.
-The mainworld orbit entry has a `detail` key containing the mainworld's
-SAH and social codes.
-
----
-
-### `GET /api/system/{name}`
-
-Generate a full star system; mainworld name from the URL path.
-
-```bash
-curl "https://<app>.azurewebsites.net/api/system/Mora?seed=7&code=<key>"
-curl "https://<app>.azurewebsites.net/api/system/Mora?seed=7&detail=true&code=<key>"
-```
-
-```powershell
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/system/Mora?seed=7&code=<key>"
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/system/Mora?seed=7&detail=true&code=<key>"
-```
-
----
-
-### `GET /api/system/{name}/card`
-
-Return a self-contained HTML system card showing the stellar summary, a full
-orbital table with world type, profile, and temperature zone, and a mainworld
-panel. When `detail=true` is requested, the orbital table includes secondary
-world profiles and indented satellite sub-rows.
-
-```bash
-# Orbital structure only
-curl "https://<app>.azurewebsites.net/api/system/Ardenne/card?seed=1000&code=<key>" \
-     -o ardenne.html
-
-# Full detail — secondary profiles and moons
-curl "https://<app>.azurewebsites.net/api/system/Ardenne/card?seed=1000&detail=true&code=<key>" \
-     -o ardenne-detail.html
-```
-
-```powershell
-# Orbital structure only
-Invoke-WebRequest "https://<app>.azurewebsites.net/api/system/Ardenne/card?seed=1000&code=<key>" `
-    -OutFile ardenne.html
-
-# Full detail — secondary profiles and moons
-Invoke-WebRequest "https://<app>.azurewebsites.net/api/system/Ardenne/card?seed=1000&detail=true&code=<key>" `
-    -OutFile ardenne-detail.html
-```
-
-**Response — 200 OK** — `Content-Type: text/html; charset=utf-8`
-
----
-
-### `GET /api/system/full` and `POST /api/system/full`
-
-Generate a complete star system with all secondary world and moon profiles
-always attached. No `detail` flag is required or accepted — detail is always
-on. The optional flags `runaway_greenhouse`, `independent_government`,
-`optional_biomass_rule`, and `optional_inhospitable_rule` are accepted.
-Use the `format` parameter to select the response type.
-
-```bash
-# JSON (default) — complete TravellerSystem with all orbit detail
-curl "https://<app>.azurewebsites.net/api/system/full?name=Ardenne&seed=1000&code=<key>"
-
-# Self-contained HTML card with all worlds and moons
-curl "https://<app>.azurewebsites.net/api/system/full?name=Ardenne&seed=1000&format=html&code=<key>" \
-     -o ardenne-full.html
-
-# Plain-text summary
-curl "https://<app>.azurewebsites.net/api/system/full?name=Ardenne&seed=1000&format=text&code=<key>"
-
-# POST
-curl -X POST "https://<app>.azurewebsites.net/api/system/full?code=<key>" \
+# System from existing mainworld — UWP/PBG preserved
+WORLD=$(curl -s "$BASE/api/world?name=Cogri&seed=42")
+curl -X POST "$BASE/api/system/from-world?seed=99" \
      -H "Content-Type: application/json" \
-     -d '{"name": "Zhodane", "seed": 42, "format": "html"}'
+     -d "$WORLD"
+
+# Version check
+curl "$BASE/api/version"
 ```
 
 ```powershell
-# JSON (default)
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/system/full?name=Ardenne&seed=1000&code=<key>"
+$BASE = "https://traveller-world-gen.azurewebsites.net"
 
-# HTML card
-Invoke-WebRequest "https://<app>.azurewebsites.net/api/system/full?name=Ardenne&seed=1000&format=html&code=<key>" `
+# Mainworld
+Invoke-RestMethod "$BASE/api/world?name=Cogri&seed=42"
+Invoke-RestMethod "$BASE/api/world/Mora?seed=7"
+Invoke-WebRequest "$BASE/api/world/Jae-Tellona/card" -OutFile world.html
+Invoke-RestMethod -Method Post "$BASE/api/worlds" `
+    -ContentType "application/json" `
+    -Body '{"count": 5, "prefix": "Spinward-", "seed": 1}'
+
+# System
+Invoke-RestMethod "$BASE/api/system?name=Ardenne&seed=1000&detail=true"
+Invoke-WebRequest "$BASE/api/system/full?name=Ardenne&seed=1000&format=html" `
     -OutFile ardenne-full.html
 
-# POST
-$body = '{"name": "Zhodane", "seed": 42, "format": "json"}'
-Invoke-RestMethod -Method Post `
-    -Uri "https://<app>.azurewebsites.net/api/system/full?code=<key>" `
+# TravellerMap
+Invoke-RestMethod "$BASE/api/map/system?name=Regina&sector=Spinward+Marches&seed=42"
+Invoke-WebRequest "$BASE/api/map/system?sector=Spinward+Marches&hex=1910&format=html" `
+    -OutFile regina.html
+
+# System from existing mainworld
+$world = Invoke-RestMethod "$BASE/api/world?name=Cogri&seed=42"
+Invoke-RestMethod -Method Post "$BASE/api/system/from-world?seed=99" `
     -ContentType "application/json" `
-    -Body $body
-```
-
-| `format` | Content-Type | Body |
-|----------|-------------|------|
-| `json` (default) | `application/json` | Full TravellerSystem JSON, same structure as `/api/system` with `detail=true` |
-| `html` | `text/html; charset=utf-8` | Self-contained HTML card — stars table, full orbital table with moon sub-rows, mainworld panel |
-| `text` | `text/plain; charset=utf-8` | Human-readable text summary of stars, orbital table with profiles, and mainworld block |
-
-The JSON response structure is identical to `/api/system?detail=true`.
-
----
-
-### `POST /api/system/from-world`
-
-Generate a full star system around an existing mainworld. The world's UWP,
-bases, trade codes, and PBG values are preserved exactly. New stellar data and
-orbital structure are generated procedurally. Temperature is recalculated from
-the assigned orbital HZ deviation to remain physically consistent with the new
-system.
-
-```bash
-# Step 1 — obtain a mainworld JSON (any world or system endpoint)
-WORLD=$(curl -s "https://<app>.azurewebsites.net/api/world?name=Cogri&seed=42&code=<key>")
-
-# Step 2 — generate a full system around it (seed applies to stellar/orbit generation only)
-curl -X POST "https://<app>.azurewebsites.net/api/system/from-world?seed=99&code=<key>" \
-     -H "Content-Type: application/json" \
-     -d "$WORLD"
-
-# HTML card output
-curl -X POST "https://<app>.azurewebsites.net/api/system/from-world?format=html&code=<key>" \
-     -H "Content-Type: application/json" \
-     -d "$WORLD" -o cogri-system.html
-
-# With full secondary world detail
-curl -X POST "https://<app>.azurewebsites.net/api/system/from-world?detail=true&code=<key>" \
-     -H "Content-Type: application/json" \
-     -d "$WORLD"
-```
-
-```powershell
-# Step 1 — obtain a mainworld JSON
-$world = Invoke-RestMethod "https://<app>.azurewebsites.net/api/world?name=Cogri&seed=42&code=<key>"
-$body  = $world | ConvertTo-Json -Depth 10
-
-# Step 2 — generate a full system around it
-Invoke-RestMethod -Method Post `
-    -Uri "https://<app>.azurewebsites.net/api/system/from-world?seed=99&code=<key>" `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-The response structure is identical to `/api/system`. The mainworld orbit slot
-has `canonical_profile` set to the input world's UWP. Temperature in the
-returned `mainworld` object reflects the new orbital position, not the
-temperature in the input JSON.
-
-| Parameter | Where | Default | Description |
-|-----------|-------|---------|-------------|
-| _(world JSON)_ | body | required | Mainworld object from a previous generation call |
-| `seed` | query / body | — | RNG seed for stellar and orbital generation |
-| `detail` | query / body | `false` | Attach secondary world profiles |
-| `format` | query / body | `json` | `json` \| `html` \| `text` |
-| `runaway_greenhouse` | query / body | `false` | Optional runaway greenhouse check (WBH p.79) |
-| `independent_government` | query / body | `false` | Case 2 secondary government when `detail=true` |
-| `optional_biomass_rule` | query / body | `false` | Raise oxygenated biomass 0→1 when `detail=true` |
-| `optional_inhospitable_rule` | query / body | `false` | Single 2D for non-HZ secondaries when `detail=true` |
-
-**Returns:** `400 INVALID_BODY` if the body is absent or missing required fields.
-`400 INVALID_SEED` if seed is non-integer. `500 INTERNAL_ERROR` on generation failure.
-
----
-
-## 5. TravellerMap endpoints
-
-### `GET /api/map/system` and `POST /api/map/system`
-
-Fetch canonical UWP and stellar data from travellermap.com, then generate a
-full star system with procedural orbital structure. **`sector` is always required.**
-
-```bash
-# By name + sector (sector always required)
-curl "https://<app>.azurewebsites.net/api/map/system?name=Regina&sector=Spinward+Marches&code=<key>"
-
-# With seed, detail, and HTML output
-curl "https://<app>.azurewebsites.net/api/map/system?name=Mora&sector=Spinward+Marches&seed=42&detail=true&format=html&code=<key>" \
-     -o mora.html
-
-# By hex position (precise — avoids name ambiguity entirely)
-curl "https://<app>.azurewebsites.net/api/map/system?sector=Spinward+Marches&hex=1910&code=<key>"
-
-# POST
-curl -X POST "https://<app>.azurewebsites.net/api/map/system?code=<key>" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "Regina", "seed": 42, "detail": true, "format": "json"}'
-```
-
-```powershell
-# By name + sector
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/map/system?name=Regina&sector=Spinward+Marches&code=<key>"
-
-# By hex position
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/map/system?sector=Spinward+Marches&hex=1910&code=<key>"
-
-# POST
-$body = '{"name": "Regina", "sector": "Spinward Marches", "seed": 42, "detail": true}'
-Invoke-RestMethod -Method Post `
-    -Uri "https://<app>.azurewebsites.net/api/map/system?code=<key>" `
-    -ContentType "application/json" `
-    -Body $body
-```
-
-The response structure is identical to `/api/system` (or `/api/system?detail=true`
-when `detail=true`). The mainworld's UWP is the exact canonical data from TravellerMap,
-placed in the best procedurally-identified mainworld orbit. Uninhabited mainworlds
-(population = 0) are handled correctly throughout — the canonical UWP is preserved
-even when the social string is `000`. Stars are reconstructed from the canonical
-stellar classification string. Secondary orbit positions and moon counts are
-procedurally generated.
-
-| `format` | Content-Type | Body |
-|----------|-------------|------|
-| `json` (default) | `application/json` | Full TravellerSystem JSON |
-| `html` | `text/html; charset=utf-8` | Self-contained HTML system card |
-| `text` | `text/plain; charset=utf-8` | Human-readable text summary |
-
-**Error responses specific to this endpoint:**
-
-| Code | HTTP | Trigger |
-|------|------|---------|
-| `NOT_FOUND` | 404 | World not found on TravellerMap |
-| `UPSTREAM_ERROR` | 502 | TravellerMap unreachable or returned an error |
-
----
-
-### `GET /api/map/system/{name}`
-
-Same as above; world name taken from the URL path. `sector` is still required as a query parameter.
-
-```bash
-curl "https://<app>.azurewebsites.net/api/map/system/Regina?sector=Spinward+Marches&seed=42&code=<key>"
-curl "https://<app>.azurewebsites.net/api/map/system/Mora?sector=Spinward+Marches&detail=true&format=html&code=<key>" \
-     -o mora.html
-```
-
-```powershell
-Invoke-RestMethod "https://<app>.azurewebsites.net/api/map/system/Regina?sector=Spinward+Marches&seed=42&code=<key>"
+    -Body ($world | ConvertTo-Json -Depth 10)
 ```
 
 ---
 
-## 6. Response schemas
-
-### World object fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | World name |
-| `uwp` | string | Universal World Profile, e.g. `C473574-8` |
-| `starport` | object | `code` (string) and `description` (string) |
-| `size` | object | `code` (int 0–10), `diameter_km`, `surface_gravity` |
-| `atmosphere` | object | `code` (int 0–15), `name`, `survival_gear` |
-| `temperature` | string | `Frozen` / `Cold` / `Temperate` / `Hot` / `Boiling` |
-| `hydrographics` | object | `code` (int 0–10), `description` |
-| `population` | object | `code` (int 0–12), `range` |
-| `government` | object | `code` (int 0–15), `name` |
-| `law_level` | integer | 0–18 |
-| `tech_level` | integer | 0–33 |
-| `has_gas_giant` | boolean | True if system has at least one gas giant |
-| `gas_giant_count` | integer | Number of gas giants in the system |
-| `belt_count` | integer | Number of planetoid belts |
-| `population_multiplier` | integer | PBG population digit (1–9; 0 if uninhabited) |
-| `pbg` | string | Population-Belt-Gas Giant string, e.g. `"214"` |
-| `bases` | array of string | `N` Naval, `S` Scout, `M` Military, `H` Highport, `C` Corsair |
-| `trade_codes` | array of string | Active trade codes, e.g. `["Ag", "Ni"]` |
-| `travel_zone` | string | `Green` / `Amber` / `Red` |
-| `notes` | array of string | Orbital context and generation warnings |
-| `size_detail` | object | Physical characteristics (see WorldPhysical fields below); always present on system endpoints, absent on mainworld-only endpoints |
-
-### WorldPhysical fields (`size_detail`)
-
-Always populated for the mainworld on all system endpoints.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `composition` | string | Terrestrial Composition Table category (e.g. `Standard`, `Dense Core`) |
-| `diameter_km` | integer | Actual diameter in km |
-| `density_g_cm3` | number | Density in g/cm³ |
-| `mass_earth` | number | Mass relative to Earth |
-| `gravity_g` | number | Surface gravity in G |
-| `escape_velocity_km_s` | number | Escape velocity in km/s |
-| `axial_tilt_deg` | number | Axial tilt in degrees (0–180) |
-| `day_length_hours` | number | Rotation period in hours (post-tidal lock final value) |
-| `tidal_status` | string | `none` / `braking` / `prograde` / `retrograde` / `3:2_lock` / `1:1_lock` |
-| `stellar_day_hours` | number | Solar day in hours; absent for 1:1 tidal lock |
-| `eccentricity_adjusted` | number | Reduced eccentricity after 1:1 lock (WBH p.77 Rule 4); absent otherwise |
-| `albedo` | number | Planetary albedo used for temperature calculation |
-| `greenhouse_factor` | number | Greenhouse factor used for temperature calculation |
-| `advanced_mean_temperature_k` | integer | Mean surface temperature in Kelvin (WBH pp.47-50) |
-| `high_temperature_k` | integer | High-variance temperature bound in Kelvin |
-| `low_temperature_k` | integer | Low-variance temperature bound in Kelvin |
-| `runaway_greenhouse` | boolean | `true` if the runaway greenhouse check fired (WBH p.79); absent otherwise |
-
-### Orbit entry fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `star` | string | Star designation, e.g. `A`, `B`, `Ab` |
-| `orbit_number` | number | WBH Orbit# (logarithmic orbital scale) |
-| `orbit_au` | number | Semi-major axis in AU |
-| `slot_index` | integer | Sequential index within the star's orbit list |
-| `world_type` | string | `gas_giant` / `terrestrial` / `belt` / `empty` |
-| `is_habitable_zone` | boolean | True if `\|hz_deviation\|` ≤ 1.0 |
-| `hz_deviation` | number | Orbit# minus HZCO; negative = warmer than HZCO |
-| `temperature_zone` | string | `boiling` / `hot` / `temperate` / `cold` / `frozen` |
-| `is_mainworld_candidate` | boolean | True for the selected mainworld orbit |
-| `notes` | string | e.g. `"in HZ"` |
-| `canonical_profile` | string | Present on TravellerMap systems and `/api/system/from-world` responses; the canonical UWP of the mainworld placed in this orbit, e.g. `"A788899-C"`. Takes display precedence over `detail.profile` for this slot. |
-| `detail` | object | Present when `detail=true`; see below |
-
-### Orbit `detail` object fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `sah` | string | Size/Atmosphere/Hydrographics code |
-| `population` | integer | Population code (0 = uninhabited) |
-| `government` | integer | Government code |
-| `law_level` | integer | Law level |
-| `tech_level` | integer | Tech level |
-| `spaceport` | string | `Y` `H` `G` `F` (secondaries) or `-` (gas giants) |
-| `inhabited` | boolean | True if population > 0 |
-| `profile` | string | Display profile string (see profile formats below) |
-| `moons_str` | string | Compact moon summary, e.g. `"R01, S, S, 3"` |
-| `moons` | array | Moon objects (see below) |
-| `trade_codes` | array of string | Trade codes for inhabited secondaries; empty for gas giants and uninhabited worlds |
-| `biomass_rating` | integer | Biomass rating 0–9+ (WBH p.129); 0 = no life, absent on gas giants |
-| `biocomplexity_rating` | integer | Biocomplexity rating (WBH p.127); present when `biomass_rating > 0` |
-| `habitability_rating` | integer | Habitability rating (WBH p.131); present on terrestrial worlds |
-| `biodiversity_rating` | integer | Biodiversity rating (WBH p.131); present on mainworld detail when `biocomplexity_rating >= 1` |
-| `compatibility_rating` | integer | Compatibility rating (WBH p.131); present on mainworld detail alongside `biodiversity_rating` |
-| `native_sophont` | boolean | True if current sophonts are present (WBH p.131); present on mainworld detail |
-| `extinct_sophont` | boolean | True if extinct sophonts are indicated; present on mainworld detail |
-| `is_independent_government` | boolean | True when `independent_government=true` was passed and this world rolled an independent government; absent otherwise |
-
-### Profile string formats
-
-| Body type | Format | Example |
-|-----------|--------|---------|
-| Mainworld | `{port}{SAH}{PGL}-{TL}` | `C473574-8` |
-| Inhabited secondary | `{port}{SAH}{PGL}-{TL}` | `F473510-7` |
-| Uninhabited terrestrial | `Y{SAH}000-0` | `Y473000-0` |
-| Inhabited belt | `{port}000{PGL}-{TL}` | `G000121-8` |
-| Uninhabited belt | `Y000000-0` | |
-| Gas giant | SAH only | `GM9`, `GS4`, `GLB` |
-| Inhabited moon | `{port}{SAH}{PGL}-{TL}` | `F532320-6` |
-| Uninhabited moon | `Y{SAH}000-0` | `Y300000-0` |
-| Size S moon | `YS00000-0` | |
-| Size 0–1 moon | `Y{sz}00000-0` | `Y100000-0` |
-| Ring | `R0{count}` | `R01`, `R03` |
-
-Secondary spaceport codes (WBH scale, not the CRB starport scale):
-
-| Code | Equivalent starport | Facilities |
-|------|---------------------|-----------|
-| `Y` | X | No spaceport |
-| `H` | E | Primitive installation |
-| `G` | D | Basic, unrefined fuel |
-| `F` | C | Good, unrefined fuel, minor repair |
-
-### Moon object fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `size` | string | Size code: `S`, `1`–`F`, or `R` for rings |
-| `is_ring` | boolean | True if this is a ring entry |
-| `ring_count` | integer | Number of distinct rings (only when `is_ring: true`) |
-| `is_gas_giant_moon` | boolean | True if the moon is itself a small gas giant |
-| `detail` | object | WorldDetail for this moon; same fields as orbit detail (absent for rings) |
-
-### Star object fields
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `designation` | string | `A`, `B`, `Aa`, `Ab`, etc. |
-| `role` | string | `primary` / `companion` / `close` / `near` / `far` |
-| `classification` | string | e.g. `G5 V`, `M3 VI`, `D` |
-| `spectral_type` | string | `O B A F G K M D BD` |
-| `subtype` | integer or null | 0–9; null for white/brown dwarfs |
-| `luminosity_class` | string | `Ia Ib II III IV V VI D BD` |
-| `mass_solar` | number | Solar masses |
-| `temperature_k` | integer | Surface temperature in Kelvin |
-| `diameter_solar` | number | Solar diameters |
-| `luminosity_solar` | number | Solar luminosities (Stefan-Boltzmann) |
-| `orbit_number` | number | Orbit# around the primary (0.0 for primary) |
-| `orbit_au` | number | Orbital distance in AU |
-| `age_gyr` | number | System age in Gyr |
-| `ms_lifespan_gyr` | number | Main sequence lifespan in Gyr |
-| `colour` | string | e.g. `Yellow`, `Light Orange` |
-| `special_notes` | string | Notes for post-main-sequence objects |
-
-### Star zone fields (`orbits.star_zones.<designation>`)
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `mao` | number | Minimum Allowable Orbit# |
-| `hzco` | number | Habitable Zone Centre Orbit# |
-| `hz_inner` | number | HZ inner boundary Orbit# |
-| `hz_outer` | number | HZ outer boundary Orbit# |
-
-> **Note on Orbit# vs AU:** The WBH Orbit# scale is non-linear with respect
-> to AU. `hz_outer - hz_inner` in Orbit# space is always 2.0, but the
-> equivalent AU range varies significantly by star type. When drawing maps,
-> always convert Orbit# to AU before computing radial distances.
-
----
-
-## 7. Error responses
+## 11. Error responses
 
 All error responses use `Content-Type: application/json`:
 
@@ -853,302 +484,13 @@ All error responses use `Content-Type: application/json`:
 
 | Code | HTTP | Trigger |
 |------|------|---------|
-| `INVALID_SEED` | 400 | `seed` is present but not a valid integer |
-| `INVALID_COUNT` | 400 | `count` is present but not a positive integer |
+| `INVALID_SEED` | 400 | `seed` is not a valid integer |
+| `INVALID_COUNT` | 400 | `count` is not a positive integer |
 | `COUNT_TOO_LARGE` | 422 | `count` exceeds `TRAVELLER_MAX_BATCH_SIZE` |
-| `INVALID_BODY` | 400 | Request body is not valid JSON, or a field is invalid |
-| `INVALID_HEX` | 400 | `hex` is present but not a valid 4-digit hex position (map endpoints only) |
+| `INVALID_BODY` | 400 | Request body is not valid JSON or a field is invalid |
+| `INVALID_HEX` | 400 | `hex` is not a valid 4-digit hex position (map endpoints only) |
 | `NAME_TOO_LONG` | 400 | World name exceeds 64 characters |
-| `MISSING_PARAM` | 400 | Required parameter (`sector`) is absent (map endpoints only) |
+| `MISSING_PARAM` | 400 | `sector` is absent (map endpoints only) |
 | `NOT_FOUND` | 404 | World not found on TravellerMap (map endpoints only) |
 | `UPSTREAM_ERROR` | 502 | TravellerMap unreachable or returned an error (map endpoints only) |
 | `INTERNAL_ERROR` | 500 | Unexpected server-side failure |
-
----
-
-## 8. Authentication
-
-The app defaults to `AuthLevel.FUNCTION`. Include a function key with every
-request using one of:
-
-- **Header:** `x-functions-key: <key>`
-- **Query string:** `?code=<key>`
-
-To retrieve function keys:
-
-```bash
-az functionapp keys list \
-    --name traveller-world-gen \
-    --resource-group rg-traveller
-```
-
-```powershell
-az functionapp keys list `
-    --name traveller-world-gen `
-    --resource-group rg-traveller
-```
-
-Switch to `AuthLevel.ANONYMOUS` in `azure-api/function_app.py` for open access during
-local development.
-
----
-
-## 9. Local development
-
-### Prerequisites
-
-- Python 3.11+
-- [Azure Functions Core Tools v4](https://learn.microsoft.com/azure/azure-functions/functions-run-local)
-
-### Setup
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r azure-api/requirements.txt
-cp azure-api/local.settings.json.example azure-api/local.settings.json
-cd azure-api && func start
-```
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r azure-api/requirements.txt
-Copy-Item azure-api/local.settings.json.example azure-api/local.settings.json
-Set-Location azure-api; func start
-```
-
-The API is available at `http://localhost:7071/api/`. Authentication is not
-enforced locally — omit `?code=`.
-
-### Example requests
-
-```bash
-# Mainworld
-curl "http://localhost:7071/api/world?name=Cogri&seed=42"
-curl "http://localhost:7071/api/world/Mora?seed=7"
-curl "http://localhost:7071/api/world/Jae-Tellona/card" -o world.html
-curl -X POST "http://localhost:7071/api/worlds" \
-     -H "Content-Type: application/json" \
-     -d '{"count": 3, "prefix": "Spinward-", "seed": 1}'
-
-# System — orbital structure only
-curl "http://localhost:7071/api/system?name=Ardenne&seed=1000"
-curl "http://localhost:7071/api/system/Mora?seed=7"
-
-# System — with secondary world and satellite detail
-curl "http://localhost:7071/api/system?name=Ardenne&seed=1000&detail=true"
-curl -X POST "http://localhost:7071/api/system" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "Dulinor", "seed": 999, "detail": true}'
-
-# System HTML cards
-curl "http://localhost:7071/api/system/Ardenne/card?seed=1000" -o system.html
-curl "http://localhost:7071/api/system/Ardenne/card?seed=1000&detail=true" \
-     -o system-detail.html
-
-# Complete system — always includes all worlds and moons
-curl "http://localhost:7071/api/system/full?name=Ardenne&seed=1000"
-curl "http://localhost:7071/api/system/full?name=Ardenne&seed=1000&format=html" \
-     -o ardenne-full.html
-curl "http://localhost:7071/api/system/full?name=Ardenne&seed=1000&format=text"
-curl -X POST "http://localhost:7071/api/system/full" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "Zhodane", "seed": 42, "format": "json"}'
-
-# Optional WBH rules — combine any subset
-# Advanced mean temperature is always computed; runaway greenhouse is opt-in
-curl "http://localhost:7071/api/system?name=Ardenne&seed=1000&runaway_greenhouse=true"
-# Full detail with all optional secondary-world rules
-curl "http://localhost:7071/api/system/full?name=Ardenne&seed=1000&runaway_greenhouse=true&independent_government=true&optional_biomass_rule=true&optional_inhospitable_rule=true"
-# POST form (useful when combining many flags)
-curl -X POST "http://localhost:7071/api/system" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "Ardenne", "seed": 1000, "detail": true, "runaway_greenhouse": true, "independent_government": true}'
-
-# TravellerMap — canonical UWP + procedural orbital structure (sector always required)
-curl "http://localhost:7071/api/map/system?name=Regina&sector=Spinward+Marches&seed=42"
-curl "http://localhost:7071/api/map/system/Mora?sector=Spinward+Marches&seed=7&detail=true"
-curl "http://localhost:7071/api/map/system?sector=Spinward+Marches&hex=1910&format=html" \
-     -o regina.html
-curl -X POST "http://localhost:7071/api/map/system" \
-     -H "Content-Type: application/json" \
-     -d '{"name": "Regina", "sector": "Spinward Marches", "seed": 42, "detail": true}'
-
-# System from existing mainworld — UWP/PBG preserved; fresh stellar + orbital generation
-WORLD=$(curl -s "http://localhost:7071/api/world?name=Cogri&seed=42")
-curl -X POST "http://localhost:7071/api/system/from-world?seed=99" \
-     -H "Content-Type: application/json" \
-     -d "$WORLD"
-curl -X POST "http://localhost:7071/api/system/from-world?format=html" \
-     -H "Content-Type: application/json" \
-     -d "$WORLD" -o cogri-system.html
-```
-
-```powershell
-# Mainworld
-Invoke-RestMethod "http://localhost:7071/api/world?name=Cogri&seed=42"
-Invoke-RestMethod "http://localhost:7071/api/world/Mora?seed=7"
-Invoke-WebRequest "http://localhost:7071/api/world/Jae-Tellona/card" -OutFile world.html
-$body = '{"count": 3, "prefix": "Spinward-", "seed": 1}'
-Invoke-RestMethod -Method Post -Uri "http://localhost:7071/api/worlds" `
-    -ContentType "application/json" -Body $body
-
-# System — orbital structure only
-Invoke-RestMethod "http://localhost:7071/api/system?name=Ardenne&seed=1000"
-Invoke-RestMethod "http://localhost:7071/api/system/Mora?seed=7"
-
-# System — with secondary world and satellite detail
-Invoke-RestMethod "http://localhost:7071/api/system?name=Ardenne&seed=1000&detail=true"
-$body = '{"name": "Dulinor", "seed": 999, "detail": true}'
-Invoke-RestMethod -Method Post -Uri "http://localhost:7071/api/system" `
-    -ContentType "application/json" -Body $body
-
-# System HTML cards
-Invoke-WebRequest "http://localhost:7071/api/system/Ardenne/card?seed=1000" `
-    -OutFile system.html
-Invoke-WebRequest "http://localhost:7071/api/system/Ardenne/card?seed=1000&detail=true" `
-    -OutFile system-detail.html
-
-# Complete system — always includes all worlds and moons
-Invoke-RestMethod "http://localhost:7071/api/system/full?name=Ardenne&seed=1000"
-Invoke-WebRequest "http://localhost:7071/api/system/full?name=Ardenne&seed=1000&format=html" `
-    -OutFile ardenne-full.html
-Invoke-RestMethod "http://localhost:7071/api/system/full?name=Ardenne&seed=1000&format=text"
-$body = '{"name": "Zhodane", "seed": 42, "format": "json"}'
-Invoke-RestMethod -Method Post -Uri "http://localhost:7071/api/system/full" `
-    -ContentType "application/json" -Body $body
-
-# Optional WBH rules
-Invoke-RestMethod "http://localhost:7071/api/system?name=Ardenne&seed=1000&runaway_greenhouse=true"
-$body = '{"name": "Ardenne", "seed": 1000, "detail": true, "runaway_greenhouse": true, "independent_government": true}'
-Invoke-RestMethod -Method Post -Uri "http://localhost:7071/api/system" `
-    -ContentType "application/json" -Body $body
-
-# TravellerMap — canonical UWP + procedural orbital structure (sector always required)
-Invoke-RestMethod "http://localhost:7071/api/map/system?name=Regina&sector=Spinward+Marches&seed=42"
-Invoke-RestMethod "http://localhost:7071/api/map/system/Mora?sector=Spinward+Marches&seed=7&detail=true"
-Invoke-WebRequest "http://localhost:7071/api/map/system?sector=Spinward+Marches&hex=1910&format=html" `
-    -OutFile regina.html
-$body = '{"name": "Regina", "sector": "Spinward Marches", "seed": 42, "detail": true}'
-Invoke-RestMethod -Method Post -Uri "http://localhost:7071/api/map/system" `
-    -ContentType "application/json" -Body $body
-
-# System from existing mainworld — UWP/PBG preserved; fresh stellar + orbital generation
-$world = Invoke-RestMethod "http://localhost:7071/api/world?name=Cogri&seed=42"
-$body  = $world | ConvertTo-Json -Depth 10
-Invoke-RestMethod -Method Post -Uri "http://localhost:7071/api/system/from-world?seed=99" `
-    -ContentType "application/json" -Body $body
-```
-
----
-
-## 10. Deployment
-
-### Create Azure resources (one-time)
-
-```bash
-az group create --name rg-traveller --location australiaeast
-
-az storage account create \
-    --name straveller \
-    --resource-group rg-traveller \
-    --sku Standard_LRS
-
-az functionapp create \
-    --resource-group rg-traveller \
-    --consumption-plan-location australiaeast \
-    --runtime python \
-    --runtime-version 3.11 \
-    --functions-version 4 \
-    --name traveller-world-gen \
-    --storage-account straveller \
-    --os-type Linux
-```
-
-```powershell
-az group create --name rg-traveller --location australiaeast
-
-az storage account create `
-    --name straveller `
-    --resource-group rg-traveller `
-    --sku Standard_LRS
-
-az functionapp create `
-    --resource-group rg-traveller `
-    --consumption-plan-location australiaeast `
-    --runtime python `
-    --runtime-version 3.11 `
-    --functions-version 4 `
-    --name traveller-world-gen `
-    --storage-account straveller `
-    --os-type Linux
-```
-
-### Deploy
-
-```bash
-cd azure-api && func azure functionapp publish traveller-world-gen
-```
-
-```powershell
-Set-Location azure-api; func azure functionapp publish traveller-world-gen
-```
-
-### Verify
-
-```bash
-az functionapp keys list \
-    --name traveller-world-gen \
-    --resource-group rg-traveller
-
-curl "https://traveller-world-gen.azurewebsites.net/api/world?name=Mora&code=<key>"
-curl "https://traveller-world-gen.azurewebsites.net/api/system/Ardenne?seed=1000&detail=true&code=<key>"
-```
-
-```powershell
-az functionapp keys list `
-    --name traveller-world-gen `
-    --resource-group rg-traveller
-
-Invoke-RestMethod "https://traveller-world-gen.azurewebsites.net/api/world?name=Mora&code=<key>"
-Invoke-RestMethod "https://traveller-world-gen.azurewebsites.net/api/system/Ardenne?seed=1000&detail=true&code=<key>"
-```
-
----
-
-## 11. Environment variables
-
-Configure in Azure → Function App → Configuration → Application Settings.
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TRAVELLER_MAX_BATCH_SIZE` | `20` | Maximum worlds per `/api/worlds` batch request. Accepted range: 1–1000; values outside this range fall back to the default. |
-| `WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT` | _(unlimited)_ | Caps the number of instances the Consumption plan can scale out to. Set to `1` to prevent cost runaway from burst traffic. See `azure-api/local.settings.json.example` for the CLI command. |
-| `APPLICATIONINSIGHTS_CONNECTION_STRING` | _(empty)_ | Enable Application Insights telemetry. Obtain from your Application Insights resource. |
-
-### Request throttling
-
-`azure-api/host.json` sets two HTTP concurrency limits that take effect without any application setting:
-
-| Setting | Value | Effect |
-|---------|-------|--------|
-| `maxConcurrentRequests` | `10` | Maximum number of requests executing in parallel on a single instance. Excess requests are queued. |
-| `maxOutstandingRequests` | `50` | Maximum number of requests in the queue. Requests beyond this limit receive an immediate `429 Too Many Requests`. |
-
-These limits apply per-instance. Combined with `WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT=1`, the effective global ceiling is 10 concurrent + 50 queued requests.
-
----
-
-## Notes on seeding and determinism
-
-All generation is deterministic for a given seed. The seed is applied once
-to Python's global `random` state before generation begins. The pipeline runs
-in a fixed order — stellar → orbits → mainworld → (optionally) secondary
-worlds → moons — so the same seed always produces the same system.
-
-On Azure Functions Consumption plan, each invocation runs in an isolated
-worker and there is no cross-request RNG state leakage. On Premium or
-Dedicated plans with warm instances, the global `random` state persists
-between invocations; for production use at scale, consider whether this
-matters for your use case.
