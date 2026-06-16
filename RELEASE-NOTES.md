@@ -1,8 +1,29 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–125
+**Sessions:** 88–126
 **Tests:** 2124
+
+---
+
+## Azure Monitoring & Cost Controls (Session 126)
+
+**Application Insights per-request tracing.** FastAPI app now integrates Azure
+Monitor OpenTelemetry. When deployed to Azure Functions with
+`APPLICATIONINSIGHTS_CONNECTION_STRING` env var set, `configure_azure_monitor()`
+is called at app startup (via try/except ImportError guard, so local dev is
+unaffected). Enables per-request HTTP traces, dependency tracking, and log
+forwarding to Application Insights. Requires `azure-monitor-opentelemetry>=1.6.0`
+added to `azure-api/requirements.txt`.
+
+**Daily execution quota & monthly budget controls.** `create_azure_function_app.sh`
+now sets `dailyMemoryTimeQuota=1024000000` (1,000 GB-seconds/day, roughly 25,000
+requests) as a safety guard. New script `set_azure_budget.sh` creates or updates
+a monthly Cost Management budget ($10/month default) with email alerts at 80%
+and 100% thresholds. Uses `az rest` to PUT directly to the budgets API.
+
+**Model pinning.** `/update-docs` skill now uses `claude-haiku-4-5-20251001` model
+for lower-cost documentation updates (via frontmatter `model:` field).
 
 ---
 
