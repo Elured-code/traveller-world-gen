@@ -2150,9 +2150,7 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
         )
         cl_suffix = f"  [{cl_name}]" if cl_name else ""
         notes_suffix = ""
-        if (o.world_type == "belt"
-                and detail is not None
-                and detail.physical is not None):
+        if detail is not None and isinstance(detail.physical, BeltPhysical):
             notes_suffix = f"  Profile: {detail.physical.profile_str}"
         lines.append(
             f"  {o.star_designation:<5} {o.slot_index:<4} "

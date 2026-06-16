@@ -61,6 +61,7 @@ from typing import Optional
 
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
+from traveller_belt_physical import BeltPhysical
 from traveller_hydro_detail import generate_hydrographic_detail
 from html_render import render
 from world_codes import APP_VERSION, gg_diameter_from_sah
@@ -313,9 +314,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                     note_parts.append(
                         f"{o.gg_mass_earth:.0f} M⊕ · {gg_density:.2f} g/cm³"
                     )
-            if (o.world_type == "belt"
-                    and detail is not None
-                    and detail.physical is not None):
+            if detail is not None and isinstance(detail.physical, BeltPhysical):
                 note_parts.append(f"Profile: {detail.physical.profile_str}")
 
             if o.is_mainworld_candidate and mw:
