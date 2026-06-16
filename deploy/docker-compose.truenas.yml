@@ -1,0 +1,9 @@
+services:
+  traveller-api:
+    image: ghcr.io/elured-code/traveller-world-gen:latest
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      RATE_LIMIT_PER_MINUTE: "100/minute"
+      TRAVELLER_MAX_BATCH_SIZE: "20"
