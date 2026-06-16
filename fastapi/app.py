@@ -87,13 +87,18 @@ AI assistance disclosure: developed with Claude (Anthropic).
 The human author reviewed, directed, and is responsible for the code.
 """
 
+import asyncio
 import dataclasses
+import json
 import logging
 import logging.config
 import os
 import random
 import sys
+import time
 import urllib.error
+import urllib.request
+import uuid
 from typing import Optional
 
 # Make project-root generation modules importable when this file is loaded
@@ -251,6 +256,75 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few
 
 
 # ---------------------------------------------------------------------------
+# App Insights — direct ingestion, bypasses Azure Functions host SDK
+# ---------------------------------------------------------------------------
+# The AsgiFunctionApp wrapper does not emit host-level invocation telemetry
+# to App Insights reliably.  This middleware posts one RequestData envelope
+# per request directly to the ingestion REST endpoint using only stdlib.
+# ---------------------------------------------------------------------------
+
+_AI_IKEY: str = ""
+_AI_INGEST: str = ""
+_conn_str = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", "")
+for _part in _conn_str.split(";"):
+    if _part.startswith("InstrumentationKey="):
+        _AI_IKEY = _part[len("InstrumentationKey="):]
+    elif _part.startswith("IngestionEndpoint="):
+        _AI_INGEST = _part[len("IngestionEndpoint="):].rstrip("/") + "/v2/track"
+
+
+def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> None:
+    """Post one RequestData telemetry item; called from a thread pool."""
+    envelope = json.dumps([{
+        "name": f"Microsoft.ApplicationInsights.{_AI_IKEY}.Request",
+        "time": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        "iKey": _AI_IKEY,
+        "tags": {"ai.operation.name": name, "ai.cloud.roleName": "traveller-world-gen"},
+        "data": {
+            "baseType": "RequestData",
+            "baseData": {
+                "ver": 2,
+                "id": str(uuid.uuid4()),
+                "name": name,
+                "duration": (
+                    f"00:00:{int(duration_ms // 1000):02d}"
+                    f".{int(duration_ms % 1000):03d}0000"
+                ),
+                "responseCode": str(status),
+                "success": status < 400,
+                "url": url,
+            },
+        },
+    }]).encode()
+    req = urllib.request.Request(
+        _AI_INGEST, data=envelope,
+        headers={"Content-Type": "application/json"}, method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+    except (urllib.error.URLError, OSError):
+        pass
+
+
+class _AppInsightsMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
+    """Fire-and-forget request telemetry to App Insights."""
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        if not _AI_IKEY:
+            return await call_next(request)
+        start = time.monotonic()
+        response = await call_next(request)
+        duration_ms = (time.monotonic() - start) * 1000
+        name = f"{request.method} {request.url.path}"
+        loop = asyncio.get_event_loop()
+        loop.run_in_executor(
+            None, _ai_post_request, name, str(request.url), duration_ms, response.status_code
+        )
+        return response
+
+
+# ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
@@ -262,6 +336,7 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 app.add_middleware(_SecurityHeadersMiddleware)
+app.add_middleware(_AppInsightsMiddleware)
 app.mount("/static", StaticFiles(directory=os.path.join(_here, "static")), name="static")
 
 
