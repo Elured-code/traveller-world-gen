@@ -6,6 +6,8 @@ name: Deploy to Azure Functions
 #   AZURE_FUNCTIONAPP_PUBLISH_PROFILE — publish profile XML from Azure Portal
 #     (Function App → Overview → Get publish profile)
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       functionapp_name:
