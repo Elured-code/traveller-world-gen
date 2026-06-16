@@ -30,7 +30,8 @@ PATCH=$(git -C "$REPO_ROOT" log --oneline HEAD -- traveller_world_schema.json \
         | wc -l | tr -d ' ')
 
 # ── Build ─────────────────────────────────────────────────────────────────────
-BUILD="${1:-local}"
+# CI passes github.run_number; locally fall back to total git commit count.
+BUILD="${1:-$(git -C "$REPO_ROOT" rev-list --count HEAD)}"
 
 # ── Write _version.py ─────────────────────────────────────────────────────────
 VERSION="${MAJOR}.${MINOR}.${PATCH}"
