@@ -95,6 +95,7 @@ import logging.config
 import os
 import random
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -272,6 +273,37 @@ for _part in _conn_str.split(";"):
     elif _part.startswith("IngestionEndpoint="):
         _AI_INGEST = _part[len("IngestionEndpoint="):].rstrip("/") + "/v2/track"
 
+_AI_UAMI_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID", "")
+_AI_TOKEN: str = ""
+_AI_TOKEN_EXPIRES: float = 0.0
+_AI_TOKEN_LOCK = threading.Lock()
+
+
+def _get_mi_token() -> str:
+    """Return a cached AAD bearer token from IMDS; empty string if unavailable."""
+    global _AI_TOKEN, _AI_TOKEN_EXPIRES  # pylint: disable=global-statement
+    now = time.monotonic()
+    if _AI_TOKEN and now < _AI_TOKEN_EXPIRES - 300:
+        return _AI_TOKEN
+    with _AI_TOKEN_LOCK:
+        if _AI_TOKEN and now < _AI_TOKEN_EXPIRES - 300:
+            return _AI_TOKEN
+        params = "api-version=2018-02-01&resource=https%3A%2F%2Fmonitor.azure.com%2F"
+        if _AI_UAMI_CLIENT_ID:
+            params += f"&client_id={_AI_UAMI_CLIENT_ID}"
+        req = urllib.request.Request(
+            f"http://169.254.169.254/metadata/identity/oauth2/token?{params}",
+            headers={"Metadata": "true"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read())
+            _AI_TOKEN = data["access_token"]
+            _AI_TOKEN_EXPIRES = now + int(data.get("expires_in", 3600))
+            return _AI_TOKEN
+        except (urllib.error.URLError, OSError, KeyError, ValueError):
+            return ""
+
 
 def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> None:
     """Post one RequestData telemetry item; called from a thread pool."""
@@ -296,9 +328,12 @@ def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> No
             },
         },
     }]).encode()
+    headers = {"Content-Type": "application/json"}
+    token = _get_mi_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(
-        _AI_INGEST, data=envelope,
-        headers={"Content-Type": "application/json"}, method="POST",
+        _AI_INGEST, data=envelope, headers=headers, method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=5):
