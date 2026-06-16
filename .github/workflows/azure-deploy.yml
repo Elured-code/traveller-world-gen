@@ -1,0 +1,77 @@
+name: Deploy to Azure Functions
+
+# Trigger manually from the Actions UI.
+# Required GitHub secrets:
+#   AZURE_FUNCTIONAPP_NAME       — name of the Azure Function App resource
+#   AZURE_FUNCTIONAPP_PUBLISH_PROFILE — publish profile XML from Azure Portal
+#     (Function App → Overview → Get publish profile)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      functionapp_name:
+        description: 'Azure Function App name (overrides secret if set)'
+        required: false
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history needed for schema-commit patch count
+
+      - name: Compute version
+        run: bash scripts/compute_version.sh ${{ github.run_number }}
+
+      - name: Assemble deployment package
+        run: |
+          # Copy root-level generator modules and shared resources into azure-api/
+          # so that function_app.py can import them.  These files are git-ignored
+          # inside azure-api/ to avoid duplication in the repo.
+          cp \
+            _version.py \
+            html_render.py \
+            system_map.py \
+            system_pipeline.py \
+            tables.py \
+            traveller_belt_physical.py \
+            traveller_hydro_detail.py \
+            traveller_map_fetch.py \
+            traveller_moon_gen.py \
+            traveller_orbit_gen.py \
+            traveller_stellar_gen.py \
+            traveller_system_gen.py \
+            traveller_world_atmosphere_detail.py \
+            traveller_world_detail.py \
+            traveller_world_gen.py \
+            traveller_world_government_detail.py \
+            traveller_world_law_detail.py \
+            traveller_world_physical.py \
+            traveller_world_population_detail.py \
+            traveller_world_schema.json \
+            traveller_world_tech_detail.py \
+            world_codes.py \
+            azure-api/
+          cp -r fastapi   azure-api/fastapi
+          cp -r templates azure-api/templates
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies into package
+        run: pip install --target azure-api/.python_packages/lib/site-packages -r azure-api/requirements.txt
+
+      - name: Deploy
+        uses: azure/functions-action@v1
+        with:
+          app-name: ${{ inputs.functionapp_name || secrets.AZURE_FUNCTIONAPP_NAME }}
+          package: azure-api
+          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+          scm-do-build-during-deployment: false

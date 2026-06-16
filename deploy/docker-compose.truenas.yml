@@ -1,0 +1,44 @@
+services:
+  traveller-api:
+    image: ghcr.io/elured-code/traveller-world-gen:latest
+    restart: unless-stopped
+    # No host port — only reachable from Caddy on the internal Docker network
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    environment:
+      RATE_LIMIT_PER_MINUTE: "100/minute"
+      TRAVELLER_MAX_BATCH_SIZE: "20"
+
+  watchtower:
+    image: containrrr/watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --label-enable --cleanup --interval 3600
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8443:443"   # HTTPS — https://truenas.home.lan:8443
+      - "8080:80"    # HTTP  — redirects automatically to HTTPS
+    volumes:
+      - caddy_data:/data      # persists TLS certs across restarts
+      - caddy_config:/config
+    configs:
+      - source: caddyfile
+        target: /etc/caddy/Caddyfile
+
+# Replace YOUR_DOMAIN_HERE with your actual domain (e.g. api.example.com)
+# Make sure its DNS A record points to 10.1.1.204
+configs:
+  caddyfile:
+    content: |
+      truenas.home.lan {
+          tls internal
+          reverse_proxy traveller-api:8000
+      }
+
+volumes:
+  caddy_data:
+  caddy_config:

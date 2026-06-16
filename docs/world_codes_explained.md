@@ -78,20 +78,21 @@ for readability while still working with numeric lookup tables that use integer 
 | `TradeCode` | `StrEnum` | All standard Traveller trade classification codes |
 | `TravelZone` | `StrEnum` | Green / Amber / Red |
 | `AtmosphereCode` | `IntEnum` | All atmosphere codes 0–17 including NHZ codes 16 (G) and 17 (H) |
-| `APP_VERSION` | `str` | `"1.4.0"` — used when saving JSON files |
+| `APP_VERSION` | `str` | `"1.5.1"` — used when saving JSON files |
+| `gg_diameter_from_sah` | `function` | Decode the eHex diameter digit from a gas-giant SAH string (e.g. `"GM9"` → 9) |
 
 ---
 
 ## `APP_VERSION`
 
 ```python
-APP_VERSION = "1.4.0"
+APP_VERSION = "1.5.1"
 ```
 
 When a world or system is saved to JSON, the file includes:
 
 ```json
-{ "_app_version": "1.4.0", ... }
+{ "_app_version": "1.5.0", ... }
 ```
 
 When a JSON is loaded, the GUI checks the saved version against `APP_VERSION` and
@@ -99,6 +100,30 @@ warns the user if they differ. `APP_VERSION` living in `world_codes.py` means it
 imported by both the generation code (`traveller_world_gen.py`) and the GUI
 (`gen-ui/app.py`) from the same place — there is only one version string to update
 when a new release is made.
+
+---
+
+## `gg_diameter_from_sah` — shared gas giant utility (Session 116)
+
+Gas giant SAH strings encode the giant's diameter in the third character using
+eHex notation (the same base-20 scale used by UWP digits). For example, `"GM9"`
+means category M, diameter 9 Terran diameters; `"GLA"` means category L, diameter
+10.
+
+Both `traveller_system_gen.py` (satellite size cap) and `traveller_world_detail.py`
+(moon generation) need to decode this digit. Rather than keeping a private copy
+in each module, Session 116 moved the function to `world_codes.py`:
+
+```python
+def gg_diameter_from_sah(gg_sah: str) -> int:
+    if len(gg_sah) >= 3:
+        idx = _EHEX.find(gg_sah[2].upper())
+        if idx >= 0:
+            return idx
+    return 8   # safe default (medium GG)
+```
+
+Both modules now import it with `from world_codes import gg_diameter_from_sah`.
 
 ---
 
@@ -112,7 +137,8 @@ world_codes.py  (no imports)
     ↑
     │ imported by
     ├── traveller_world_gen.py    (AtmosphereCode, StarportCode, APP_VERSION, ...)
-    ├── traveller_system_gen.py   (APP_VERSION)
+    ├── traveller_system_gen.py   (APP_VERSION, gg_diameter_from_sah)
+    ├── traveller_world_detail.py (gg_diameter_from_sah)
     ├── gen-ui/app.py             (APP_VERSION)
     └── (any other module needing type-safe code constants)
 ```

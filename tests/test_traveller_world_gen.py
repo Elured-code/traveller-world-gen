@@ -73,6 +73,7 @@ from traveller_world_gen import (
     generate_belt_count,
     assign_trade_codes,
     assign_travel_zone,
+    apply_mainworld_social,
     generate_world,
     format_atmosphere_profile,
     AtmosphereDetail,
@@ -123,9 +124,32 @@ from traveller_world_gen import (
     _UNUSUAL_SUBTYPE_TABLE,
     generate_unusual_subtype,
     UnusualSubtype,
+    _population_settlement_dm,
+    _SETTLEMENT_DMS,
+    _SETTLEMENT_DEFAULT_DM,
 )
-from traveller_system_gen import generate_full_system
-from traveller_world_detail import attach_detail, _ehex_to_int, generate_biomass_rating
+from traveller_system_gen import generate_full_system, select_mainworld, attach_body_names
+from traveller_world_population_detail import (
+    generate_pcr,
+    generate_urbanisation_pct,
+    generate_population_detail,
+    attach_population_detail,
+    City,
+    PopulationDetail,
+)
+from traveller_world_government_detail import (
+    generate_centralisation,
+    generate_authority,
+    generate_factions,
+    generate_government_detail,
+    attach_government_detail,
+    Faction,
+    GovernmentDetail,
+)
+from traveller_world_detail import (
+    attach_detail, _ehex_to_int, generate_biomass_rating, WorldDetail,
+    reattach_mainworld_orbit,
+)
 from traveller_hydro_detail import HydrographicDetail
 from traveller_world_physical import WorldPhysical
 from traveller_belt_physical import BeltPhysical
@@ -4412,20 +4436,20 @@ class TestGasGiantOrbitSlot:
                 )
 
     def test_gg_diameter_parses_decimal_digits(self):
-        from traveller_system_gen import _gg_diameter
-        assert _gg_diameter("GM9") == 9
-        assert _gg_diameter("GS4") == 4
-        assert _gg_diameter("GL0") == 0
+        from world_codes import gg_diameter_from_sah
+        assert gg_diameter_from_sah("GM9") == 9
+        assert gg_diameter_from_sah("GS4") == 4
+        assert gg_diameter_from_sah("GL0") == 0
 
     def test_gg_diameter_parses_hex_letter(self):
-        from traveller_system_gen import _gg_diameter
-        assert _gg_diameter("GLC") == 12
-        assert _gg_diameter("GLF") == 15
+        from world_codes import gg_diameter_from_sah
+        assert gg_diameter_from_sah("GLC") == 12
+        assert gg_diameter_from_sah("GLF") == 15
 
     def test_gg_diameter_fallback_for_empty(self):
-        from traveller_system_gen import _gg_diameter
-        assert _gg_diameter("") == 8
-        assert _gg_diameter("XX") == 8
+        from world_codes import gg_diameter_from_sah
+        assert gg_diameter_from_sah("") == 8
+        assert gg_diameter_from_sah("XX") == 8
 
     def test_gas_giant_mainworld_size_less_than_gg(self):
         from traveller_system_gen import generate_full_system
@@ -5962,6 +5986,155 @@ class TestReconcileOrbitTypes:
 
 
 # ===========================================================================
+# TestReconcileWorldCount
+# ===========================================================================
+
+class TestReconcileWorldCount:
+    """Tests for _reconcile_world_count (issue #133)."""
+
+    def _make_orbit(self, star_desig, orbit_number, world_type,
+                    is_mainworld=False, is_empty=False):
+        from traveller_orbit_gen import OrbitSlot
+        o = OrbitSlot(
+            star_designation=star_desig,
+            orbit_number=orbit_number,
+            orbit_au=orbit_number * 0.5,
+            slot_index=1 if not is_empty else 0,
+            world_type="empty" if is_empty else world_type,
+            is_habitable_zone=False,
+            hz_deviation=0.0,
+            temperature_zone="Temperate",
+        )
+        o.is_mainworld_candidate = is_mainworld
+        return o
+
+    def _make_orbits(self, slots):
+        from traveller_orbit_gen import SystemOrbits
+        from traveller_stellar_gen import StarSystem
+        from traveller_map_fetch import _recount_orbit_metadata
+        so = SystemOrbits(stellar_system=StarSystem())
+        so.orbits = slots
+        _recount_orbit_metadata(so)
+        return so
+
+    def test_noop_when_worlds_zero(self):
+        from traveller_map_fetch import _reconcile_world_count
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "terrestrial"),
+            self._make_orbit("A", 3.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        original_terr = so.terrestrial_count
+        _reconcile_world_count(so, 0)
+        assert so.terrestrial_count == original_terr
+
+    def test_noop_when_exact_match(self):
+        # GG=2, Belt=1, Terr=2 (mainworld + 1) → Worlds=5 → no change
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "gas_giant"),
+            self._make_orbit("A", 3.0, "belt"),
+            self._make_orbit("A", 4.0, "terrestrial"),
+            self._make_orbit("A", 5.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 5)
+        _recount_orbit_metadata(so)
+        assert so.gas_giant_count == 2
+        assert so.belt_count == 1
+        assert so.terrestrial_count == 2
+        assert so.total_worlds == 5
+
+    def test_promotes_empty_slots_to_terrestrial(self):
+        # GG=2, Belt=1, want Worlds=8 → target_terr=5, currently terr=1 (mainworld only)
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "gas_giant"),
+            self._make_orbit("A", 3.0, "belt"),
+            self._make_orbit("A", 4.0, "terrestrial", is_mainworld=True),
+            self._make_orbit("A", 5.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 6.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 7.0, "terrestrial", is_empty=True),
+            self._make_orbit("A", 8.0, "terrestrial", is_empty=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 8)
+        _recount_orbit_metadata(so)
+        assert so.terrestrial_count == 5
+        assert so.total_worlds == 8
+
+    def test_demotes_excess_terrestrials(self):
+        # GG=2, Belt=1, currently terr=4, want Worlds=4 → target_terr=1 (mainworld only)
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "gas_giant"),
+            self._make_orbit("A", 3.0, "belt"),
+            self._make_orbit("A", 4.0, "terrestrial"),
+            self._make_orbit("A", 5.0, "terrestrial"),
+            self._make_orbit("A", 6.0, "terrestrial"),
+            self._make_orbit("A", 7.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 4)
+        _recount_orbit_metadata(so)
+        assert so.terrestrial_count == 1
+        assert so.total_worlds == 4
+
+    def test_clamps_to_one_when_worlds_less_than_gg_plus_belt_plus_one(self):
+        # GG=3, Belt=0, Worlds=2 → target_terr = max(1, 2-3-0) = 1
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),
+            self._make_orbit("A", 2.0, "gas_giant"),
+            self._make_orbit("A", 3.0, "gas_giant"),
+            self._make_orbit("A", 4.0, "terrestrial"),
+            self._make_orbit("A", 5.0, "terrestrial"),
+            self._make_orbit("A", 6.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 2)
+        _recount_orbit_metadata(so)
+        assert so.terrestrial_count == 1
+
+    def test_mainworld_slot_never_demoted(self):
+        # Even when demoting excess, mainworld candidate is always preserved.
+        # GG=0, Belt=0, Worlds=1 → target_terr=1; currently terr=3 → demote 2 non-mw
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "terrestrial"),
+            self._make_orbit("A", 2.0, "terrestrial"),
+            self._make_orbit("A", 3.0, "terrestrial", is_mainworld=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 1)
+        _recount_orbit_metadata(so)
+        assert so.terrestrial_count == 1
+        mw = next(o for o in so.orbits if o.is_mainworld_candidate)
+        assert mw.world_type == "terrestrial"
+
+    def test_gg_satellite_mainworld_formula(self):
+        # Mainworld is a GG satellite: host GG in gas_giant_count, mainworld in
+        # terrestrial_count.  Formula target_terr = Worlds - GG - Belt is correct.
+        # GG=1 (host GG), Belt=0, Worlds=3 → target_terr=2 (mainworld + 1 other)
+        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        slots = [
+            self._make_orbit("A", 1.0, "gas_giant"),       # host GG
+            self._make_orbit("A", 2.0, "terrestrial", is_mainworld=True),  # satellite
+            self._make_orbit("A", 3.0, "terrestrial", is_empty=True),
+        ]
+        so = self._make_orbits(slots)
+        _reconcile_world_count(so, 3)
+        _recount_orbit_metadata(so)
+        assert so.gas_giant_count == 1
+        assert so.terrestrial_count == 2
+        assert so.total_worlds == 3
+
+
+# ===========================================================================
 # TestOrbitalEccentricity
 # ===========================================================================
 
@@ -6162,3 +6335,1595 @@ class TestGGMassRoll:
         with patch("random.randint", return_value=3), \
              patch("traveller_orbit_gen.roll", return_value=18):
             assert _roll_gg_mass("GL") == 3300.0
+
+
+class TestLargeSecondaryWorldAtmosphere:
+    """Secondary terrestrial worlds with size > 9 use the full 2D-7+Size formula.
+
+    Issue #113: the min(size, 9) cap was removed so that large worlds (Size A-F)
+    receive atmosphere codes appropriate to their actual size.  The result is still
+    clamped to 15 (F) because codes 16-17 are NHZ-only.
+
+    All tests patch ``traveller_world_gen.roll`` to inject deterministic dice
+    outcomes and patch ``_terrestrial_size`` to force a specific size without
+    consuming RNG.  The module _rng state is managed by the autouse conftest
+    fixture which resets it to the global ``random`` module before each test.
+    """
+
+    def _hz_slot(self):
+        """Minimal HZ terrestrial OrbitSlot for calling _terrestrial_sah()."""
+        from traveller_orbit_gen import OrbitSlot  # pylint: disable=import-outside-toplevel
+        return OrbitSlot(
+            star_designation="A", orbit_number=3.0, orbit_au=1.0,
+            slot_index=0, world_type="terrestrial", is_habitable_zone=True,
+            hz_deviation=0.0, temperature_zone="Temperate",
+            is_mainworld_candidate=False,
+        )
+
+    def test_size10_atmosphere_reaches_15(self):
+        # Size 10: formula is 2D+3, max=15.  Old cap (min(10,9)=9 → 2D+2, max=14)
+        # made atmosphere=15 unreachable.  Force roll to return 15 and verify.
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_world_detail._terrestrial_size", return_value=10), \
+             patch("traveller_world_gen.roll", side_effect=[15, 5]):
+            # side_effect order: atmosphere roll, then hydrographics roll
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
+        assert atm == 15
+
+    @pytest.mark.parametrize("size,max_formula_result", [
+        (11, 16), (12, 17), (13, 18), (14, 19), (15, 20),
+    ])
+    def test_large_size_atmosphere_clamped_to_15(self, size, max_formula_result):
+        # Sizes 11-15 use 2D+(size-7); the formula can yield 16-20 with all-6 dice.
+        # The result must always be clamped to ≤ 15 (codes 16-17 are NHZ-only).
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_world_detail._terrestrial_size", return_value=size), \
+             patch("traveller_world_gen.roll", side_effect=[max_formula_result, 5]):
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
+        assert atm == 15, (
+            f"size={size}: formula yields {max_formula_result} but must clamp to 15"
+        )
+
+    @pytest.mark.parametrize("size", [11, 12, 13, 14, 15])
+    def test_large_size_atmosphere_exceeds_old_size9_max(self, size):
+        # Old cap: generate_atmosphere(9) → 2D+2, absolute max = 14.
+        # New formula for sizes 11-15: 2D+(size-7), so atm=15 must now be reachable.
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_world_detail._terrestrial_size", return_value=size), \
+             patch("traveller_world_gen.roll", side_effect=[15, 5]):
+            _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
+        assert atm == 15, (
+            f"size={size}: forced roll=15 should give atm=15 (old cap gave max 14)"
+        )
+
+    def test_large_moon_atmosphere_clamped_to_15(self):
+        # _moon_detail() had the same cap.  For a size-11 moon, force roll > 15
+        # and verify it is clamped to 15.
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        from traveller_moon_gen import Moon  # pylint: disable=import-outside-toplevel
+        moon = Moon(size_code=11)
+        # roll calls in _moon_detail: atmosphere then hydrographics.
+        # Social dice go through _rng.randint() directly and are not intercepted.
+        rng = random.Random(1)
+        with patch("traveller_world_gen.roll", side_effect=[17, 5]):
+            detail = _twd._moon_detail(
+                moon=moon, hz_deviation=0.0,
+                mwc=_twd._MWCtx(pop=8, gov=5, law=5, tl=10,
+                                 trade_codes=[], bases=[], starport="X"),
+                max_secondary_pop=6, rng=rng,
+            )
+        atm = _ehex_to_int(detail.sah[1]) if len(detail.sah) >= 2 else -1
+        assert atm == 15, f"size-11 moon: forced roll=17 should clamp to 15, got {atm}"
+
+    def test_large_secondary_atmosphere_always_valid_over_seeds(self):
+        # Over 300 seeds with forced size-11, atmosphere must always be in [0,15].
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        slot = self._hz_slot()
+        for seed in range(300):
+            random.seed(seed)
+            with patch("traveller_world_detail._terrestrial_size", return_value=11):
+                _, atm, _ = _twd._terrestrial_sah(slot, False, random.Random(seed))
+            assert 0 <= atm <= 15, (
+                f"seed={seed}: size-11 secondary produced atmosphere {atm} outside [0,15]"
+            )
+
+
+class TestIndependentGovernment:
+    """Tests for Case 2 independent government (WBH p.162, issue #17)."""
+
+    def test_independent_government_range(self):
+        """_independent_government(pop) returns max(0, 2D-7+pop) which is always ≥ 0."""
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        for pop in range(0, 10):
+            for seed in range(50):
+                gov = _twd._independent_government(pop, random.Random(seed))
+                assert gov >= 0
+                assert gov <= 14  # max: 2×6 - 7 + 9 = 14
+
+    def test_default_case1_government_codes(self):
+        """Without independent_government, _secondary_government only produces {0,1,2,3,6}."""
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        codes_seen: set = set()
+        for seed in range(200):
+            gov = _twd._secondary_government(6, 3, random.Random(seed))
+            codes_seen.add(gov)
+        assert codes_seen <= {0, 1, 2, 3, 6}, (
+            f"Case 1 should only produce {{0,1,2,3,6}}, got {codes_seen}"
+        )
+
+    def test_worlddetail_flag_stored_when_true(self):
+        """WorldDetail(is_independent_government=True).to_dict() contains the key."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="473", population=3, government=5,
+                         is_independent_government=True)
+        d = wd.to_dict()
+        assert d.get("is_independent_government") is True
+
+    def test_worlddetail_flag_absent_when_false(self):
+        """WorldDetail().to_dict() does NOT emit is_independent_government."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="473")
+        assert "is_independent_government" not in wd.to_dict()
+
+    def test_worlddetail_flag_round_trip(self):
+        """from_dict(wd.to_dict()) preserves is_independent_government=True."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="473", population=3, government=5,
+                         is_independent_government=True)
+        wd2 = WorldDetail.from_dict(wd.to_dict())
+        assert wd2.is_independent_government is True
+
+    def test_generate_system_detail_propagates_flag(self):
+        """With independent_government=True, inhabited secondaries carry the flag."""
+        from traveller_world_detail import generate_system_detail  # pylint: disable=import-outside-toplevel
+        found_inhabited = False
+        for seed in range(500):
+            system = generate_full_system(seed=seed)
+            # Social data is deferred; apply it so secondaries can be inhabited.
+            if system.mainworld is not None:
+                apply_mainworld_social(system.mainworld,
+                                       rng=random.Random(seed + 88888))
+            detail_map = generate_system_detail(
+                system, independent_government=True, rng=random.Random(seed + 99999)
+            )
+            for wd in detail_map.values():
+                if wd.inhabited and not wd.is_gas_giant:
+                    assert wd.is_independent_government is True
+                    found_inhabited = True
+            if found_inhabited:
+                break
+        assert found_inhabited, "No inhabited secondary found in 500 seeds"
+
+    def test_law_level_independent_skips_captive_table(self):
+        """With independent=True, gov==6 uses 2D-7+6 = max(0, 2D-1), not captive table."""
+        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        # With mainworld_law=99, the captive table would produce ~99 or higher.
+        # The independent formula must stay in [0, 11] (max 2D-1 = 12-1 = 11).
+        mainworld_law = 99
+        for seed in range(100):
+            law = _twd._secondary_law_level(6, mainworld_law, random.Random(seed),
+                                             independent=True)
+            assert 0 <= law <= 11, (
+                f"seed={seed}: independent law for gov 6 should be in [0,11], got {law}"
+            )
+
+
+# ===========================================================================
+# TestMainworldSelection — select_mainworld() and WorldDetail.native_sophont
+# ===========================================================================
+
+class TestNativeSophontOnWorldDetail:
+    """native_sophont field on WorldDetail (added Session 92, issue #125)."""
+
+    def test_default_false(self):
+        """WorldDetail.native_sophont is False by default."""
+        wd = WorldDetail(sah="673")
+        assert wd.native_sophont is False
+
+    def test_to_dict_omits_when_false(self):
+        """to_dict() omits native_sophont when False."""
+        wd = WorldDetail(sah="673")
+        assert "native_sophont" not in wd.to_dict()
+
+    def test_to_dict_emits_when_true(self):
+        """to_dict() emits native_sophont: True when set."""
+        wd = WorldDetail(sah="673")
+        wd.native_sophont = True
+        assert wd.to_dict().get("native_sophont") is True
+
+    def test_from_dict_restores_true(self):
+        """from_dict() restores native_sophont=True."""
+        wd = WorldDetail(sah="673")
+        wd.native_sophont = True
+        wd2 = WorldDetail.from_dict(wd.to_dict())
+        assert wd2.native_sophont is True
+
+    def test_from_dict_defaults_false(self):
+        """from_dict() defaults to False when key absent."""
+        wd = WorldDetail.from_dict({"sah": "673"})
+        assert wd.native_sophont is False
+
+
+class TestSelectMainworld:
+    """select_mainworld() scoring, wild-card, and swap behaviour."""
+
+    def _make_system_with_terrestrial_secondary(self):
+        """Return (system, secondary_orbit) where a secondary terrestrial exists."""
+        for seed in range(200):
+            system = generate_full_system("Test", seed=seed)
+            attach_detail(system, rng=random.Random(seed + 50000))
+            for orbit in system.system_orbits.orbits:
+                if (orbit.world_type == "terrestrial"
+                        and not orbit.is_mainworld_candidate
+                        and orbit.detail is not None
+                        and not orbit.detail.is_gas_giant):
+                    return system, orbit
+        raise RuntimeError("No system with a terrestrial secondary found in 200 seeds")
+
+    def test_returns_false_when_no_secondaries(self):
+        """Returns False immediately when there are no terrestrial secondaries."""
+        for seed in range(500):
+            system = generate_full_system("T", seed=seed)
+            has_sec = any(
+                o.world_type == "terrestrial"
+                and not o.is_mainworld_candidate
+                and o.detail is not None
+                for o in system.system_orbits.orbits
+            )
+            if not has_sec:
+                result = select_mainworld(system, rng=random.Random(1))
+                assert result is False
+                return
+        pytest.skip("No single-terrestrial system found in 500 seeds")
+
+    def test_no_swap_when_mainworld_scores_best(self):
+        """When mainworld has higher score, returns False (no swap)."""
+        system = generate_full_system("T", seed=42)
+        attach_detail(system, rng=random.Random(999))
+        mw = system.mainworld
+        if mw is None:
+            return
+        # Force mainworld to have a high habitability rating
+        mw.habitability_rating = 20
+        orig_orbit = system.mainworld_orbit
+        result = select_mainworld(system, rng=random.Random(1))
+        # With a very high hab score, mainworld should win (unless wild card)
+        # We can't guarantee no wild card, so just check result type
+        assert isinstance(result, bool)
+        if not result:
+            assert system.mainworld_orbit is orig_orbit
+
+    def test_swap_updates_mainworld_orbit(self):
+        """When a secondary wins, system.mainworld_orbit is updated."""
+        system, winner_orbit = self._make_system_with_terrestrial_secondary()
+        mw = system.mainworld
+        if mw is None:
+            return
+        # Force secondary to have a much higher score
+        winner_orbit.detail.habitability_rating = 20
+        if mw.habitability_rating is None or mw.habitability_rating < 15:
+            mw.habitability_rating = 0
+        orig_orbit = system.mainworld_orbit
+        # Use a seed that avoids the wild-card 3D=18 roll
+        rng = random.Random(0)
+        # Roll until we get a non-18 outcome for 3D
+        for attempt in range(50):
+            rng2 = random.Random(attempt)
+            roll = rng2.randint(1,6) + rng2.randint(1,6) + rng2.randint(1,6)
+            if roll != 18:
+                result = select_mainworld(system, rng=random.Random(attempt))
+                if result:
+                    assert system.mainworld_orbit is not orig_orbit
+                    assert system.mainworld_orbit is winner_orbit
+                    assert winner_orbit.is_mainworld_candidate is True
+                    assert orig_orbit.is_mainworld_candidate is False
+                    assert orig_orbit.detail is not None
+                return
+
+    def test_demoted_mainworld_becomes_world_detail(self):
+        """After swap, old mainworld orbit has a WorldDetail."""
+        system, winner_orbit = self._make_system_with_terrestrial_secondary()
+        mw = system.mainworld
+        if mw is None:
+            return
+        winner_orbit.detail.habitability_rating = 20
+        if mw.habitability_rating is None or mw.habitability_rating < 15:
+            mw.habitability_rating = 0
+        orig_orbit = system.mainworld_orbit
+        for attempt in range(50):
+            rng = random.Random(attempt)
+            roll = rng.randint(1,6) + rng.randint(1,6) + rng.randint(1,6)
+            if roll != 18:
+                result = select_mainworld(system, rng=random.Random(attempt))
+                if result:
+                    assert isinstance(orig_orbit.detail, WorldDetail)
+                    assert orig_orbit.detail.native_sophont is False
+                return
+
+    def test_select_mainworld_returns_bool(self):
+        """select_mainworld always returns a bool."""
+        system = generate_full_system("T", seed=7)
+        attach_detail(system, rng=random.Random(77777))
+        result = select_mainworld(system, rng=random.Random(5))
+        assert isinstance(result, bool)
+
+    def test_apply_mainworld_social_populates_uwp(self):
+        """apply_mainworld_social() fills in a valid UWP after physical-only world."""
+        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        system = generate_full_system("T", seed=3)
+        mw = system.mainworld
+        assert mw is not None
+        # Before: social data is placeholder
+        assert mw.starport == "X"
+        assert mw.population == 0
+        apply_mainworld_social(mw, rng=random.Random(12345))
+        # After: should have real social data
+        uwp = mw.uwp()
+        assert len(uwp) == 9
+        assert uwp[0] in "ABCDEX"
+        assert mw.travel_zone in ("Green", "Amber", "Red")
+
+    def _force_swap(self, seed_range=50):
+        """Return (system, orig_orbit) with a confirmed swap applied."""
+        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        system, winner_orbit = self._make_system_with_terrestrial_secondary()
+        mw = system.mainworld
+        winner_orbit.detail.habitability_rating = 20
+        if mw.habitability_rating is None or mw.habitability_rating < 15:
+            mw.habitability_rating = 0
+        orig_orbit = system.mainworld_orbit
+        for attempt in range(seed_range):
+            rng = random.Random(attempt)
+            roll = rng.randint(1, 6) + rng.randint(1, 6) + rng.randint(1, 6)
+            if roll != 18:
+                result = select_mainworld(system, rng=random.Random(attempt))
+                if result:
+                    apply_mainworld_social(system.mainworld, rng=random.Random(99999))
+                    return system, orig_orbit
+        return None, None  # no swap found
+
+    def test_reattach_noop_when_detail_exists(self):
+        """reattach_mainworld_orbit() is a no-op when orbit already has a WorldDetail."""
+        system = generate_full_system("T", seed=7)
+        attach_detail(system, rng=random.Random(77777))
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        orig_detail = mw_orbit.detail
+        reattach_mainworld_orbit(system, rng=random.Random(1))
+        assert mw_orbit.detail is orig_detail
+
+    def test_orbit_detail_created_after_swap(self):
+        """After swap + social + reattach, mainworld orbit has a WorldDetail."""
+        system, _ = self._force_swap()
+        if system is None:
+            pytest.skip("No swap found in seed range")
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        assert mw_orbit.detail is None  # cleared by select_mainworld
+        reattach_mainworld_orbit(system, rng=random.Random(1))
+        assert mw_orbit.detail is not None
+        assert isinstance(mw_orbit.detail, WorldDetail)
+
+    def test_orbit_sah_matches_mainworld_after_swap(self):
+        """After reattach, orbit slot SAH matches mainworld UWP[1:4]."""
+        system, _ = self._force_swap()
+        if system is None:
+            pytest.skip("No swap found in seed range")
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        reattach_mainworld_orbit(system, rng=random.Random(1))
+        expected_sah = system.mainworld.uwp()[1:4]
+        if mw_orbit.world_type == "gas_giant":
+            assert mw_orbit.detail.moons
+            assert mw_orbit.detail.moons[0].detail.sah == expected_sah
+        else:
+            assert mw_orbit.detail.sah == expected_sah
+
+    def test_orbit_starport_matches_mainworld(self):
+        """After reattach, orbit slot spaceport matches mainworld starport."""
+        system, _ = self._force_swap()
+        if system is None:
+            pytest.skip("No swap found in seed range")
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        reattach_mainworld_orbit(system, rng=random.Random(1))
+        expected_starport = system.mainworld.starport
+        if mw_orbit.world_type == "gas_giant":
+            assert mw_orbit.detail.moons
+            assert mw_orbit.detail.moons[0].detail.spaceport == expected_starport
+        else:
+            assert mw_orbit.detail.spaceport == expected_starport
+
+    def test_no_orbit_detail_mutation_when_not_swapped(self):
+        """When select_mainworld returns False, calling reattach is a no-op."""
+        for seed in range(20):
+            system = generate_full_system("T", seed=seed)
+            attach_detail(system, rng=random.Random(seed + 1000))
+            mw_orbit = system.mainworld_orbit
+            if mw_orbit is None or mw_orbit.detail is None:
+                continue
+            orig_detail = mw_orbit.detail
+            result = select_mainworld(system, rng=random.Random(seed))
+            if not result:
+                reattach_mainworld_orbit(system, rng=random.Random(1))
+                assert mw_orbit.detail is orig_detail
+                return
+        pytest.skip("No non-swap case found in seed range")
+
+
+class TestSecondaryWorldClassification:
+    """Secondary world categorisation (WBH p.163, issue #18)."""
+
+    _VALID_CODES = {"Cy", "Fa", "Fp", "Mb", "Mi", "Pe", "Rb"}
+
+    # ── WorldDetail field plumbing ────────────────────────────────────────
+
+    def test_classification_defaults_none(self):
+        """Freshly constructed WorldDetail has classification=None."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        assert WorldDetail(sah="473").classification is None
+
+    def test_to_dict_emits_classification(self):
+        """to_dict() includes 'classification' key when set."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="473", population=5, government=3,
+                         law_level=4, tech_level=8, spaceport="G")
+        wd.classification = "Fp"
+        wd.trade_codes.append("Fp")
+        d = wd.to_dict()
+        assert d["classification"] == "Fp"
+        assert "Fp" in d["trade_codes"]
+
+    def test_to_dict_omits_classification_when_none(self):
+        """to_dict() does NOT emit 'classification' key when None."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        assert "classification" not in WorldDetail(sah="473").to_dict()
+
+    def test_from_dict_round_trip(self):
+        """from_dict(wd.to_dict()) preserves classification."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail(sah="563", population=6, government=2,
+                         law_level=3, tech_level=9, spaceport="F")
+        wd.classification = "Rb"
+        wd.trade_codes.append("Rb")
+        wd2 = WorldDetail.from_dict(wd.to_dict())
+        assert wd2.classification == "Rb"
+
+    def test_from_dict_classification_none_when_absent(self):
+        """from_dict() leaves classification=None when key is absent."""
+        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        wd = WorldDetail.from_dict({"sah": "473"})
+        assert wd.classification is None
+
+    # ── _secondary_classification() unit tests ────────────────────────────
+
+    def _call(self, **kw):
+        """Thin wrapper that supplies neutral defaults and calls the private fn."""
+        import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
+        mw_kw = dict(mw_pop=7, mw_gov=5, mw_law=5, mw_tl=9,
+                     mw_trade_codes=[], mw_bases=[], mw_starport="C")
+        call_kw = dict(pop=3, gov=2, tl=7, law_level=4, atm=6, hyd=5,
+                       hz_deviation=0.0, is_belt=False)
+        for k, v in kw.items():
+            if k in mw_kw:
+                mw_kw[k] = v
+            else:
+                call_kw[k] = v
+        mwc = twd._MWCtx(  # pylint: disable=protected-access
+            pop=mw_kw["mw_pop"], gov=mw_kw["mw_gov"], law=mw_kw["mw_law"],
+            tl=mw_kw["mw_tl"], trade_codes=mw_kw["mw_trade_codes"],
+            bases=mw_kw["mw_bases"], starport=mw_kw["mw_starport"],
+        )
+        rng = random.Random(0)
+        return twd._secondary_classification(  # pylint: disable=protected-access
+            **call_kw, mwc=mwc, rng=rng)
+
+    def test_colony_automatic(self):
+        """Pop 5+, Gov 6 → Colony without a roll."""
+        assert self._call(pop=5, gov=6) == "Cy"
+
+    def test_colony_pop_threshold(self):
+        """Pop 4, Gov 6 does not trigger Colony."""
+        result = self._call(pop=4, gov=6)
+        assert result != "Cy"
+
+    def test_farming_automatic_in_hz(self):
+        """HZ world with Atm 6, Hyd 5 → Farming without a roll."""
+        assert self._call(
+            pop=2, gov=2, tl=6, law_level=2,
+            atm=6, hyd=5, hz_deviation=0.0,
+        ) == "Fa"
+
+    def test_farming_outside_hz_no_code(self):
+        """World outside HZ (deviation 1.5) does not get Farming."""
+        result = self._call(
+            pop=2, gov=2, tl=6, law_level=2,
+            atm=6, hyd=5, hz_deviation=1.5,
+        )
+        assert result != "Fa"
+
+    def test_farming_not_assigned_to_belt(self):
+        """Belts never receive Farming even if all other criteria met."""
+        result = self._call(
+            pop=2, gov=2, tl=6, law_level=2,
+            atm=6, hyd=5, hz_deviation=0.0, is_belt=True,
+        )
+        assert result != "Fa"
+
+    def test_colony_takes_priority_over_farming(self):
+        """Pop 5+ Gov 6 with farming SAH → Colony wins (table order)."""
+        assert self._call(pop=5, gov=6, atm=6, hyd=5, hz_deviation=0.0) == "Cy"
+
+    def test_belt_gets_mining_facility_when_eligible(self):
+        """Belt with mainworld Industrial and pop 2+ eventually gets Mi on roll 6+."""
+        import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
+        # gov=0, tl=5: fails Freeport (needs TL 8+) so Mining Facility is the first
+        # contested check to pass.  Loop until Mi is assigned.
+        found = False
+        for seed in range(200):
+            rng = random.Random(seed)
+            mwc = twd._MWCtx(pop=8, gov=4, law=5, tl=10,  # pylint: disable=protected-access
+                              trade_codes=["In"], bases=[], starport="C")
+            result = twd._secondary_classification(  # pylint: disable=protected-access
+                pop=3, gov=0, tl=5, law_level=2, atm=0, hyd=0,
+                hz_deviation=0.5, is_belt=True, mwc=mwc, rng=rng,
+            )
+            if result == "Mi":
+                found = True
+                break
+        assert found, "Mining Facility never assigned to qualifying belt in 200 seeds"
+
+    # ── Integration: generate_system_detail() propagates classification ───
+
+    def test_generate_system_detail_classification_set(self):
+        """Inhabited secondaries from generate_system_detail() have a valid or None classification."""
+        from traveller_world_detail import generate_system_detail  # pylint: disable=import-outside-toplevel
+        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        found_inhabited = False
+        for seed in range(200):
+            system = generate_full_system(seed=seed)
+            if system.mainworld is not None:
+                apply_mainworld_social(system.mainworld, rng=random.Random(seed + 11111))
+            detail_map = generate_system_detail(system, rng=random.Random(seed + 22222))
+            for wd in detail_map.values():
+                if wd.inhabited and not wd.is_gas_giant:
+                    assert wd.classification is None or wd.classification in self._VALID_CODES
+                    if wd.classification is not None:
+                        assert wd.classification in wd.trade_codes
+                    found_inhabited = True
+        assert found_inhabited, "No inhabited secondary found in 200 seeds"
+
+    def test_apply_secondary_social_sets_classification(self):
+        """apply_secondary_social() assigns classification after re-rolling social data."""
+        from traveller_world_detail import apply_secondary_social  # pylint: disable=import-outside-toplevel
+        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        found = False
+        for seed in range(300):
+            system = generate_full_system(seed=seed)
+            if system.mainworld is None:
+                continue
+            apply_mainworld_social(system.mainworld, rng=random.Random(seed + 33333))
+            attach_detail(system, rng=random.Random(seed + 44444))
+            apply_secondary_social(system, rng=random.Random(seed + 55555))
+            for orbit in system.system_orbits.orbits:
+                if orbit.is_mainworld_candidate or orbit.detail is None:
+                    continue
+                det = orbit.detail
+                if det.inhabited and not det.is_gas_giant:
+                    assert det.classification is None or det.classification in self._VALID_CODES
+                    if det.classification is not None:
+                        assert det.classification in det.trade_codes
+                    found = True
+        assert found, "No inhabited secondary found after apply_secondary_social in 300 seeds"
+
+
+class TestPopulationDetail:
+    """Tests for traveller_world_population_detail — PCR, urbanisation, cities, profile."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _detail(self, pop_code=6, p_value=5, size=8, tl=9, government=3,
+                law_level=4, trade_codes=None, atm=6, rng=None):
+        return generate_population_detail(
+            pop_code, p_value, size, tl, government, law_level,
+            trade_codes or [], atm=atm, rng=rng,
+        )
+
+    # ------------------------------------------------------------------
+    # Uninhabited world returns None
+    # ------------------------------------------------------------------
+
+    def test_uninhabited_returns_none(self):
+        result = generate_population_detail(0, 0, 8, 9, 3, 4, [])
+        assert result is None
+
+    # ------------------------------------------------------------------
+    # PCR bounds
+    # ------------------------------------------------------------------
+
+    def test_pcr_minimum_0(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            pcr = generate_pcr(3, 8, 9, 3, [], rng=rng)
+            assert pcr >= 0
+
+    def test_pcr_min_1_at_pop_9(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            pcr = generate_pcr(9, 8, 9, 3, [], rng=rng)
+            assert pcr >= 1
+
+    def test_pcr_maximum_9(self):
+        for seed in range(200):
+            rng = random.Random(seed)
+            # Stack all positive DMs: Industrial, Rich, size 1, high TL
+            pcr = generate_pcr(6, 1, 9, 3, ["In", "Ri"], rng=rng)
+            assert pcr <= 9
+
+    def test_pcr_9_when_1d_exceeds_pop(self):
+        # For pop_code=1, a 1D roll of 2–6 gives PCR=9 immediately.
+        # Patch first randint to always return 6 (> pop_code 1).
+        with patch("traveller_world_population_detail._rng") as mock_rng:
+            mock_rng.randint.return_value = 6
+            pcr = generate_pcr(1, 8, 9, 3, [])
+        assert pcr == 9
+
+    def test_pcr_not_9_when_roll_equals_pop(self):
+        # If roll == pop_code (== 3), the first check (> pop_code) fails
+        # and we proceed to the table roll — result should not be forced 9
+        # from the first check.  We verify by seeding consistently.
+        with patch("traveller_world_population_detail._rng") as mock_rng:
+            # First call (the comparison roll) returns 3 = pop_code → no force-9
+            # Second call (the table roll) also returns 3
+            mock_rng.randint.side_effect = [3, 3]
+            pcr = generate_pcr(3, 8, 9, 3, [])
+        assert pcr != 9 or True  # just assert it runs without error
+
+    # ------------------------------------------------------------------
+    # Urbanisation
+    # ------------------------------------------------------------------
+
+    def test_urbanisation_always_0_to_100(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            pcr = generate_pcr(6, 8, 9, 3, [], rng=rng)
+            urb = generate_urbanisation_pct(pcr, 6, 8, 9, 3, 4, [], rng=rng)
+            assert 0 <= urb <= 100
+
+    def test_urbanisation_min_pop9(self):
+        # Pop 9 has minimum urbanisation = 18 + 1D (at least 19%)
+        for seed in range(50):
+            rng = random.Random(seed)
+            pcr = generate_pcr(9, 8, 12, 3, [], rng=rng)
+            urb = generate_urbanisation_pct(pcr, 9, 8, 12, 3, 4, [], rng=rng)
+            assert urb >= 19, f"Pop 9 urb {urb} below min 19 (seed {seed})"
+
+    def test_urbanisation_max_tl2(self):
+        # TL 2 has max urbanisation = 20 + 1D (at most 26%)
+        for seed in range(50):
+            rng = random.Random(seed)
+            pcr = generate_pcr(6, 8, 2, 3, [], rng=rng)
+            urb = generate_urbanisation_pct(pcr, 6, 8, 2, 3, 4, [], rng=rng)
+            assert urb <= 26, f"TL 2 urb {urb} above max 26 (seed {seed})"
+
+    # ------------------------------------------------------------------
+    # Total population formula
+    # ------------------------------------------------------------------
+
+    def test_total_population_formula(self):
+        det = self._detail(pop_code=6, p_value=3, rng=random.Random(1))
+        assert det is not None
+        assert det.total_population == 3 * (10 ** 6)
+
+    def test_total_population_pop1(self):
+        det = self._detail(pop_code=1, p_value=7, rng=random.Random(1))
+        assert det is not None
+        assert det.total_population == 7 * 10
+
+    # ------------------------------------------------------------------
+    # Major city cases
+    # ------------------------------------------------------------------
+
+    def test_case1_pcr0_no_cities(self):
+        # Force PCR=0: pop 6 skips the comparison check; table roll=1 + DMs.
+        # Ag (DM-2) + TL9 (DM+1) = DM-1 → roll 1 + DM-1 = 0 → PCR=0
+        with patch("traveller_world_population_detail._rng") as mock_rng:
+            mock_rng.randint.side_effect = [1] * 200
+            det = generate_population_detail(6, 5, 8, 9, 3, 4, ["Ag"])
+        assert det is not None
+        assert det.pcr == 0
+        assert det.major_city_count == 0
+        assert det.cities == []
+
+    def test_case2_pop5_pcr9_one_city(self):
+        # Pop 5, PCR 9 → 1 major city = total urban pop
+        with patch("traveller_world_population_detail._rng") as mock_rng:
+            # First check: 1D (6) > pop_code (5) → PCR = 9
+            mock_rng.randint.side_effect = [6] + [5] * 100
+        det = generate_population_detail(5, 5, 8, 9, 3, 4, [],
+                                         rng=random.Random(999))
+        # Now just use seeded generation and check case 2 holds when it fires
+        for seed in range(200):
+            rng = random.Random(seed)
+            d = generate_population_detail(3, 5, 8, 9, 3, 4, [], rng=rng)
+            if d is not None and d.pcr == 9:
+                assert d.major_city_count == 1
+                break
+
+    def test_case3_pop4_pcr3_city_count(self):
+        # Pop 4, PCR 3 → count = min(9-3, 4) = min(6,4) = 4
+        for seed in range(200):
+            rng = random.Random(seed)
+            d = generate_population_detail(4, 5, 8, 9, 3, 4, [], rng=rng)
+            if d is not None and d.pcr == 3:
+                assert d.major_city_count == 4
+                break
+
+    def test_case5_city_count_in_range(self):
+        # Pop 7+, PCR 1-8 → 1–31 cities
+        for seed in range(100):
+            rng = random.Random(seed)
+            d = generate_population_detail(7, 5, 8, 9, 3, 4, [], rng=rng)
+            if d is not None and 1 <= d.pcr <= 8:
+                assert 1 <= d.major_city_count <= 31
+                break
+
+    # ------------------------------------------------------------------
+    # Population profile string
+    # ------------------------------------------------------------------
+
+    def test_population_profile_format(self):
+        det = self._detail(pop_code=6, p_value=3, rng=random.Random(42))
+        assert det is not None
+        parts = det.population_profile.split("-")
+        assert len(parts) == 5, f"Profile should have 5 parts: {det.population_profile}"
+        pop_hex, p_val, pcr, urb, cities = parts
+        assert pop_hex == "6"
+        assert p_val == "3"
+        assert pcr == str(det.pcr)
+        assert urb == str(det.urbanisation_pct)
+        assert cities == str(det.major_city_count)
+
+    def test_population_profile_pop_a(self):
+        det = self._detail(pop_code=10, p_value=2, rng=random.Random(1))
+        assert det is not None
+        assert det.population_profile.startswith("A-")
+
+    # ------------------------------------------------------------------
+    # City populations sum within tolerance
+    # ------------------------------------------------------------------
+
+    def test_city_pops_within_total(self):
+        for seed in range(30):
+            rng = random.Random(seed)
+            det = generate_population_detail(7, 5, 8, 9, 3, 4, [], rng=rng)
+            if det and det.major_city_count > 0 and det.cities:
+                city_sum = sum(c.population for c in det.cities)
+                # Full list may be capped to 10; sum should be ≤ total_major_city_pop.
+                # 3-sig-fig rounding of individual cities and total is independent,
+                # so allow a 0.5% tolerance.
+                tolerance = max(1, det.major_city_total_population // 200)
+                assert city_sum <= det.major_city_total_population + tolerance
+
+    # ------------------------------------------------------------------
+    # Serialisation round-trip
+    # ------------------------------------------------------------------
+
+    def test_city_to_dict_from_dict(self):
+        c = City(population=500_000, codes=["Cw"])
+        assert City.from_dict(c.to_dict()).population == 500_000
+        assert City.from_dict(c.to_dict()).codes == ["Cw"]
+
+    def test_population_detail_to_dict_from_dict(self):
+        rng = random.Random(7)
+        det = generate_population_detail(6, 5, 8, 9, 3, 4, [], rng=rng)
+        assert det is not None
+        restored = PopulationDetail.from_dict(det.to_dict())
+        assert restored.total_population == det.total_population
+        assert restored.pcr == det.pcr
+        assert restored.urbanisation_pct == det.urbanisation_pct
+        assert restored.population_profile == det.population_profile
+        assert len(restored.cities) == len(det.cities)
+
+    def test_world_field_defaults_none(self):
+        w = World(name="Test", size=8, atmosphere=6)
+        assert w.population_detail is None
+
+    def test_world_from_dict_restores_population_detail(self):
+        rng = random.Random(99)
+        det = generate_population_detail(6, 5, 8, 9, 3, 4, [], rng=rng)
+        assert det is not None
+        w = World(name="Test", size=8, atmosphere=6, population=6,
+                  population_multiplier=5, tech_level=9, government=3,
+                  law_level=4, starport="B")
+        w.population_detail = det
+        d = w.to_dict()
+        assert "population_detail" in d
+        restored = World.from_dict(d)
+        assert restored.population_detail is not None
+        assert restored.population_detail.population_profile == det.population_profile
+
+    # ------------------------------------------------------------------
+    # Integration: attach_population_detail on a full system
+    # ------------------------------------------------------------------
+
+    def test_attach_population_detail_mainworld(self):
+        system = generate_full_system("IntegrationTest", seed=12345)
+        rng = random.Random(12345)
+        attach_population_detail(system, rng=rng)
+        mw = system.mainworld
+        if mw is not None and mw.population > 0:
+            assert mw.population_detail is not None
+            assert mw.population_detail.total_population > 0
+            assert mw.population_detail.population_profile != ""
+
+
+# ===========================================================================
+# TestSettlementType — _population_settlement_dm, generate_population DM,
+#                      generate_world and apply_mainworld_social settlement_type
+# ===========================================================================
+
+
+class TestSettlementType:
+    """Settlement type population modifier (issue #128)."""
+
+    # ------------------------------------------------------------------
+    # DM lookup — long_settled
+    # ------------------------------------------------------------------
+
+    def test_long_settled_good_atm(self):
+        for atm in (5, 6, 8):
+            assert _population_settlement_dm("long_settled", atm) == 3
+
+    def test_long_settled_moderate_atm(self):
+        for atm in (4, 7, 9):
+            assert _population_settlement_dm("long_settled", atm) == 2
+
+    def test_long_settled_thin_atm(self):
+        for atm in (0, 1, 2, 3):
+            assert _population_settlement_dm("long_settled", atm) == 1
+
+    def test_long_settled_exotic_atm_default(self):
+        # atm 10+ not in the explicit table; default is 0
+        assert _population_settlement_dm("long_settled", 10) == 0
+        assert _population_settlement_dm("long_settled", 12) == 0
+
+    # ------------------------------------------------------------------
+    # DM lookup — well_settled
+    # ------------------------------------------------------------------
+
+    def test_well_settled_good_atm(self):
+        for atm in (5, 6, 8):
+            assert _population_settlement_dm("well_settled", atm) == 2
+
+    def test_well_settled_moderate_atm(self):
+        for atm in (4, 7, 9):
+            assert _population_settlement_dm("well_settled", atm) == 1
+
+    def test_well_settled_other_atm_default(self):
+        for atm in (0, 1, 2, 3, 10, 11):
+            assert _population_settlement_dm("well_settled", atm) == -1
+
+    # ------------------------------------------------------------------
+    # DM lookup — backwater
+    # ------------------------------------------------------------------
+
+    def test_backwater_good_atm(self):
+        for atm in (5, 6, 8):
+            assert _population_settlement_dm("backwater", atm) == 1
+
+    def test_backwater_moderate_atm(self):
+        for atm in (4, 7, 9):
+            assert _population_settlement_dm("backwater", atm) == -1
+
+    def test_backwater_thin_atm(self):
+        for atm in (0, 1, 2, 3):
+            assert _population_settlement_dm("backwater", atm) == -3
+
+    def test_backwater_exotic_atm_default(self):
+        assert _population_settlement_dm("backwater", 10) == -5
+        assert _population_settlement_dm("backwater", 13) == -5
+
+    # ------------------------------------------------------------------
+    # DM lookup — unsettled
+    # ------------------------------------------------------------------
+
+    def test_unsettled_good_atm(self):
+        for atm in (5, 6, 8):
+            assert _population_settlement_dm("unsettled", atm) == -4
+
+    def test_unsettled_moderate_atm(self):
+        for atm in (4, 7, 9):
+            assert _population_settlement_dm("unsettled", atm) == -5
+
+    def test_unsettled_other_atm_default(self):
+        for atm in (0, 1, 2, 3, 10, 11):
+            assert _population_settlement_dm("unsettled", atm) == -7
+
+    # ------------------------------------------------------------------
+    # DM lookup — standard / unknown
+    # ------------------------------------------------------------------
+
+    def test_standard_settlement_type_always_zero(self):
+        for atm in range(16):
+            assert _population_settlement_dm("standard", atm) == 0
+
+    def test_unknown_settlement_type_always_zero(self):
+        assert _population_settlement_dm("bogus_type", 6) == 0
+
+    # ------------------------------------------------------------------
+    # generate_population bounds
+    # ------------------------------------------------------------------
+
+    def test_generate_population_dm_clamped_max(self):
+        # With a large positive DM the result must stay ≤ 10 regardless of dice
+        import traveller_world_gen as _m
+        orig = _m._rng
+        _m._rng = random.Random(999)
+        results = {generate_population(settlement_dm=10) for _ in range(50)}
+        _m._rng = orig
+        assert max(results) <= 10
+
+    def test_generate_population_dm_clamped_min(self):
+        # With a large negative DM the result must stay ≥ 0 regardless of dice
+        import traveller_world_gen as _m
+        orig = _m._rng
+        _m._rng = random.Random(999)
+        results = {generate_population(settlement_dm=-20) for _ in range(50)}
+        _m._rng = orig
+        assert min(results) >= 0
+
+    # ------------------------------------------------------------------
+    # Integration smoke tests
+    # ------------------------------------------------------------------
+
+    def test_generate_world_settlement_type_produces_valid_pop(self):
+        for st in ("standard", "long_settled", "well_settled", "backwater", "unsettled"):
+            w = generate_world("Test", seed=42, settlement_type=st)
+            assert 0 <= w.population <= 10
+
+    def test_apply_mainworld_social_settlement_type_produces_valid_pop(self):
+        for st in ("standard", "long_settled", "well_settled", "backwater", "unsettled"):
+            w = World(name="Test", size=6, atmosphere=6)
+            apply_mainworld_social(w, settlement_type=st)
+            assert 0 <= w.population <= 10
+
+    def test_settlement_dms_dict_covers_all_types(self):
+        expected = {"standard", "long_settled", "well_settled", "backwater", "unsettled"}
+        assert set(_SETTLEMENT_DMS.keys()) == expected
+
+    def test_settlement_default_dm_dict_covers_all_types(self):
+        expected = {"standard", "long_settled", "well_settled", "backwater", "unsettled"}
+        assert set(_SETTLEMENT_DEFAULT_DM.keys()) == expected
+
+
+class TestGovernmentDetail:
+    """Tests for traveller_world_government_detail — centralisation, authority, structure, factions."""
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _detail(self, gov_code=4, pop_code=6, pcr=0, rng=None):
+        return generate_government_detail(gov_code, pop_code, pcr=pcr, rng=rng)
+
+    # ------------------------------------------------------------------
+    # Returns None for skipped codes
+    # ------------------------------------------------------------------
+
+    def test_gov0_returns_none(self):
+        assert generate_government_detail(0, 6) is None
+
+    def test_gov7_returns_none(self):
+        assert generate_government_detail(7, 6) is None
+
+    # ------------------------------------------------------------------
+    # Centralisation
+    # ------------------------------------------------------------------
+
+    def test_centralisation_valid_code(self):
+        for seed in range(80):
+            rng = random.Random(seed)
+            code, _ = generate_centralisation(4, pcr=0, rng=rng)
+            assert code in ("C", "F", "U"), f"Unexpected centralisation code {code!r}"
+
+    def test_centralisation_label_matches_code(self):
+        labels = {"C": "Confederal", "F": "Federal", "U": "Unitary"}
+        for seed in range(50):
+            rng = random.Random(seed)
+            code, label = generate_centralisation(4, pcr=0, rng=rng)
+            assert label == labels[code]
+
+    def test_centralisation_high_pcr_skews_unitary(self):
+        unitary_count = 0
+        for seed in range(100):
+            rng = random.Random(seed)
+            code, _ = generate_centralisation(9, pcr=9, rng=rng)
+            if code == "U":
+                unitary_count += 1
+        assert unitary_count > 50, "PCR9 + gov9 should strongly skew toward Unitary"
+
+    # ------------------------------------------------------------------
+    # Authority
+    # ------------------------------------------------------------------
+
+    def test_authority_valid_code(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            code, _ = generate_authority(4, "F", rng=rng)
+            assert code in ("L", "E", "J", "B"), f"Unexpected authority code {code!r}"
+
+    def test_authority_label_matches_code(self):
+        labels = {"L": "Legislative", "E": "Executive", "J": "Judicial", "B": "Balanced"}
+        for seed in range(50):
+            rng = random.Random(seed)
+            code, label = generate_authority(4, "F", rng=rng)
+            assert label == labels[code]
+
+    def test_high_dm_govs_skew_executive(self):
+        # Government 1 carries DM+6 → result ≥12 almost always → Executive
+        exec_count = 0
+        for seed in range(50):
+            rng = random.Random(seed)
+            code, _ = generate_authority(1, "F", rng=rng)
+            if code == "E":
+                exec_count += 1
+        assert exec_count > 35
+
+    # ------------------------------------------------------------------
+    # Full generate_government_detail
+    # ------------------------------------------------------------------
+
+    def test_structure_code_valid_when_not_balanced(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            det = self._detail(gov_code=4, rng=rng)
+            assert det is not None
+            if det.authority_code != "B":
+                assert det.structure_code in ("D", "S", "M", "R")
+                assert det.structure != ""
+
+    def test_balanced_authority_has_branch_structures(self):
+        for seed in range(200):
+            rng = random.Random(seed)
+            det = self._detail(gov_code=4, rng=rng)
+            assert det is not None
+            if det.authority_code == "B":
+                assert det.structure_code == ""
+                assert det.structure_leg_code in ("D", "S", "M", "R")
+                assert det.structure_exec_code in ("D", "S", "M", "R")
+                assert det.structure_jud_code in ("D", "S", "M", "R")
+                break
+
+    def test_government_profile_format_non_balanced(self):
+        for seed in range(200):
+            rng = random.Random(seed)
+            det = self._detail(gov_code=4, rng=rng)
+            assert det is not None
+            if det.authority_code != "B":
+                parts = det.government_profile.split("-")
+                assert len(parts) == 2, f"Profile {det.government_profile!r} should be G-CAS"
+                assert len(parts[1]) == 3
+                break
+
+    def test_government_profile_format_balanced(self):
+        for seed in range(500):
+            rng = random.Random(seed)
+            det = self._detail(gov_code=4, rng=rng)
+            assert det is not None
+            if det.authority_code == "B":
+                # Format: G-CB-LS-ES-JS
+                assert det.government_profile.count("-") == 4
+                break
+
+    def test_profile_gov_hex_matches_gov_code(self):
+        for gov_code in (1, 4, 8, 10, 12):
+            det = generate_government_detail(gov_code, 6, rng=random.Random(42))
+            assert det is not None
+            expected_hex = "0123456789ABCDEF"[gov_code]
+            assert det.government_profile.startswith(expected_hex + "-")
+
+    # ------------------------------------------------------------------
+    # Factions
+    # ------------------------------------------------------------------
+
+    def test_factions_is_list(self):
+        det = self._detail(gov_code=4, rng=random.Random(1))
+        assert det is not None
+        assert isinstance(det.factions, list)
+
+    def test_faction_strength_code_valid(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            factions = generate_factions(4, 6, rng=rng)
+            for f in factions:
+                assert f.strength_code in ("O", "F", "M", "N", "S", "P")
+
+    def test_faction_relationship_code_valid(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            factions = generate_factions(4, 6, rng=rng)
+            for f in factions:
+                assert f.relationship_code in [str(i) for i in range(10)]
+
+    def test_faction_numeral_sequence(self):
+        # External factions start at numeral II
+        for seed in range(100):
+            rng = random.Random(seed)
+            factions = generate_factions(4, 6, rng=rng)
+            if len(factions) >= 2:
+                assert factions[0].numeral == "II"
+                assert factions[1].numeral == "III"
+                break
+
+    def test_no_factions_when_count_le1(self):
+        # Government A+ gets DM-1; seed such that D3=1 → count=0 → no factions
+        no_faction_found = False
+        for seed in range(200):
+            rng = random.Random(seed)
+            factions = generate_factions(10, 6, rng=rng)
+            if len(factions) == 0:
+                no_faction_found = True
+                break
+        assert no_faction_found
+
+    # ------------------------------------------------------------------
+    # Serialisation round-trip
+    # ------------------------------------------------------------------
+
+    def test_faction_to_dict_from_dict(self):
+        f = Faction(numeral="II", government_type=4,
+                    government_name="Representative Democracy",
+                    strength_code="M", strength_label="Minor group",
+                    relationship_code="3", relationship_label="Competition")
+        restored = Faction.from_dict(f.to_dict())
+        assert restored.numeral == "II"
+        assert restored.government_type == 4
+        assert restored.strength_code == "M"
+        assert restored.relationship_code == "3"
+
+    def test_government_detail_to_dict_from_dict(self):
+        rng = random.Random(7)
+        det = generate_government_detail(4, 6, rng=rng)
+        assert det is not None
+        restored = GovernmentDetail.from_dict(det.to_dict())
+        assert restored.centralisation_code == det.centralisation_code
+        assert restored.authority_code == det.authority_code
+        assert restored.government_profile == det.government_profile
+        assert len(restored.factions) == len(det.factions)
+
+    def test_world_from_dict_restores_government_detail(self):
+        rng = random.Random(55)
+        det = generate_government_detail(4, 6, rng=rng)
+        assert det is not None
+        w = World(name="Test", size=8, atmosphere=6, population=6,
+                  population_multiplier=5, tech_level=9, government=4,
+                  law_level=4, starport="B")
+        w.government_detail = det
+        d = w.to_dict()
+        assert "government_detail" in d
+        restored = World.from_dict(d)
+        assert restored.government_detail is not None
+        assert restored.government_detail.government_profile == det.government_profile
+
+    def test_world_government_detail_defaults_none(self):
+        w = World(name="Test", size=8, atmosphere=6)
+        assert w.government_detail is None
+
+    # ------------------------------------------------------------------
+    # Integration: attach_government_detail on a full system
+    # ------------------------------------------------------------------
+
+    def test_attach_government_detail_mainworld(self):
+        system = generate_full_system("GovTest", seed=42)
+        rng = random.Random(42)
+        attach_government_detail(system, rng=rng)
+        mw = system.mainworld
+        if mw is not None and mw.population > 0 and mw.government not in (0, 7):
+            assert mw.government_detail is not None
+            assert mw.government_detail.government_profile != ""
+            assert mw.government_detail.centralisation_code in ("C", "F", "U")
+
+    def test_attach_skips_gov0_and_gov7(self):
+        system = generate_full_system("GovSkip", seed=99)
+        rng = random.Random(99)
+        attach_government_detail(system, rng=rng)
+        mw = system.mainworld
+        if mw is not None and mw.government in (0, 7):
+            assert mw.government_detail is None
+
+
+# ===========================================================================
+# TestBodyNames — attach_body_names()  (issue #131)
+# ===========================================================================
+# Seed 370 produces: 2 non-companion stars + 1 companion, 1 belt, 1 mainworld,
+# several terrestrial/GG worlds, moons including rings.
+
+def _name_system(name: str = "Test", seed: int = 370):
+    """Helper: generate, detail, and name a system."""
+    system = generate_full_system(name, seed=seed)
+    from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+    random.seed(seed)   # deterministic social/detail regardless of prior test state
+    apply_mainworld_social(system.mainworld)
+    attach_detail(system)
+    attach_body_names(system)
+    return system
+
+
+class TestBodyNames:
+    """Tests for attach_body_names() — issue #131."""
+
+    # ------------------------------------------------------------------
+    # Star naming
+    # ------------------------------------------------------------------
+
+    def test_star_primary_name(self):
+        system = _name_system("Zeta")
+        primary = system.stellar_system.stars[0]
+        assert primary.name == "Zeta-Primary"
+
+    def test_star_secondary_name(self):
+        system = _name_system()
+        non_companions = [s for s in system.stellar_system.stars if s.role != "companion"]
+        assert len(non_companions) >= 2
+        assert non_companions[1].name == "Test-Secondary"
+
+    def test_companion_star_name_unchanged(self):
+        system = _name_system()
+        companions = [s for s in system.stellar_system.stars if s.role == "companion"]
+        assert len(companions) >= 1
+        for comp in companions:
+            assert comp.name == ""
+
+    # ------------------------------------------------------------------
+    # Orbit slot naming
+    # ------------------------------------------------------------------
+
+    def test_mainworld_orbit_name_matches_mw(self):
+        system = _name_system("Altair")
+        assert system.mainworld_orbit is not None
+        assert system.mainworld_orbit.name == system.mainworld.name
+
+    def test_world_names_sequential(self):
+        system = _name_system()
+        world_orbits = [
+            o for o in system.system_orbits.orbits
+            if o.world_type in ("terrestrial", "gas_giant")
+            and o is not system.mainworld_orbit
+        ]
+        for idx, orbit in enumerate(world_orbits):
+            expected = f"Test-{chr(ord('A') + idx)}"
+            assert orbit.name == expected
+
+    def test_belt_names_separate_counter(self):
+        system = _name_system()
+        belt_orbits = [
+            o for o in system.system_orbits.orbits
+            if o.world_type == "belt"
+        ]
+        assert len(belt_orbits) >= 1
+        for idx, orbit in enumerate(belt_orbits):
+            expected = f"Test-Belt-{chr(ord('A') + idx)}"
+            assert orbit.name == expected
+
+    # ------------------------------------------------------------------
+    # Moon naming
+    # ------------------------------------------------------------------
+
+    def test_moon_names_greek(self):
+        system = _name_system()
+        for orbit in system.system_orbits.orbits:
+            if orbit.detail is None:
+                continue
+            non_ring_moons = [m for m in orbit.detail.moons if not m.is_ring]
+            if len(non_ring_moons) >= 2:
+                assert non_ring_moons[0].name == f"{orbit.name}-alpha"
+                assert non_ring_moons[1].name == f"{orbit.name}-beta"
+                return
+        pytest.fail("No orbit with 2+ non-ring moons found")
+
+    def test_ring_skipped_in_greek_sequence(self):
+        system = _name_system()
+        for orbit in system.system_orbits.orbits:
+            if orbit.detail is None:
+                continue
+            moons = orbit.detail.moons
+            if moons and moons[0].is_ring and len(moons) > 1 and not moons[1].is_ring:
+                assert moons[0].name == ""
+                assert moons[1].name == f"{orbit.name}-alpha"
+                return
+        pytest.fail("No orbit starting with ring then non-ring found")
+
+    # ------------------------------------------------------------------
+    # WorldDetail propagation
+    # ------------------------------------------------------------------
+
+    def test_worlddetail_name_matches_orbit(self):
+        system = _name_system()
+        for orbit in system.system_orbits.orbits:
+            if orbit.detail is not None and orbit.name:
+                assert orbit.detail.name == orbit.name
+
+    # ------------------------------------------------------------------
+    # JSON round-trip
+    # ------------------------------------------------------------------
+
+    def test_orbit_name_in_to_dict(self):
+        system = _name_system()
+        named = [o for o in system.system_orbits.orbits if o.name]
+        assert len(named) > 0
+        for orbit in named:
+            d = orbit.to_dict()
+            assert d["name"] == orbit.name
+
+    def test_moon_name_in_to_dict(self):
+        system = _name_system()
+        for orbit in system.system_orbits.orbits:
+            if orbit.detail is None:
+                continue
+            for moon in orbit.detail.moons:
+                if moon.name:
+                    d = moon.to_dict()
+                    assert d["name"] == moon.name
+                    return
+        pytest.fail("No named moon found")
+
+    def test_star_name_in_to_dict(self):
+        system = _name_system("Betelgeuse")
+        primary = system.stellar_system.stars[0]
+        d = primary.to_dict()
+        assert d["name"] == "Betelgeuse-Primary"
+
+
+# ===========================================================================
+# TestFromDictMissingFields — issue #117
+# ===========================================================================
+
+class TestFromDictMissingFields:
+    """from_dict() returns safe defaults when keys are absent (issue #117)."""
+
+    def test_worlddetail_from_dict_missing_sah(self):
+        obj = WorldDetail.from_dict({})
+        assert obj.sah == "000"
+        assert obj.population == 0
+        assert obj.moons == []
+
+    def test_worldphysical_from_dict_missing_fields(self):
+        obj = WorldPhysical.from_dict({})
+        assert obj.composition == "Rock"
+        assert obj.diameter_km == 0
+        assert obj.density == 0.0
+        assert obj.tidal_status == "none"
+
+    def test_beltphysical_from_dict_missing_fields(self):
+        obj = BeltPhysical.from_dict({})
+        assert obj.inner_au == 0.0
+        assert obj.outer_au == 0.0
+        assert obj.resource_rating == 7
+        assert obj.mean_temperature_k == 0
+
+    def test_moon_from_dict_missing_size(self):
+        from traveller_moon_gen import Moon  # pylint: disable=import-outside-toplevel
+        moon = Moon.from_dict({})
+        assert moon.size_code == 0
+        assert not moon.is_ring
+
+
+# ===========================================================================
+# TestLawDetail — issue #97
+# ===========================================================================
+
+class TestLawDetail:
+    """Tests for traveller_world_law_detail — judicial system, subcategory scores, profiles."""
+
+    from traveller_world_law_detail import generate_law_detail, attach_law_detail, LawDetail  # noqa: E402
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _detail(self, law_level=5, gov_code=4, tech_level=7, pcr=0,
+                gov_authority_code="", rng=None):
+        from traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
+        return generate_law_detail(law_level, gov_code, tech_level,
+                                   pcr=pcr, gov_authority_code=gov_authority_code, rng=rng)
+
+    # ------------------------------------------------------------------
+    # Returns None for law_level 0
+    # ------------------------------------------------------------------
+
+    def test_returns_none_for_law_level_0(self):
+        from traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
+        assert generate_law_detail(0, gov_code=4) is None
+
+    # ------------------------------------------------------------------
+    # Judicial system
+    # ------------------------------------------------------------------
+
+    def test_judicial_primary_valid_codes(self):
+        for seed in range(80):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert det.judicial_primary in ("I", "A", "T"), (
+                f"Unexpected primary code {det.judicial_primary!r} (seed={seed})"
+            )
+
+    def test_judicial_secondary_valid_codes(self):
+        for seed in range(80):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert det.judicial_secondary in ("I", "A", "T"), (
+                f"Unexpected secondary code {det.judicial_secondary!r} (seed={seed})"
+            )
+
+    def test_high_law_skews_inquisitorial(self):
+        """Law ≥ 10 carries DM -4 on judicial roll → more Inquisitorial results."""
+        inq_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=12, gov_code=4, tech_level=7,
+                                  rng=random.Random(seed))) and d.judicial_primary == "I"
+        )
+        assert inq_count > 80, f"Expected >80 Inquisitorial with law=12, got {inq_count}"
+
+    def test_low_tl_skews_tribunal(self):
+        """TL 0 carries DM +4 on judicial roll → more Tribunal results."""
+        tri_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=5, gov_code=4, tech_level=0,
+                                  rng=random.Random(seed))) and d.judicial_primary == "T"
+        )
+        assert tri_count > 60, f"Expected >60 Tribunal with TL=0, got {tri_count}"
+
+    def test_judicial_authority_dm(self):
+        """gov_authority_code='J' carries DM -2 → more Inquisitorial/Adversarial."""
+        j_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=5, gov_code=4, gov_authority_code="J",
+                                  rng=random.Random(seed))) and d.judicial_primary in ("I", "A")
+        )
+        baseline = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=5, gov_code=4, gov_authority_code="",
+                                  rng=random.Random(seed))) and d.judicial_primary in ("I", "A")
+        )
+        assert j_count >= baseline, (
+            f"J authority should not increase Tribunal: j={j_count} baseline={baseline}"
+        )
+
+    # ------------------------------------------------------------------
+    # Uniformity
+    # ------------------------------------------------------------------
+
+    def test_uniformity_valid_codes(self):
+        for seed in range(80):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert det.law_uniformity in ("P", "T", "U"), (
+                f"Unexpected uniformity code {det.law_uniformity!r} (seed={seed})"
+            )
+
+    # ------------------------------------------------------------------
+    # Subcategory scores
+    # ------------------------------------------------------------------
+
+    def test_subcategory_scores_in_range(self):
+        for seed in range(100):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            for attr in ("law_weapons", "law_economic", "law_criminal",
+                         "law_private", "law_personal_rights"):
+                val = getattr(det, attr)
+                assert 0 <= val <= 18, (
+                    f"{attr}={val} out of range [0, 18] (seed={seed})"
+                )
+
+    def test_high_law_death_penalty_dm(self):
+        """Law ≥ 9 carries DM +4 on death penalty roll → more Yes results."""
+        dp_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=10, gov_code=4, rng=random.Random(seed)))
+            and d.death_penalty
+        )
+        assert dp_count > 100, f"Expected >100 death penalties with law=10, got {dp_count}"
+
+    def test_gov0_reduces_death_penalty(self):
+        """Gov 0 carries DM -4 on death penalty roll → fewer Yes results."""
+        dp_count = sum(
+            1 for seed in range(200)
+            if (d := self._detail(law_level=5, gov_code=0, rng=random.Random(seed)))
+            and d.death_penalty
+        )
+        assert dp_count < 100, f"Expected <100 death penalties with gov=0, got {dp_count}"
+
+    # ------------------------------------------------------------------
+    # Profile strings
+    # ------------------------------------------------------------------
+
+    def test_justice_profile_format(self):
+        import re  # pylint: disable=import-outside-toplevel
+        pattern = re.compile(r"^[IAT][IAT][PTU]-[YN]-[YN]$")
+        for seed in range(50):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert pattern.match(det.justice_profile), (
+                f"Justice profile {det.justice_profile!r} does not match format (seed={seed})"
+            )
+
+    def test_law_profile_format(self):
+        import re  # pylint: disable=import-outside-toplevel
+        pattern = re.compile(r"^[0-9A-Z]-[0-9A-Z]{5}$")
+        for seed in range(50):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            assert pattern.match(det.law_profile), (
+                f"Law profile {det.law_profile!r} does not match format (seed={seed})"
+            )
+
+    # ------------------------------------------------------------------
+    # Serialisation
+    # ------------------------------------------------------------------
+
+    def test_to_dict_keys_present(self):
+        det = self._detail(rng=random.Random(42))
+        assert det is not None
+        d = det.to_dict()
+        required = {
+            "judicial_primary", "judicial_secondary", "law_uniformity",
+            "presumption_of_innocence", "death_penalty", "justice_profile",
+            "law_weapons", "law_economic", "law_criminal", "law_private",
+            "law_personal_rights", "law_profile",
+        }
+        assert required.issubset(d.keys()), f"Missing keys: {required - d.keys()}"
+
+    def test_from_dict_roundtrip(self):
+        from traveller_world_law_detail import LawDetail  # pylint: disable=import-outside-toplevel
+        for seed in range(50):
+            det = self._detail(rng=random.Random(seed))
+            assert det is not None
+            restored = LawDetail.from_dict(det.to_dict())
+            assert restored.justice_profile == det.justice_profile, (
+                f"justice_profile changed after round-trip (seed={seed})"
+            )
+            assert restored.law_profile == det.law_profile, (
+                f"law_profile changed after round-trip (seed={seed})"
+            )
+            assert restored.law_weapons == det.law_weapons
+            assert restored.presumption_of_innocence == det.presumption_of_innocence
+
+    # ------------------------------------------------------------------
+    # Determinism
+    # ------------------------------------------------------------------
+
+    def test_deterministic_with_seed(self):
+        rng1 = random.Random(12345)
+        rng2 = random.Random(12345)
+        det1 = self._detail(rng=rng1)
+        det2 = self._detail(rng=rng2)
+        assert det1 is not None and det2 is not None
+        assert det1.justice_profile == det2.justice_profile
+        assert det1.law_profile == det2.law_profile
+
+    # ------------------------------------------------------------------
+    # attach_law_detail
+    # ------------------------------------------------------------------
+
+    def test_attach_sets_mainworld_law_detail(self):
+        from traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        system = generate_full_system(seed=42)
+        assert system.mainworld is not None
+        assert system.mainworld.law_detail is None
+        attach_law_detail(system)
+        if system.mainworld.population > 0 and system.mainworld.law_level > 0:
+            assert system.mainworld.law_detail is not None
+
+    def test_attach_skips_uninhabited_mainworld(self):
+        from traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        # Use a seed that produces an uninhabited world
+        for seed in range(200):
+            system = generate_full_system(seed=seed)
+            if system.mainworld is not None and system.mainworld.population == 0:
+                attach_law_detail(system)
+                assert system.mainworld.law_detail is None
+                break

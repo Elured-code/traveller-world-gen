@@ -222,8 +222,211 @@ RESOURCE RATING (WBH p.131)
 - The rating appears after Escape Velocity in the World Body detail section
   when World Physical detail has been generated.
 
+SECONDARY WORLD CLASSIFICATIONS (WBH p.163)
+--------------------------------------------
+Inhabited secondary worlds and moons in a star system now receive a classification
+that describes the role they play in the wider system. There are seven possible
+classifications:
+
+- Colony (Cy) — a populous world under colonial government
+- Farming (Fa) — an agricultural world in the star's habitable zone
+- Freeport (Fp) — an independently governed trade hub
+- Military Base (Mb) — a garrison maintained by an authoritarian mainworld
+- Mining Facility (Mi) — an industrial extraction site
+- Penal Colony (Pe) — a prison world under a strict mainworld
+- Research Base (Rb) — a scientific installation funded by a developed mainworld
+
+Each classification has eligibility requirements based on the world's own
+characteristics and the mainworld's profile. Colony and Farming are assigned
+automatically when requirements are met; the others require a dice roll. Only the
+first qualifying classification in the above order is assigned — a world has at
+most one role.
+
+The two-letter classification code (e.g. "Mi") appears alongside the world's other
+trade codes in the system orbit table and in JSON output.
+
+MAINWORLD SELECTION (WBH pp.155-156)
+-------------------------------------
+When generating a full star system, the generator now follows the World Builder's
+Handbook procedure for choosing the mainworld. All terrestrial bodies in the system
+are scored on four criteria and the highest-scoring world is chosen as the mainworld:
+
+- Habitability rating (most important)
+- Native sophonts present
+- Resource rating
+- Best refuelling access (gas giant satellite or liquid water)
+
+Occasionally (on an unlikely three-dice roll of 18), the selection is made at
+random from all candidates instead — representing the Referee's prerogative to
+surprise even the algorithm.
+
+If a secondary world outscores the orbital-generation candidate, it is promoted to
+mainworld. Social characteristics (population, government, law level, starport,
+and tech level) are then assigned to the selected mainworld and to all secondary
+worlds relative to it.
+
+This replaces the old behaviour where the mainworld was always whichever orbit
+happened to be closest to the habitable zone centre.
+
+SYSTEM MAP — 3D PERSPECTIVE RENDERING
+--------------------------------------
+The system map now has a perspective rendering mode (--perspective on the command
+line; toggle via the System Map window in the app). In perspective mode:
+
+- All orbits are shown as full 360° ellipses observed from 15° above the orbital
+  plane, rotated 30° clockwise from above, giving the map a convincing 3-D look.
+- Inclined orbits project a blurred shadow onto the orbital reference plane,
+  and small angle symbols are drawn where the orbit crosses the reference plane.
+- An isometric floor grid is drawn behind all orbits to reinforce the sense of depth.
+
+SYSTEM MAP — ORBIT DEPTH CUES
+-------------------------------
+In perspective mode the near and far halves of each orbit arc are drawn at
+different transparencies. The half that curves toward the viewer is fully opaque;
+the half receding behind the orbital plane is drawn at 40% opacity. This makes it
+immediately clear which part of the orbit is "in front" and which is "behind" —
+the same technique used in scientific orbit diagrams.
+
+SYSTEM MAP — 3D SPHERE GLYPHS AND RING SYSTEMS
+------------------------------------------------
+Stars, gas giants, and terrestrial worlds are now drawn as shaded spheres rather
+than flat-coloured circles. Each sphere has a bright highlight in the upper-left,
+the body's natural colour in the middle, and a darker shadow around the edge.
+
+Gas giants that have a ring system in the generated data now display a
+foreshortened ring annulus — a rear half drawn behind the sphere and a front
+half drawn in front of it, so the planet appears to sit inside its rings.
+
+SYSTEM MAP — DROP LINES FOR INCLINED BODIES
+---------------------------------------------
+In perspective mode, any world or companion star on an inclined orbit (displaced
+above or below the orbital plane) now shows a short dotted line connecting the
+bottom of its sphere to the orbital plane directly below it. This makes it easy
+to read the body's height above or below the plane at a glance.
+
+SYSTEM MAP — BELT PERSPECTIVE BANDS
+-------------------------------------
+Asteroid belt orbits are now rendered as filled annular bands — a filled ring
+between the belt's inner and outer edge — instead of a coloured line or symbol.
+In perspective mode the band is correctly foreshortened to match the viewing
+angle. The band width is proportional to the logarithm of the belt's physical
+extent in AU, matching the logarithmic scale used for orbital radii.
+
+FASTAPI — TRAVELLERMAP SYSTEM MAP
+----------------------------------
+The system map shown in the FastAPI web UI now displays the correct number of
+worlds, belts, and gas giants when a world is looked up via TravellerMap. The
+map previously rolled a fresh procedural count rather than using the canonical
+numbers from the TravellerMap database.
+
+- In TravellerMap mode the system map is generated via a new
+  `/api/map/system/svg` endpoint that honours the official PBG
+  (Population / Belts / Gas-giants) counts from TravellerMap.
+- Procedural mode is unchanged — a fresh random count is still rolled.
+- The `system_map.py` command-line tool gains the same capability via the new
+  `--sector` flag (e.g. `--sector "Spinward Marches" --name Regina`).
+
+FASTAPI — MONGOOSE TRAVELLER THEME
+------------------------------------
+The FastAPI web interface has been restyled to match the Mongoose Traveller visual
+identity.
+
+- The page background is near-black. The accent colour is amber-orange (#c87828),
+  matching the orange used throughout the Mongoose Traveller books and digital tools.
+- The header has an amber bottom border and the title is rendered in uppercase with
+  wider letter-spacing, giving it a military-document feel.
+- Generate, Save, and active-tab highlights all use the amber accent.
+
+FASTAPI — WORLD AND SYSTEM CARD COLOURS
+-----------------------------------------
+The HTML world and system cards have been restyled to match the Mongoose Traveller
+theme.
+
+- Light mode: warm parchment backgrounds (cream/tan). Section headers are amber-orange,
+  uppercase, with subtle letter-spacing — similar to the style used in Traveller
+  rulebook tables.
+- Dark mode: warm near-black backgrounds instead of cold grey. Section headers use
+  the same amber accent.
+
+FASTAPI — MONGOOSE PUBLISHING COPYRIGHT NOTICE
+------------------------------------------------
+A Mongoose Publishing copyright and fair use disclaimer now appears at the bottom of
+every web page and every generated world or system card. The notice reads:
+
+  "The Traveller game in all forms is owned by Mongoose Publishing.
+   Copyright 1977–2025 Mongoose Publishing. All rights reserved.
+   This is an unofficial fan work, not affiliated with Mongoose Publishing."
+
+FASTAPI — SECURITY IMPROVEMENTS
+---------------------------------
+Several security improvements have been made to the FastAPI web interface. These
+are not visible during normal use but protect against misuse.
+
+- All responses now include `Content-Security-Policy`, `X-Frame-Options`, and
+  `X-Content-Type-Options` HTTP headers.
+- The generation status bar no longer accepts unsafe HTML content — user-supplied
+  text (such as a sector name) is handled as plain text only.
+- The result iframes (World card, Mainworld card, System card) are sandboxed so
+  their content cannot access the parent page's stored data.
+- The system map image is verified to be a valid SVG before being displayed;
+  invalid responses produce an error message rather than a broken image.
+- Saved preferences (format, settlement type, source mode) are checked against a
+  list of valid values before being restored.
+
+SYSTEM MAP MATCHES PAGE THEME IN LIGHT MODE
+
+When the FastAPI web interface is set to light mode, the system map SVG now uses
+the same warm background colour as the rest of the page (#f4f0e4) instead of
+pure white. Switching between light and dark mode now automatically re-fetches
+the map with the correct palette so the map always matches the current theme
+without requiring a new generation.
+
+MOON ORBITAL DISTANCES NOW ALIGN WITH THE ORBIT# COLUMN
+
+In the system card and system detail tables, moon orbital distances (in Planetary
+Diameters) were displaying one column too far left. They now appear under the
+Orbit# heading, and the km distance and period columns are similarly aligned with
+their correct headers.
+
+GEN-UI — IISS SURVEY FORM
+--------------------------
+A new "Survey Form" button appears in the status bar after any Full System
+generation. Clicking it opens a non-modal window showing an IISS Class 0/I
+Survey form for the generated system.
+
+- The form is rendered as a styled HTML page (dark or light theme to match the
+  app) and displayed in a web-view window.
+- It lists every star in the system with its spectral classification, mass,
+  temperature, diameter, luminosity, orbital data (Orbit#, AU, eccentricity,
+  period), and Habitable Zone centre orbit.
+- Stars with an orbital period under one standard year are footnoted with the
+  period in standard days.
+- A dropdown to the right of the button selects the form type; currently only
+  "Class 0/I Survey" is available.
+- Multiple survey windows can be open at the same time.
+
+ORBIT TABLE — BELT PROFILE STRINGS
+------------------------------------
+Asteroid belt orbit slots in the system detail table now show a compact profile
+string in the Notes column. The string uses the WBH Class III shorthand format:
+
+  S-CC.CC.CC.CC-B-R-#-s
+
+where S is the belt span in AU, CC.CC.CC.CC is the composition split (metallic /
+silicate / carbonaceous / other as percentages), B is the bulk, R is the resource
+rating, # is the count of Size 1 significant bodies, and s is the count of Size S
+significant bodies. The same string is used in both the HTML system card and the
+plain-text summary output.
+
 BUG FIXES
 ---------
+- Fixed: The mainworld card in the Full System page sometimes displayed as blank on
+  the first generate. The iframe was made visible immediately (before the browser had
+  finished parsing the card HTML), so the user saw only the empty iframe background.
+  Switching to another tab and back forced a repaint and revealed the content. The card
+  is now only made visible after its content has finished loading, so it always appears
+  on first generate.
+
 - Fixed: Worlds orbiting a gas giant as a satellite displayed seismic stress
   values millions of times larger than physically possible. The tidal stress
   formula (calibrated for AU-scale star-to-planet distances) was incorrectly
@@ -259,3 +462,30 @@ BUG FIXES
   at startup. PySide6-Addons (which provides QtWebEngineWidgets) was missing
   from gen-ui/requirements.txt. It is now listed with a compatible version
   constraint alongside PySide6.
+
+- Fixed: all eleven tech-level sub-categories in the Technology Profile now use
+  the correct base TL, bounds, and dice modifiers from WBH §5. Previously each
+  sub-TL was rolled from the world's High common TL with no DMs and approximate
+  bounds; now each uses the base TL specified in the rules (e.g. Medical rolls
+  from Electronics TL, not High TL) with the full DM table applied. Affected
+  categories: Energy, Electronics, Manufacturing, Medical, Environmental, Land
+  Transport, Sea Transport, Air Transport, Space Transport, Personal Military,
+  and Heavy Military. The technology profile string displayed on the world card
+  will differ from earlier versions for most worlds.
+
+- Fixed: Sea Transport sub-TL was forced to 0 on worlds with no surface water
+  (Hydrographics 0). The correct WBH rule applies a DM −2 penalty instead,
+  representing minimal maritime capability — some dry worlds have subsurface
+  oceans or exotic surface liquids.
+
+- Fixed: Personal Military sub-TL was forced to 0 on worlds with Law Level 0
+  (no restrictions on weapons). The correct WBH rule raises the lower bound to
+  Manufacturing TL on such worlds, reflecting that weapons are freely available
+  at manufacturing quality. A DM +2 is also applied, so low-law worlds tend to
+  have better personal military hardware than moderate-law worlds.
+
+- Fixed: Military sub-TLs now apply the correct government and law level DMs.
+  Government 0 and Government 7 (Balkanised) worlds receive DM +2 to Personal
+  Military TL. Governments 7, A, B, and F receive DM +2 to Heavy Military TL.
+  Law Level 0 or D+ receives DM +2; Law Levels 1–4 or 9–C receive DM +1.
+  These DMs were entirely absent in the previous implementation.

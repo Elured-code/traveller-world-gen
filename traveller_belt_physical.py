@@ -64,7 +64,7 @@ import random
 from dataclasses import dataclass
 from typing import Optional
 
-from traveller_world_physical import _compute_mean_temperature
+from traveller_world_atmosphere_detail import _compute_mean_temperature
 
 _rng: random.Random = random  # type: ignore[assignment]
 
@@ -258,6 +258,24 @@ class BeltPhysical:  # pylint: disable=too-many-instance-attributes
     size_s_bodies: int   # count of Size S significant planetoids
     mean_temperature_k: int  # Basic Mean Temperature (WBH p.47); atmosphere DM = 0 for belts
 
+    @property
+    def profile_str(self) -> str:
+        """Belt profile: S-CC.CC.CC.CC-B-R-#-s (WBH Class III shorthand).
+
+        S = span in AU; CC.CC.CC.CC = M/S/C/O composition percentages;
+        B = bulk; R = resource rating; # = Size 1 bodies; s = Size S bodies.
+        """
+        span = round(self.outer_au - self.inner_au, 3)
+        comp = (
+            f"{self.m_type_pct}.{self.s_type_pct}"
+            f".{self.c_type_pct}.{self.other_pct}"
+        )
+        return (
+            f"{span}-{comp}"
+            f"-{self.bulk}-{self.resource_rating}"
+            f"-{self.size_1_bodies}-{self.size_s_bodies}"
+        )
+
     def to_dict(self) -> dict:
         """Return belt physical characteristics as a JSON-compatible dict."""
         return {
@@ -278,17 +296,17 @@ class BeltPhysical:  # pylint: disable=too-many-instance-attributes
     def from_dict(cls, d: dict) -> "BeltPhysical":
         """Reconstruct a BeltPhysical from a dict produced by to_dict()."""
         return cls(
-            inner_au=float(d["inner_au"]),
-            outer_au=float(d["outer_au"]),
-            m_type_pct=int(d["m_type_pct"]),
-            s_type_pct=int(d["s_type_pct"]),
-            c_type_pct=int(d["c_type_pct"]),
-            other_pct=int(d["other_pct"]),
-            bulk=int(d["bulk"]),
-            resource_rating=int(d["resource_rating"]),
-            size_1_bodies=int(d["size_1_bodies"]),
-            size_s_bodies=int(d["size_s_bodies"]),
-            mean_temperature_k=int(d["mean_temperature_k"]),
+            inner_au=float(d.get("inner_au", 0.0)),
+            outer_au=float(d.get("outer_au", 0.0)),
+            m_type_pct=int(d.get("m_type_pct", 0)),
+            s_type_pct=int(d.get("s_type_pct", 0)),
+            c_type_pct=int(d.get("c_type_pct", 0)),
+            other_pct=int(d.get("other_pct", 0)),
+            bulk=int(d.get("bulk", 5)),
+            resource_rating=int(d.get("resource_rating", 7)),
+            size_1_bodies=int(d.get("size_1_bodies", 0)),
+            size_s_bodies=int(d.get("size_s_bodies", 0)),
+            mean_temperature_k=int(d.get("mean_temperature_k", 0)),
         )
 
 

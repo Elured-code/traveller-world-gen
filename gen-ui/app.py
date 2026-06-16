@@ -32,20 +32,20 @@ import os
 import random
 import secrets
 import sys
-import tempfile
 
 # Allow importing from the project root when run directly from any directory.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import Qt, QSettings, QThread, QUrl, Signal  # noqa: E402
+from PySide6.QtCore import Qt, QSettings, QThread, Signal  # noqa: E402
 from PySide6.QtGui import (  # noqa: E402
-    QAction, QDesktopServices, QFontDatabase, QKeySequence, QShortcut,
+    QAction, QFontDatabase, QKeySequence, QShortcut,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QApplication,
     QButtonGroup,
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -59,7 +59,6 @@ from PySide6.QtWidgets import (  # noqa: E402
     QMessageBox,
     QPushButton,
     QRadioButton,
-    QScrollArea,
     QSizePolicy,
     QTabWidget,
     QVBoxLayout,
@@ -68,33 +67,26 @@ from PySide6.QtWidgets import (  # noqa: E402
 
 from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
 
-try:
-    from PySide6.QtSvgWidgets import QSvgWidget as _QSvgWidget  # pylint: disable=ungrouped-imports
-    _HAS_SVG_WIDGET = True
-except ImportError:
-    _HAS_SVG_WIDGET = False
 
 from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
 from traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
-from traveller_world_detail import (  # noqa: E402
-    attach_detail as _attach_detail, gg_diameter_from_sah,
-)
 from traveller_world_gen import (  # noqa: E402
     World,
     generate_atmosphere_detail,
     generate_gas_mix,
-    generate_hydrographics,
     generate_unusual_subtype,
     generate_world,
 )
-from traveller_world_physical import (  # noqa: E402
-    generate_world_physical, apply_moon_tidal_effects,
-    generate_advanced_mean_temperature,
-    check_runaway_greenhouse,
-)
 from tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
+from system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
 from world_codes import APP_VERSION  # noqa: E402
+
+try:
+    import _version as _genui_ver  # noqa: E402
+    _DISPLAY_VERSION = _genui_ver.__version__
+except ImportError:
+    _DISPLAY_VERSION = APP_VERSION
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -127,11 +119,11 @@ QLabel#table-dim    { font-size: 10pt; color: #9BA3AD; }
 QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 QFrame#onboard-card { border: 1px solid #cccccc; border-radius: 8px; }
+QLabel#version-label { font-size: 9pt; color: #888888; }
 """
 
 _CSS_DARK = """
 QWidget { background-color: #1e1e1e; color: #e0e0e0; }
-QGroupBox { background-color: #2b2b2b; color: #e0e0e0; }
 QLabel#zone-green   { background-color: #27ae60; color: white;
                       padding: 2px 10px; border-radius: 4px; }
 QLabel#zone-amber   { background-color: #e67e22; color: white;
@@ -200,6 +192,7 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
 
         self._system = system
         self._palette = PALETTE_DARK
+        self._perspective = False
         self._svg_str = ""
 
         central = QWidget()
@@ -217,6 +210,10 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self._theme_btn.clicked.connect(self._toggle_theme)
         tbox.addWidget(self._theme_btn)
 
+        self._persp_btn = QPushButton("Perspective View")
+        self._persp_btn.clicked.connect(self._toggle_perspective)
+        tbox.addWidget(self._persp_btn)
+
         save_btn = QPushButton("Save SVG…")
         save_btn.clicked.connect(self._on_save)
         tbox.addWidget(save_btn)
@@ -224,37 +221,26 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         vbox.addWidget(toolbar)
         vbox.addWidget(_make_hsep())
 
-        self._scroll = QScrollArea()
-        self._scroll.setWidgetResizable(False)
-        vbox.addWidget(self._scroll, stretch=1)
+        # QWebEngineView (Chromium) handles the full SVG feature set including
+        # feGaussianBlur filters and correct palette background colours.
+        self._map_view = QWebEngineView()
+        vbox.addWidget(self._map_view, stretch=1)
 
         self._render()
 
     def _render(self) -> None:
-        svg_str, canvas_h = build_svg(
-            self._system, canvas_w=_MAP_CANVAS_W, palette=self._palette
+        svg_str, _canvas_h = build_svg(
+            self._system, canvas_w=_MAP_CANVAS_W,
+            palette=self._palette, perspective=self._perspective,
         )
         self._svg_str = svg_str
-
-        if _HAS_SVG_WIDGET:
-            widget = _QSvgWidget()  # type: ignore[possibly-undefined]
-            widget.load(svg_str.encode("utf-8"))
-            widget.setFixedSize(_MAP_CANVAS_W, canvas_h)
-            self._scroll.setWidget(widget)
-        else:
-            try:
-                fd, path = tempfile.mkstemp(suffix=".svg", prefix="traveller-map-")
-                os.close(fd)
-                with open(path, "w", encoding="utf-8") as fh:
-                    fh.write(svg_str)
-                QDesktopServices.openUrl(QUrl.fromLocalFile(path))
-                msg = "System map opened in browser (PySide6.QtSvgWidgets not available)."
-            except OSError as exc:
-                msg = f"Could not write map: {exc}"
-            lbl = QLabel(msg)
-            lbl.setObjectName("hint-label")
-            lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self._scroll.setWidget(lbl)
+        bg = self._palette.bg
+        html = (
+            f'<!DOCTYPE html><html><head><meta charset="utf-8">'
+            f'<style>html,body{{margin:0;padding:0;background:{bg};}}</style>'
+            f'</head><body>{svg_str}</body></html>'
+        )
+        self._map_view.setHtml(html)
 
     def _toggle_theme(self) -> None:
         if self._palette is PALETTE_DARK:
@@ -263,6 +249,13 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         else:
             self._palette = PALETTE_DARK
             self._theme_btn.setText("Light Theme")
+        self._render()
+
+    def _toggle_perspective(self) -> None:
+        self._perspective = not self._perspective
+        self._persp_btn.setText(
+            "Top-down View" if self._perspective else "Perspective View"
+        )
         self._render()
 
     def _on_save(self) -> None:
@@ -278,6 +271,19 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
                 fh.write(self._svg_str)
         except OSError as exc:
             QMessageBox.critical(self, "Save Failed", str(exc))
+
+
+class SurveyFormWindow(QMainWindow):  # pylint: disable=too-few-public-methods
+    """Non-modal window that displays an IISS survey form for the system."""
+
+    def __init__(self, title: str, html: str) -> None:
+        super().__init__()
+        self.setWindowTitle(title)
+        self.resize(980, 700)
+
+        self._view = QWebEngineView()
+        self.setCentralWidget(self._view)
+        self._view.setHtml(html)
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +334,156 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
 
 
 # ---------------------------------------------------------------------------
+# Options dialog
+# ---------------------------------------------------------------------------
+
+
+class _OptionsDialog(QDialog):
+    """Modal dialog for configuring generation options."""
+    # pylint: disable=missing-function-docstring,too-many-instance-attributes
+
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements,too-many-locals
+        self,
+        parent: QWidget,
+        *,
+        full_system: bool,
+        nhz: bool,
+        oxygen_biomass: bool,
+        runaway_greenhouse: bool,
+        independent_government: bool,
+        select_mainworld: bool,
+        social_detail: bool,
+        settlement_type: str,
+        eccentricity: bool = True,
+        inclination: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Generation Options")
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        self._check_system = QCheckBox("System detail")
+        self._check_system.setChecked(full_system)
+        layout.addWidget(self._check_system)
+
+        self._sub_widget = QWidget()
+        checks_layout = QVBoxLayout(self._sub_widget)
+        checks_layout.setSpacing(6)
+        checks_layout.setContentsMargins(20, 0, 0, 0)
+        self._check_nhz = QCheckBox("NHZ Atmospheres")
+        self._check_nhz.setChecked(nhz)
+        self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
+        self._check_oxygen_biomass.setChecked(oxygen_biomass)
+        self._check_runaway_greenhouse = QCheckBox("Runaway greenhouse")
+        self._check_runaway_greenhouse.setChecked(runaway_greenhouse)
+        self._check_eccentricity = QCheckBox("Orbital eccentricity")
+        self._check_eccentricity.setChecked(eccentricity)
+        self._check_inclination = QCheckBox("Orbital inclination")
+        self._check_inclination.setChecked(inclination)
+        self._check_independent_gov = QCheckBox("Independent government")
+        self._check_independent_gov.setChecked(independent_government)
+        self._check_select_mw = QCheckBox("Select mainworld")
+        self._check_select_mw.setChecked(select_mainworld)
+        checks_layout.addWidget(self._check_nhz)
+        checks_layout.addWidget(self._check_oxygen_biomass)
+        checks_layout.addWidget(self._check_runaway_greenhouse)
+        checks_layout.addWidget(self._check_eccentricity)
+        checks_layout.addWidget(self._check_inclination)
+        checks_layout.addWidget(self._check_independent_gov)
+        checks_layout.addWidget(self._check_select_mw)
+        layout.addWidget(self._sub_widget)
+
+        self._check_social_detail = QCheckBox("Social detail")
+        self._check_social_detail.setChecked(social_detail)
+        layout.addWidget(self._check_social_detail)
+
+        settlement_group = QGroupBox("Settlement type")
+        settlement_layout = QVBoxLayout(settlement_group)
+        settlement_layout.setSpacing(4)
+        self._settlement_btn_group = QButtonGroup(self)
+        for label, key in (
+            ("Standard", "standard"),
+            ("Long-settled", "long_settled"),
+            ("Well-settled", "well_settled"),
+            ("Backwater", "backwater"),
+            ("Unsettled", "unsettled"),
+        ):
+            btn = QRadioButton(label)
+            btn.setProperty("key", key)
+            self._settlement_btn_group.addButton(btn)
+            settlement_layout.addWidget(btn)
+            if key == settlement_type:
+                btn.setChecked(True)
+        if self._settlement_btn_group.checkedButton() is None:
+            self._settlement_btn_group.buttons()[0].setChecked(True)
+        layout.addWidget(settlement_group)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        self._check_system.toggled.connect(self._on_group_toggled)
+        self._on_group_toggled(full_system)
+
+    def _on_group_toggled(self, checked: bool) -> None:
+        self._sub_widget.setVisible(checked)
+        if not checked:
+            for cb in (
+                self._check_nhz, self._check_oxygen_biomass,
+                self._check_runaway_greenhouse,
+                self._check_eccentricity, self._check_inclination,
+                self._check_independent_gov, self._check_select_mw,
+            ):
+                cb.setChecked(False)
+
+    @property
+    def full_system(self) -> bool:
+        return self._check_system.isChecked()
+
+    @property
+    def nhz(self) -> bool:
+        return self._check_nhz.isChecked()
+
+    @property
+    def oxygen_biomass(self) -> bool:
+        return self._check_oxygen_biomass.isChecked()
+
+    @property
+    def runaway_greenhouse(self) -> bool:
+        return self._check_runaway_greenhouse.isChecked()
+
+    @property
+    def eccentricity(self) -> bool:
+        return self._check_eccentricity.isChecked()
+
+    @property
+    def inclination(self) -> bool:
+        return self._check_inclination.isChecked()
+
+    @property
+    def independent_government(self) -> bool:
+        return self._check_independent_gov.isChecked()
+
+    @property
+    def select_mainworld(self) -> bool:
+        return self._check_select_mw.isChecked()
+
+    @property
+    def social_detail(self) -> bool:
+        return self._check_social_detail.isChecked()
+
+    @property
+    def settlement_type(self) -> str:
+        btn = self._settlement_btn_group.checkedButton()
+        return btn.property("key") if btn is not None else "none"
+
+
+# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -337,7 +493,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Traveller World Generator")
+        self.setWindowTitle(f"Traveller World Generator {_DISPLAY_VERSION}")
         self.resize(1100, 700)
         self.setMinimumSize(780, 500)
         self._current_world: object | None = None
@@ -345,14 +501,43 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._detail_attached: bool = False
         self._seed_auto: bool = False
         self._map_windows: list[object] = []
+        self._survey_windows: list[object] = []
         self._map_btn: QPushButton | None = None
+        self._survey_btn: QPushButton | None = None
+        self._survey_combo: QComboBox | None = None
         self._generate_btn: QPushButton | None = None
         self._worker: _TravMapWorker | None = None
         self._pending_full_system: bool = False
         self._pending_attach_detail: bool = False
         self._pending_seed: int = 0
-        raw = QSettings("traveller-world-gen", "AppWindow").value("dark_mode", False)
+        self._pending_rng: random.Random | None = None
+        _s = QSettings("traveller-world-gen", "AppWindow")
+        raw = _s.value("dark_mode", False)
         self._dark_mode: bool = str(raw).lower() == "true"
+        self._opt_full_system: bool = str(_s.value("opt_full_system", False)).lower() == "true"
+        self._opt_nhz: bool = str(_s.value("opt_nhz", False)).lower() == "true"
+        self._opt_oxygen_biomass: bool = (
+            str(_s.value("opt_oxygen_biomass", False)).lower() == "true"
+        )
+        self._opt_runaway_greenhouse: bool = (
+            str(_s.value("opt_runaway_greenhouse", False)).lower() == "true"
+        )
+        self._opt_independent_gov: bool = (
+            str(_s.value("opt_independent_gov", False)).lower() == "true"
+        )
+        self._opt_social_detail: bool = (
+            str(_s.value("opt_social_detail", False)).lower() == "true"
+        )
+        self._opt_select_mw: bool = (
+            str(_s.value("opt_select_mw", False)).lower() == "true"
+        )
+        self._opt_eccentricity: bool = (
+            str(_s.value("opt_eccentricity", True)).lower() != "false"
+        )
+        self._opt_inclination: bool = (
+            str(_s.value("opt_inclination", True)).lower() != "false"
+        )
+        self._opt_settlement_type: str = str(_s.value("opt_settlement_type", "standard"))
         self._apply_theme()
         self._build_menu_bar()
         self._build_ui()
@@ -403,6 +588,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.setSpacing(10)
         self._status_layout.setContentsMargins(0, 0, 0, 0)
         root.addWidget(self._status_widget, stretch=1)
+
+        ver_label = QLabel(_DISPLAY_VERSION)
+        ver_label.setObjectName("version-label")
+        self.statusBar().addPermanentWidget(ver_label)
 
         self._show_placeholder()
 
@@ -488,22 +677,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         radio_layout.addWidget(self._radio_travellermap)
         left_layout.addWidget(radio_row)
 
-        self._check_nhz = QCheckBox("NHZ Atmospheres")
-        self._check_oxygen_biomass = QCheckBox("Oxygen requires biomass")
-        self._check_advanced_temp = QCheckBox("Advanced temperature")
-        self._check_runaway_greenhouse = QCheckBox("Runaway greenhouse")
-
-        self._system_group = QGroupBox("System detail")
-        self._system_group.setCheckable(True)
-        self._system_group.setChecked(False)
-        self._system_group.toggled.connect(self._on_detail_toggled)
-        checks_layout = QHBoxLayout(self._system_group)
-        checks_layout.setSpacing(12)
-        checks_layout.addWidget(self._check_nhz)
-        checks_layout.addWidget(self._check_oxygen_biomass)
-        checks_layout.addWidget(self._check_advanced_temp)
-        checks_layout.addWidget(self._check_runaway_greenhouse)
-        left_layout.addWidget(self._system_group)
+        options_btn = QPushButton("Options…")
+        options_btn.clicked.connect(self._on_options_clicked)
+        left_layout.addWidget(options_btn)
 
         layout.addWidget(left, 0, Qt.AlignmentFlag.AlignTop)
 
@@ -569,11 +745,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto = False
 
     def _on_detail_toggled(self, checked: bool) -> None:
-        if not checked:
-            self._check_nhz.setChecked(False)
-            self._check_oxygen_biomass.setChecked(False)
-            self._check_advanced_temp.setChecked(False)
-            self._check_runaway_greenhouse.setChecked(False)
         if self._map_btn is not None:
             self._map_btn.setEnabled(checked)
 
@@ -581,6 +752,45 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         procedural = self._radio_procedural.isChecked()
         self._tm_panel.setVisible(not procedural)
         self._tm_vsep.setVisible(not procedural)
+
+    def _on_options_clicked(self) -> None:
+        dialog = _OptionsDialog(
+            self,
+            full_system=self._opt_full_system,
+            nhz=self._opt_nhz,
+            oxygen_biomass=self._opt_oxygen_biomass,
+            runaway_greenhouse=self._opt_runaway_greenhouse,
+            independent_government=self._opt_independent_gov,
+            select_mainworld=self._opt_select_mw,
+            social_detail=self._opt_social_detail,
+            settlement_type=self._opt_settlement_type,
+            eccentricity=self._opt_eccentricity,
+            inclination=self._opt_inclination,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        self._opt_full_system = dialog.full_system
+        self._opt_nhz = dialog.nhz
+        self._opt_oxygen_biomass = dialog.oxygen_biomass
+        self._opt_runaway_greenhouse = dialog.runaway_greenhouse
+        self._opt_independent_gov = dialog.independent_government
+        self._opt_select_mw = dialog.select_mainworld
+        self._opt_social_detail = dialog.social_detail
+        self._opt_settlement_type = dialog.settlement_type
+        self._opt_eccentricity = dialog.eccentricity
+        self._opt_inclination = dialog.inclination
+        _s = QSettings("traveller-world-gen", "AppWindow")
+        _s.setValue("opt_full_system", self._opt_full_system)
+        _s.setValue("opt_nhz", self._opt_nhz)
+        _s.setValue("opt_oxygen_biomass", self._opt_oxygen_biomass)
+        _s.setValue("opt_runaway_greenhouse", self._opt_runaway_greenhouse)
+        _s.setValue("opt_independent_gov", self._opt_independent_gov)
+        _s.setValue("opt_select_mw", self._opt_select_mw)
+        _s.setValue("opt_social_detail", self._opt_social_detail)
+        _s.setValue("opt_settlement_type", self._opt_settlement_type)
+        _s.setValue("opt_eccentricity", self._opt_eccentricity)
+        _s.setValue("opt_inclination", self._opt_inclination)
+        self._on_detail_toggled(self._opt_full_system)
 
     def _on_generate(self) -> None:
         name = self._name_entry.text().strip() or "Unknown"
@@ -601,7 +811,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_entry.blockSignals(False)
         self._seed_auto = True
 
-        full_system = self._system_group.isChecked()
+        full_system = self._opt_full_system
         attach_detail_flag = full_system
 
         if self._radio_travellermap.isChecked():
@@ -617,18 +827,26 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             self._pending_full_system = full_system
             self._pending_attach_detail = attach_detail_flag
             self._pending_seed = seed
-            self._start_travellermap_worker(sector, search_name, hex_pos, seed)
+            self._pending_rng = None
+            self._start_travellermap_worker(
+                sector, search_name, hex_pos, seed,
+                orbital_eccentricity=self._opt_eccentricity,
+                orbital_inclination=self._opt_inclination,
+            )
         else:
             if full_system:
+                rng = random.Random(seed)
                 system = generate_full_system(
-                    name, seed=seed,
-                    nhz_atmospheres=self._check_nhz.isChecked(),
-                    orbital_eccentricity=True,
-                    orbital_inclination=True,
+                    name, seed=seed, rng=rng,
+                    nhz_atmospheres=self._opt_nhz,
+                    orbital_eccentricity=self._opt_eccentricity,
+                    orbital_inclination=self._opt_inclination,
                 )
-                self._finish_system_generation(system, attach_detail_flag)
+                self._finish_system_generation(system, attach_detail_flag, rng=rng)
             else:
-                world = generate_world(name)
+                world = generate_world(
+                    name, settlement_type=self._opt_settlement_type,
+                )
                 self._finish_generation(world)
 
     def _finish_generation(self, world: object) -> None:
@@ -655,112 +873,61 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 atmosphere=world.atmosphere,  # type: ignore[attr-defined]
                 temperature=world.temperature,  # type: ignore[attr-defined]
             )
+        if self._opt_social_detail:
+            from traveller_world_population_detail import generate_population_detail  # pylint: disable=import-outside-toplevel
+            from traveller_world_government_detail import generate_government_detail  # pylint: disable=import-outside-toplevel
+            from traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
+            if world.population > 0:  # type: ignore[attr-defined]
+                world.population_detail = generate_population_detail(  # type: ignore[attr-defined]
+                    world.population, world.population_multiplier,  # type: ignore[attr-defined]
+                    size=world.size, tl=world.tech_level,  # type: ignore[attr-defined]
+                    government=world.government,  # type: ignore[attr-defined]
+                    law_level=world.law_level,  # type: ignore[attr-defined]
+                    trade_codes=world.trade_codes,  # type: ignore[attr-defined]
+                    atm=world.atmosphere,  # type: ignore[attr-defined]
+                )
+                pop_det = world.population_detail  # type: ignore[attr-defined]
+                pcr = pop_det.pcr if pop_det is not None else 0
+                world.government_detail = generate_government_detail(  # type: ignore[attr-defined]
+                    world.government, world.population, pcr=pcr,  # type: ignore[attr-defined]
+                )
+                gov_auth = (
+                    world.government_detail.authority_code  # type: ignore[attr-defined]
+                    if world.government_detail is not None else ""  # type: ignore[attr-defined]
+                )
+                world.law_detail = generate_law_detail(  # type: ignore[attr-defined]
+                    world.law_level, world.government,  # type: ignore[attr-defined]
+                    world.tech_level, pcr=pcr,  # type: ignore[attr-defined]
+                    gov_authority_code=gov_auth,
+                )
+                from traveller_world_tech_detail import generate_tech_detail  # pylint: disable=import-outside-toplevel
+                world.tech_detail = generate_tech_detail(  # type: ignore[attr-defined]
+                    world.tech_level, world.atmosphere,  # type: ignore[attr-defined]
+                    world.hydrographics, world.population,  # type: ignore[attr-defined]
+                    world.government, world.law_level,  # type: ignore[attr-defined]
+                    world.starport, pcr=pcr,  # type: ignore[attr-defined]
+                )
         self._act_save.setEnabled(True)
         self._show_summary(world)
 
-    def _finish_system_generation(  # pylint: disable=too-many-locals
-        self, system: object, attach_detail_flag: bool = False
+    def _finish_system_generation(
+        self, system: object, attach_detail_flag: bool = False,
+        rng: random.Random | None = None,
     ) -> None:
         self._current_system = system
+        run_detail_pipeline(  # type: ignore[arg-type]
+            system, rng,  # type: ignore[arg-type]
+            PipelineOptions(
+                want_detail=attach_detail_flag,
+                want_select_mw=self._opt_select_mw and attach_detail_flag,
+                runaway_greenhouse=self._opt_runaway_greenhouse,
+                independent_government=self._opt_independent_gov,
+                optional_biomass=self._opt_oxygen_biomass,
+                settlement_type=self._opt_settlement_type,
+                want_social_detail=self._opt_social_detail,
+            ),
+        )
         self._current_world = system.mainworld  # type: ignore[attr-defined]
-        if attach_detail_flag:
-            world = system.mainworld  # type: ignore[attr-defined]
-            mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
-            if world is not None:
-                stars = system.stellar_system.stars  # type: ignore[attr-defined]
-                age = stars[0].age_gyr if stars else 0.0
-                orbit_number = mw_orbit.orbit_number if mw_orbit is not None else None
-                orbit_au = mw_orbit.orbit_au if mw_orbit is not None else None
-                star_mass = stars[0].mass if stars else None
-                world.size_detail = generate_world_physical(
-                    world, age, orbit_number, orbit_au, star_mass,
-                    hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
-                )
-                if world.atmosphere_detail is None:
-                    hz_dev = mw_orbit.hz_deviation if mw_orbit is not None else None
-                    world.atmosphere_detail = generate_atmosphere_detail(
-                        world.atmosphere, world.size, age,
-                        temperature=world.temperature,
-                        hz_deviation=hz_dev,
-                    )
-                    generate_gas_mix(
-                        world.atmosphere_detail, world.atmosphere, world.size,
-                        world.temperature, hz_dev, world.hydrographics,
-                    )
-                    generate_unusual_subtype(
-                        world.atmosphere_detail, world.atmosphere,
-                        world.size, world.hydrographics,
-                    )
-                if world.hydrographic_detail is None:
-                    world.hydrographic_detail = generate_hydrographic_detail(
-                        world.hydrographics, world.size,
-                        atmosphere=world.atmosphere,
-                        temperature=world.temperature,
-                    )
-                # Advanced temperature computed before attach_detail so that
-                # high_temp_k and advanced_mean_temperature_k are available to
-                # the biomass DM calculation inside _apply_biomass().
-                if (self._check_advanced_temp.isChecked()
-                        and world.size_detail is not None
-                        and mw_orbit is not None):
-                    mw_au = mw_orbit.orbit_au
-                    interior_lum = sum(
-                        s.luminosity for s in stars
-                        if s.orbit_au <= 0.0 or s.orbit_au < mw_au
-                    )
-                    pb = world.atmosphere_detail.pressure_bar if world.atmosphere_detail else None
-                    generate_advanced_mean_temperature(
-                        world.size_detail,
-                        atmosphere=world.atmosphere,
-                        hydrographics=world.hydrographics,
-                        pressure_bar=pb,
-                        luminosity=interior_lum,
-                        orbit_au=mw_au,
-                        hz_deviation=mw_orbit.hz_deviation,
-                        orbit_eccentricity=mw_orbit.eccentricity,
-                        star_mass=stars[0].mass if stars else 1.0,
-                    )
-                    self._maybe_apply_runaway_greenhouse(
-                        world, stars, mw_orbit, interior_lum, mw_au
-                    )
-            _attach_detail(  # type: ignore[arg-type]
-                system,
-                optional_biomass_rule=self._check_oxygen_biomass.isChecked(),
-            )
-            if world is not None and world.size_detail is not None and mw_orbit is not None:
-                det = mw_orbit.detail
-                if det is not None:
-                    _is_moon = mw_orbit.world_type == "gas_giant"
-                    if _is_moon:
-                        first = det.moons[0] if det.moons else None
-                        moons = first.detail.moons if first and first.detail else []
-                        _gg_sat = det.moons[0] if det.moons else None
-                        _gg_sah = getattr(mw_orbit, "gg_sah", "")
-                        _stored = getattr(mw_orbit, "gg_mass_earth", None)
-                        _gg_diam = gg_diameter_from_sah(_gg_sah)  # type: ignore[attr-defined]
-                        _gg_m_e = (
-                            float(_stored) if _stored is not None
-                            else float(_gg_diam ** 2) if _gg_sah else 0.0
-                        )
-                    else:
-                        moons = det.moons or []
-                        _gg_sat = None
-                        _gg_m_e = 0.0
-                    stars = system.stellar_system.stars  # type: ignore[attr-defined]
-                    apply_moon_tidal_effects(
-                        world.size_detail,
-                        moons=moons,
-                        world_size=world.size,
-                        world_atmosphere=world.atmosphere,
-                        age_gyr=stars[0].age_gyr if stars else 0.0,
-                        orbit_number=mw_orbit.orbit_number,
-                        orbit_au=mw_orbit.orbit_au,
-                        star_mass=stars[0].mass if stars else 1.0,
-                        orbit_eccentricity=mw_orbit.eccentricity,
-                        is_moon=_is_moon,
-                        gg_mass_earth=_gg_m_e,
-                        gg_satellite_moon=_gg_sat,
-                    )
         self._detail_attached = attach_detail_flag
         self._act_save.setEnabled(True)
         self._show_system_summary(system)
@@ -814,13 +981,34 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         if dialog.exec() == QDialog.DialogCode.Accepted:
             selected = next((h for radio, h in radios if radio.isChecked()), None)
             if selected:
-                self._start_travellermap_worker(error.sector, None, selected, seed)
+                self._start_travellermap_worker(
+                    error.sector, None, selected, seed,
+                    orbital_eccentricity=self._opt_eccentricity,
+                    orbital_inclination=self._opt_inclination,
+                )
 
     def _on_map_clicked(self) -> None:
         if self._current_system is None:
             return
         win = SystemMapWindow(self._current_system)
         self._map_windows.append(win)
+        win.show()
+
+    def _on_survey_clicked(self) -> None:
+        if self._current_system is None:
+            return
+        form_type = (
+            self._survey_combo.currentText()
+            if self._survey_combo is not None
+            else "Class 0/I Survey"
+        )
+        mw = self._current_system.mainworld  # type: ignore[attr-defined]
+        name = mw.name if mw else "System"
+        html = self._themed_html(
+            self._current_system.to_survey_form_html()  # type: ignore[attr-defined]
+        )
+        win = SurveyFormWindow(f"{form_type} — {name}", html)
+        self._survey_windows.append(win)
         win.show()
 
     def _build_menu_bar(self) -> None:
@@ -860,15 +1048,23 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             return
 
         file_ver = data.get("_app_version")
-        if file_ver != APP_VERSION:
-            QMessageBox.critical(
+        def _ver_tuple(v: object) -> tuple:
+            try:
+                return tuple(int(x) for x in str(v).split("+", maxsplit=1)[0].split("."))
+            except (ValueError, AttributeError):
+                return ()
+        if _ver_tuple(file_ver) != _ver_tuple(APP_VERSION):
+            result = QMessageBox.warning(
                 self,
                 "Version mismatch",
-                f"This file was saved with app version {file_ver!r}.\n"
+                f"This file was saved with version {file_ver!r}.\n"
                 f"Current version is {APP_VERSION!r}.\n"
-                "Open is only supported for files from the same version.",
+                "Some fields may be missing or unrecognised. Continue loading?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
             )
-            return
+            if result != QMessageBox.StandardButton.Yes:
+                return
 
         if "stars" in data:
             try:
@@ -933,6 +1129,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def _clear_status(self) -> None:
         self._map_btn = None
+        self._survey_btn = None
+        self._survey_combo = None
         while self._status_layout.count():
             item = self._status_layout.takeAt(0)
             if item is not None:
@@ -1008,18 +1206,22 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.addWidget(lbl)
         self._status_layout.addStretch()
 
-    def _start_travellermap_worker(
+    def _start_travellermap_worker(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         sector: str,
         search_name: "str | None",
         hex_pos: "str | None",
         seed: int,
+        orbital_eccentricity: bool = True,
+        orbital_inclination: bool = True,
     ) -> None:
         display = search_name or hex_pos or "world"
         self._show_loading(f"Looking up {display} in {sector}…")
         if self._generate_btn is not None:
             self._generate_btn.setEnabled(False)
-        worker = _TravMapWorker(sector, search_name, hex_pos, seed)
+        worker = _TravMapWorker(sector, search_name, hex_pos, seed,
+                                orbital_eccentricity=orbital_eccentricity,
+                                orbital_inclination=orbital_inclination)
         worker.result.connect(self._on_worker_result)
         worker.failed.connect(self._on_worker_error)
         worker.ambiguous.connect(self._on_worker_ambiguous)
@@ -1031,7 +1233,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         if self._generate_btn is not None:
             self._generate_btn.setEnabled(True)
         if self._pending_full_system:
-            self._finish_system_generation(system, self._pending_attach_detail)
+            self._finish_system_generation(
+                system, self._pending_attach_detail, rng=self._pending_rng,
+            )
         else:
             world = system.mainworld  # type: ignore[attr-defined]
             if world is None:
@@ -1128,9 +1332,19 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         layout.addWidget(spacer)
 
+        survey_btn = QPushButton("Survey Form")
+        survey_btn.clicked.connect(self._on_survey_clicked)
+        self._survey_btn = survey_btn
+        layout.addWidget(survey_btn)
+
+        survey_combo = QComboBox()
+        survey_combo.addItem("Class 0/I Survey")
+        self._survey_combo = survey_combo
+        layout.addWidget(survey_combo)
+
         map_btn = QPushButton("System Map")
         map_btn.clicked.connect(self._on_map_clicked)
-        map_btn.setEnabled(self._system_group.isChecked())
+        map_btn.setEnabled(self._opt_full_system)
         self._map_btn = map_btn
         layout.addWidget(map_btn)
 
@@ -1164,51 +1378,6 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         return header
 
-    def _maybe_apply_runaway_greenhouse(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-            self, world: object, stars: list,
-            mw_orbit: object, interior_lum: float, mw_au: float,
-    ) -> None:
-        """Apply optional runaway greenhouse mutations (WBH p.79)."""
-        if not self._check_runaway_greenhouse.isChecked():
-            return
-        if (world.size_detail is None  # type: ignore[attr-defined]
-                or world.size_detail.advanced_mean_temperature_k is None):  # type: ignore
-            return
-        rg = check_runaway_greenhouse(
-            atmosphere=world.atmosphere,  # type: ignore[attr-defined]
-            temp_k=world.size_detail.advanced_mean_temperature_k,  # type: ignore
-            age_gyr=stars[0].age_gyr if stars else 0.0,
-            size=world.size,  # type: ignore[attr-defined]
-        )
-        if rg is None:
-            return
-        world.size_detail.runaway_greenhouse = True  # type: ignore
-        if rg.new_atmosphere is not None:
-            world.atmosphere = rg.new_atmosphere  # type: ignore
-        world.temperature = "Boiling"  # type: ignore
-        world.hydrographics = generate_hydrographics(  # type: ignore
-            world.size, world.atmosphere, "Boiling"  # type: ignore
-        )
-        world.hydrographic_detail = generate_hydrographic_detail(  # type: ignore
-            world.hydrographics, world.size,  # type: ignore
-            atmosphere=world.atmosphere,  # type: ignore
-            temperature="Boiling",
-        )
-        rg_pb = (
-            world.atmosphere_detail.pressure_bar  # type: ignore
-            if world.atmosphere_detail else None  # type: ignore
-        )
-        generate_advanced_mean_temperature(
-            world.size_detail,  # type: ignore
-            atmosphere=world.atmosphere,  # type: ignore
-            hydrographics=world.hydrographics,  # type: ignore
-            pressure_bar=rg_pb,
-            luminosity=interior_lum,
-            orbit_au=mw_au,
-            hz_deviation=mw_orbit.hz_deviation,  # type: ignore
-            orbit_eccentricity=mw_orbit.eccentricity,  # type: ignore
-            star_mass=stars[0].mass if stars else 1.0,
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -1218,6 +1387,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
 def main() -> None:
     """Launch the Traveller World Generator desktop application."""
+    # Suppress the harmless TASK_CATEGORY_POLICY stderr noise from the
+    # Chromium renderer subprocess (QtWebEngine on macOS, KERN_INVALID_ARGUMENT).
+    # Must be set before QApplication is constructed.
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--log-level=3")
     app = QApplication(sys.argv)
     app.setApplicationName("Traveller World Generator")
     window = AppWindow()

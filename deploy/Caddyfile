@@ -1,0 +1,10 @@
+# Replace YOUR_DOMAIN_HERE with your actual domain (e.g. api.example.com)
+# This file is embedded in docker-compose.truenas.yml via the configs: block.
+# To switch to Let's Encrypt once your DNS provider is known, replace:
+#   tls internal
+# with:
+#   tls { dns <provider> {env.DNS_API_TOKEN} }
+YOUR_DOMAIN_HERE {
+    tls internal
+    reverse_proxy traveller-api:8000
+}

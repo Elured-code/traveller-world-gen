@@ -14,9 +14,15 @@ each step receives the information it needs from the previous steps:
 
 1. Generate stars (`traveller_stellar_gen.py`)
 2. Place orbits (`traveller_orbit_gen.py`)
-3. Generate the mainworld UWP (`traveller_world_gen.py`) — using the orbit's
-   habitable zone position to set temperature, so the mainworld is physically
-   consistent with where it orbits
+3. Generate the mainworld **physical** characteristics (`traveller_world_gen.py`)
+   — size, atmosphere, hydrographics, using the orbit's habitable zone position to
+   set temperature
+
+Social characteristics (population, government, law, starport, TL, bases, trade
+codes, travel zone) are **deferred**. The world returned by
+`generate_mainworld_at_orbit()` carries placeholder values (`starport='X'`,
+all social codes 0) until `apply_mainworld_social()` is called after mainworld
+selection (a future step).
 
 The key integration: temperature is **not** rolled randomly here. Instead, the orbit's
 `hz_deviation` value is converted to the raw 2D roll that the temperature table
@@ -98,11 +104,14 @@ seed that produced it.
 | `.to_dict()` | `TravellerSystem` | Full system as a nested dict (JSON-ready) |
 | `.to_json()` | `TravellerSystem` | JSON string of the full system |
 | `.to_html()` | `TravellerSystem` | HTML system card (Jinja2 template) |
+| `.to_survey_form_html()` | `TravellerSystem` | Self-contained IISS Class 0/I Survey form HTML page (Session 123) |
 | `.summary()` | `TravellerSystem` | Human-readable multi-line text |
 | `.from_dict(d)` | `TravellerSystem` | Reconstructs the full system from a saved dict |
-| `generate_full_system(...)` | module | Procedural entry point |
+| `generate_full_system(...)` | module | Procedural entry point — returns physical-only mainworld |
+| `select_mainworld(system, rng)` | module | Score all terrestrials and promote the winner; returns `True` if swapped |
 | `generate_system_from_world(world, ...)` | module | Procedural entry point around an existing World |
 | `generate_system_from_canonical(...)` | module | TravellerMap entry point |
+| `attach_body_names(system)` | module | Assign placeholder names to all stars, orbits, moons; call after `attach_detail()` |
 
 ---
 
@@ -141,21 +150,118 @@ and secondary worlds are generated procedurally from the canonical stellar data.
 ## How this fits in the pipeline
 
 ```
-generate_stellar_data()           →  StarSystem
+generate_stellar_data()                  →  StarSystem
         │
         ▼
-generate_orbits(star_system, ...) →  SystemOrbits
+generate_orbits(star_system, ...)        →  SystemOrbits
         │
         ▼
-generate_world(name, ...)         →  World (mainworld)
+generate_mainworld_at_orbit(name, ...)   →  World (physical only — SAH, no social)
         │  (temperature driven by hz_deviation, not a free dice roll)
         ▼
 TravellerSystem(stellar, orbits, mainworld, mainworld_orbit)
         │
-        (optional)
+        (when detail requested)
         ▼
-attach_detail(system, ...)        →  fills OrbitSlot.detail for each secondary world
+attach_detail(system, ...)               →  WorldDetail for each secondary; biomass; habitability
+attach_body_names(system)                →  name="" → "Homeworld-Primary", "Homeworld-A", etc.
+_attach_mainworld_physical(system)       →  WorldPhysical for mainworld (resource_rating)
+_apply_mainworld_moon_tidal(system)      →  tidal effects on mainworld
+        │
+        ▼
+select_mainworld(system, rng)            →  scores all terrestrials; may swap mainworld
+        │
+        ▼
+apply_mainworld_social(mainworld, rng)   →  pop, gov, law, starport, TL, trade codes
+apply_secondary_social(system, ...)      →  re-applies social to all secondaries and moons
 ```
+
+---
+
+## `main()` — command-line interface (updated Session 119)
+
+```bash
+python traveller_system_gen.py [OPTIONS]
+```
+
+| Flag | Default | Notes |
+|------|---------|-------|
+| `--name NAME` | `Unknown` | Mainworld name |
+| `--seed SEED` | random | Integer RNG seed |
+| `--count N` | `1` | Number of systems to generate |
+| `--detail` | off | Attach all secondary world and moon profiles |
+| `--nhz-atmospheres` | off | NHZ atmosphere tables for out-of-HZ worlds |
+| `--orbital-eccentricity` | off | Roll eccentricity for each orbit (WBH p.27) |
+| `--orbital-inclination` | off | Roll inclination for each orbit (WBH p.28) |
+| `--format json\|html\|text` | `text` | Output format |
+| `--json` | — | Shorthand for `--format json` |
+| `--html` | — | Shorthand for `--format html` (implies `--detail`) |
+
+**Session 119 changes:** The CLI now mirrors the app/FastAPI pipeline.
+
+- A per-iteration `random.Random(seed_val)` is created and passed to
+  `generate_full_system()` so the seed is fully deterministic.
+- `apply_mainworld_social()` is always called — previously the CLI produced
+  mainworlds with no starport, population, government, law level, or TL.
+- When `--detail`: `generate_world_physical()` is called first (advancing the
+  same `rng`), then `attach_detail()`, `attach_body_names()`, and
+  `apply_secondary_social()` — matching the FastAPI full pipeline order so the
+  same seed + same flags produce the same mainworld UWP in both CLI and FastAPI.
+
+---
+
+## `attach_body_names()` — placeholder body names (Session 102, issue #131)
+
+`attach_body_names(system)` assigns a human-readable placeholder name to every
+star, orbit slot, and moon in the system. It must be called **after**
+`attach_detail()` because moon objects don't exist until then. It is
+deterministic (no dice) and idempotent.
+
+**Naming scheme:**
+
+| Body | Placeholder |
+|------|-------------|
+| Mainworld orbit | `World.name` (already set) |
+| Star A (non-companion) | `<mw>-Primary` |
+| Star B (non-companion) | `<mw>-Secondary`, then Tertiary, etc. |
+| Companion stars | Not named (`name` stays `""`) — companions share their parent's orbit |
+| Non-mainworld terrestrial / GG | `<mw>-A`, `<mw>-B`, … (separate counter from belts) |
+| Belt | `<mw>-Belt-A`, `<mw>-Belt-B`, … (separate counter from worlds) |
+| Non-ring moon | `<orbit_name>-alpha`, `…-beta`, … (Greek sequence; rings skipped) |
+| Ring moon | Not named (`name` stays `""`) |
+
+`orbit.detail.name` and `moon.detail.name` are also set to mirror the parent
+slot/moon name, so `WorldDetail` objects carry their own name for JSON output.
+
+---
+
+## `to_survey_form_html()` — IISS Class 0/I Survey form (Session 123)
+
+`TravellerSystem.to_survey_form_html()` renders the `survey_class0i.html` Jinja2
+template and returns a self-contained HTML page suitable for display in a
+`QWebEngineView` or a browser tab.
+
+The template receives:
+
+- **`designation`** — mainworld name (or `"Unknown"`)
+- **`age_gyr`** — system age formatted to 2 decimal places
+- **`stellar_count`** — number of stars in the system
+- **`star_rows`** — one dict per star, with keys:
+  `component`, `footnote`, `star_class`, `mass`, `temp`, `diameter`,
+  `luminosity`, `orbit`, `au`, `ecc`, `period`, `hzco`
+- **`notes`** — newline-joined footnote lines for sub-year orbital periods
+  (each formatted as `"¹ 42.195 standard days"`)
+
+**Footnote rule:** stars with an orbital period under 1 year get a superscript
+symbol (¹²³…). The corresponding note line shows the period in standard days
+(365.25 days/year). The primary star always shows `"—"` for orbit, AU, and
+period.
+
+The method is called by:
+- `AppWindow._on_survey_clicked()` in `gen-ui/app.py` — displayed in a
+  `SurveyFormWindow`
+- The FastAPI `/api/system/full` and `/api/map/system/full` endpoints — returned
+  as `survey_class0i_html` in the JSON response when `include_mw_card=true`
 
 ---
 
@@ -172,7 +278,9 @@ two main data structures:
   - `hz_inner` / `hzco` / `hz_outer` — inner edge, centre, and outer edge of the
     Habitable Zone, formatted to 2 decimal places, or `"—"` for stars without a
     computed HZ
-- **`orbit_rows`** — one dict per orbit slot, with inline `moons` list
+- **`orbit_rows`** — one dict per orbit slot, with inline `moons` list. Session 102 added
+  `"name"` as the first key in each orbit row and moon sub-dict, so `system_card.html` can
+  display it as the leftmost column.
 
 The system card shows **stellar data and orbital survey only**. Mainworld detail
 (UWP stats, atmosphere, hydrographic, biological, habitability) appears exclusively

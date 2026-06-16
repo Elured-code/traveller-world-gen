@@ -79,6 +79,13 @@ class BeltPhysical:
     size_1_bodies: int     # count of Size 1 objects
     size_s_bodies: int     # count of Size S objects
     mean_temperature_k: int  # temperature from orbital HZ position
+
+    @property
+    def profile_str(self) -> str:
+        # WBH Class III shorthand: "S-CC.CC.CC.CC-B-R-#-s"
+        # S = span in AU; CC.CC.CC.CC = M/S/C/O composition pcts;
+        # B = bulk; R = resource_rating; # = Size 1 bodies; s = Size S bodies.
+        ...
 ```
 
 This is a `@dataclass` without any `init=False` fields — all values are known at
@@ -107,6 +114,7 @@ The `max(2, min(12, ...))` clamp ensures the result stays in the valid range.
 
 | Method | On class | What it does |
 |--------|----------|-------------|
+| `.profile_str` | `BeltPhysical` | Computed property — WBH Class III shorthand string `S-CC.CC.CC.CC-B-R-#-s` (Session 123) |
 | `.to_dict()` | `BeltPhysical` | Serialises all fields to a plain dict |
 | `.from_dict(d)` | `BeltPhysical` | Class method — reconstructs from a dict |
 | `generate_belt_physical(orbit_slot, ..., rng=None)` | module | Entry point |

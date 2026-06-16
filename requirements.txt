@@ -1,9 +1,4 @@
-# Azure Functions Python worker
-azure-functions>=1.18.0
-
-# JSON Schema validation — used to validate inbound batch request bodies.
-# Pin to a version range compatible with the Azure Functions Python runtime.
-jsonschema>=4.21.0,<5.0.0
-
-# HTML templating — used by World.to_html() and TravellerSystem.to_html()
+# Runtime dependencies for generation modules.
+# Used by the gen-ui binary build and the FastAPI server.
+# PySide6 is in gen-ui/requirements.txt; dev tools are in requirements-dev.txt.
 Jinja2>=3.1.0

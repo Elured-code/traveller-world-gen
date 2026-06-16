@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>(function(){var t=localStorage.getItem("traveller-theme")||((window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light");document.documentElement.setAttribute("data-theme",t);})();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traveller World Generator — Mainworld Only</title>
+  <style>
+    :root {
+      --bg:       #0c0e14;
+      --surface:  #131620;
+      --panel:    #1a1d28;
+      --border:   #2c2a20;
+      --accent:   #c87828;
+      --accent2:  #bf4040;
+      --text:     #ddd4b0;
+      --muted:    #7a7060;
+      --input-bg: #090b10;
+      --error-bg: rgba(191,64,64,0.10);
+      --error-fg: #bf4040;
+      --ok-fg:    #5a9e5a;
+    }
+
+    [data-theme=light] {
+      --bg:       #f4f0e4;
+      --surface:  #ede8d8;
+      --panel:    #e8e2cc;
+      --border:   #c8b890;
+      --accent:   #b56e20;
+      --accent2:  #bf4040;
+      --text:     #1a1510;
+      --muted:    #7a6850;
+      --input-bg: #faf6ee;
+      --error-bg: rgba(191,64,64,0.08);
+      --error-fg: #c03030;
+      --ok-fg:    #3a7a3a;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+    header h1 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .badge {
+      font-size: 0.68rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      border-radius: 2px;
+      padding: 0.15rem 0.45rem;
+    }
+    nav {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    nav a {
+      font-size: 0.82rem;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    nav a:hover { color: var(--text); }
+    nav a.active { color: var(--accent); font-weight: 600; }
+    .btn-icon {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 0.22rem 0.5rem;
+      font-size: 0.85rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+      flex-shrink: 0;
+    }
+    .btn-icon:hover { border-color: var(--accent); color: var(--text); }
+    .server-status {
+      font-size: 0.78rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .dot.ok { background: var(--ok-fg); }
+
+    /* ── Controls ────────────────────────────────────── */
+    .controls {
+      padding: 0.85rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      align-items: flex-end;
+      flex-shrink: 0;
+      background: var(--surface);
+    }
+
+    .field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .field label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      padding: 0.42rem 0.65rem;
+      font-size: 0.88rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus,
+    input[type="number"]:focus,
+    select:focus { border-color: var(--accent); }
+    input[type="text"] { width: 200px; }
+    input[type="number"] { width: 120px; }
+    select { cursor: pointer; }
+
+    .seed-row { display: flex; gap: 0.35rem; }
+
+    .btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      padding: 0.42rem 1.1rem;
+      font-size: 0.88rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-ghost {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 0.42rem 0.55rem;
+      font-size: 0.95rem;
+      line-height: 1;
+    }
+    .btn-ghost:hover { border-color: var(--accent); }
+
+    /* ── Status bar ──────────────────────────────────── */
+    .status-bar {
+      padding: 0.45rem 1.5rem;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+      display: none;
+    }
+    .status-bar.loading {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--muted);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .status-bar.error {
+      display: block;
+      color: var(--error-fg);
+      background: var(--error-bg);
+      border-bottom: 1px solid var(--accent2);
+    }
+    .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Seed / save badge ───────────────────────────── */
+    .seed-badge {
+      padding: 0.35rem 1.5rem;
+      font-size: 0.76rem;
+      color: var(--muted);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: none;
+      align-items: center;
+      gap: 0.4rem;
+      flex-shrink: 0;
+    }
+    .seed-badge.visible { display: flex; }
+    .seed-code {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 0.1rem 0.4rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem;
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .seed-code:hover { border-color: var(--accent); }
+    .copy-hint { opacity: 0; transition: opacity 0.2s; font-size: 0.72rem; color: var(--ok-fg); }
+    .copy-hint.show { opacity: 1; }
+
+    .badge-divider {
+      width: 1px; height: 13px;
+      background: var(--border);
+      margin: 0 0.3rem;
+      flex-shrink: 0;
+    }
+    .save-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .btn-save {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 0.12rem 0.48rem;
+      font-size: 0.71rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-save:hover { border-color: var(--accent); color: var(--text); }
+    .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ── Result area ─────────────────────────────────── */
+    .result {
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Footer ──────────────────────────────────────── */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0.4rem 1.5rem;
+      font-size: 0.68rem;
+      color: var(--muted);
+      flex-shrink: 0;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .result-frame {
+      flex: 1;
+      border: none;
+      width: 100%;
+      background: transparent;
+      display: none;
+    }
+    .result-frame.visible { display: block; }
+
+    .result-pre {
+      flex: 1;
+      padding: 1.5rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem;
+      line-height: 1.5;
+      overflow: auto;
+      white-space: pre;
+      display: none;
+    }
+    .result-pre.json { color: #a8c7fa; }
+    .result-pre.visible { display: block; }
+
+    .empty-state {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .empty-state .icon { font-size: 2.5rem; opacity: 0.3; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Traveller World Generator</h1>
+  <span class="badge">FastAPI</span>
+  <nav>
+    <a href="/static/index.html" class="active">Mainworld Only</a>
+    <a href="/static/system.html">Full System</a>
+    <div class="server-status">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-text">checking…</span>
+    </div>
+    <button class="btn-icon" id="theme-toggle" title="Toggle light / dark mode" aria-label="Toggle theme">☀</button>
+  </nav>
+</header>
+
+<div class="controls">
+  <div class="field">
+    <label for="w-name">Name</label>
+    <input type="text" id="w-name" placeholder="e.g. Mora" maxlength="64" title="World name — leave blank for an auto-generated name">
+  </div>
+  <div class="field">
+    <label for="w-seed">Seed</label>
+    <div class="seed-row">
+      <input type="number" id="w-seed" placeholder="random" title="Integer seed for reproducible results — leave blank for a random seed">
+      <button class="btn btn-ghost" id="w-rand" title="Pick random seed">⟳</button>
+    </div>
+  </div>
+  <div class="field">
+    <label for="w-format">Format</label>
+    <select id="w-format" title="Card (HTML): renders the world card inline. JSON: full structured data for download.">
+      <option value="html">Card (HTML)</option>
+      <option value="json">JSON</option>
+    </select>
+  </div>
+  <button class="btn" id="w-gen" title="Generate a mainworld with the current options (Enter)">Generate</button>
+</div>
+
+<div class="status-bar" id="w-status"></div>
+
+<div class="seed-badge" id="w-seed-badge">
+  Seed: <span class="seed-code" id="w-seed-val" title="Click to copy"></span>
+  <span class="copy-hint" id="w-copy-hint">copied</span>
+  <div class="badge-divider"></div>
+  <span class="save-label">Save</span>
+  <button class="btn-save" id="w-save-html" title="Download world card as HTML">HTML</button>
+  <button class="btn-save" id="w-save-json" title="Download world data as JSON">JSON</button>
+</div>
+
+<div class="result" id="w-result">
+  <div class="empty-state">
+    <span class="icon">🌍</span>
+    Generate a mainworld to see the card here
+  </div>
+  <iframe class="result-frame" id="w-frame" title="World card" sandbox="allow-scripts"></iframe>
+  <pre class="result-pre json" id="w-json"></pre>
+</div>
+
+<footer>
+  The Traveller game in all forms is owned by Mongoose Publishing. Copyright 1977–2025 Mongoose Publishing. All rights reserved.
+  This is an unofficial fan work, not affiliated with Mongoose Publishing.
+  <span id="app-version" style="margin-left:1.5em; opacity:0.6;"></span>
+</footer>
+
+<script>
+  "use strict";
+
+  function randSeed() { return Math.floor(Math.random() * 2_147_483_647); }
+
+  function slugName(name) {
+    return (name || "world").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "world";
+  }
+
+  function downloadBlob(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Tracks the last successful generation so save buttons can re-fetch.
+  let _lastGen = null;
+  let _lastFrameHtml = null;
+
+  function _injectTheme(html) {
+    const t = document.documentElement.getAttribute("data-theme") || "dark";
+    return html.replace(/(<html\b[^>]*)>/, function (_, p1) {
+      return p1.replace(/\s*data-theme="[^"]*"/, "") + ' data-theme="' + t + '">';
+    });
+  }
+
+  function setStatus(msg, type) {
+    const el = document.getElementById("w-status");
+    el.className = "status-bar " + type;
+    if (type === "loading") {
+      el.innerHTML = '<div class="spinner"></div>';
+      const span = document.createElement("span");
+      span.textContent = msg;
+      el.appendChild(span);
+    } else {
+      el.textContent = msg;
+    }
+  }
+
+  function clearStatus() {
+    const el = document.getElementById("w-status");
+    el.className = "status-bar";
+    el.textContent = "";
+  }
+
+  function showSeed(seed) {
+    document.getElementById("w-seed-val").textContent = seed;
+    document.getElementById("w-seed-badge").classList.add("visible");
+  }
+
+  function clearResult() {
+    document.getElementById("w-frame").classList.remove("visible");
+    document.getElementById("w-json").classList.remove("visible");
+    document.getElementById("w-seed-badge").classList.remove("visible");
+    document.getElementById("w-result").querySelector(".empty-state").style.display = "";
+    _lastGen = null;
+  }
+
+  function showFrame(html) {
+    _lastFrameHtml = html;
+    const frame = document.getElementById("w-frame");
+    document.getElementById("w-result").querySelector(".empty-state").style.display = "none";
+    frame.classList.remove("visible");
+    frame.srcdoc = _injectTheme(html);
+    frame.onload = () => {
+      requestAnimationFrame(() => {
+        try {
+          const h = frame.contentDocument.documentElement.scrollHeight;
+          if (h > 0) frame.style.height = h + "px";
+        } catch (_) {}
+        frame.classList.add("visible");
+      });
+    };
+  }
+
+  function showJson(data) {
+    const el = document.getElementById("w-json");
+    document.getElementById("w-result").querySelector(".empty-state").style.display = "none";
+    el.textContent = JSON.stringify(data, null, 2);
+    el.classList.add("visible");
+  }
+
+  // ── Save handlers ────────────────────────────────────
+
+  async function saveAs(fmt) {
+    if (!_lastGen) return;
+    const { name, seed } = _lastGen;
+    const slug = slugName(name);
+    const btn = document.getElementById(`w-save-${fmt}`);
+    btn.disabled = true;
+    try {
+      let content, filename, mimeType;
+      if (fmt === "html") {
+        const cardName = encodeURIComponent(name || "World-1");
+        const resp = await fetch(`/api/world/${cardName}/card?seed=${seed}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        content  = await resp.text();
+        filename = `${slug}-world.html`;
+        mimeType = "text/html";
+      } else {
+        const p = new URLSearchParams({ seed });
+        if (name) p.set("name", name);
+        const resp = await fetch(`/api/world?${p}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        content  = JSON.stringify(await resp.json(), null, 2);
+        filename = `${slug}-world.json`;
+        mimeType = "application/json";
+      }
+      downloadBlob(content, filename, mimeType);
+    } catch (e) {
+      setStatus("Save failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById("w-save-html").addEventListener("click", () => saveAs("html"));
+  document.getElementById("w-save-json").addEventListener("click", () => saveAs("json"));
+
+  // ── Seed copy-on-click ───────────────────────────────
+
+  document.getElementById("w-seed-val").addEventListener("click", function () {
+    navigator.clipboard.writeText(this.textContent).then(() => {
+      const hint = document.getElementById("w-copy-hint");
+      hint.classList.add("show");
+      setTimeout(() => hint.classList.remove("show"), 1500);
+    }).catch(() => {});
+  });
+
+  // ── Server health check ──────────────────────────────
+
+  (async () => {
+    const dot = document.getElementById("status-dot");
+    const txt = document.getElementById("status-text");
+    try {
+      const resp = await fetch("/api/world?seed=1", { signal: AbortSignal.timeout(3000) });
+      if (resp.ok) { dot.className = "dot ok"; txt.textContent = "server online"; }
+      else throw new Error();
+    } catch (_) {
+      dot.className = "dot"; txt.textContent = "server offline";
+    }
+  })();
+
+  document.getElementById("w-rand").addEventListener("click", () => {
+    document.getElementById("w-seed").value = randSeed();
+  });
+
+  // ── Persist format preference ────────────────────────
+  (function () {
+    const KEY = "traveller-world-prefs";
+    const _VALID_FORMATS = new Set(["json", "html", "text"]);
+    const fmt = document.getElementById("w-format");
+    try {
+      const p = JSON.parse(localStorage.getItem(KEY) || "{}");
+      if (p.format && _VALID_FORMATS.has(p.format)) fmt.value = p.format;
+    } catch (_) {}
+    fmt.addEventListener("change", () => {
+      try { localStorage.setItem(KEY, JSON.stringify({ format: fmt.value })); } catch (_) {}
+    });
+  })();
+
+  document.getElementById("w-gen").addEventListener("click", generateWorld);
+  ["w-name", "w-seed"].forEach(id => {
+    document.getElementById(id).addEventListener("keydown", e => {
+      if (e.key === "Enter") generateWorld();
+    });
+  });
+
+  // ── Theme toggle ─────────────────────────────────────
+
+  function _getTheme() {
+    return localStorage.getItem("traveller-theme") ||
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
+
+  function _applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("traveller-theme", theme);
+    document.getElementById("theme-toggle").textContent = theme === "dark" ? "☀" : "☾";
+    if (_lastFrameHtml) showFrame(_lastFrameHtml);
+  }
+
+  document.getElementById("theme-toggle").addEventListener("click", function () {
+    const cur = document.documentElement.getAttribute("data-theme") || _getTheme();
+    _applyTheme(cur === "dark" ? "light" : "dark");
+  });
+
+  _applyTheme(_getTheme());
+
+  async function generateWorld() {
+    const name   = document.getElementById("w-name").value.trim();
+    const seedIn = document.getElementById("w-seed").value.trim();
+    const format = document.getElementById("w-format").value;
+    const btn    = document.getElementById("w-gen");
+    const seed   = seedIn ? parseInt(seedIn, 10) : randSeed();
+
+    btn.disabled = true;
+    clearResult();
+    setStatus("Generating…", "loading");
+
+    try {
+      if (format === "html") {
+        const cardName = encodeURIComponent(name || "World-1");
+        const resp = await fetch(`/api/world/${cardName}/card?seed=${seed}`);
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error((err.error && err.error.message) || `HTTP ${resp.status}`);
+        }
+        showFrame(await resp.text());
+        showSeed(seed);
+        if (!seedIn) document.getElementById("w-seed").value = seed;
+      } else {
+        const params = new URLSearchParams({ seed });
+        if (name) params.set("name", name);
+        const resp = await fetch(`/api/world?${params}`);
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({}));
+          throw new Error((err.error && err.error.message) || `HTTP ${resp.status}`);
+        }
+        const data = await resp.json();
+        showJson(data);
+        showSeed(data.seed ?? seed);
+        if (!seedIn) document.getElementById("w-seed").value = data.seed ?? seed;
+      }
+      _lastGen = { name: name || "World-1", seed };
+      clearStatus();
+    } catch (e) {
+      setStatus("Error: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  fetch("/api/version").then(r => r.json()).then(d => {
+    const el = document.getElementById("app-version");
+    if (el && d.version) el.textContent = "v" + d.version;
+  }).catch(() => {});
+</script>
+</body>
+</html>

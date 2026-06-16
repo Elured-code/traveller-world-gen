@@ -1,0 +1,15 @@
+# Azure Functions Python worker
+azure-functions>=1.18.0
+
+# FastAPI + ASGI server (for AsgiFunctionApp wrapper)
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# Rate limiting
+slowapi>=0.1.9
+
+# JSON Schema validation — used to validate inbound batch request bodies
+jsonschema>=4.21.0,<5.0.0
+
+# HTML templating — used by World.to_html() and TravellerSystem.to_html()
+Jinja2>=3.1.0

@@ -7,12 +7,13 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; }
   :root {
-    --color-bg-primary:   #ffffff;
-    --color-bg-secondary: #f5f5f3;
-    --color-bg-tertiary:  #eeede8;
-    --color-text-primary: #1a1a19;
-    --color-text-secondary: #6b6a65;
+    --color-bg-primary:   #f9f5ee;
+    --color-bg-secondary: #eeeadb;
+    --color-bg-tertiary:  #e4dfc8;
+    --color-text-primary: #1a1510;
+    --color-text-secondary: #6b5d47;
     --color-text-danger:  #c0392b;
+    --color-accent:       #b56e20;
     --color-border:       rgba(0,0,0,0.12);
     --radius-md: 8px;
     --radius-lg: 12px;
@@ -20,23 +21,35 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --color-bg-primary:   #1e1e1c;
-      --color-bg-secondary: #2a2a28;
-      --color-bg-tertiary:  #323230;
-      --color-text-primary: #e8e6de;
-      --color-text-secondary: #9c9a92;
+      --color-bg-primary:   #141210;
+      --color-bg-secondary: #1d1b17;
+      --color-bg-tertiary:  #222018;
+      --color-text-primary: #e0d8c0;
+      --color-text-secondary: #9a8e76;
       --color-text-danger:  #e57373;
+      --color-accent:       #c87828;
       --color-border:       rgba(255,255,255,0.10);
     }
   }
   [data-theme=dark] {
-    --color-bg-primary:   #1e1e1c;
-    --color-bg-secondary: #2a2a28;
-    --color-bg-tertiary:  #323230;
-    --color-text-primary: #e8e6de;
-    --color-text-secondary: #9c9a92;
+    --color-bg-primary:   #141210;
+    --color-bg-secondary: #1d1b17;
+    --color-bg-tertiary:  #222018;
+    --color-text-primary: #e0d8c0;
+    --color-text-secondary: #9a8e76;
     --color-text-danger:  #e57373;
+    --color-accent:       #c87828;
     --color-border:       rgba(255,255,255,0.10);
+  }
+  [data-theme=light] {
+    --color-bg-primary:   #f9f5ee;
+    --color-bg-secondary: #eeeadb;
+    --color-bg-tertiary:  #e4dfc8;
+    --color-text-primary: #1a1510;
+    --color-text-secondary: #6b5d47;
+    --color-text-danger:  #c0392b;
+    --color-accent:       #b56e20;
+    --color-border:       rgba(0,0,0,0.12);
   }
   body {
     background: var(--color-bg-tertiary);
@@ -117,8 +130,11 @@
     padding: 12px;
   }
   .inner-label {
-    font-size: 13px;
-    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--color-accent);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     margin: 0 0 8px;
   }
   .detail-row {
@@ -410,6 +426,88 @@
     {% if ctx.lifeform_profile is not none %}
     {{ drow("Lifeform profile", ctx.lifeform_profile) }}
     {% endif %}
+  </div>
+  {% endif %}
+
+  {% if ctx.pop_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Population detail</p>
+    {{ drow("Population profile", ctx.pop_detail.population_profile) }}
+    {{ drow("Total population", ctx.pop_detail_total_str) }}
+    {{ drow("PCR", ctx.pop_detail.pcr|string ~ " — " ~ ctx.pop_detail.pcr_label) }}
+    {{ drow("Urbanisation", ctx.pop_detail.urbanisation_pct|string ~ "%") }}
+    {{ drow("Urban population", ctx.pop_detail_urban_str) }}
+    {% if ctx.pop_detail.major_city_count > 0 %}
+    {{ drow("Major cities", ctx.pop_detail.major_city_count|string
+            ~ " (total " ~ ctx.pop_detail_major_total_str ~ ")") }}
+    {% for num, pop_str in ctx.pop_detail_cities %}
+    {{ drow("City " ~ num|string, pop_str) }}
+    {% endfor %}
+    {% else %}
+    {{ drow("Major cities", "None (PCR 0 — dispersed settlement)") }}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if ctx.gov_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Government detail</p>
+    {{ drow("Government profile", ctx.gov_detail.government_profile) }}
+    {{ drow("Centralisation", ctx.gov_detail.centralisation) }}
+    {{ drow("Primary authority", ctx.gov_detail.authority) }}
+    {% if ctx.gov_detail.authority_code == "B" %}
+    {{ drow("Legislative structure", ctx.gov_detail.structure_leg) }}
+    {{ drow("Executive structure", ctx.gov_detail.structure_exec) }}
+    {{ drow("Judicial structure", ctx.gov_detail.structure_jud) }}
+    {% else %}
+    {{ drow("Structure", ctx.gov_detail.structure) }}
+    {% endif %}
+    {% if ctx.gov_detail.factions %}
+    {{ drow("External factions", ctx.gov_detail.factions|length|string) }}
+    {% for f in ctx.gov_detail.factions %}
+    {{ drow("Faction " ~ f.numeral, f.government_name ~ " — " ~ f.strength_label ~ " (" ~ f.relationship_label ~ ")") }}
+    {% endfor %}
+    {% else %}
+    {{ drow("External factions", "None") }}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if ctx.law_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Law detail</p>
+    {{ drow("Justice profile", ctx.law_detail.justice_profile) }}
+    {{ drow("Law profile", ctx.law_detail.law_profile) }}
+    {{ drow("Primary judicial", ctx.law_detail.judicial_primary ~ " — " ~ ctx.law_detail.judicial_primary_label) }}
+    {{ drow("Secondary judicial", ctx.law_detail.judicial_secondary ~ " — " ~ ctx.law_detail.judicial_secondary_label) }}
+    {{ drow("Law uniformity", ctx.law_detail.law_uniformity ~ " - " ~ ctx.law_detail.law_uniformity_label) }}
+    {{ drow("Presumption of innocence", "Yes" if ctx.law_detail.presumption_of_innocence else "No") }}
+    {{ drow("Death penalty", "Yes" if ctx.law_detail.death_penalty else "No") }}
+    {{ drow("Weapons law", ctx.law_detail.law_weapons|string) }}
+    {{ drow("Economic law", ctx.law_detail.law_economic|string) }}
+    {{ drow("Criminal law", ctx.law_detail.law_criminal|string) }}
+    {{ drow("Private law", ctx.law_detail.law_private|string) }}
+    {{ drow("Personal rights law", ctx.law_detail.law_personal_rights|string) }}
+  </div>
+  {% endif %}
+
+  {% if ctx.tech_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Technology detail</p>
+    {{ drow("Technology profile", ctx.tech_detail.technology_profile) }}
+    {{ drow("High common TL", ctx.tech_detail.tl_high_common|string) }}
+    {{ drow("Low common TL", ctx.tech_detail.tl_low_common|string) }}
+    {{ drow("Energy TL", ctx.tech_detail.tl_energy|string) }}
+    {{ drow("Electronics TL", ctx.tech_detail.tl_electronics|string) }}
+    {{ drow("Manufacturing TL", ctx.tech_detail.tl_manufacturing|string) }}
+    {{ drow("Medical TL", ctx.tech_detail.tl_medical|string) }}
+    {{ drow("Environmental TL", ctx.tech_detail.tl_environmental|string) }}
+    {{ drow("Land transport TL", ctx.tech_detail.tl_land|string) }}
+    {{ drow("Sea transport TL", ctx.tech_detail.tl_sea|string) }}
+    {{ drow("Air transport TL", ctx.tech_detail.tl_air|string) }}
+    {{ drow("Space transport TL", ctx.tech_detail.tl_space|string) }}
+    {{ drow("Personal military TL", ctx.tech_detail.tl_military_personal|string) }}
+    {{ drow("Heavy military TL", ctx.tech_detail.tl_military_heavy|string) }}
   </div>
   {% endif %}
 

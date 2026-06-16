@@ -1,0 +1,49 @@
+{
+    "azureFunctions.deploySubpath": "azure-api",
+    "azureFunctions.scmDoBuildDuringDeployment": true,
+    "azureFunctions.pythonVenv": ".venv",
+    "azureFunctions.projectLanguage": "Python",
+    "azureFunctions.projectRuntime": "~4",
+    "debug.internalConsoleOptions": "neverOpen",
+    "azureFunctions.projectLanguageModel": 2,
+    "Lua.runtime.special": {
+        "import": "require"
+    },
+    "Lua.runtime.version": "Lua 5.1",
+    "Lua.runtime.pathStrict": false,
+    "Lua.runtime.path": [
+        "?.lua",
+        "?/init.lua",
+        "?/__init__.lua"
+    ],
+    "Lua.runtime.plugin": "/Users/michaelbailey/.vscode/extensions/lunarwtr.lotro-api-1.0.18/resources/Lua/Plugin/plugin.lua",
+    "Lua.workspace.library": [
+        "/Users/michaelbailey/.vscode/extensions/lunarwtr.lotro-api-1.0.18/resources/Lua/EmmyLua/Turbine"
+    ],
+    "Lua.diagnostics.disable": [
+        "duplicate-set-field",
+        "inject-field"
+    ],
+    "xml.fileAssociations": [
+        {
+            "pattern": "**/*.plugin",
+            "systemId": "/Users/michaelbailey/.vscode/extensions/lunarwtr.lotro-api-1.0.18/resources/xsds/lotroplugin.xsd"
+        },
+        {
+            "pattern": "**/*.plugincompendium",
+            "systemId": "/Users/michaelbailey/.vscode/extensions/lunarwtr.lotro-api-1.0.18/resources/xsds/plugincompendium.xsd"
+        },
+        {
+            "pattern": "**/*.musiccompendium",
+            "systemId": "/Users/michaelbailey/.vscode/extensions/lunarwtr.lotro-api-1.0.18/resources/xsds/musiccompendium.xsd"
+        },
+        {
+            "pattern": "**/*.skincompendium",
+            "systemId": "/Users/michaelbailey/.vscode/extensions/lunarwtr.lotro-api-1.0.18/resources/xsds/skincompendium.xsd"
+        },
+        {
+            "pattern": "**/SkinDefinition.xml",
+            "systemId": "/Users/michaelbailey/.vscode/extensions/lunarwtr.lotro-api-1.0.18/resources/xsds/lotro-skin.xsd"
+        }
+    ]
+}

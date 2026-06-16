@@ -56,6 +56,10 @@ from tables import (
 
 if TYPE_CHECKING:
     from traveller_world_physical import WorldPhysical
+    from traveller_world_population_detail import PopulationDetail
+    from traveller_world_government_detail import GovernmentDetail
+    from traveller_world_law_detail import LawDetail
+    from traveller_world_tech_detail import TechDetail
 
 
 # ---------------------------------------------------------------------------
@@ -1541,6 +1545,13 @@ class World:  # pylint: disable=too-many-instance-attributes
     compatibility_rating: Optional[int] = field(default=None, init=False)
     lifeform_profile:     Optional[str] = field(default=None, init=False)
     habitability_rating:  Optional[int] = field(default=None, init=False)
+    population_detail: Optional["PopulationDetail"] = field(default=None, init=False)
+    government_detail: Optional["GovernmentDetail"] = field(default=None, init=False)
+    law_detail:        Optional["LawDetail"]         = field(default=None, init=False)
+    tech_detail:       Optional["TechDetail"]        = field(default=None, init=False)
+                                    # WBH Social Characteristics tech level profile.
+                                    # Set by attach_tech_detail() (Session 116, issue #98).
+                                    # None by default; only set when "Social detail" enabled.
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1652,6 +1663,14 @@ class World:  # pylint: disable=too-many-instance-attributes
             **({"habitability_rating": self.habitability_rating}
                if self.habitability_rating is not None else {}),
             **({"seed": self.seed} if self.seed is not None else {}),
+            **({"population_detail": self.population_detail.to_dict()}
+               if self.population_detail is not None else {}),
+            **({"government_detail": self.government_detail.to_dict()}
+               if self.government_detail is not None else {}),
+            **({"law_detail": self.law_detail.to_dict()}
+               if self.law_detail is not None else {}),
+            **({"tech_detail": self.tech_detail.to_dict()}
+               if self.tech_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1745,7 +1764,7 @@ class World:  # pylint: disable=too-many-instance-attributes
                     )
 
     @classmethod
-    def from_dict(cls, d: dict) -> "World":  # pylint: disable=too-many-locals
+    def from_dict(cls, d: dict) -> "World":  # pylint: disable=too-many-locals,too-many-branches
         """Reconstruct a World from a dict produced by to_dict().
 
         Handles both the nested form produced by to_dict() (where 'starport',
@@ -1829,6 +1848,18 @@ class World:  # pylint: disable=too-many-instance-attributes
             world.habitability_rating = int(d["habitability_rating"])
         if d.get("seed") is not None:
             world.seed = int(d["seed"])
+        if d.get("population_detail") is not None:
+            from traveller_world_population_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
+            world.population_detail = _PD.from_dict(d["population_detail"])
+        if d.get("government_detail") is not None:
+            from traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
+            world.government_detail = _GD.from_dict(d["government_detail"])
+        if d.get("law_detail") is not None:
+            from traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
+            world.law_detail = _LD.from_dict(d["law_detail"])
+        if d.get("tech_detail") is not None:
+            from traveller_world_tech_detail import TechDetail as _TD  # pylint: disable=import-outside-toplevel
+            world.tech_detail = _TD.from_dict(d["tech_detail"])
 
         return world
 
@@ -2116,6 +2147,23 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
             if world.habitability_rating is not None else None
         ),
         "json_str": world.to_json(),
+        "pop_detail": world.population_detail,
+        "pop_detail_total_str": (
+            f"{world.population_detail.total_population:,}"
+            if world.population_detail is not None else None),
+        "pop_detail_urban_str": (
+            f"{world.population_detail.urban_population:,}"
+            if world.population_detail is not None else None),
+        "pop_detail_major_total_str": (
+            f"{world.population_detail.major_city_total_population:,}"
+            if world.population_detail is not None else None),
+        "pop_detail_cities": (
+            [(i + 1, f"{c.population:,}")
+             for i, c in enumerate(world.population_detail.cities)]
+            if world.population_detail is not None else []),
+        "gov_detail": world.government_detail,
+        "law_detail": world.law_detail,
+        "tech_detail": world.tech_detail,
     }
 
 
@@ -2228,13 +2276,33 @@ def generate_hydrographics(size: int, atmosphere: int, temperature: str) -> int:
     return max(0, min(10, base + dm))
 
 
-def generate_population() -> int:
+_SETTLEMENT_DMS: dict = {
+    "standard":     {},
+    "long_settled": {0: 1, 1: 1, 2: 1, 3: 1, 4: 2, 5: 3, 6: 3, 7: 2, 8: 3, 9: 2},
+    "well_settled": {4: 1, 5: 2, 6: 2, 7: 1, 8: 2, 9: 1},
+    "backwater":    {0: -3, 1: -3, 2: -3, 3: -3, 4: -1, 5: 1, 6: 1, 7: -1, 8: 1, 9: -1},
+    "unsettled":    {4: -5, 5: -4, 6: -4, 7: -5, 8: -4, 9: -5},
+}
+_SETTLEMENT_DEFAULT_DM: dict = {
+    "standard": 0, "long_settled": 0, "well_settled": -1, "backwater": -5, "unsettled": -7,
+}
+
+
+def _population_settlement_dm(settlement_type: str, atmosphere: int) -> int:
+    """Return the population DM for the given settlement type and atmosphere."""
+    return _SETTLEMENT_DMS.get(settlement_type, {}).get(
+        atmosphere, _SETTLEMENT_DEFAULT_DM.get(settlement_type, 0)
+    )
+
+
+def generate_population(settlement_dm: int = 0) -> int:
     """Step 5 — Population (p.251-252): roll 2D-2, range 0-10.
 
     Population 0 = uninhabited.  The referee may optionally place very
     high-population worlds (11-12) but the dice do not produce these.
+    An optional settlement_dm shifts the roll while keeping the 0–10 range.
     """
-    return roll(2, -2)
+    return min(10, roll(2, -2 + settlement_dm))
 
 
 def generate_government(population: int) -> int:
@@ -2248,12 +2316,13 @@ def generate_government(population: int) -> int:
 
 
 def generate_law_level(government: int) -> int:
-    """Step 7 — Law Level (p.255): roll 2D-7 + Government, minimum 0.
+    """Step 7 — Law Level (p.255): roll 2D-7 + Government, clamped to [0, 18].
 
     Law Level 0 = no restrictions; higher values ban progressively more.
     If Population is 0 (handled by caller), Law Level should also be 0.
+    Maximum 18 (eHex 'I') matches the schema and WBH subcategory ceilings.
     """
-    return max(0, roll(2, -7 + government))
+    return min(18, max(0, roll(2, -7 + government)))
 
 
 def generate_starport(population: int) -> str:
@@ -2615,6 +2684,69 @@ def assign_travel_zone(atmosphere: int, government: int,
 
 
 # ---------------------------------------------------------------------------
+# Social application — called after mainworld selection
+# ---------------------------------------------------------------------------
+
+def apply_mainworld_social(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    world: World,
+    rng: Optional[random.Random] = None,
+    settlement_type: str = "standard",
+) -> None:
+    """Apply social steps to a physically-complete mainworld (CRB pp.248-261).
+
+    Performs steps 5–10 and 12–13: population, government, law level,
+    starport, tech level, minimum-TL advisory, bases, population multiplier,
+    trade codes, and travel zone.  Call this after mainworld selection in
+    the WBH workflow, passing the same ``rng`` instance used for system
+    generation to continue the RNG sequence correctly.
+    """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
+
+    world.population = generate_population(
+        _population_settlement_dm(settlement_type, world.atmosphere)
+    )
+    world.government = generate_government(world.population)
+    world.law_level = (
+        0 if world.population == 0
+        else generate_law_level(world.government)
+    )
+
+    world.starport = generate_starport(world.population)
+
+    world.tech_level = (
+        0 if world.population == 0
+        else generate_tech_level(
+            world.starport, world.size, world.atmosphere,
+            world.hydrographics, world.population, world.government,
+        )
+    )
+
+    min_tl = ATMOSPHERE_MIN_TL.get(world.atmosphere, 0)
+    if world.population > 0 and world.tech_level < min_tl:
+        world.notes.append(
+            f"TL {world.tech_level} is below the minimum TL {min_tl} "
+            f"needed to maintain Atmosphere {world.atmosphere} "
+            f"({ATMOSPHERE_NAMES.get(world.atmosphere, '?')}). "
+            "Population may be doomed."
+        )
+
+    world.bases = generate_bases(
+        world.starport, world.tech_level, world.population, world.law_level,
+    )
+    world.population_multiplier = generate_population_multiplier(world.population)
+    world.trade_codes = assign_trade_codes(
+        world.size, world.atmosphere, world.hydrographics,
+        world.population, world.government, world.law_level,
+        world.tech_level,
+    )
+    world.travel_zone = assign_travel_zone(
+        world.atmosphere, world.government, world.law_level, world.starport,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Master generation function
 # ---------------------------------------------------------------------------
 
@@ -2622,6 +2754,7 @@ def generate_world(  # pylint: disable=too-many-arguments,too-many-positional-ar
         name: str = "Unknown",
         seed: Optional[int] = None,
         rng: Optional[random.Random] = None,
+        settlement_type: str = "standard",
 ) -> World:
     """Generate a complete mainworld following the rulebook procedure.
 
@@ -2654,7 +2787,9 @@ def generate_world(  # pylint: disable=too-many-arguments,too-many-positional-ar
     )
 
     # --- Step 5: Population ---
-    world.population = generate_population()
+    world.population = generate_population(
+        _population_settlement_dm(settlement_type, world.atmosphere)
+    )
 
     # --- Step 6: Government ---
     # Uninhabited worlds (Population 0) have no government.

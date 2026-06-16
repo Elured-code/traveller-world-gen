@@ -1,0 +1,570 @@
+Traveller World & System Generator — What's New in v1.5.0
+==========================================================
+
+SYSTEM MAP — PERSPECTIVE VIEW
+------------------------------
+The system map can now be viewed in a 60° perspective projection. In this mode
+orbit arcs are foreshortened on the y-axis (cos 60° = 0.5), turning the flat
+circles into ellipses that give the map an orrery-like sense of depth.
+
+- In the desktop app, click "Perspective View" in the System Map window toolbar
+  to toggle between top-down and perspective modes. Click "Top-down View" to
+  switch back. The toggle re-renders the current map without regenerating the
+  system.
+- In the web interface, a "Perspective view (60°)" checkbox appears above the
+  map on the System Map tab.
+- The CLI gains a --perspective flag: python system_map.py --perspective
+
+SYSTEM MAP — ORBIT TABLE FILLS AVAILABLE WIDTH
+-----------------------------------------------
+The orbit survey table at the bottom of the system map now uses the full
+available horizontal space for each star column. Column positions are calculated
+as proportions of the available column width, so the table spreads out on a
+single-star system and does not overflow on multi-star systems. All eight
+columns (#, Orbit#, AU, Type, Profile, Codes, Zone, Period) are always visible
+regardless of how many stars are in the system.
+
+SYSTEM MAP — WEB VIEW
+----------------------
+The FastAPI system page now includes a third "System Map" tab. After a system
+is generated, the tab shows the SVG system map fetched from the server. The
+Perspective view toggle on this tab re-fetches the map without regenerating the
+system.
+
+FASTAPI WEB UI — SAVE TO FILE
+-----------------------------
+Both the Mainworld Only and Full System web pages now have Save buttons. After
+generating a result, Save buttons appear in the seed bar at the top of the
+result area.
+
+- The Mainworld Only page can save as HTML (the world card) or JSON (the raw
+  data).
+- The Full System page can save as HTML (the full system card), Text (the plain
+  text system summary), or JSON (the raw system data).
+
+Files are named after the world: for example, generating a world called "Regina"
+produces "regina-world.html", "regina-system.txt", or "regina-system.json". The
+saved file always matches exactly what was generated — the same seed and the
+same options are replayed when you click Save.
+
+FASTAPI FULL SYSTEM PAGE — COMPLETE OPTIONS
+--------------------------------------------
+The Full System web page now has the same detailed generation options as the
+desktop application. A second row of controls appears below the main bar:
+
+- NHZ Atmospheres: use the World Builder's Handbook non-habitable zone
+  atmosphere tables for secondary worlds.
+- Biomass Rule: oxygenated atmospheres require biomass to sustain oxygen.
+- Runaway Greenhouse: apply the optional runaway greenhouse check.
+- Independent Government: secondary worlds generate their own government code
+  instead of a captive/subject government.
+- Population Detail: generate PCR, urbanisation, and major city data for all
+  inhabited worlds.
+- Settlement Type: choose Standard, Long-settled, Well-settled, Backwater, or
+  Unsettled to shift the mainworld population roll up or down.
+
+The first four options (NHZ, Biomass, Runaway GH, Independent Gov) are
+automatically grayed out when neither Detail nor Full is selected, since they
+only have an effect when secondary world profiles are generated.
+
+SETTLEMENT TYPE POPULATION MODIFIERS
+------------------------------------
+The Options dialog now includes a "Settlement type" group with five radio
+buttons. Choosing a type shifts the mainworld population roll based on how
+developed the world's colonisation history is:
+
+- Standard: no change to the population roll (default).
+- Long-settled: worlds with long human presence; +1 to +3 bonus depending
+  on atmosphere quality (breathable atmospheres get the largest bonus).
+- Well-settled: established worlds; smaller positive bonus, with a penalty
+  on difficult atmospheres.
+- Backwater: frontier or neglected worlds; moderate penalty, especially
+  severe on thin or exotic atmospheres.
+- Unsettled: barely colonised or recently settled worlds; large penalty
+  on all but the most hospitable atmospheres.
+
+The result always stays within the standard population range (0–10). The
+setting has no effect on worlds looked up from TravellerMap.
+
+POPULATION DETAIL — PCR, URBANISATION, AND MAJOR CITIES
+---------------------------------------------------------
+When "Population detail" is enabled in the Options dialog, inhabited worlds
+now receive a full WBH Social Characteristics population breakdown:
+
+- Population Concentration Rating (PCR, 0–9) — indicates how spread out or
+  concentrated the population is. PCR 0 means settlements are scattered across
+  the world with no dominant city. PCR 9 means essentially everyone lives in
+  one settlement or orbital habitat.
+
+- Urbanisation percentage — the share of the population living in towns and
+  cities of at least 10,000 people. Low-tech worlds urbanise less; high-tech
+  and industrialised worlds more. Some conditions impose hard floors or ceilings
+  (for example Population 9 worlds are always at least 19% urban).
+
+- Urban population — the total head-count of the urban population.
+
+- Major cities — the number of dominant population centres and the approximate
+  population of each, determined by the world's PCR and urbanisation level.
+  Results range from no major cities (PCR 0), to a single megacity containing
+  the entire urban population, to dozens of smaller city-centres spread across
+  the surface.
+
+- Population profile — a compact summary string in WBH format:
+  Population code – P value – PCR – Urbanisation % – Major city count.
+  Example: "6-5-3-39-7" = Population 6, P=5, PCR 3, 39% urban, 7 major cities.
+
+The card appears on the Mainworld tab below the Habitability section. The
+option is saved between sessions.
+
+INDEPENDENT GOVERNMENT FOR SECONDARY WORLDS
+--------------------------------------------
+- A new "Independent government" option is available in the Options dialog
+  (under System detail).
+
+- When enabled, secondary terrestrial worlds, belts, and moons generate their
+  government code using the same formula as a mainworld: 2D - 7 + Population.
+  This is WBH p.162 Case 2. When disabled (the default), the existing Case 1
+  dependent government table is used, which produces only captive/subject
+  government types.
+
+- Case 1 (default, off) reflects the most common situation in Traveller: most
+  secondary bodies in a system are directly administered by the mainworld
+  government and tend toward captive or client-state arrangements. Case 2
+  represents systems where secondary worlds have developed enough independence
+  to govern themselves — appropriate for older, more established systems with
+  high populations.
+
+- The option is saved between sessions. When saved to JSON, worlds generated
+  with independent government carry the "is_independent_government" flag in their
+  detail record so the information is preserved when the file is reopened.
+
+
+LARGER SECONDARY WORLDS — CORRECT ATMOSPHERE FOR SIZE A–F
+-----------------------------------------------------------
+- Secondary terrestrial worlds with size codes A through F (Size 10–15,
+  "super-Earths") now receive atmospheres appropriate to their actual size.
+
+- Previously, the atmosphere formula for secondary and moon bodies was capped
+  at size 9, so a size-C world 19,200 km across rolled the same atmosphere
+  dice as a size-9 world. Large secondary worlds were systematically
+  under-represented in thick and exotic atmospheres.
+
+- The cap has been removed. The WBH formula (2D-7+Size) is now applied in
+  full. Because the formula can theoretically produce values above the highest
+  standard atmosphere code (F — Unusual Atmosphere), results are clamped to
+  code F so that only the NHZ-specific Gas Helium and Gas Hydrogen codes (G
+  and H) remain exclusive to non-habitable zone generation. In practice this
+  means large secondary worlds will frequently have dense, exotic, corrosive,
+  or unusual atmospheres — which is physically expected for massive rocky bodies.
+
+- The fix applies to both secondary worlds in orbit and to large moons. A
+  size-A moon of a gas giant, for example, now correctly rolls a thick
+  atmosphere rather than inheriting the thinner roll of a size-9 moon.
+
+- World profiles (SAH strings) for size A–F bodies were already encoded
+  correctly in eHex; no display or JSON changes were needed.
+
+
+FASTAPI WEB UI — TWO PAGES
+--------------------------
+The FastAPI web interface is now split into two separate pages reachable from
+the navigation bar at the top of each page:
+
+- Mainworld Only — generates a mainworld with its atmosphere and hydrographic
+  profile. No physical detail, no biological cards. Equivalent to using the
+  gen-ui app with all options unchecked.
+
+- Full System — generates a complete star system. The result is shown in two
+  tabs: the Mainworld tab shows the full world card (with all physical,
+  biological, and habitability detail); the System tab shows the stellar data
+  and orbital survey.
+
+The Full System page also has Detail, Full, and Select Mainworld options,
+matching the same controls available in the gen-ui app.
+
+GEN-UI OPTIONS DIALOG — SYSTEM DETAIL CHECKBOX
+-----------------------------------------------
+The "System detail" checkbox in the Options dialog now matches the size and
+appearance of the "Population detail" checkbox. Previously it was rendered as
+a group-box indicator, which displayed at a different size. The sub-options
+(NHZ Atmospheres, Oxygen requires biomass, etc.) are now hidden rather than
+grayed out when System detail is unchecked.
+
+FASTAPI SERVER
+--------------
+A second server backend (fastapi/) now mirrors the full Azure Functions REST
+API using FastAPI + uvicorn. It requires no Azure account or Azure SDK.
+
+- Run locally with: cd fastapi && uvicorn app:app --reload   (port 8000 by default)
+- All 11 endpoints are available: world card, world JSON, world text, full system
+  card/JSON/text, system from world, system from TravellerMap, and batch world.
+- Rate limiting is built in via SlowAPI (default 100 requests per minute per IP).
+  Override with the RATE_LIMIT_PER_MINUTE environment variable.
+- No authentication — intended to run behind a reverse proxy for public deployment,
+  or used directly for local and development use.
+
+
+FASTAPI WEB UI
+--------------
+A browser-based UI is served at http://localhost:8000/ when the FastAPI server is
+running.
+
+- Two-panel layout: Mainworld and System, each with Card / JSON / Text tabs.
+- Options include World detail, Full detail, NHZ Atmospheres, and Select Mainworld.
+- A seed badge next to each result is clickable to copy the seed to the clipboard.
+- A server-status indicator in the corner confirms the server is reachable on load.
+
+
+DEFERRED SOCIAL GENERATION
+---------------------------
+Social characteristics (population, government, law level, starport, tech level,
+bases, trade codes, and travel zone) are now generated after the physical world
+survey is complete, rather than during orbit placement. This is the technical
+foundation for mainworld selection: the physical survey runs first so all worlds
+can be scored on physical criteria, then the winning mainworld receives its full
+social profile.
+
+In normal use this intermediate state is invisible — social generation runs
+immediately after selection and the result is always complete.
+
+Note: this is a seed-breaking change. Any seed previously used with full system
+generation will produce different social values because the social dice rolls now
+occur later in the sequence.
+
+
+MAINWORLD SELECTION (WBH pp.155–156)
+-------------------------------------
+When generating a full star system, the generator now follows the World Builder's
+Handbook procedure for choosing the mainworld. All terrestrial bodies in the system
+are scored on four criteria and the highest-scoring world is chosen as the mainworld:
+
+- Habitability rating (most important)
+- Native sophonts present
+- Resource rating
+- Best refuelling access (gas giant satellite or liquid water)
+
+Occasionally (on an unlikely three-dice roll of 18) the selection is made at
+random from all candidates — representing the Referee's prerogative to surprise
+even the algorithm.
+
+If a secondary world outscores the orbital-generation candidate, it is promoted to
+mainworld. Social characteristics (population, government, law level, starport, and
+tech level) are then assigned to the selected mainworld and to all secondary worlds
+relative to it.
+
+This is not applied on TravellerMap or from-world paths.
+
+
+SECONDARY SOCIAL GENERATION AFTER MAINWORLD SELECTION
+------------------------------------------------------
+When mainworld selection is enabled, all secondary worlds have their social data
+regenerated once the mainworld is known. This means population, government, law
+level, tech level, starport, and trade codes for every secondary orbit slot and
+moon are recalculated using the real (post-selection) mainworld as the baseline.
+In previous builds, secondary social data used a placeholder mainworld UWP.
+
+
+GOVERNMENT DETAIL CARD (WBH Social Characteristics §3)
+-------------------------------------------------------
+Every inhabited world with a non-zero government code now supports an optional
+Government detail card. When the "Government detail" option is enabled in the
+Options dialog (or passed as a parameter to the API), the generated world displays:
+
+- Centralisation: whether the government is Confederal, Federal, or Unitary.
+- Authority: whether power rests with the Legislative, Executive, or Judicial
+  branch, or is Balanced across all three.
+- Structure: the internal organisation of the ruling body — Demos (elected
+  assembly), Single Council, Multiple Councils, or a Ruler.
+- Government profile string in the format G-CAS (e.g. 4-FES for a Federal,
+  Executive, Single Council government of type 4).
+- Factions: a list of other organised groups operating in the system, each with
+  a government type, a strength rating (Obscure to Overwhelming), and a
+  relationship to the ruling body.
+
+Balanced authority generates separate structures for all three branches and uses
+an extended profile format: G-CB-LS-ES-JS.
+
+Government code 0 (no government) produces no detail. Government code 7
+(Balkanised) is planned for a future update.
+
+BODY NAMES IN SYSTEM DISPLAY
+-----------------------------
+Every body in a generated star system now has an auto-generated placeholder
+name derived from the system (mainworld) name. The names appear as the
+leftmost column in the orbital survey table:
+
+- Stars are named Homeworld-Primary, Homeworld-Secondary, and so on.
+- Non-mainworld worlds (terrestrial and gas giant) are named Homeworld-A,
+  Homeworld-B, and so on.
+- Belts use a separate counter: Homeworld-Belt-A, Homeworld-Belt-B, and
+  so on.
+- Moons use Greek letters: Homeworld-A-alpha, Homeworld-A-beta. Rings are
+  skipped and receive no name.
+
+Names are saved in the system JSON and restored when you open a saved file.
+
+CITY POPULATION DISPLAY
+------------------------
+Major city populations and the combined total major city population shown in the
+Population detail card are now rounded to 3 significant figures. A city of
+1,234,567 people is shown as 1,230,000. This avoids implying false precision in
+values that are generated stochastically and are best understood as order-of-
+magnitude estimates.
+
+SECONDARY WORLD CLASSIFICATIONS (WBH p.163)
+--------------------------------------------
+Inhabited secondary worlds and moons in a star system now receive a classification
+that describes the role they play in the wider system. There are seven possible
+classifications:
+
+- Colony (Cy)         — a populous world under colonial government
+- Farming (Fa)        — an agricultural world in the star's habitable zone
+- Freeport (Fp)       — an independently governed trade hub
+- Military Base (Mb)  — a garrison maintained by an authoritarian mainworld
+- Mining Facility (Mi)— an industrial extraction site
+- Penal Colony (Pe)   — a prison world under a strict mainworld
+- Research Base (Rb)  — a scientific installation funded by a developed mainworld
+
+Each classification has eligibility requirements based on the world's own
+characteristics and the mainworld's profile. Colony and Farming are assigned
+automatically when requirements are met; the others require a dice roll. Only the
+first qualifying classification in the above order is assigned — a world has at
+most one role.
+
+The two-letter classification code (e.g. "Mi") appears alongside the world's other
+trade codes in the system orbit table and in JSON output.
+
+
+TECH LEVEL DETAIL CARD (WBH Social Characteristics §5)
+-------------------------------------------------------
+Every inhabited world now supports an optional Tech Level detail card. When Social
+detail is enabled, the generated world displays a full WBH tech level breakdown:
+
+- High common TL — the UWP tech level; the level the most advanced equipment is
+  manufactured at on this world.
+- Low common TL — the lowest level of technology in everyday use. Worlds with
+  dispersed populations or weak governments have a larger gap between high and low.
+- Quality-of-life sub-TLs — Energy, Electronics, Manufacturing, Medical, and
+  Environmental, computed in dependency order. Electronics is bounded by Energy,
+  Manufacturing by Electronics, and so on.
+- Transportation sub-TLs — Land, Sea (always 0 for dry worlds), Air (0 for
+  airless worlds at TL 5 or below), and Space.
+- Military sub-TLs — Personal (0 for law level 0) and Heavy.
+- Technology profile string in the format H-L-QQQQQ-TTTT-MM (all digits in
+  eHex). For example, "C-8-BBA98-9870-A8" shows a world at TL 12 with a Low
+  common TL of 8 and the full sub-TL breakdown.
+
+The card appears below Law detail in the world card.
+Novelty TL is planned for a future update (WBH §5 procedure).
+
+
+LAW DETAIL CARD (WBH Social Characteristics §3)
+------------------------------------------------
+Every inhabited world with a non-zero law level now supports an optional Law
+detail card. When Social detail is enabled, the generated world displays:
+
+- Judicial system — Primary and Secondary: Inquisitorial (guilty until proven
+  innocent), Adversarial (each side argues its case), or Tribunal (panel of
+  judges). The primary system determines most of the legal culture; the secondary
+  system is the form used in appeals or specialised courts.
+- Law uniformity — whether the law is enforced Patchily (varies across regions),
+  Typically (standard enforcement), or Uniformly (rigidly consistent).
+- Presumption of innocence — whether defendants are considered innocent until
+  proven guilty. Worlds with high law levels or inquisitorial courts are less
+  likely to extend this presumption.
+- Death penalty — whether capital punishment is in use. High law levels and some
+  government types increase the likelihood.
+- Justice profile string in the format PSU-I-D (e.g. "AIT-Y-N" = Adversarial
+  primary, Inquisitorial secondary, Typical uniformity, Innocent until proven
+  guilty, no death penalty).
+- Law subcategory scores — how strictly the law regulates Weapons, Economic
+  activity, Criminal behaviour, Private life, and Personal Rights. Each is
+  derived from the overall law level with DMs for government type and PCR.
+- Law profile string in the format O-WECPR (e.g. "7-86755" = law level 7,
+  Weapons 8, Economic 6, Criminal 7, Private 5, Personal Rights 5).
+
+Law level 0 (no law) produces no detail card.
+
+
+SOCIAL DETAIL — SINGLE COMBINED OPTION
+---------------------------------------
+Population detail, Government detail, and Law detail are now controlled by a
+single "Social detail" checkbox in both the desktop app and the web interface.
+Enabling Social detail generates all three (and Tech Level detail) in one step.
+Previously each had a separate option.
+
+The option is saved between sessions. When social detail is enabled, the world
+card shows Population, Government, Law, and Tech Level detail cards in sequence.
+
+
+FASTAPI WEB UI — PERSISTENT PREFERENCES
+-----------------------------------------
+All option controls on the Mainworld and Full System web pages now save their
+state in browser localStorage. Format selection (Card / JSON / Text), checkboxes
+(Detail, Full, Select MW, Social detail), Settlement type dropdown, and the
+Perspective view toggle are all remembered across page reloads and browser
+restarts. Previously settings reset to defaults on every page load.
+
+
+FASTAPI WEB UI — CONTROL TOOLTIPS
+-----------------------------------
+Every interactive control in the web interface now has a descriptive tooltip
+(title attribute). Hovering over a checkbox or dropdown shows a plain-English
+explanation of what the control does and what effect it has on the generated
+output. The previous controls were labelled but not explained.
+
+
+FASTAPI SERVER — INSTALLER AND LAUNCHER SCRIPTS
+------------------------------------------------
+A new install script (install.sh on macOS/Linux, install.ps1 on Windows) sets
+up the FastAPI server environment and generates platform-appropriate launcher
+scripts (run-fastapi.sh, run-fastapi.bat, or run-fastapi.ps1). Running the
+launcher starts the server without needing to navigate to the fastapi/ directory
+or remember the uvicorn command manually.
+
+To set up: run install.sh (or install.ps1) once from the project root. To start
+the server: run ./run-fastapi.sh (or run-fastapi.bat / run-fastapi.ps1).
+
+
+GRACEFUL JSON LOADING — VERSION MISMATCH WARNING
+-------------------------------------------------
+Opening a saved JSON file that was created with a different app version now
+shows a warning dialog asking whether to continue loading. Previously the app
+showed an error and refused to load the file entirely.
+
+The warning explains that some fields may be missing or unrecognised, then
+offers Yes/No buttons to proceed or cancel. Most files from recent versions
+load without issue; the warning is a precaution for files from much older
+releases.
+
+
+SYSTEM MAP — DEPTH AND VISUAL ENHANCEMENTS
+-------------------------------------------
+The perspective system map has received a series of visual improvements that
+make the orbital structure easier to read at a glance:
+
+- Sphere shading: stars, gas giants, and terrestrial worlds are rendered as
+  shaded spheres with a highlight and darkened edge, rather than flat circles.
+- Ring systems: gas giants with ring moons display a foreshortened ring annulus
+  that passes behind and in front of the planet sphere.
+- Belt rendering: asteroid belts are shown as filled annular bands with the
+  correct perspective projection of a flat disc in the orbital plane.
+- Near/far arc split: perspective orbit arcs are drawn at full opacity for the
+  near half (above the orbital plane) and reduced opacity for the far half
+  (behind the orbital plane), giving a sense of depth.
+- Drop lines: inclined orbits draw a dotted line from each world symbol down to
+  its projected position on the orbital reference plane.
+- Shadow arcs: inclined orbits project a blurred shadow onto the orbital plane.
+- Isometric floor grid: a faint diamond-tiled grid drawn on the orbital plane
+  reinforces the 3-D perspective.
+- Orbital plane disc: a translucent ellipse in each arc zone makes the tilted
+  orbital plane visible as a surface.
+- Companion stars: now rendered as filled circles with the same sphere shading
+  as other bodies, with shadow arcs for inclined companion orbits.
+- Z-rotation: the entire perspective map is rotated 30° around the vertical
+  axis for a more natural viewing angle.
+
+
+SYSTEM MAP — TRAVELLERMAP FULL DETAIL (WEB API)
+------------------------------------------------
+A new API endpoint `GET /api/map/system/full` fetches a world from TravellerMap
+and runs the complete detail pipeline — secondary world profiles, body names,
+physical detail, and optionally social detail (population, government, law,
+tech level) — all in one call. The canonical UWP from TravellerMap is preserved
+throughout; the endpoint does not roll new social data for the mainworld.
+
+Accepts the same parameters as other TravellerMap endpoints: sector, name or
+hex, and the social_detail flag.
+
+
+ORBITAL ECCENTRICITY AND INCLINATION CONTROLS (APP)
+
+The app's Options dialog now has two new checkboxes: "Orbital eccentricity" and
+"Orbital inclination". When ticked, the generator rolls eccentricity and inclination
+values for each orbit slot as described in the World Builder's Handbook (pp.27–28).
+Both settings default to on and are remembered between sessions.
+
+Previously these were hardcoded to always on, with no user control.
+
+
+COMMAND-LINE NOW PRODUCES COMPLETE MAINWORLDS
+
+When you generate a system using the command line, the mainworld now receives full
+social data — starport class, population, government type, law level, and Tech Level.
+Previously the command line skipped these steps and the mainworld always showed
+a placeholder profile (starport X, all codes 0).
+
+Two new command-line flags are also available:
+- --orbital-eccentricity — roll eccentricity for each orbit slot
+- --orbital-inclination — roll inclination for each orbit slot
+
+
+WEB UI ECCENTRICITY AND INCLINATION CONTROLS
+
+The system generator web page now has Eccentricity and Inclination checkboxes in
+the generation controls, matching the options already available in the app. When
+ticked, the generator rolls eccentricity and inclination as described in the World
+Builder's Handbook. Both settings are remembered between sessions.
+
+
+BUG FIXES
+---------
+- Fixed: Gas-atmosphere worlds (Gas-Helium and Gas-Hydrogen environments produced
+  by the non-habitable-zone atmosphere tables) could previously appear as inhabited
+  secondary worlds. These worlds have no solid surface and cannot support colonists
+  at any technology level. They are now always uninhabited.
+
+- Fixed: Generating a tech level detail profile for a world with an exotic NHZ
+  atmosphere (codes G or H) could crash the generator with an error. The crash
+  occurred because the tech level lookup used a hexadecimal conversion that only
+  handles codes 0–F. The lookup now handles all valid atmosphere codes correctly.
+
+- Fixed: The moon sub-rows in the System Card and System Detail views had their
+  columns misaligned — the eccentricity/inclination, moon type, orbit, size, and
+  composition columns were each shifted one position to the right of their headers.
+
+- Fixed: Biodiversity Rating was calculated as Biomass + ⌈Biocomplexity / 2⌉
+  instead of the correct WBH formula ⌈(Biomass + Biocomplexity) / 2⌉. The
+  correct formula averages the two ratings and then rounds up, producing notably
+  lower Biodiversity values on worlds with high Biocomplexity.
+
+- Fixed: worlds orbiting a gas giant as a satellite displayed seismic stress
+  values millions of times larger than physically possible. The tidal stress
+  formula (calibrated for AU-scale star-to-planet distances) was incorrectly
+  applied at moon distances (~0.1–0.8 Mkm), amplifying results by a factor of
+  10^15 or more. The formula is no longer called for GG-satellite mainworlds;
+  only the tidal amplitude contribution remains. The Tidal Stress Factor is also
+  now capped at 500 to prevent overflow at the display layer.
+
+- Fixed: Cold-temperature worlds with standard breathable atmospheres (vacuum,
+  trace, thin, standard, dense, etc.) were incorrectly shown as having an Ammonia
+  ocean instead of Water. Ammonia oceans only form in chemically exotic environments
+  — worlds with exotic, corrosive, insidious, or unusual atmospheres (codes A–F).
+  All other Cold worlds now correctly display Water as the surface fluid.
+
+- Fixed: the "has gas giant" flag was re-derived from the gas giant count when
+  loading a world JSON, so any JSON where the two values differed would produce
+  a wrong flag. The saved boolean is now read directly; the count is used only as
+  a fallback for legacy files that predate the explicit field.
+
+- Fixed: worlds at extreme orbital distances could display a mean temperature of
+  3 K due to unchecked formula extrapolation. The WBH footnote specifies that
+  results below 10 K should be replaced with a random 6–11 K roll (1D+5). This
+  is now correctly implemented.
+
+- Fixed: in perspective mode, orbits with inclination greater than 90°
+  (retrograde orbits) produced a negative y-radius, causing the arc to be drawn
+  far to the right of the star instead of around it. The y-radius is now taken
+  as an absolute value.
+
+- Fixed: eccentric orbits in perspective mode were centred on the ellipse focus
+  (offset from the star) rather than on the star, causing arcs to float away
+  from the star in perspective mode. Arcs are now always centred on the star.
+
+- Fixed: near-circular companion star orbits (eccentricity < 0.01) were drawn
+  using a helper that produced slightly incorrect arc geometry in perspective
+  mode. The standard orbit arc function is now used for all companion orbits.
+
+- Fixed: the `generate_law_level()` function could return values above 18 in
+  edge cases (very high population codes with maximum DMs). Results are now
+  clamped to the valid law level range.

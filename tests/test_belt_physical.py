@@ -477,6 +477,75 @@ class TestGenerateBeltPhysical:
 
 
 # ---------------------------------------------------------------------------
+# BeltPhysical.profile_str
+# ---------------------------------------------------------------------------
+
+class TestBeltPhysicalProfileStr:
+    """Unit tests for BeltPhysical.profile_str (WBH Class III shorthand)."""
+
+    def _make(
+        self, m, s, c, o, bulk, rr,
+        inner_au=1.0, outer_au=2.0,
+        size_1=0, size_s=0,
+    ) -> BeltPhysical:
+        return BeltPhysical(
+            inner_au=inner_au, outer_au=outer_au,
+            m_type_pct=m, s_type_pct=s, c_type_pct=c, other_pct=o,
+            bulk=bulk, resource_rating=rr,
+            size_1_bodies=size_1, size_s_bodies=size_s,
+            mean_temperature_k=200,
+        )
+
+    def test_profile_str_full_format(self):
+        """profile_str matches S-CC.CC.CC.CC-B-R-#-s."""
+        bp = self._make(60, 30, 5, 5, 7, 9, inner_au=1.0, outer_au=2.2,
+                        size_1=2, size_s=15)
+        assert bp.profile_str == "1.2-60.30.5.5-7-9-2-15"
+
+    def test_profile_str_span_from_inner_outer(self):
+        """Span field equals outer_au minus inner_au, rounded to 3 d.p."""
+        bp = self._make(40, 30, 20, 10, 5, 8, inner_au=2.500, outer_au=3.750)
+        parts = bp.profile_str.split("-")
+        assert float(parts[0]) == pytest.approx(1.25, abs=1e-9)
+
+    def test_profile_str_composition_dotted(self):
+        """Composition block is four values separated by dots."""
+        bp = self._make(35, 40, 20, 5, 6, 7)
+        parts = bp.profile_str.split("-")
+        comp_fields = parts[1].split(".")
+        assert len(comp_fields) == 4
+        assert list(map(int, comp_fields)) == [35, 40, 20, 5]
+
+    def test_profile_str_composition_sums_to_100(self):
+        """Composition values in profile_str sum to 100."""
+        bp = self._make(25, 35, 30, 10, 6, 7)
+        parts = bp.profile_str.split("-")
+        total = sum(int(x) for x in parts[1].split("."))
+        assert total == 100
+
+    def test_profile_str_bulk_rr_size_fields(self):
+        """Bulk, RR, Size 1, and Size S occupy positions 2-5."""
+        bp = self._make(50, 30, 15, 5, 10, 12, size_1=3, size_s=22)
+        parts = bp.profile_str.split("-")
+        assert parts[2] == "10"   # bulk
+        assert parts[3] == "12"   # resource rating
+        assert parts[4] == "3"    # Size 1 bodies
+        assert parts[5] == "22"   # Size S bodies
+
+    def test_profile_str_zero_bodies(self):
+        """Zero body counts are emitted as 0."""
+        bp = self._make(60, 30, 5, 5, 7, 9, size_1=0, size_s=0)
+        parts = bp.profile_str.split("-")
+        assert parts[4] == "0"
+        assert parts[5] == "0"
+
+    def test_profile_str_six_fields(self):
+        """profile_str always has exactly 6 dash-separated fields."""
+        bp = self._make(30, 40, 20, 10, 5, 8)
+        assert len(bp.profile_str.split("-")) == 6
+
+
+# ---------------------------------------------------------------------------
 # TestAttachDetailBeltMainworld
 # ---------------------------------------------------------------------------
 

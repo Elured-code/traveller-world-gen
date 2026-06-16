@@ -15,6 +15,7 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+.hypothesis/
 
 # ── Azure Functions ─────────────────────────────────────────────────────────
 # local.settings.json contains secrets (storage connection strings, keys).
@@ -24,8 +25,24 @@ local.settings.json
 .python_packages/
 .funcignore
 
+# Generator modules copied into azure-api/ by the CI deploy workflow
+# (scripts/prepare_azure.sh for local dev).  Not committed to avoid duplication.
+azure-api/fastapi/
+azure-api/templates/
+azure-api/html_render.py
+azure-api/system_map.py
+azure-api/system_pipeline.py
+azure-api/tables.py
+azure-api/traveller_*.py
+azure-api/world_codes.py
+azure-api/traveller_world_schema.json
+azure-api/_version.py
+
+# Auto-generated version file — run scripts/compute_version.sh to create
+_version.py
+
 # ── Editors ─────────────────────────────────────────────────────────────────
-.vscode/
+
 .idea/
 *.swp
 *.swo
@@ -43,12 +60,12 @@ Desktop.ini
 
 # ── Install-generated launchers ─────────────────────────────────────────────
 # Created by install.sh / install.ps1 — user-specific, not committed.
-run-gui.command
-run-gui.bat
+
 run-world.sh
 run-world.bat
 run-mapfetch.sh
 run-mapfetch.bat
+
 
 # ── Generated outputs ───────────────────────────────────────────────────────
 # The examples/ directory contains generated HTML cards for illustration.
@@ -61,6 +78,9 @@ v13.md
 # ── Claude Code context ─────────────────────────────────────────────────────
 # Project context and session history — internal development notes not
 # intended for the public repository.
+context/
 .context/
+fetch-context.sh
+push-context.sh
 .claude/settings.local.json
 .claude/settings.json

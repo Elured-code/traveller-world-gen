@@ -27,7 +27,10 @@ jobs:
       # Hard fail if any vulnerability is found in either requirements file.
       # Each step is separate so the failure identifies which file is affected.
       - name: Audit Azure Functions dependencies
-        run: pip-audit --requirement requirements.txt
+        run: pip-audit --requirement azure-api/requirements.txt
+
+      - name: Audit FastAPI dependencies
+        run: pip-audit --requirement fastapi/requirements.txt
 
       - name: Audit gen-ui dependencies (PySide6)
         run: pip-audit --requirement gen-ui/requirements.txt
@@ -37,8 +40,10 @@ jobs:
       - name: Generate JSON reports
         if: always()
         run: |
-          pip-audit --requirement requirements.txt --format json \
+          pip-audit --requirement azure-api/requirements.txt --format json \
             --output azure-audit.json || true
+          pip-audit --requirement fastapi/requirements.txt --format json \
+            --output fastapi-audit.json || true
           pip-audit --requirement gen-ui/requirements.txt --format json \
             --output genui-audit.json || true
 
@@ -49,5 +54,6 @@ jobs:
           name: pip-audit-results
           path: |
             azure-audit.json
+            fastapi-audit.json
             genui-audit.json
           retention-days: 30

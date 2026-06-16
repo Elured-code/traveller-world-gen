@@ -344,6 +344,7 @@ class Star:  # pylint: disable=too-many-instance-attributes
     orbit_period_yr: Optional[float] = None  # Orbital period in years
     orbit_eccentricity: float = 0.0          # 0.0 until generate_orbits() populates it
     orbit_inclination: float = 0.0           # 0.0 until generate_orbits() populates it
+    name: str = ""              # placeholder; set by attach_body_names()
     special_notes: str = ""     # e.g. "protostar", "post-stellar"
 
     def classification(self) -> str:
@@ -380,6 +381,7 @@ class Star:  # pylint: disable=too-many-instance-attributes
             "orbit_period_yr": (round(self.orbit_period_yr, 4)
                                 if self.orbit_period_yr is not None else None),
             "colour": self.colour(),
+            "name": self.name,
             "special_notes": self.special_notes,
         }
         if self.orbit_eccentricity > 0:
@@ -416,6 +418,7 @@ class Star:  # pylint: disable=too-many-instance-attributes
                               if d.get("orbit_period_yr") is not None else None),
             orbit_eccentricity=float(d.get("orbit_eccentricity", 0.0)),
             orbit_inclination=float(d.get("orbit_inclination", 0.0)),
+            name=str(d.get("name", "")),
             special_notes=str(d.get("special_notes", "")),
         )
 

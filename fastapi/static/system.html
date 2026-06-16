@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script>(function(){var t=localStorage.getItem("traveller-theme")||((window.matchMedia&&window.matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light");document.documentElement.setAttribute("data-theme",t);})();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traveller World Generator — Full System</title>
+  <style>
+    :root {
+      --bg:       #0c0e14;
+      --surface:  #131620;
+      --panel:    #1a1d28;
+      --border:   #2c2a20;
+      --accent:   #c87828;
+      --accent2:  #bf4040;
+      --text:     #ddd4b0;
+      --muted:    #7a7060;
+      --input-bg: #090b10;
+      --error-bg: rgba(191,64,64,0.10);
+      --error-fg: #bf4040;
+      --ok-fg:    #5a9e5a;
+    }
+
+    [data-theme=light] {
+      --bg:       #f4f0e4;
+      --surface:  #ede8d8;
+      --panel:    #e8e2cc;
+      --border:   #c8b890;
+      --accent:   #b56e20;
+      --accent2:  #bf4040;
+      --text:     #1a1510;
+      --muted:    #7a6850;
+      --input-bg: #faf6ee;
+      --error-bg: rgba(191,64,64,0.08);
+      --error-fg: #c03030;
+      --ok-fg:    #3a7a3a;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ─────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 2px solid var(--accent);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-shrink: 0;
+    }
+    header h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    .badge {
+      font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; border: 1px solid var(--accent); color: var(--accent);
+      border-radius: 2px; padding: 0.15rem 0.45rem;
+    }
+    nav { margin-left: auto; display: flex; align-items: center; gap: 1rem; }
+    nav a { font-size: 0.82rem; color: var(--muted); text-decoration: none; transition: color 0.15s; }
+    nav a:hover { color: var(--text); }
+    nav a.active { color: var(--accent); font-weight: 600; }
+    .btn-icon {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      border-radius: 4px; padding: 0.22rem 0.5rem; font-size: 0.85rem; line-height: 1;
+      cursor: pointer; transition: border-color 0.15s, color 0.15s; flex-shrink: 0;
+    }
+    .btn-icon:hover { border-color: var(--accent); color: var(--text); }
+    .server-status { font-size: 0.78rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .dot.ok { background: var(--ok-fg); }
+
+    /* ── Controls ────────────────────────────────────── */
+    .controls {
+      padding: 0.75rem 1.5rem 0;
+      border-bottom: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 0;
+      flex-shrink: 0;
+      background: var(--surface);
+    }
+    .controls-row {
+      display: flex; flex-wrap: wrap; gap: 0.6rem;
+      align-items: flex-end; padding-bottom: 0.75rem;
+    }
+    .controls-sub {
+      display: flex; flex-wrap: wrap; gap: 0.6rem;
+      align-items: center; padding-bottom: 0.65rem;
+      border-top: 1px solid var(--border);
+      padding-top: 0.55rem;
+    }
+    .field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .field label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    input[type="text"], input[type="number"], select {
+      background: var(--input-bg); border: 1px solid var(--border); border-radius: 5px;
+      color: var(--text); padding: 0.42rem 0.65rem; font-size: 0.88rem;
+      outline: none; transition: border-color 0.15s;
+    }
+    input[type="text"]:focus, input[type="number"]:focus, select:focus { border-color: var(--accent); }
+    input[type="text"] { width: 200px; }
+    input[type="text"].wide { width: 240px; }
+    input[type="text"].narrow { width: 80px; }
+    input[type="number"] { width: 120px; }
+    select { cursor: pointer; }
+    .seed-row { display: flex; gap: 0.35rem; }
+
+    .btn {
+      background: var(--accent); color: #fff; border: none; border-radius: 5px;
+      padding: 0.42rem 1.1rem; font-size: 0.88rem; font-weight: 500;
+      cursor: pointer; transition: opacity 0.15s; white-space: nowrap;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-ghost {
+      background: var(--panel); border: 1px solid var(--border); color: var(--text);
+      padding: 0.42rem 0.55rem; font-size: 0.95rem; line-height: 1;
+    }
+    .btn-ghost:hover { border-color: var(--accent); }
+
+    /* ── Source mode toggle ──────────────────────────── */
+    .src-toggle {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .src-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      padding: 0.42rem 0.75rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+    }
+    .src-btn + .src-btn { border-left: 1px solid var(--border); }
+    .src-btn.active { background: var(--accent); color: #fff; }
+    .src-btn:not(.active):hover { background: var(--panel); color: var(--text); }
+
+    .checkbox-label {
+      display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem;
+      color: var(--muted); cursor: pointer; user-select: none; padding: 0.42rem 0;
+    }
+    .checkbox-label input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; width: 13px; height: 13px; }
+    .checkbox-label:hover { color: var(--text); }
+    .checkbox-label:has(input:disabled) { opacity: 0.4; cursor: not-allowed; }
+    .options-row { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; padding: 0.42rem 0; }
+
+    .sub-sep {
+      width: 1px; height: 18px; background: var(--border); margin: 0 0.25rem;
+      align-self: center;
+    }
+    .sub-label {
+      font-size: 0.72rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: 0.05em; align-self: center; white-space: nowrap;
+    }
+
+    /* ── Status / seed bars ──────────────────────────── */
+    .status-bar { padding: 0.45rem 1.5rem; font-size: 0.8rem; flex-shrink: 0; display: none; }
+    .status-bar.loading {
+      display: flex; align-items: center; gap: 0.5rem;
+      color: var(--muted); background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    .status-bar.error {
+      display: block; color: var(--error-fg);
+      background: var(--error-bg); border-bottom: 1px solid var(--accent2);
+    }
+    .spinner {
+      width: 12px; height: 12px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin 0.7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .seed-badge {
+      padding: 0.35rem 1.5rem; font-size: 0.76rem; color: var(--muted);
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      display: none; align-items: center; gap: 0.4rem; flex-shrink: 0;
+    }
+    .seed-badge.visible { display: flex; }
+    .seed-code {
+      background: var(--input-bg); border: 1px solid var(--border); border-radius: 3px;
+      padding: 0.1rem 0.4rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem; color: var(--text); cursor: pointer; transition: border-color 0.15s;
+    }
+    .seed-code:hover { border-color: var(--accent); }
+    .copy-hint { opacity: 0; transition: opacity 0.2s; font-size: 0.72rem; color: var(--ok-fg); }
+    .copy-hint.show { opacity: 1; }
+
+    .badge-divider {
+      width: 1px; height: 13px;
+      background: var(--border);
+      margin: 0 0.3rem;
+      flex-shrink: 0;
+    }
+    .save-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .btn-save {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 4px;
+      padding: 0.12rem 0.48rem;
+      font-size: 0.71rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .btn-save:hover { border-color: var(--accent); color: var(--text); }
+    .btn-save:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ── Result area ─────────────────────────────────── */
+    .result { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+    /* ── Tabs ────────────────────────────────────────── */
+    .tab-bar {
+      display: none;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .tab-bar.visible { display: flex; }
+    .tab-btn {
+      padding: 0.55rem 1.25rem;
+      font-size: 0.8rem; font-weight: 500;
+      color: var(--muted); background: transparent;
+      border: none; border-bottom: 2px solid transparent;
+      cursor: pointer; transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-btn.hidden { display: none; }
+
+    .tab-panel { flex: 1; overflow: hidden; display: none; flex-direction: column; }
+    .tab-panel.active { display: flex; }
+
+    /* ── Footer ──────────────────────────────────────── */
+    footer {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0.4rem 1.5rem;
+      font-size: 0.68rem;
+      color: var(--muted);
+      flex-shrink: 0;
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    .result-frame {
+      flex: 1; border: none; width: 100%; background: transparent; display: none;
+    }
+    .result-frame.visible { display: block; }
+
+    .result-pre {
+      flex: 1; padding: 1.5rem;
+      font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+      font-size: 0.78rem; line-height: 1.5; overflow: auto; white-space: pre; display: none;
+    }
+    .result-pre.json { color: #a8c7fa; }
+    .result-pre.text { color: var(--text); }
+    .result-pre.visible { display: block; }
+
+    /* ── Map tab ─────────────────────────────────── */
+    .map-toolbar {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.5rem 1rem; border-bottom: 1px solid var(--border);
+      background: var(--panel); flex-shrink: 0;
+    }
+    .map-toolbar label { font-size: 0.82rem; color: var(--muted); display: flex; align-items: center; gap: 0.4rem; cursor: pointer; }
+    .map-container {
+      flex: 1; overflow: auto; background: var(--bg);
+      display: flex; align-items: flex-start; justify-content: center;
+    }
+    .map-container img, .map-container object { max-width: 100%; height: auto; }
+    .map-loading { color: var(--muted); font-size: 0.85rem; padding: 2rem; }
+
+    .empty-state {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 0.5rem; color: var(--muted); font-size: 0.85rem;
+    }
+    .empty-state .icon { font-size: 2.5rem; opacity: 0.3; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Traveller World Generator</h1>
+  <span class="badge">FastAPI</span>
+  <nav>
+    <a href="/static/index.html">Mainworld Only</a>
+    <a href="/static/system.html" class="active">Full System</a>
+    <div class="server-status">
+      <div class="dot" id="status-dot"></div>
+      <span id="status-text">checking…</span>
+    </div>
+    <button class="btn-icon" id="theme-toggle" title="Toggle light / dark mode" aria-label="Toggle theme">☀</button>
+  </nav>
+</header>
+
+<div class="controls">
+  <!-- Primary controls row -->
+  <div class="controls-row">
+
+    <!-- Source mode toggle -->
+    <div class="field">
+      <label>Source</label>
+      <div class="src-toggle">
+        <button class="src-btn active" id="src-proc" title="Generate a new star system procedurally">Procedural</button>
+        <button class="src-btn"        id="src-map"  title="Fetch canonical UWP and stellar data from TravellerMap, then generate procedural orbits and secondary worlds">TravellerMap</button>
+      </div>
+    </div>
+
+    <!-- Name -->
+    <div class="field">
+      <label for="s-name">Name</label>
+      <input type="text" id="s-name" placeholder="e.g. Ardenne" maxlength="64"
+             title="System / world name — leave blank for an auto-generated name">
+    </div>
+
+    <!-- Sector (TravellerMap mode only) -->
+    <div class="field" id="s-sector-field" style="display:none">
+      <label for="s-sector">Sector <span style="color:var(--accent2)">*</span></label>
+      <input type="text" class="wide" id="s-sector" placeholder="Spinward Marches" maxlength="64"
+             title="Sector name — required; many world names exist in multiple sectors">
+    </div>
+
+    <!-- Hex (TravellerMap mode only) -->
+    <div class="field" id="s-hex-field" style="display:none">
+      <label for="s-hex">Hex</label>
+      <input type="text" class="narrow" id="s-hex" placeholder="1910" maxlength="4"
+             title="4-digit hex position — use instead of (or alongside) a name to avoid ambiguity">
+    </div>
+
+    <!-- Seed -->
+    <div class="field">
+      <label for="s-seed">Seed</label>
+      <div class="seed-row">
+        <input type="number" id="s-seed" placeholder="random"
+               title="Integer seed for reproducible results — leave blank for a random seed">
+        <button class="btn btn-ghost" id="s-rand" title="Pick random seed">⟳</button>
+      </div>
+    </div>
+
+    <!-- Format -->
+    <div class="field">
+      <label for="s-format">Format</label>
+      <select id="s-format" title="Card (HTML): renders the system map and world cards inline. Text: plain-text system summary. JSON: full structured data.">
+        <option value="html">Card (HTML)</option>
+        <option value="text">Text</option>
+        <option value="json">JSON</option>
+      </select>
+    </div>
+
+    <!-- Mode checkboxes -->
+    <div class="field">
+      <label>&nbsp;</label>
+      <div class="options-row">
+        <label class="checkbox-label" title="Generates physical, atmosphere, and biological profiles for every secondary world and moon in the system">
+          <input type="checkbox" id="s-detail"> Detail
+        </label>
+        <label class="checkbox-label" title="Generates full detail for all worlds and re-selects the best-scoring mainworld after generation — implies Detail">
+          <input type="checkbox" id="s-full"> Full
+        </label>
+        <!-- Select MW: procedural only -->
+        <label class="checkbox-label" id="s-selectmw-wrap"
+               title="Evaluates all worlds and replaces the designated mainworld with the highest-scoring candidate (WBH pp.155–156)">
+          <input type="checkbox" id="s-select-mw"> Select MW
+        </label>
+      </div>
+    </div>
+
+    <button class="btn" id="s-gen" title="Generate a star system with the current options (Enter)">Generate</button>
+  </div>
+
+  <!-- Secondary options sub-row -->
+  <div class="controls-sub">
+    <span class="sub-label">Orbital</span>
+    <label class="checkbox-label" title="Rolls eccentricity for each orbit slot (WBH p.27); orbits become elliptical on the system map">
+      <input type="checkbox" id="s-ecc"> Eccentricity
+    </label>
+    <label class="checkbox-label" title="Rolls inclination for each orbit slot (WBH p.28); orbits tilt out of the reference plane on the perspective map">
+      <input type="checkbox" id="s-incl"> Inclination
+    </label>
+    <div class="sub-sep"></div>
+    <span class="sub-label">System</span>
+    <label class="checkbox-label" id="lbl-nhz" title="Applies specialised atmosphere tables to worlds outside the habitable zone, producing more varied exotic and trace atmospheres (WBH pp.42–48)">
+      <input type="checkbox" id="s-nhz" disabled> NHZ Atm
+    </label>
+    <label class="checkbox-label" id="lbl-bio" title="Worlds with oxygenated atmospheres receive at least trace biomass; without it the atmosphere collapses to a non-oxygen type (WBH p.131)">
+      <input type="checkbox" id="s-bio" disabled> Biomass Rule
+    </label>
+    <label class="checkbox-label" id="lbl-rg" title="Hot, wet worlds close to their star may trigger a runaway greenhouse, stripping water and pushing surface temperatures above 500 K (WBH p.79)">
+      <input type="checkbox" id="s-rg" disabled> Runaway GH
+    </label>
+    <label class="checkbox-label" id="lbl-indep" title="Each secondary world rolls its own government code rather than offsetting from the mainworld, producing more diverse political landscapes (WBH p.162)">
+      <input type="checkbox" id="s-indep" disabled> Indep Gov
+    </label>
+
+    <div class="sub-sep"></div>
+    <span class="sub-label">Social</span>
+    <label class="checkbox-label" title="Generates PCR and city data, government centralisation and authority profile, judicial system, and law subcategory scores for all inhabited worlds">
+      <input type="checkbox" id="s-social-detail"> Social Detail
+    </label>
+
+    <!-- Settlement: procedural only -->
+    <div id="s-settlement-wrap" style="display:contents">
+      <div class="sub-sep"></div>
+      <span class="sub-label">Settlement</span>
+      <div class="field" style="margin: 0;">
+        <select id="s-settlement" title="Adjusts the mainworld population roll: Long-settled (+4), Well-settled (+2), Backwater (−2), Unsettled (−4)">
+          <option value="standard">Standard</option>
+          <option value="long_settled">Long-settled</option>
+          <option value="well_settled">Well-settled</option>
+          <option value="backwater">Backwater</option>
+          <option value="unsettled">Unsettled</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="status-bar" id="s-status"></div>
+<div class="seed-badge" id="s-seed-badge">
+  Seed: <span class="seed-code" id="s-seed-val" title="Click to copy"></span>
+  <span class="copy-hint" id="s-copy-hint">copied</span>
+  <div class="badge-divider"></div>
+  <span class="save-label">Save</span>
+  <button class="btn-save" id="s-save-html" title="Download system card as HTML">HTML</button>
+  <button class="btn-save" id="s-save-text" title="Download system summary as text">Text</button>
+  <button class="btn-save" id="s-save-json" title="Download system data as JSON">JSON</button>
+  <div class="badge-divider"></div>
+  <button class="btn-save" id="s-survey-btn" title="Open the selected IISS survey form">Survey Form</button>
+  <select id="s-survey-type" title="Survey form type" style="background:var(--input-bg);border:1px solid var(--border);border-radius:3px;color:var(--text);padding:0.1rem 0.35rem;font-size:0.72rem;cursor:pointer;">
+    <option value="class0i">Class 0/I Survey</option>
+  </select>
+</div>
+
+<div class="result" id="s-result">
+
+  <!-- Empty state (shown before first generation) -->
+  <div class="empty-state" id="s-empty">
+    <span class="icon">⭐</span>
+    Generate a star system to see the card here
+  </div>
+
+  <!-- Tab bar (shown after HTML generation) -->
+  <div class="tab-bar" id="s-tab-bar">
+    <button class="tab-btn active" data-tab="mw">Mainworld</button>
+    <button class="tab-btn"        data-tab="sys">System</button>
+    <button class="tab-btn"        data-tab="map">System Map</button>
+    <button class="tab-btn hidden" data-tab="survey" id="tab-btn-survey">Survey Form</button>
+  </div>
+
+  <!-- Mainworld tab -->
+  <div class="tab-panel active" id="tab-mw">
+    <iframe class="result-frame" id="mw-frame" title="Mainworld card" sandbox="allow-scripts"></iframe>
+  </div>
+
+  <!-- System tab -->
+  <div class="tab-panel" id="tab-sys">
+    <iframe class="result-frame" id="sys-frame" title="System card" sandbox="allow-scripts"></iframe>
+  </div>
+
+  <!-- Survey Form tab -->
+  <div class="tab-panel" id="tab-survey">
+    <iframe class="result-frame" id="survey-frame" title="Survey form" sandbox="allow-scripts"></iframe>
+  </div>
+
+  <!-- System Map tab -->
+  <div class="tab-panel" id="tab-map">
+    <div class="map-toolbar">
+      <label>
+        <input type="checkbox" id="map-perspective" title="Show orbit arcs at a 60° tilt to suggest depth">
+        Perspective view (60°)
+      </label>
+    </div>
+    <div class="map-container" id="map-container">
+      <span class="map-loading" id="map-loading" style="display:none">Generating map…</span>
+      <img id="map-img" alt="System map" style="display:none">
+    </div>
+  </div>
+
+  <!-- Non-HTML output (no tabs) -->
+  <pre class="result-pre json" id="s-json"></pre>
+  <pre class="result-pre text" id="s-text"></pre>
+
+</div>
+
+<footer>
+  The Traveller game in all forms is owned by Mongoose Publishing. Copyright 1977–2025 Mongoose Publishing. All rights reserved.
+  This is an unofficial fan work, not affiliated with Mongoose Publishing.
+  <span id="app-version" style="margin-left:1.5em; opacity:0.6;"></span>
+</footer>
+
+<script>
+  "use strict";
+
+  function randSeed() { return Math.floor(Math.random() * 2_147_483_647); }
+
+  function slugName(name) {
+    return (name || "system").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "system";
+  }
+
+  // ── Source mode ──────────────────────────────────────
+
+  function isTravellerMap() {
+    return document.getElementById("src-map").classList.contains("active");
+  }
+
+  function setSourceMode(mode) {
+    const isMap = mode === "map";
+    document.getElementById("src-proc").classList.toggle("active", !isMap);
+    document.getElementById("src-map").classList.toggle("active",  isMap);
+    // Show/hide TravellerMap-specific fields
+    document.getElementById("s-sector-field").style.display  = isMap ? "" : "none";
+    document.getElementById("s-hex-field").style.display     = isMap ? "" : "none";
+    // Hide procedural-only controls in TravellerMap mode
+    document.getElementById("s-selectmw-wrap").style.display  = isMap ? "none" : "";
+    document.getElementById("s-settlement-wrap").style.display = isMap ? "none" : "contents";
+  }
+
+  document.getElementById("src-proc").addEventListener("click", () => { setSourceMode("proc"); savePrefs(); });
+  document.getElementById("src-map").addEventListener("click",  () => { setSourceMode("map");  savePrefs(); });
+
+  // ── Preferences (localStorage) ───────────────────────
+
+  const _PREF_KEY = "traveller-sys-prefs";
+  const _PREF_IDS = ["s-format", "s-detail", "s-full", "s-select-mw",
+                     "s-ecc", "s-incl",
+                     "s-nhz", "s-bio", "s-rg", "s-indep",
+                     "s-social-detail", "s-settlement", "s-sector",
+                     "map-perspective"];
+
+  function savePrefs() {
+    const prefs = {};
+    _PREF_IDS.forEach(id => {
+      const el = document.getElementById(id);
+      prefs[id] = el.type === "checkbox" ? el.checked : el.value;
+    });
+    prefs["src-mode"] = isTravellerMap() ? "map" : "proc";
+    try { localStorage.setItem(_PREF_KEY, JSON.stringify(prefs)); } catch (_) {}
+  }
+
+  const _VALID_FORMATS     = new Set(["json", "html", "text"]);
+  const _VALID_SETTLEMENTS = new Set(["standard", "long_settled", "well_settled", "backwater", "unsettled"]);
+  const _VALID_SRC_MODES   = new Set(["proc", "map"]);
+
+  function loadPrefs() {
+    try {
+      const raw = localStorage.getItem(_PREF_KEY);
+      if (!raw) return;
+      const p = JSON.parse(raw);
+      _PREF_IDS.forEach(id => {
+        if (!(id in p)) return;
+        const el = document.getElementById(id);
+        if (el.type === "checkbox") {
+          el.checked = p[id] === true;
+        } else if (id === "s-format" && !_VALID_FORMATS.has(p[id])) {
+          return;
+        } else if (id === "s-settlement" && !_VALID_SETTLEMENTS.has(p[id])) {
+          return;
+        } else {
+          el.value = p[id];
+        }
+      });
+      if (p["src-mode"] && _VALID_SRC_MODES.has(p["src-mode"])) setSourceMode(p["src-mode"]);
+      if (p["s-full"]) document.getElementById("s-detail").disabled = true;
+      updateSubOptions();
+    } catch (_) {}
+  }
+
+  function downloadBlob(content, filename, mimeType) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // Tracks the last successful generation so save buttons and the map can re-fetch.
+  let _lastGen = null;
+  let _lastMwHtml = null;
+  let _lastSysHtml = null;
+  let _lastSurveyHtmls = {}; // keyed by survey type ("class0i", …)
+
+  function _injectTheme(html) {
+    const t = document.documentElement.getAttribute("data-theme") || "dark";
+    return html.replace(/(<html\b[^>]*)>/, function (_, p1) {
+      return p1.replace(/\s*data-theme="[^"]*"/, "") + ' data-theme="' + t + '">';
+    });
+  }
+
+  function setStatus(msg, type) {
+    const el = document.getElementById("s-status");
+    el.className = "status-bar " + type;
+    if (type === "loading") {
+      el.innerHTML = '<div class="spinner"></div>';
+      const span = document.createElement("span");
+      span.textContent = msg;
+      el.appendChild(span);
+    } else {
+      el.textContent = msg;
+    }
+  }
+
+  function clearStatus() {
+    const el = document.getElementById("s-status");
+    el.className = "status-bar";
+    el.textContent = "";
+  }
+
+  function showSeed(seed) {
+    document.getElementById("s-seed-val").textContent = seed;
+    document.getElementById("s-seed-badge").classList.add("visible");
+  }
+
+  function clearResult() {
+    document.getElementById("s-empty").style.display = "";
+    document.getElementById("s-tab-bar").classList.remove("visible");
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.getElementById("tab-mw").classList.remove("active");
+    document.getElementById("tab-sys").classList.remove("active");
+    document.getElementById("tab-map").classList.remove("active");
+    document.getElementById("tab-survey").classList.remove("active");
+    document.getElementById("mw-frame").classList.remove("visible");
+    document.getElementById("sys-frame").classList.remove("visible");
+    document.getElementById("survey-frame").classList.remove("visible");
+    document.getElementById("s-json").classList.remove("visible");
+    document.getElementById("s-text").classList.remove("visible");
+    document.getElementById("s-seed-badge").classList.remove("visible");
+    document.getElementById("map-img").style.display = "none";
+    document.getElementById("tab-btn-survey").classList.add("hidden");
+    _lastGen = null;
+    _lastSurveyHtmls = {};
+  }
+
+  function loadFrame(frameId, html) {
+    const frame = document.getElementById(frameId);
+    frame.classList.remove("visible");
+    frame.srcdoc = _injectTheme(html);
+    frame.onload = () => {
+      requestAnimationFrame(() => {
+        try {
+          const h = frame.contentDocument.documentElement.scrollHeight;
+          if (h > 0) frame.style.height = h + "px";
+        } catch (_) {}
+        frame.classList.add("visible");
+      });
+    };
+  }
+
+  // ── System Map helpers ───────────────────────────────
+
+  function buildMapUrl(seed) {
+    if (!_lastGen) return null;
+    const { name, detail, full, isMap, sector, hex, ecc, incl } = _lastGen;
+    const persp    = document.getElementById("map-perspective").checked;
+    const lightBg  = (document.documentElement.getAttribute("data-theme") || "dark") === "light";
+    if (isMap) {
+      const p = new URLSearchParams({ seed });
+      if (name)    p.set("name",   name);
+      if (sector)  p.set("sector", sector);
+      if (hex)     p.set("hex",    hex);
+      if (full)    p.set("detail", "true");
+      if (persp)   p.set("perspective", "true");
+      if (ecc)     p.set("orbital_eccentricity", "true");
+      if (incl)    p.set("orbital_inclination",  "true");
+      if (lightBg) p.set("white_bg", "true");
+      return `/api/map/system/svg?${p.toString()}`;
+    }
+    const p = new URLSearchParams({ name, seed });
+    if (detail)  p.set("detail", "true");
+    if (persp)   p.set("perspective", "true");
+    if (ecc)     p.set("orbital_eccentricity", "true");
+    if (incl)    p.set("orbital_inclination",  "true");
+    if (lightBg) p.set("white_bg", "true");
+    return `/api/system/svg?${p.toString()}`;
+  }
+
+  async function loadMap(seed) {
+    const url = buildMapUrl(seed);
+    if (!url) return;
+    const img     = document.getElementById("map-img");
+    const loading = document.getElementById("map-loading");
+    img.style.display = "none";
+    loading.style.display = "";
+    loading.textContent = "Generating map…";
+    const prevSrc = img.src;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok || !(resp.headers.get("content-type") || "").includes("image/svg+xml")) {
+        loading.textContent = "Map generation failed.";
+        return;
+      }
+      const objectUrl = URL.createObjectURL(await resp.blob());
+      img.onload  = () => { loading.style.display = "none"; img.style.display = ""; };
+      img.onerror = () => { loading.textContent = "Map generation failed."; };
+      img.src = objectUrl;
+      if (prevSrc && prevSrc.startsWith("blob:")) URL.revokeObjectURL(prevSrc);
+    } catch (_) {
+      loading.textContent = "Map generation failed.";
+    }
+  }
+
+  // ── Tab display helper ───────────────────────────────
+
+  function showTabs(mwHtml, sysHtml, seed, surveyHtmls) {
+    _lastMwHtml = mwHtml;
+    _lastSysHtml = sysHtml;
+    _lastSurveyHtmls = surveyHtmls || {};
+    document.getElementById("s-empty").style.display = "none";
+    loadFrame("mw-frame", mwHtml);
+    loadFrame("sys-frame", sysHtml);
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "mw"));
+    document.getElementById("tab-mw").classList.add("active");
+    document.getElementById("tab-sys").classList.remove("active");
+    document.getElementById("tab-map").classList.remove("active");
+    document.getElementById("tab-survey").classList.remove("active");
+    document.getElementById("s-tab-bar").classList.add("visible");
+    if (seed !== undefined) loadMap(seed);
+  }
+
+  function showJson(data) {
+    const el = document.getElementById("s-json");
+    document.getElementById("s-empty").style.display = "none";
+    el.textContent = JSON.stringify(data, null, 2);
+    el.classList.add("visible");
+  }
+
+  function showText(text) {
+    const el = document.getElementById("s-text");
+    document.getElementById("s-empty").style.display = "none";
+    el.textContent = text;
+    el.classList.add("visible");
+  }
+
+  // ── URL builders (for save buttons) ─────────────────
+
+  function buildSysUrl(seed, fmt) {
+    if (!_lastGen) return null;
+    const { name, isMap, sector, hex,
+            full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement } = _lastGen;
+
+    if (isMap) {
+      // TravellerMap save path
+      const p = new URLSearchParams({ seed, format: fmt });
+      if (sector) p.set("sector", sector);
+      if (name)   p.set("name",   name);
+      if (hex)    p.set("hex",    hex);
+      if (ecc)         p.set("orbital_eccentricity",   "true");
+      if (incl)        p.set("orbital_inclination",    "true");
+      if (nhz)         p.set("nhz_atmospheres",        "true");
+      if (bio)         p.set("optional_biomass_rule",  "true");
+      if (rg)          p.set("runaway_greenhouse",     "true");
+      if (indep)       p.set("independent_government", "true");
+      if (socialDetail) p.set("social_detail",         "true");
+      if (full || detail) {
+        return full
+          ? `/api/map/system/full?${p}`
+          : `/api/map/system?${p}&detail=true`;
+      }
+      return `/api/map/system?${p}`;
+    }
+
+    // Procedural save path
+    const cardName = encodeURIComponent(name);
+    if (full) {
+      const p = new URLSearchParams({ seed, format: fmt });
+      if (name !== "World-1") p.set("name", name);
+      if (selectMw)    p.set("select_mainworld",       "true");
+      if (ecc)         p.set("orbital_eccentricity",   "true");
+      if (incl)        p.set("orbital_inclination",    "true");
+      if (nhz)         p.set("nhz_atmospheres",        "true");
+      if (bio)         p.set("optional_biomass_rule",  "true");
+      if (rg)          p.set("runaway_greenhouse",     "true");
+      if (indep)       p.set("independent_government", "true");
+      if (socialDetail) p.set("social_detail",         "true");
+      if (settlement !== "standard") p.set("settlement_type", settlement);
+      return `/api/system/full?${p}`;
+    }
+    if (fmt === "html") {
+      const p = new URLSearchParams({ seed, detail: detail ? "true" : "false" });
+      if (selectMw)    p.set("select_mainworld",       "true");
+      if (ecc)         p.set("orbital_eccentricity",   "true");
+      if (incl)        p.set("orbital_inclination",    "true");
+      if (nhz)         p.set("nhz_atmospheres",        "true");
+      if (bio)         p.set("optional_biomass_rule",  "true");
+      if (rg)          p.set("runaway_greenhouse",     "true");
+      if (indep)       p.set("independent_government", "true");
+      if (socialDetail) p.set("social_detail",         "true");
+      if (settlement !== "standard") p.set("settlement_type", settlement);
+      return `/api/system/${cardName}/card?${p}`;
+    }
+    const p = new URLSearchParams({ seed, format: fmt, detail: detail ? "true" : "false" });
+    if (name !== "World-1") p.set("name", name);
+    if (selectMw)    p.set("select_mainworld",       "true");
+    if (ecc)         p.set("orbital_eccentricity",   "true");
+    if (incl)        p.set("orbital_inclination",    "true");
+    if (nhz)         p.set("nhz_atmospheres",        "true");
+    if (bio)         p.set("optional_biomass_rule",  "true");
+    if (rg)          p.set("runaway_greenhouse",     "true");
+    if (indep)       p.set("independent_government", "true");
+    if (socialDetail) p.set("social_detail",         "true");
+    if (settlement !== "standard") p.set("settlement_type", settlement);
+    return `/api/system?${p}`;
+  }
+
+  async function saveAs(fmt) {
+    if (!_lastGen) return;
+    const { name, seed } = _lastGen;
+    const slug = slugName(name);
+    const btn = document.getElementById(`s-save-${fmt}`);
+    btn.disabled = true;
+    try {
+      const url = buildSysUrl(seed, fmt);
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+      let content, filename, mimeType;
+      if (fmt === "html") {
+        content  = await resp.text();
+        filename = `${slug}-system.html`;
+        mimeType = "text/html";
+      } else if (fmt === "text") {
+        content  = await resp.text();
+        filename = `${slug}-system.txt`;
+        mimeType = "text/plain";
+      } else {
+        content  = JSON.stringify(await resp.json(), null, 2);
+        filename = `${slug}-system.json`;
+        mimeType = "application/json";
+      }
+      downloadBlob(content, filename, mimeType);
+    } catch (e) {
+      setStatus("Save failed: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  document.getElementById("s-save-html").addEventListener("click", () => saveAs("html"));
+  document.getElementById("s-save-text").addEventListener("click", () => saveAs("text"));
+  document.getElementById("s-save-json").addEventListener("click", () => saveAs("json"));
+
+  // ── Tab switching ────────────────────────────────────
+
+  document.getElementById("s-tab-bar").addEventListener("click", e => {
+    const btn = e.target.closest(".tab-btn");
+    if (!btn) return;
+    const tab = btn.dataset.tab;
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b === btn));
+    document.getElementById("tab-mw").classList.toggle("active",     tab === "mw");
+    document.getElementById("tab-sys").classList.toggle("active",    tab === "sys");
+    document.getElementById("tab-map").classList.toggle("active",    tab === "map");
+    document.getElementById("tab-survey").classList.toggle("active", tab === "survey");
+  });
+
+  document.getElementById("s-survey-btn").addEventListener("click", () => {
+    const type = document.getElementById("s-survey-type").value;
+    const html = _lastSurveyHtmls[type];
+    if (!html) return;
+    loadFrame("survey-frame", html);
+    document.getElementById("tab-btn-survey").classList.remove("hidden");
+    document.querySelectorAll(".tab-btn").forEach(b =>
+      b.classList.toggle("active", b.id === "tab-btn-survey")
+    );
+    document.getElementById("tab-mw").classList.remove("active");
+    document.getElementById("tab-sys").classList.remove("active");
+    document.getElementById("tab-map").classList.remove("active");
+    document.getElementById("tab-survey").classList.add("active");
+  });
+
+  // ── Perspective toggle re-fetches the map ────────────
+  document.getElementById("map-perspective").addEventListener("change", () => {
+    if (_lastGen) loadMap(_lastGen.seed);
+  });
+
+  // ── Seed copy-on-click ───────────────────────────────
+
+  document.getElementById("s-seed-val").addEventListener("click", function () {
+    navigator.clipboard.writeText(this.textContent).then(() => {
+      const hint = document.getElementById("s-copy-hint");
+      hint.classList.add("show");
+      setTimeout(() => hint.classList.remove("show"), 1500);
+    }).catch(() => {});
+  });
+
+  // ── Server health check ──────────────────────────────
+
+  (async () => {
+    const dot = document.getElementById("status-dot");
+    const txt = document.getElementById("status-text");
+    try {
+      const resp = await fetch("/api/world?seed=1", { signal: AbortSignal.timeout(3000) });
+      if (resp.ok) { dot.className = "dot ok"; txt.textContent = "server online"; }
+      else throw new Error();
+    } catch (_) { dot.className = "dot"; txt.textContent = "server offline"; }
+  })();
+
+  document.getElementById("s-rand").addEventListener("click", () => {
+    document.getElementById("s-seed").value = randSeed();
+  });
+
+  // ── Sub-options enable/disable ───────────────────────
+
+  function updateSubOptions() {
+    const detail = document.getElementById("s-detail").checked;
+    const full   = document.getElementById("s-full").checked;
+    const enabled = detail || full;
+    ["s-nhz", "s-bio", "s-rg", "s-indep"].forEach(id => {
+      document.getElementById(id).disabled = !enabled;
+    });
+  }
+
+  document.getElementById("s-full").addEventListener("change", function () {
+    const detail = document.getElementById("s-detail");
+    detail.disabled = this.checked;
+    if (this.checked) detail.checked = false;
+    updateSubOptions();
+  });
+
+  document.getElementById("s-detail").addEventListener("change", updateSubOptions);
+
+  // ── Persist preferences on any option change ─────────
+  _PREF_IDS.forEach(id => {
+    document.getElementById(id).addEventListener("change", savePrefs);
+  });
+  loadPrefs();
+
+  document.getElementById("s-gen").addEventListener("click", generateSystem);
+  ["s-name", "s-seed", "s-sector", "s-hex"].forEach(id => {
+    document.getElementById(id).addEventListener("keydown", e => {
+      if (e.key === "Enter") generateSystem();
+    });
+  });
+
+  // ── Theme toggle ─────────────────────────────────────
+
+  function _getTheme() {
+    return localStorage.getItem("traveller-theme") ||
+      (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }
+
+  function _applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("traveller-theme", theme);
+    document.getElementById("theme-toggle").textContent = theme === "dark" ? "☀" : "☾";
+    if (_lastMwHtml) loadFrame("mw-frame", _lastMwHtml);
+    if (_lastSysHtml) loadFrame("sys-frame", _lastSysHtml);
+    const type = document.getElementById("s-survey-type").value;
+    if (_lastSurveyHtmls[type]) loadFrame("survey-frame", _lastSurveyHtmls[type]);
+    if (_lastGen) loadMap(_lastGen.seed);
+  }
+
+  document.getElementById("theme-toggle").addEventListener("click", function () {
+    const cur = document.documentElement.getAttribute("data-theme") || _getTheme();
+    _applyTheme(cur === "dark" ? "light" : "dark");
+  });
+
+  _applyTheme(_getTheme());
+
+  // ── Main generation ──────────────────────────────────
+
+  async function generateSystem() {
+    const name       = document.getElementById("s-name").value.trim();
+    const seedIn     = document.getElementById("s-seed").value.trim();
+    const format     = document.getElementById("s-format").value;
+    const detail     = document.getElementById("s-detail").checked;
+    const full       = document.getElementById("s-full").checked;
+    const selectMw   = document.getElementById("s-select-mw").checked;
+    const ecc        = document.getElementById("s-ecc").checked;
+    const incl       = document.getElementById("s-incl").checked;
+    const nhz        = document.getElementById("s-nhz").checked;
+    const bio        = document.getElementById("s-bio").checked;
+    const rg         = document.getElementById("s-rg").checked;
+    const indep      = document.getElementById("s-indep").checked;
+    const socialDetail = document.getElementById("s-social-detail").checked;
+    const settlement   = document.getElementById("s-settlement").value;
+    const mapMode    = isTravellerMap();
+    const sector     = mapMode ? document.getElementById("s-sector").value.trim() : "";
+    const hex        = mapMode ? document.getElementById("s-hex").value.trim() : "";
+    const btn        = document.getElementById("s-gen");
+    const seed       = seedIn ? parseInt(seedIn, 10) : randSeed();
+
+    // TravellerMap mode requires sector, and at least name or hex
+    if (mapMode) {
+      if (!sector) {
+        setStatus("Sector is required for TravellerMap lookups.", "error");
+        return;
+      }
+      if (!name && !hex) {
+        setStatus("Enter a world name or hex position to identify the world.", "error");
+        return;
+      }
+    }
+
+    btn.disabled = true;
+    clearResult();
+    setStatus("Generating…", "loading");
+
+    // Shared optional-flag params for all system endpoints
+    function sysParams(base) {
+      if (ecc)          base.set("orbital_eccentricity",   "true");
+      if (incl)         base.set("orbital_inclination",    "true");
+      if (nhz)          base.set("nhz_atmospheres",        "true");
+      if (bio)          base.set("optional_biomass_rule",  "true");
+      if (rg)           base.set("runaway_greenhouse",     "true");
+      if (indep)        base.set("independent_government", "true");
+      if (socialDetail) base.set("social_detail",          "true");
+      return base;
+    }
+
+    // TravellerMap identifier params
+    function mapIdParams(base) {
+      base.set("sector", sector);
+      if (name) base.set("name",   name);
+      if (hex)  base.set("hex",    hex);
+      return base;
+    }
+
+    try {
+      // ── TravellerMap mode ──────────────────────────
+      if (mapMode) {
+        const isFullDetail = full || detail;
+        const sysUrl = isFullDetail
+          ? `/api/map/system/full?${sysParams(mapIdParams(new URLSearchParams({ seed, format })))}`
+          : `/api/map/system?${sysParams(mapIdParams(new URLSearchParams({ seed, format })))}`;
+
+        const resolvedName = name || hex || "World-1";
+        _lastGen = { name: resolvedName, seed, isMap: true, sector, hex,
+                     full: isFullDetail, detail, ecc, incl, nhz, bio, rg, indep, socialDetail };
+
+        if (format === "html") {
+          if (isFullDetail) {
+            // Request sys_html + mw_html together so both come from the same
+            // generation (separate /map/world/card uses a different RNG path).
+            const fullUrl = new URL(sysUrl, window.location.href);
+            fullUrl.searchParams.set("include_mw_card", "true");
+
+            const sysResp = await fetch(fullUrl.toString());
+            if (!sysResp.ok) {
+              const err = await sysResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
+            }
+            const data = await sysResp.json();
+            showTabs(data.mw_html, data.sys_html, seed,
+              data.survey_class0i_html ? { class0i: data.survey_class0i_html } : {});
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
+
+          } else {
+            // Basic system: separate card fetch is acceptable (no select_mainworld)
+            const mwUrl = `/api/map/world/card?${sysParams(mapIdParams(new URLSearchParams({ seed })))}`;
+            const [sysResp, mwResp] = await Promise.all([fetch(sysUrl), fetch(mwUrl)]);
+
+            if (!sysResp.ok) {
+              const err = await sysResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
+            }
+            if (!mwResp.ok) {
+              const err = await mwResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `Mainworld HTTP ${mwResp.status}`);
+            }
+
+            const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
+            showTabs(mwHtml, sysHtml, seed, {});
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
+          }
+
+        } else {
+          const resp = await fetch(sysUrl);
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error((err.error && err.error.message) || `HTTP ${resp.status}`);
+          }
+          const contentType = resp.headers.get("content-type") || "";
+          if (contentType.includes("text/plain")) {
+            showText(await resp.text());
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
+          } else {
+            const data = await resp.json();
+            if (data.mainworld && data.mainworld.name) _lastGen.name = data.mainworld.name;
+            showJson(data);
+            showSeed(data.seed ?? seed);
+            if (!seedIn) document.getElementById("s-seed").value = data.seed ?? seed;
+          }
+        }
+
+      // ── Procedural mode ────────────────────────────
+      } else {
+        // Params to forward to the mainworld card endpoint
+        function mwCardParams(seed) {
+          const p = new URLSearchParams({ seed, detail: "true" });
+          if (socialDetail)  p.set("social_detail", "true");
+          if (settlement !== "standard") p.set("settlement_type", settlement);
+          return p;
+        }
+
+        if (format === "html") {
+          const cardName = encodeURIComponent(name || "World-1");
+
+          if (full) {
+            // Request sys_html + mw_html together so both come from the same
+            // generation (separate /card fetch uses a different RNG path).
+            const p = sysParams(new URLSearchParams({ seed, format: "html" }));
+            if (selectMw) p.set("select_mainworld", "true");
+            if (settlement !== "standard") p.set("settlement_type", settlement);
+            if (name) p.set("name", name);
+            p.set("include_mw_card", "true");
+            const sysUrl = `/api/system/full?${p}`;
+
+            const sysResp = await fetch(sysUrl);
+            if (!sysResp.ok) {
+              const err = await sysResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
+            }
+            const data = await sysResp.json();
+            _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
+                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
+            showTabs(data.mw_html, data.sys_html, seed,
+              data.survey_class0i_html ? { class0i: data.survey_class0i_html } : {});
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
+
+          } else {
+            const p = sysParams(new URLSearchParams({ seed, detail: detail ? "true" : "false" }));
+            if (selectMw) p.set("select_mainworld", "true");
+            if (settlement !== "standard") p.set("settlement_type", settlement);
+            const sysUrl = `/api/system/${cardName}/card?${p}`;
+
+            const mwUrl = `/api/world/${encodeURIComponent(name || "World-1")}/card?${mwCardParams(seed)}`;
+
+            const [sysResp, mwResp] = await Promise.all([fetch(sysUrl), fetch(mwUrl)]);
+
+            if (!sysResp.ok) {
+              const err = await sysResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `System HTTP ${sysResp.status}`);
+            }
+            if (!mwResp.ok) {
+              const err = await mwResp.json().catch(() => ({}));
+              throw new Error((err.error && err.error.message) || `Mainworld HTTP ${mwResp.status}`);
+            }
+
+            const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
+            _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
+                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
+            showTabs(mwHtml, sysHtml, seed, {});
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
+          }
+
+        } else {
+          const cardName = encodeURIComponent(name || "World-1");
+          let url;
+          if (full) {
+            const p = sysParams(new URLSearchParams({ seed, format }));
+            if (selectMw) p.set("select_mainworld", "true");
+            if (settlement !== "standard") p.set("settlement_type", settlement);
+            if (name) p.set("name", name);
+            url = `/api/system/full?${p}`;
+          } else {
+            const p = sysParams(new URLSearchParams({ seed, detail: detail ? "true" : "false" }));
+            if (selectMw) p.set("select_mainworld", "true");
+            if (settlement !== "standard") p.set("settlement_type", settlement);
+            if (name) p.set("name", name);
+            url = `/api/system?${p}`;
+          }
+
+          const resp = await fetch(url);
+          if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error((err.error && err.error.message) || `HTTP ${resp.status}`);
+          }
+          const contentType = resp.headers.get("content-type") || "";
+          if (contentType.includes("text/plain")) {
+            _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
+                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
+            showText(await resp.text());
+            showSeed(seed);
+            if (!seedIn) document.getElementById("s-seed").value = seed;
+          } else {
+            const data = await resp.json();
+            _lastGen = { name: name || "World-1", seed: data.seed ?? seed, isMap: false, sector: "", hex: "",
+                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
+            showJson(data);
+            showSeed(data.seed ?? seed);
+            if (!seedIn) document.getElementById("s-seed").value = data.seed ?? seed;
+            clearStatus();
+            btn.disabled = false;
+            return;
+          }
+        }
+      }
+
+      clearStatus();
+    } catch (e) {
+      setStatus("Error: " + e.message, "error");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  fetch("/api/version").then(r => r.json()).then(d => {
+    const el = document.getElementById("app-version");
+    if (el && d.version) el.textContent = "v" + d.version;
+  }).catch(() => {});
+</script>
+</body>
+</html>

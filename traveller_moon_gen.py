@@ -216,6 +216,7 @@ class Moon:  # pylint: disable=too-many-instance-attributes
     # Eccentricity and inclination (WBH p.76); set by generate_moons() when orbit data provided
     orbit_eccentricity: float = field(default=0.0, init=False)
     orbit_inclination: float = field(default=0.0, init=False)  # >90° implies retrograde
+    name: str = field(default="", init=False)  # set by attach_body_names()
 
     @property
     def size_str(self) -> str:
@@ -254,6 +255,8 @@ class Moon:  # pylint: disable=too-many-instance-attributes
         if self.is_ring and self.ring_centre_pd is not None:
             d["ring_centre_pd"] = self.ring_centre_pd
             d["ring_span_pd"]   = self.ring_span_pd
+        if self.name:
+            d["name"] = self.name
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
         return d
@@ -261,7 +264,7 @@ class Moon:  # pylint: disable=too-many-instance-attributes
     @classmethod
     def from_dict(cls, d: dict) -> "Moon":
         """Reconstruct a Moon from a dict produced by to_dict()."""
-        size_raw = str(d["size"])
+        size_raw = str(d.get("size", "0"))
         if size_raw == "R":
             moon = cls(size_code=0, is_ring=True,
                        is_gas_giant_moon=bool(d.get("is_gas_giant_moon", False)))
@@ -285,6 +288,7 @@ class Moon:  # pylint: disable=too-many-instance-attributes
                                        if d.get("orbit_period_hours") is not None else None)
             moon.orbit_eccentricity = float(d.get("orbit_eccentricity", 0.0))
             moon.orbit_inclination  = float(d.get("orbit_inclination", 0.0))
+        moon.name = str(d.get("name", ""))
         if d.get("detail"):
             from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
             moon.detail = WorldDetail.from_dict(d["detail"])

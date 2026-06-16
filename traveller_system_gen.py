@@ -61,9 +61,10 @@ from typing import Optional
 
 from traveller_stellar_gen import StarSystem, generate_stellar_data
 from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
+from traveller_belt_physical import BeltPhysical
 from traveller_hydro_detail import generate_hydrographic_detail
 from html_render import render
-from world_codes import APP_VERSION
+from world_codes import APP_VERSION, gg_diameter_from_sah
 from traveller_world_gen import (
     World,
     generate_size,
@@ -74,18 +75,7 @@ from traveller_world_gen import (
     generate_unusual_subtype,
     temperature_category,
     generate_hydrographics,
-    generate_population,
-    generate_government,
-    generate_law_level,
-    generate_starport,
-    generate_tech_level,
-    generate_bases,
-    generate_population_multiplier,
-    assign_trade_codes,
-    assign_travel_zone,
     to_hex,
-    ATMOSPHERE_MIN_TL,
-    ATMOSPHERE_NAMES,
     TEMPERATURE_DM,
 )
 
@@ -94,11 +84,7 @@ from traveller_world_gen import (
 # HZ deviation → raw temperature roll  (WBH p.46-47)
 # ---------------------------------------------------------------------------
 
-def hz_deviation_to_raw_roll(  # pylint: disable=unused-argument
-    hz_deviation: float,
-    hzco: float,
-    orbit: float,
-) -> int:
+def hz_deviation_to_raw_roll(hz_deviation: float) -> int:
     """
     Convert an orbit's HZ deviation to the raw 2D temperature roll
     used in the CRB temperature table (p.251), via the WBH Habitable
@@ -109,38 +95,27 @@ def hz_deviation_to_raw_roll(  # pylint: disable=unused-argument
     Negative deviation (closer = hotter) raises the raw roll toward Boiling.
     Positive deviation (further = colder) lowers the raw roll toward Frozen.
 
-    The hzco and orbit parameters are retained for API compatibility but are
-    no longer used; the WBH HZ Regions table (p.46) is applied directly to
-    the unscaled orbit# deviation.  Sub-Orbit#1 scaling was removed because
-    it conflicts with is_habitable_zone (which uses the unscaled deviation) and
-    produces absurd results for dim stars (HZCO ≈ 0 amplified 50×).
-
     Returns an int in range 2-12 (clamped).
     """
-    # Map deviation to raw roll via the HZ Regions table (WBH p.46)
-    # HZCO = raw roll 7 (deviation 0)
-    # Each 0.1 Orbit# away from HZCO shifts the raw roll by ~1
-    eff_dev = hz_deviation
-
-    if eff_dev >= 1.1:
+    if hz_deviation >= 1.1:
         raw = 2        # Frozen
-    elif eff_dev >= 1.0:
+    elif hz_deviation >= 1.0:
         raw = 3        # Cold
-    elif eff_dev >= 0.5:
+    elif hz_deviation >= 0.5:
         raw = 4        # Cold
-    elif eff_dev >= 0.2:
+    elif hz_deviation >= 0.2:
         raw = 5        # Temperate (cool)
-    elif eff_dev >= 0.1:
+    elif hz_deviation >= 0.1:
         raw = 6        # Temperate
-    elif eff_dev >= 0.0:
+    elif hz_deviation >= 0.0:
         raw = 7        # Temperate (HZCO)
-    elif eff_dev >= -0.1:
+    elif hz_deviation >= -0.1:
         raw = 8        # Temperate (warm)
-    elif eff_dev >= -0.2:
+    elif hz_deviation >= -0.2:
         raw = 9        # Temperate (warm)
-    elif eff_dev >= -0.5:
+    elif hz_deviation >= -0.5:
         raw = 10       # Hot
-    elif eff_dev >= -1.0:
+    elif hz_deviation >= -1.0:
         raw = 11       # Hot
     else:
         raw = 12       # Boiling
@@ -148,12 +123,7 @@ def hz_deviation_to_raw_roll(  # pylint: disable=unused-argument
     return max(2, min(12, raw))
 
 
-def generate_temperature_from_orbit(
-    atmosphere: int,
-    hz_deviation: float,
-    hzco: float,
-    orbit: float,
-) -> str:
+def generate_temperature_from_orbit(atmosphere: int, hz_deviation: float) -> str:
     """
     Determine temperature using orbital position rather than a random roll.
 
@@ -161,7 +131,7 @@ def generate_temperature_from_orbit(
     then the atmosphere DM is added exactly as the CRB specifies (p.251).
     This ensures the world's temperature is consistent with its orbit.
     """
-    raw_roll = hz_deviation_to_raw_roll(hz_deviation, hzco, orbit)
+    raw_roll = hz_deviation_to_raw_roll(hz_deviation)
     atm_dm = TEMPERATURE_DM.get(atmosphere, 0)
     modified_roll = raw_roll + atm_dm
     return temperature_category(modified_roll)
@@ -336,7 +306,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             if o.notes:
                 note_parts.append(o.notes)
             if o.world_type == "gas_giant" and o.gg_mass_earth is not None:
-                gg_diam_km = _gg_diameter(o.gg_sah or "") * 12800.0
+                gg_diam_km = gg_diameter_from_sah(o.gg_sah or "") * 12800.0
                 if gg_diam_km > 0:
                     gg_density = (
                         o.gg_mass_earth / (gg_diam_km / 12742.0) ** 3
@@ -344,6 +314,8 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                     note_parts.append(
                         f"{o.gg_mass_earth:.0f} M⊕ · {gg_density:.2f} g/cm³"
                     )
+            if detail is not None and isinstance(detail.physical, BeltPhysical):
+                note_parts.append(f"Profile: {detail.physical.profile_str}")
 
             if o.is_mainworld_candidate and mw:
                 orbit_codes = list(mw.trade_codes)
@@ -385,6 +357,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                         else ""
                     )
                     moons.append({
+                        "name": moon.name,
                         "idx": mi,
                         "pd_str": (f"{moon.orbit_pd:.1f} PD"
                                    if moon.orbit_pd is not None else ""),
@@ -414,6 +387,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                     biosphere_str = f"{to_hex(bm)}, {to_hex(bc)}"
 
             orbit_rows.append({
+                "name": o.name,
                 "star_desig": o.star_designation,
                 "slot_index": o.slot_index,
                 "orbit_num": f"{o.orbit_number:.2f}",
@@ -443,21 +417,71 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             json_str=self.to_json(),
         )
 
+    def to_survey_form_html(self) -> str:  # pylint: disable=too-many-locals
+        """Return a self-contained IISS Class 0/I Survey form HTML page."""
+        footnote_syms = "¹²³⁴⁵⁶⁷⁸⁹"
 
-_GG_EHEX = "0123456789ABCDEFGHIJ"
+        mw = self.mainworld
+        designation = mw.name if mw else "Unknown"
+        age_gyr = f"{self.stellar_system.age_gyr:.2f}"
+        stellar_count = len(self.stellar_system.stars)
 
+        footnote_idx = 0
+        notes_lines: list[str] = []
+        star_rows = []
 
-def _gg_diameter(gg_sah: str) -> int:
-    """Return the numeric diameter from a gas giant SAH string (e.g. 'GM9' → 9)."""
-    if len(gg_sah) >= 3 and gg_sah[2].upper() in _GG_EHEX:
-        return _GG_EHEX.index(gg_sah[2].upper())
-    return 8  # fallback: mid-range GM diameter
+        for star in self.stellar_system.stars:
+            period_yr = star.orbit_period_yr
+            is_primary = star.orbit_number == 0.0
+
+            # Period formatted: always years in the table column
+            if is_primary or period_yr is None:
+                period_str = "—"
+            else:
+                period_str = f"{period_yr:.3f}y"
+
+            # Footnote only for sub-year periods; note in standard days
+            footnote = ""
+            if (not is_primary
+                    and period_yr is not None
+                    and period_yr < 1.0
+                    and footnote_idx < len(footnote_syms)):
+                footnote = footnote_syms[footnote_idx]
+                footnote_idx += 1
+                notes_lines.append(
+                    f"{footnote} {period_yr * 365.25:.3f} standard days"
+                )
+
+            ecc_v = star.orbit_eccentricity
+            hzco_v = self.system_orbits.star_hzco.get(star.designation)
+
+            star_rows.append({
+                "component": star.designation,
+                "footnote": footnote,
+                "star_class": star.classification(),
+                "mass": f"{star.mass:.3f}",
+                "temp": f"{star.temperature:,}" if star.temperature > 0 else "—",
+                "diameter": f"{star.diameter:.3f}",
+                "luminosity": f"{star.luminosity:.4g}",
+                "orbit": "0" if is_primary else f"{star.orbit_number:.2f}",
+                "au": "—" if is_primary else f"{star.orbit_au:.3f}",
+                "ecc": "—" if ecc_v == 0.0 else f"{ecc_v:.2f}",
+                "period": period_str,
+                "hzco": f"{hzco_v:.2f}" if hzco_v is not None else "—",
+            })
+
+        return render("survey_class0i.html",
+            designation=designation,
+            age_gyr=age_gyr,
+            stellar_count=stellar_count,
+            star_rows=star_rows,
+            notes="\n".join(notes_lines),
+        )
 
 
 def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements
     name: str,
     orbit: OrbitSlot,
-    hzco: float,
     gas_giant_count: int,
     belt_count: int,
     system_age_gyr: Optional[float] = None,
@@ -468,13 +492,16 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     Generate a mainworld whose temperature is constrained by its orbital
     position, following the WBH Habitable Zones Regions table (p.46-47).
 
-    All steps follow the CRB generation procedure (pp.248-261) except:
-    - Temperature uses the orbital HZ deviation instead of a random roll
-    - gas_giant_count, belt_count, and population_multiplier come from
-      the orbit generation rather than being re-rolled independently
-    - WBH atmosphere detail (pressure, ppo, scale height) is attached
-      via ``generate_atmosphere_detail()``; *system_age_gyr* feeds the
-      WBH p.80 DM+1 to oxygen fraction for systems older than 4 Gyr.
+    Generates physical characteristics only (steps 1–4, atmosphere detail,
+    hydrographic detail, gas giant / belt counts).  Social steps (5–10,
+    12–13: population, government, law, starport, TL, bases, trade codes,
+    travel zone) are deferred — the returned world carries placeholder
+    values (starport='X', pop/gov/law/tl=0, bases=[], trade_codes=[],
+    travel_zone='Green').  Call ``apply_mainworld_social()`` after
+    mainworld selection to complete the world.
+
+    WBH atmosphere detail is attached via ``generate_atmosphere_detail()``;
+    *system_age_gyr* feeds the WBH p.80 DM+1 for systems older than 4 Gyr.
     """
     import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     if rng is not None:
@@ -483,9 +510,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
 
     # If the mainworld orbit is a belt, the physical characteristics are
     # fixed: size=0, atmosphere=0, hydrographics=0 (WBH p.53 — "Size 0 world
-    # is a special case… a belt of planetoids").  Social codes (population,
-    # government, law, starport, TL) are still rolled normally, and the
-    # Asteroid (As) trade code will be assigned automatically.
+    # is a special case… a belt of planetoids").
     # Temperature is set to the orbital zone value but has no physical meaning
     # for a diffuse belt.
     if orbit.world_type == "belt":
@@ -495,14 +520,12 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.temperature = generate_temperature_from_orbit(
             atmosphere=0,
             hz_deviation=orbit.hz_deviation,
-            hzco=hzco,
-            orbit=orbit.orbit_number,
         )
     elif orbit.world_type == "gas_giant":
         # The mainworld is a satellite of the gas giant, not the giant itself.
         # Size is constrained: at least 1, at most gg_diameter-1 (WBH p.57).
         gg_sah = getattr(orbit, "gg_sah", "")
-        gg_diam = _gg_diameter(gg_sah)
+        gg_diam = gg_diameter_from_sah(gg_sah)
         world.size = min(max(generate_size(), 1), gg_diam - 1)
         _nhz = (nhz_atmospheres
                 and orbit.hz_deviation is not None
@@ -517,8 +540,6 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=orbit.hz_deviation,
-            hzco=hzco,
-            orbit=orbit.orbit_number,
         )
         world.atmosphere_detail = generate_atmosphere_detail(
             world.atmosphere, world.size, system_age_gyr, world.temperature,
@@ -559,8 +580,6 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=orbit.hz_deviation,
-            hzco=hzco,
-            orbit=orbit.orbit_number,
         )
 
         # Atmosphere detail needs temperature to characterise exotic/corrosive subtypes
@@ -591,58 +610,13 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         temperature=world.temperature,
     )
 
-    # Steps 5-7: Population, Government, Law Level
-    world.population = generate_population()
-    world.government = generate_government(world.population)
-    world.law_level = (
-        0 if world.population == 0
-        else generate_law_level(world.government)
-    )
-
-    # Step 8: Starport
-    world.starport = generate_starport(world.population)
-
-    # Step 9: Tech Level
-    world.tech_level = (
-        0 if world.population == 0
-        else generate_tech_level(
-            world.starport, world.size, world.atmosphere,
-            world.hydrographics, world.population, world.government,
-        )
-    )
-
-    # Step 9 supplementary: minimum TL note
-    min_tl = ATMOSPHERE_MIN_TL.get(world.atmosphere, 0)
-    if world.population > 0 and world.tech_level < min_tl:
-        world.notes.append(
-            f"TL {world.tech_level} is below the minimum TL {min_tl} "
-            f"needed to maintain Atmosphere {world.atmosphere} "
-            f"({ATMOSPHERE_NAMES.get(world.atmosphere, '?')}). "
-            "Population may be doomed."
-        )
-
-    # Step 10: Bases
-    world.bases = generate_bases(
-        world.starport, world.tech_level, world.population, world.law_level
-    )
-
-    # Step 11: Gas giants and belts — use orbit generation counts
+    # Step 11: Gas giants and belts — use orbit generation counts (no dice)
     world.has_gas_giant = gas_giant_count > 0
     world.gas_giant_count = gas_giant_count
     world.belt_count = belt_count
-    world.population_multiplier = generate_population_multiplier(world.population)
 
-    # Step 12: Trade Codes
-    world.trade_codes = assign_trade_codes(
-        world.size, world.atmosphere, world.hydrographics,
-        world.population, world.government, world.law_level,
-        world.tech_level,
-    )
-
-    # Step 13: Travel Zone
-    world.travel_zone = assign_travel_zone(
-        world.atmosphere, world.government, world.law_level, world.starport
-    )
+    # Steps 5–10, 12–13 (social/starport/TL/bases/trade codes/travel zone) are
+    # deferred until after mainworld selection — see apply_mainworld_social().
 
     # Record orbital context in notes
     world.notes.append(
@@ -696,13 +670,9 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
     mainworld = None
 
     if mw_orbit is not None:
-        # Retrieve HZCO for the mainworld's host star
-        hzco = orbits.star_hzco.get(mw_orbit.star_designation, 1.0)
-
         mainworld = generate_mainworld_at_orbit(
             name=name,
             orbit=mw_orbit,
-            hzco=hzco,
             gas_giant_count=orbits.gas_giant_count,
             belt_count=orbits.belt_count,
             system_age_gyr=stellar.age_gyr,
@@ -775,12 +745,9 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
 
         # Recalculate temperature from orbital position ("orbital temperature,
         # not random" design rule — the JSON value is discarded).
-        hzco = orbits.star_hzco.get(mw_orbit.star_designation, 1.0)
         world.temperature = generate_temperature_from_orbit(
             atmosphere=world.atmosphere,
             hz_deviation=mw_orbit.hz_deviation,
-            hzco=hzco,
-            orbit=mw_orbit.orbit_number,
         )
         world.notes.append(
             f"System generated from existing mainworld UWP {world.uwp()}. "
@@ -822,10 +789,212 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
 
 
 # ---------------------------------------------------------------------------
+# Mainworld selection (WBH pp.155-156)
+# ---------------------------------------------------------------------------
+
+def _refuel_score(hydro: int, orbit: "OrbitSlot") -> int:
+    """Return 0-2 refuelling score: 2=GG satellite, 1=hydro≥5, 0=dry."""
+    if orbit.world_type == "gas_giant":
+        return 2
+    return 1 if hydro >= 5 else 0
+
+
+def _candidate_score(
+    hab: int, sophont: bool, resource: int, refuel: int,
+) -> int:
+    """WBH weighted score for one mainworld candidate."""
+    return hab * 50 + (50 if sophont else 0) + resource * 30 + refuel * 10
+
+
+def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    system: TravellerSystem,
+    rng: Optional[random.Random] = None,
+) -> bool:
+    """Score all terrestrial candidates and promote the winner to mainworld.
+
+    Scoring (WBH pp.155-156):
+      habitability_rating × 50 + native_sophont × 50
+      + resource_rating × 30 + refuelling_score × 10
+
+    On a 3D roll of 18 a candidate is chosen randomly instead.
+    Requires ``attach_detail()`` and ``_attach_mainworld_physical()`` to have
+    run first so that habitability, sophont, and resource data are available.
+
+    Returns ``True`` when the mainworld orbit changed (swap occurred).  When
+    ``True``, the caller must re-run ``_attach_mainworld_physical()`` and
+    ``_apply_mainworld_moon_tidal()`` for the new mainworld, then call
+    ``apply_mainworld_social()``.  Returns ``False`` when the pre-selected
+    mainworld was confirmed as the winner (no structural change).
+    """
+    from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+
+    r = rng if rng is not None else random
+
+    mw        = system.mainworld
+    mw_orbit  = system.mainworld_orbit
+
+    if mw is None or mw_orbit is None:
+        return False
+
+    # ------------------------------------------------------------------ #
+    # Build candidate list: (orbit_or_None, WorldDetail_or_None, score)  #
+    # orbit=None means the entry represents the current mainworld (World) #
+    # ------------------------------------------------------------------ #
+    candidates: list = []
+
+    # Current mainworld candidate
+    mw_hab      = mw.habitability_rating or 0
+    mw_sophont  = mw.native_sophont
+    mw_resource = (
+        int(getattr(mw.size_detail, "resource_rating", 0) or 0)
+        if mw.size_detail is not None else 0
+    )
+    mw_refuel   = _refuel_score(mw.hydrographics, mw_orbit)
+    mw_score    = _candidate_score(mw_hab, mw_sophont, mw_resource, mw_refuel)
+    candidates.append((None, mw_score))   # None → current mainworld
+
+    # Secondary terrestrial candidates
+    for orbit in system.system_orbits.orbits:
+        if orbit.world_type != "terrestrial":
+            continue
+        if orbit.is_mainworld_candidate:
+            continue
+        det = orbit.detail
+        if det is None or det.is_gas_giant:
+            continue
+        hab     = det.habitability_rating or 0
+        sophont = det.native_sophont
+        # Secondaries have no WorldPhysical → resource_rating = 0
+        hydro   = int(det.sah[2], 16) if len(det.sah) > 2 else 0
+        refuel  = _refuel_score(hydro, orbit)
+        score   = _candidate_score(hab, sophont, 0, refuel)
+        candidates.append((orbit, score))
+
+    if len(candidates) <= 1:
+        return False   # only the mainworld — nothing to compare
+
+    # ------------------------------------------------------------------ #
+    # Wild-card: 3D=18 → random selection                                #
+    # ------------------------------------------------------------------ #
+    wild = r.randint(1, 6) + r.randint(1, 6) + r.randint(1, 6)
+    if wild == 18:
+        winner_orbit, _ = candidates[r.randrange(len(candidates))]
+    else:
+        winner_orbit, _ = max(candidates, key=lambda c: c[1])
+
+    # winner_orbit=None means the current mainworld won → no change
+    if winner_orbit is None:
+        return False
+
+    # ------------------------------------------------------------------ #
+    # Swap: promote winner_orbit to mainworld                             #
+    # ------------------------------------------------------------------ #
+    # a. Update orbit flags
+    mw_orbit.is_mainworld_candidate        = False
+    winner_orbit.is_mainworld_candidate    = True
+
+    # b. Regenerate winner as a full World
+    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    age_gyr = system.stellar_system.primary.age_gyr
+    new_mw  = generate_mainworld_at_orbit(
+        name=mw.name,
+        orbit=winner_orbit,
+        gas_giant_count=system.system_orbits.gas_giant_count,
+        belt_count=system.system_orbits.belt_count,
+        system_age_gyr=age_gyr,
+        nhz_atmospheres=system.nhz_atmospheres,
+        rng=rng,
+    )
+
+    # c. Demote old mainworld to WorldDetail (physical data only)
+    old_sah    = (f"{to_hex(mw.size)}"
+                  f"{to_hex(mw.atmosphere)}"
+                  f"{to_hex(mw.hydrographics)}")
+    old_detail = WorldDetail(sah=old_sah)
+    old_detail.biomass_rating       = mw.biomass_rating
+    old_detail.biocomplexity_rating = mw.biocomplexity_rating
+    old_detail.habitability_rating  = mw.habitability_rating
+    old_detail.native_sophont       = mw.native_sophont
+    mw_orbit.detail                 = old_detail
+
+    # d. Clear the winner's secondary WorldDetail
+    winner_orbit.detail = None
+
+    # e. Commit to system
+    _twg._rng           = rng if rng is not None else _twg._rng  # pylint: disable=protected-access
+    system.mainworld       = new_mw
+    system.mainworld_orbit = winner_orbit
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Body naming
+# ---------------------------------------------------------------------------
+
+_STAR_SUFFIXES = [
+    "Primary", "Secondary", "Tertiary", "Quaternary",
+    "Quinary", "Senary", "Septenary", "Octonary",
+]
+_GREEK = [
+    "alpha", "beta", "gamma", "delta", "epsilon", "zeta",
+    "eta", "theta", "iota", "kappa", "lambda", "mu",
+    "nu", "xi", "omicron", "pi", "rho", "sigma",
+    "tau", "upsilon", "phi", "chi", "psi", "omega",
+]
+
+
+def attach_body_names(system: TravellerSystem) -> None:
+    """Assign placeholder names to all bodies in the system.
+
+    Must be called after attach_detail() so that moon lists are populated.
+    Safe to call multiple times (idempotent).
+    """
+    mw_name = system.mainworld.name if system.mainworld else "Unknown"
+
+    # Name stars — companions share their parent's orbit, so skip them.
+    star_idx = 0
+    for star in system.stellar_system.stars:
+        if star.role == "companion":
+            continue
+        suffix = (_STAR_SUFFIXES[star_idx] if star_idx < len(_STAR_SUFFIXES)
+                  else f"{star_idx + 1}th")
+        star.name = f"{mw_name}-{suffix}"
+        star_idx += 1
+
+    # Name orbit slots with separate counters for worlds and belts.
+    world_letter_idx = 0
+    belt_letter_idx = 0
+    for orbit in system.system_orbits.orbits:
+        if orbit.world_type == "empty":
+            continue
+        if orbit is system.mainworld_orbit:
+            orbit.name = mw_name
+        elif orbit.world_type == "belt":
+            orbit.name = f"{mw_name}-Belt-{chr(ord('A') + belt_letter_idx)}"
+            belt_letter_idx += 1
+        else:
+            orbit.name = f"{mw_name}-{chr(ord('A') + world_letter_idx)}"
+            world_letter_idx += 1
+
+        # Propagate name to WorldDetail and assign Greek-letter moon names.
+        if orbit.detail is None:
+            continue
+        orbit.detail.name = orbit.name
+        greek_idx = 0
+        for moon in orbit.detail.moons:
+            if moon.is_ring:
+                continue
+            moon.name = f"{orbit.name}-{_GREEK[greek_idx]}"
+            if moon.detail is not None:
+                moon.detail.name = moon.name
+            greek_idx += 1
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
-def main() -> None:
+def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Generate a Traveller star system and print it to stdout."""
     import argparse  # pylint: disable=import-outside-toplevel
     import sys as _sys  # pylint: disable=import-outside-toplevel
@@ -847,6 +1016,10 @@ def main() -> None:
                         help="Attach all secondary world SAH/social profiles and moon data")
     parser.add_argument("--nhz-atmospheres", action="store_true",
                         help="Use WBH Non-Habitable Zone atmosphere tables for out-of-HZ worlds")
+    parser.add_argument("--orbital-eccentricity", action="store_true",
+                        help="Roll eccentricity for each orbit slot (WBH p.27)")
+    parser.add_argument("--orbital-inclination", action="store_true",
+                        help="Roll inclination for each orbit slot (WBH p.28)")
     # --format supersedes the legacy --json flag; --json kept for back-compat
     fmt_group = parser.add_mutually_exclusive_group()
     fmt_group.add_argument("--format", choices=["text", "json", "html"],
@@ -872,17 +1045,25 @@ def main() -> None:
         out_format = "text"
         want_detail = args.detail
 
-    from traveller_world_detail import attach_detail  # pylint: disable=import-outside-toplevel
+    # pylint: disable=import-outside-toplevel
+    from system_pipeline import PipelineOptions, run_detail_pipeline
 
     for i in range(args.count):
+        seed_val: Optional[int] = args.seed if i == 0 else None
+        if seed_val is None:
+            seed_val = secrets.randbelow(2 ** 31)
+        rng = random.Random(seed_val)
+
         system = generate_full_system(
             name=args.name if args.count == 1 else f"{args.name}-{i+1}",
-            seed=args.seed if i == 0 else None,
+            rng=rng,
             nhz_atmospheres=args.nhz_atmospheres,
+            orbital_eccentricity=args.orbital_eccentricity,
+            orbital_inclination=args.orbital_inclination,
         )
-
-        if want_detail:
-            attach_detail(system)
+        run_detail_pipeline(system, rng, PipelineOptions(
+            want_detail=want_detail,
+        ))
 
         if out_format == "json":
             print(system.to_json())

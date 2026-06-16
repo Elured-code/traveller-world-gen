@@ -297,6 +297,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     eccentricity: float = field(default=0.0, init=False)
     inclination: float = field(default=0.0, init=False)
     gg_mass_earth: Optional[float] = field(default=None, init=False)
+    name: str = field(default="", init=False)  # set by attach_body_names()
     detail: Optional["WorldDetail"] = field(default=None, init=False)
 
     def to_dict(self) -> dict:
@@ -329,6 +330,8 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["orbit_au_max"] = round(self.orbit_au * (1 + self.eccentricity), 3)
         if self.inclination > 0:
             d["inclination"] = round(self.inclination, 2)
+        if self.name:
+            d["name"] = self.name
         # Include secondary world / satellite detail if attach_detail() has run
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
@@ -359,6 +362,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
         slot.eccentricity = float(d.get("eccentricity", 0.0))
         slot.inclination = float(d.get("inclination", 0.0))
         slot.gg_mass_earth = float(d["gg_mass_earth"]) if "gg_mass_earth" in d else None
+        slot.name = str(d.get("name", ""))
         detail_d = d.get("detail")
         if detail_d:
             from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel

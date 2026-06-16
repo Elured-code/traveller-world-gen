@@ -1,0 +1,19 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+
+    "TRAVELLER_MAX_BATCH_SIZE": "20",
+    "RATE_LIMIT_PER_MINUTE": "100/minute",
+
+    "APPLICATIONINSIGHTS_CONNECTION_STRING": "",
+
+    "_SCALE_OUT_NOTE": "WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT is ignored locally but must be set in Azure App Service application settings to cap Consumption plan scale-out. Set to '1' to prevent multiple instances from spinning up under load.",
+    "_SCALE_OUT_CLI": "az functionapp config appsettings set --name <app> --resource-group <rg> --settings WEBSITE_MAX_DYNAMIC_APPLICATION_SCALE_OUT=1"
+  },
+  "Host": {
+    "CORS": "*",
+    "_CORS_NOTE": "Replace '*' with your specific origin(s) before production deployment, e.g. 'https://yourdomain.com'"
+  }
+}

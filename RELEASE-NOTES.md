@@ -1,3 +1,1074 @@
+# Release Notes — v1.5.0 (draft)
+
+**Branch:** `v1.5.0` → `main`
+**Sessions:** 88–125
+**Tests:** 2124
+
+---
+
+## Bug Fix: Vacuum World Temperature Range (Session 125)
+
+**Issue #144.** Vacuum worlds (atmosphere code 0) incorrectly showed near-zero
+temperature variance in the advanced high/low temperature fields. Root cause:
+`ATMOSPHERE_PRESSURE_SPAN_BAR` has no entry for code 0, so `pressure_bar` was
+`None`, triggering the 10-bar fallback in `generate_advanced_mean_temperature()`
+intended for unbound high-pressure subtypes. This divided the luminosity variance
+modifier by 11 instead of 1, collapsing the temperature range to ±6 K. Fixed in
+`traveller_world_atmosphere_detail.py` — atmosphere 0 now always uses
+`eff_pressure = 0.0`, producing physically correct extremes (e.g. 3 K night /
+420 K day for a 720-hour-day vacuum world at 0.58 AU).
+
+---
+
+## Belt Profile Strings + IISS Survey Form (Session 123)
+
+**Belt profile strings in system detail.** `BeltPhysical` gained a `profile_str`
+computed property returning the WBH Class III shorthand `S-CC.CC.CC.CC-B-R-#-s`
+(span in AU; M/S/C/Other composition percentages dot-separated; bulk; resource
+rating; Size 1 body count; Size S body count). The profile string is displayed in
+the Notes column of the system body table in all three interfaces — CLI
+(`system_body_table()` in `traveller_world_detail.py`), gen-ui and FastAPI (both
+via `TravellerSystem.to_html()`).
+
+**IISS Class 0/I Survey form.** New `TravellerSystem.to_survey_form_html()` method
+renders `templates/survey_class0i.html` — a structured HTML table matching the WBH
+paper form. The form shows system designation, age (Gyr), stellar component count,
+and a star table with columns for component, spectral class, mass, temperature,
+diameter, luminosity, orbit number, AU, eccentricity, orbital period (always in
+years), and HZCO. The Notes field lists sub-year orbital periods converted to
+standard days with footnote superscripts. Notes and Comments boxes are 180 px tall.
+Field labels use sans-serif; data fields use Courier New italic. Full light/dark
+theming via CSS variables and `[data-theme]` attribute — same pattern as other card
+templates.
+
+In **gen-ui**, a "Survey Form" `QPushButton` and `QComboBox` (dropdown) appear in
+the system result header before the "System Map" button. Clicking the button opens
+a `SurveyFormWindow` (new class, `QMainWindow` + `QWebEngineView`) with the themed
+HTML applied via `_themed_html()`. Multiple windows can coexist.
+
+In **FastAPI**, the `include_mw_card` JSON response for `/api/system/full` and
+`/api/map/system/full` now includes a third key `survey_class0i_html`. A new
+Survey tab and seed-bar button/dropdown in `system.html` display the form in an
+inline iframe; the iframe is reloaded on theme change.
+
+7 new tests in `TestBeltPhysicalProfileStr`.
+
+---
+
+## pytest-qt GUI Test Suite (Session 124)
+
+New `tests/test_genui_app.py` adds 121 automated GUI tests covering the
+`gen-ui/app.py` desktop UI via pytest-qt.  Two stubs keep the suite fast and
+self-contained: `_FakeSettings` (replaces `QSettings` — never touches disk)
+and `_MockWebView` (replaces `QWebEngineView` — captures HTML without
+launching Chromium).
+
+The module is loaded via `importlib.util.spec_from_file_location` under the
+name `genui_app` to avoid collision with `fastapi/app.py` when both are on
+`sys.path` during the full test run.
+
+Test classes and coverage:
+- **TestAppWindowStartup** (19) — title, radio state, panel visibility,
+  button/action initial state, empty window/system lists
+- **TestSourceRadioToggle** (7) — TM panel show/hide on radio switch,
+  entry widget presence
+- **TestOptionsDialogConstruction** (12) — sub-widget visibility
+  (`isVisibleTo()`), sub-option clearing, settlement buttons
+- **TestOptionsDialogProperties** (11) — all property accessors, settlement
+  type keys, sub-option behaviour when `full_system=False`
+- **TestOptionsIntegration** (3) — OK/Cancel wired to `AppWindow._opt_*` via
+  monkeypatched `_OptionsDialog` subclass
+- **TestSeedHandling** (6) — invalid seed error, auto-population
+- **TestTravellerMapErrors** (4) — missing sector / name+hex error paths,
+  no worker started
+- **TestProceduralWorldGeneration** (9) — world set, no system buttons,
+  save enabled, reproducibility, name/empty-name
+- **TestProceduralSystemGeneration** (14) — system set, tabs, buttons,
+  survey combo, reproducibility
+- **TestDarkMode** (8) — flag toggle, `_themed_html` injection, idempotency
+- **TestSystemMapWindow** (12) — theme toggle, perspective toggle, SVG content
+- **TestSurveyFormWindow** (4) — title, size, HTML delivered to stub view
+- **TestHeaderButtons** (11) — click counts, window types, dark-mode HTML,
+  no-op when no system
+
+`pytest.ini` updated with `qt_api = pyside6`.
+
+---
+
+## FastAPI UI Polish (Session 122)
+
+**System map light/dark theming.** The system map SVG now uses the page background
+colour (`#f4f0e4`) in light mode rather than pure white. `fastapi/app.py` defines
+`_PALETTE_LIGHT` (a copy of `PALETTE_LIGHT` with `bg="#f4f0e4"`) via
+`dataclasses.replace`; CLI `--white-bg` behaviour is unchanged. `system.html`
+`buildMapUrl()` passes `white_bg=true` when `data-theme=light`; `_applyTheme()`
+re-fetches the map on every theme toggle; map container CSS uses `var(--bg)` so
+the area around the SVG also matches.
+
+**Template disclaimer cleanup.** The Mongoose copyright disclaimer `<p>` was
+present at the bottom of each card template (`system_card.html`,
+`system_detail.html`, `world_card.html`, `world_list.html`) even though it is
+already displayed in the parent page footer. Removed the redundant per-card copy.
+
+**Moon orbital table column alignment.** In both `system_card.html` and
+`system_detail.html`, moon sub-rows now have an empty `#` cell so that the
+orbital distance (`pd_str`) aligns with the Orbit# column, km distance aligns
+with AU, and ecc/incl aligns with the e/i column. Previously the PD distance was
+displayed one column too far left.
+
+**run-gui.command restored.** `run-gui.command` and `run-gui.bat` removed from
+`.gitignore`; `run-gui.command` restored from backup.
+
+---
+
+## WBH §5 Sub-Tech Level Corrections (Session 121)
+
+All nine Quality-of-Life and Transportation sub-TL categories in
+`traveller_world_tech_detail.py` now correctly implement WBH §5 rules.
+
+**Bounds and base TL corrections** — every sub-TL previously used `tl_high` as
+both base and clamp; each now uses the correct base TL specified in WBH:
+- Energy: base = High TL; bounds = [High TL / 2, High TL × 1.2]
+- Electronics: base = Energy TL; bounds = [Energy − 3, Energy + 1]
+- Manufacturing: base = Electronics TL; bounds = [Electronics − 2, max(Energy, Electronics)]
+- Medical: base = Electronics TL; bounds = [starport floor or 0, Electronics TL]
+- Environmental: base = Manufacturing TL; bounds = [Energy − 5, Energy]
+- Land Transport: base = Energy TL; bounds = [Electronics − 5, Energy]
+- Sea Transport: base = Energy TL; bounds = [Electronics − 5 or 0, Energy]; hydro=0 uses DM −2 (no longer forced to 0)
+- Air Transport: base = Energy TL; bounds = [Electronics − 5, Energy]; atm DMs only applied at TL 0–7
+- Space Transport: base = Manufacturing TL; bounds = [min(Energy,Mfg) − 3, min(Energy,Mfg)]
+
+**DMs added per WBH** — Pop9+/Industrial for Energy; Pop1-5/Pop9+/Industrial for
+Electronics; Pop1-6/Pop8+/Industrial for Manufacturing; Rich/Poor for Medical;
+habitability for Environmental; Hydro10/PCR for Land; Hydro8/9+/PCR for Sea;
+atmosphere type for Air; Size0/1/+2, Pop1-5/-1, Pop9+/+1, StarportA/+2,
+StarportB/+1 for Space.
+
+**`_STARPORT_MED_FLOOR`** corrected: A→6, B→4, C→2 (was A→4, B→3, D→1, E→1, X→0).
+Medical starport floor is also capped at Electronics TL to prevent floor > ceiling.
+
+`generate_tech_detail()` gained `size: int = 0` and `trade_codes: Optional[list]`
+parameters; both callers (`_tech_detail_for_det()` and `attach_tech_detail()`)
+updated to pass them. Space isolated regions optional rule deferred.
+
+**Personal Military TL** (WBH §5) corrected: base = Manufacturing TL, upper bound
+= Electronics TL, lower bound = 0 (or min(Manufacturing, Electronics) when
+Law Level = 0). DMs: Government 0 or 7 → +2; Law 0 or D+ (≥13) → +2; Law 1–4
+or 9–C → +1. Old code forced personal military TL to 0 when Law Level = 0 — the
+WBH rule instead raises the floor to Manufacturing TL. Government 7 (balkanised)
+DM applies at world level; per-nation law/population DM variation is deferred.
+
+**Heavy Military TL** (WBH §5) corrected: base = Manufacturing TL, upper bound
+= Manufacturing TL, lower bound = 0. DMs: Population 1–6 → −1; Population 8+ → +1;
+Government 7, A, B, F → +2; Law D+ (≥13) → +2; Industrial → +1. Old code
+had no DMs and used High TL as base. Government 7 DM applies globally; per-nation
+DMs for Government 7 deferred (see Personal Military note above).
+
+62 new tests across `TestEnergyTL`, `TestElectronicsTL`, `TestManufacturingTL`,
+`TestMedicalTL`, `TestEnvironmentalTL`, `TestLandTL`, `TestSeaTL`, `TestAirTL`,
+`TestSpaceTL`, `TestMilitaryPersonalTL`, `TestMilitaryHeavyTL`;
+`TestBoundsInvariants` expanded with `size` and all new sub-TL bounds assertions.
+
+## Pipeline Unification via `system_pipeline.py` (Session 120)
+
+New `system_pipeline.py` module consolidates the post-`generate_full_system()`
+orchestration that was previously duplicated across all three entry points (CLI,
+gen-ui, FastAPI).
+
+**`PipelineOptions` dataclass** carries all generation flags:
+`want_detail`, `want_select_mw`, `runaway_greenhouse`, `independent_government`,
+`optional_biomass`, `optional_inhospitable`, `settlement_type`, `want_social_detail`.
+
+**`run_detail_pipeline(system, rng, options)`** executes the full ordered pipeline:
+`_attach_physical` → `attach_detail` → `attach_body_names` → `_apply_moon_tidal`
+→ [optional `select_mainworld`] → `apply_mainworld_social`
+→ [if swapped: `reattach_mainworld_orbit` + `_apply_moon_tidal`]
+→ `apply_secondary_social`
+→ [optional: `attach_population_detail` / `attach_government_detail` /
+   `attach_law_detail` / `attach_tech_detail`]
+
+This replaces approximately 130 lines of duplicated inline pipeline code in
+`gen-ui/app.py` (`_finish_system_generation` + `_maybe_apply_runaway_greenhouse`),
+`fastapi/app.py` (`_run_select_mainworld`), and `traveller_system_gen.py` `main()`.
+The Advanced Mean Temperature calculation now always runs (previously was opt-in
+in gen-ui via a checkbox that was removed).
+
+**BeltPhysical guard**: `_apply_moon_tidal()` now skips worlds where
+`mw.size_detail` is a `BeltPhysical` instance (belts have no diameter/mass
+fields). Same guard added to `fastapi/app.py`'s `_apply_mainworld_moon_tidal()`.
+
+16 new tests in `tests/test_system_pipeline.py` covering social-only, full detail,
+`select_mainworld` swap, social detail sub-modules, RNG continuity, and
+`None`-mainworld guard.
+
+## Generation Pipeline Alignment — CLI, gen-ui, FastAPI (Session 119)
+
+All three generation paths (CLI, gen-ui, FastAPI) now produce the same mainworld UWP
+for the same seed and the same option selection.
+
+**FastAPI RNG threading fix (`fastapi/app.py`):**
+`_attach_mainworld_physical()` now accepts `rng: Optional[random.Random]` and passes
+it to `generate_world_physical()`. Previously, the physical dice rolls (axial tilt,
+rotation rate, etc.) advanced stdlib `random` instead of the seeded RNG object,
+leaving the shared RNG M calls behind gen-ui at `apply_mainworld_social()` — causing
+different starport/population/government/TL for the same seed. All 10 call sites
+updated to pass `rng=rng`.
+
+**CLI pipeline completion (`traveller_system_gen.py`):**
+`main()` was missing `apply_mainworld_social()` entirely, so CLI mainworlds had
+placeholder social data (starport `X`, all codes 0). `main()` now follows the full
+pipeline: `generate_world_physical()` → `attach_detail()` → `attach_body_names()` →
+`apply_mainworld_social()` → `apply_secondary_social()`. New flags added:
+`--orbital-eccentricity`, `--orbital-inclination`. A per-iteration `random.Random`
+is created and propagated so CLI seeds are reproducible.
+
+**gen-ui eccentricity/inclination checkboxes (`gen-ui/app.py`):**
+`_OptionsDialog` gains "Orbital eccentricity" and "Orbital inclination" checkboxes
+(previously hardcoded `True`). Both are persisted in QSettings
+(`opt_eccentricity`, `opt_inclination`). `generate_world_physical()` now receives
+the actual orbit eccentricity value instead of 0.0.
+
+**FastAPI system.html eccentricity/inclination (`fastapi/static/system.html`):**
+Eccentricity and Inclination checkboxes added to the generation controls. Wired
+into `sysParams()`, `buildMapUrl()`, `buildSysUrl()`, and all five `_lastGen`
+assignment points. The `/api/system/svg` and `/api/map/system/svg` endpoints
+now read and forward `ecc`/`incl` query params.
+
+## Gas/Helium World Colonisation Bug Fix (Session 119)
+
+`_minimal_tl()` in `traveller_world_detail.py` previously returned 8 for all
+atmospheres above 9 (the `A+` catch-all). Atmosphere codes G and H (EHEX values 16/17
+— Gas–Helium and Gas–Hydrogen) are produced by NHZ atmosphere tables and represent
+worlds with no hard surface. These worlds are not colonisable. `_minimal_tl()` now
+returns 99 for atmosphere ≥ 16, so secondary worlds with NHZ atmospheres are always
+uninhabited regardless of mainworld TL.
+
+## EHEX Atmosphere Crash Fix (`_sah_digit`) (Session 119)
+
+`traveller_world_tech_detail.py` called `int(sah[1], 16)` to read the atmosphere
+digit from a SAH string. Python's `int(x, 16)` only handles `0–F`; passing `G` or `H`
+(atmosphere codes 16/17) raised `ValueError: invalid literal for int() with base 16`.
+A new `_sah_digit(sah, idx)` helper uses `_EHEX.find()` instead, handling all valid
+EHEX characters without error.
+
+## Moon Table Column Alignment Fix (Session 119)
+
+`system_card.html` and `system_detail.html` moon sub-rows had 11 `<td>` cells
+against a 12-column header, misaligning every column from `ecc/incl` rightward.
+An empty `<td>` inserted in the correct position in each template restores alignment.
+
+---
+
+## Mongoose Traveller Theme + Copyright Footer (Session 118)
+
+Six HTML files rethemed and given a Mongoose Publishing copyright footer — no Python generation logic changed, test count unchanged.
+
+**App shells (`fastapi/static/index.html`, `fastapi/static/system.html`):**
+- Colour scheme: amber `#c87828` accent on near-black `#0c0e14` background, warm cream `#ddd4b0` text
+- Header: 2 px amber bottom border; title uppercase with 0.08 em letter-spacing; `.badge` border-radius 2 px (angular)
+- `result-frame` background: `transparent` (card templates now set their own background)
+- Footer: single-line Mongoose Publishing IP notice at bottom of every page
+
+**Card templates (`templates/world_card.html`, `world_list.html`, `system_card.html`, `system_detail.html`):**
+- Light mode: warm parchment palette (`#f9f5ee` / `#eeeadb` / `#e4dfc8`)
+- Dark mode: warm dark palette (`#141210` / `#1d1b17` / `#222018`)
+- `--color-accent` / `--acc` CSS variable added; section labels (`.inner-label`, `.section-title`, `.inner-lbl`) set to amber with uppercase + 0.06 em tracking
+- Copyright footer appended inside every rendered HTML document (visible in iframes and in saved standalone files)
+
+**Iframe blank-display fix (root cause):**
+- `loadFrame()` in `system.html` and `showFrame()` in `index.html`: `frame.classList.add("visible")` moved into the `onload` / `requestAnimationFrame` callback. The iframe is only made visible *after* its `srcdoc` has fully loaded, eliminating the intermittent blank mainworld card that appeared on first generate. The previous RAF + `h > 0` guard fixed the height-setting race but not the display race; this fix addresses the root cause.
+
+---
+
+## Bug fixes: issue #138 call order, CSP blob:, iframe height race (Session 117)
+
+Three correctness fixes in the FastAPI layer — no Python generation logic changed.
+
+1. **Issue #138 — `_attach_mainworld_physical` before `attach_detail` (7 endpoints)**
+   `_attach_mainworld_physical()` was called *after* `attach_detail()` in every
+   system and map endpoint except `/api/world/card`.  When the runaway greenhouse
+   fired it mutated `mainworld.atmosphere` and `mainworld.hydrographics` after
+   `attach_detail()` had already copied the pre-physical SAH into the mainworld
+   orbit slot's `WorldDetail`, leaving the orbit slot with stale data (issue #138
+   seed example: SAH `681` in orbit slot vs `6B0` on the mainworld object).
+   Fixed in all 7 affected endpoints: `/api/system/full`, `/api/system/from-world`,
+   `/api/system`, `/api/system/{name}/card`, `/api/system/{name}`,
+   `_map_system_response`, `/api/map/system/full`, and `/api/map/world/card`.
+   The existing SAH-sync block at the end of `_attach_mainworld_physical()`
+   (lines 403–411) — added as a defensive patch — is now always a no-op in the
+   correct call order and is retained as a safety net.
+   The `is_mainworld_candidate` guard (already present) prevents the mainworld
+   orbit slot from receiving duplicate social detail in
+   `attach_population_detail()`, `attach_government_detail()`, and
+   `attach_tech_detail()`.
+
+2. **CSP `img-src 'self' blob:`** — the `_SecurityHeadersMiddleware` CSP was
+   `img-src 'self'` which blocked `blob:` URLs created by `URL.createObjectURL()`
+   in `loadMap()`.  System map SVGs fetched by the browser were converted to blob
+   URLs and set as `<img src=blob:…>`, which browsers refused under the CSP.
+   Added `blob:` to `img-src`.
+
+3. **`loadFrame` iframe height race** — the `onload` handler in `system.html`
+   read `frame.contentDocument.documentElement.scrollHeight` synchronously and
+   could receive `0` (layout not yet computed after the tab panel was made
+   visible).  Setting `style.height = "0px"` collapsed the iframe and left the
+   mainworld card blank.  Fixed with `requestAnimationFrame` deferral and an
+   `h > 0` guard.
+
+---
+
+## Internal refactor: RNG threading, `_MWCtx`, adjacency cache, `gg_diameter_from_sah` (Session 116)
+
+Six source-level optimisations with no user-visible behaviour change:
+
+1. **`hz_deviation_to_raw_roll` signature simplified** — removed unused `hzco: float`
+   and `orbit: float` parameters from `hz_deviation_to_raw_roll()` and
+   `generate_temperature_from_orbit()`. Cascade-updated all four callers in
+   `traveller_system_gen.py` and `traveller_map_fetch.py`.
+
+2. **`_MWCtx` NamedTuple** — replaced the 7-field `mw_*` keyword-argument explosion
+   across all private helpers in `traveller_world_detail.py` with a single
+   `_MWCtx(pop, gov, law, tl, trade_codes, bases, starport)`. `_mw_context(mainworld)`
+   constructs one; public APIs are unchanged.
+
+3. **Adjacency cache** — `generate_system_detail()` now pre-builds a
+   `dict[tuple, dict]` of `_moon_adjacency_context()` results keyed by
+   `(orbit_number, star_designation)` before the main orbit loop, eliminating
+   redundant re-computation for systems with many orbits.
+
+4. **`global _rng` removed** — all public entry points in `traveller_world_detail.py`
+   (`attach_detail`, `apply_secondary_social`, `reattach_mainworld_orbit`,
+   `generate_system_detail`) now resolve `rng = rng if rng is not None else _rng`
+   locally. All private helpers now accept `rng: random.Random` as a required
+   argument with no default.
+
+5. **Intentional double-social documented** — `generate_system_detail()` calls
+   `_social()` for every orbit during system-level generation, and `apply_secondary_social()`
+   re-applies it after `apply_mainworld_social()` sets the correct mainworld values.
+   This double pass is intentional and is now explained in a comment.
+
+6. **`gg_diameter_from_sah` deduplicated** — moved from private copies in both
+   `traveller_system_gen.py` (`_gg_diameter`) and `traveller_world_detail.py` to a
+   single public function in `world_codes.py`. Both modules now import it from there.
+   `APP_VERSION` bumped to `"1.5.1"` (schema-compatible maintenance release).
+
+31 test call-sites updated to match new private-helper signatures. 2044 tests pass.
+
+---
+
+## FastAPI mainworld UWP mismatch fix + gen-ui Select mainworld option (Session 116)
+
+FastAPI was making two separate API calls for the same seed — `/api/system/full` and
+`/api/world/{name}/card` — which used different RNG paths and produced different UWPs.
+Fixed by adding `include_mw_card=true` to `/api/system/full` and
+`/api/map/system/full`: when `format=html&include_mw_card=true` the endpoint returns
+`JSONResponse({"sys_html":…,"mw_html":…})` so both cards come from the same
+generation. `parse_include_mw_card()` helper added to `fastapi/helpers.py`.
+Frontend (`system.html`) updated to use a single fetch for both full modes.
+
+gen-ui RNG was also diverging from FastAPI: `attach_detail` was starting from RNG
+position 0 (fresh module-level `random.seed(seed)`) instead of continuing from
+position P after stellar/orbit generation. Fixed by threading an explicit
+`random.Random(seed)` through the entire pipeline in `_finish_system_generation()`.
+Same-seed generations in gen-ui and FastAPI now use the same RNG continuation.
+
+"Select mainworld" option added to gen-ui `_OptionsDialog` (sub-option under
+"System detail"). Previously `select_mainworld()` ran unconditionally whenever
+System detail was on; it is now opt-in. QSettings key: `opt_select_mw`.
+
+## FastAPI security hardening (Session 115)
+
+Five security issues found and fixed across `fastapi/app.py`, `fastapi/static/index.html`,
+and `fastapi/static/system.html`.
+
+**HIGH — XSS in `setStatus()` (both HTML files):** The loading branch injected user-supplied
+`msg` (containing form field values such as sector name) directly into `innerHTML` via a
+template literal. Fixed by keeping only the static spinner `<div>` in `innerHTML` and
+appending `msg` through a created `<span>` with `textContent`.
+
+**MEDIUM — Security HTTP headers via middleware (`app.py`):** Added
+`_SecurityHeadersMiddleware(BaseHTTPMiddleware)` that attaches `X-Content-Type-Options: nosniff`,
+`X-Frame-Options: DENY`, and a full `Content-Security-Policy` to every response (including
+static file responses from the `StaticFiles` mount). CSP key directives:
+`script-src 'self' 'unsafe-inline'` (required for inline scripts), `img-src 'self'`,
+`connect-src 'self'`, `frame-ancestors 'none'`, `object-src 'none'`.
+
+**MEDIUM — Unsandboxed iframes (both HTML files):** All three `<iframe>` elements
+(`w-frame`, `mw-frame`, `sys-frame`) now carry `sandbox="allow-scripts"`. Without `allow-same-origin`,
+srcdoc content gets an opaque origin and cannot access the parent's localStorage, cookies, or window.
+
+**MEDIUM — SVG content-type guard in `loadMap()` (`system.html`):** Replaced direct
+`img.src = url` with `fetch()` → response `content-type` check → `URL.createObjectURL(blob)`.
+Verifies `image/svg+xml` before rendering; logs error on mismatch. Previous blob URLs are
+revoked on each call to prevent memory leaks.
+
+**LOW — localStorage allowlist validation (both HTML files):** Enum-like preferences
+(`format`, `settlement_type`, `src-mode`) are now validated against `Set` allowlists before
+being written to form elements. Prevents unexpected form state from tampered or stale
+localStorage entries.
+
+---
+
+## TravellerMap SVG endpoint + system_map.py CLI (Session 115)
+
+**New endpoint: `GET /api/map/system/svg`** (`fastapi/app.py`) — fetches canonical UWP and
+stellar data from TravellerMap via `generate_system_from_map()`, then renders an SVG system
+map via `build_svg()`. Critical property: `_reconcile_orbit_types()` runs inside
+`generate_system_from_map()`, setting each `OrbitSlot.world_type` to match the canonical
+TravellerMap PBG world/belt/GG counts. The SVG therefore shows the correct body distribution
+instead of a fresh procedural roll.
+
+Accepts `sector` (required), `name` or `hex`, `seed`, `detail` (optionally run `attach_detail()`
+so secondary UWPs appear in the orbit table), `perspective`, and `white_bg`. Returns
+`image/svg+xml`. FastAPI only; 9 new tests in `TestMapSystemSvg`.
+
+`system.html` `buildMapUrl()` updated to route TravellerMap-mode systems to
+`/api/map/system/svg` (using `_lastGen.isMap`) rather than the procedural `/api/system/svg`.
+
+**Route registration:** registered before `/api/map/system/{name}` to prevent "svg" being
+matched as a path parameter.
+
+**`system_map.py` CLI extended** with `--sector` and `--hex` flags. When `--sector` is present,
+`generate_system_from_map()` is called instead of `generate_full_system()`, so the CLI honours
+canonical PBG counts identically to the API endpoint. Usage:
+
+```
+python system_map.py --sector "Spinward Marches" --name Regina --seed 42
+python system_map.py --sector "Spinward Marches" --hex 1910
+```
+
+---
+
+## TravellerMap full-detail endpoint + SVG routing fix (Session 114)
+
+**New endpoint: `GET/POST /api/map/system/full`** (`fastapi/app.py`) — fetches
+canonical UWP and stellar data from TravellerMap then runs the complete detail
+pipeline unconditionally:
+
+- `attach_detail()` — secondary world SAH, moons, belts
+- `attach_body_names()` — deterministic name assignment
+- `_attach_mainworld_physical()` — diameter, density, gravity, temperature
+- `_apply_mainworld_moon_tidal()` — tidal stress and lock
+- `apply_secondary_social()` — secondary world UWP social digits
+- Optionally: `attach_population_detail()`, `attach_government_detail()`,
+  `attach_law_detail()` when `social_detail=true`
+
+Accepts `format` (json/html/text), all optional orbital and social flags.
+`sector` always required; `name` or `hex` identifies the world. Does **not**
+call `select_mainworld()` or `apply_mainworld_social()` — canonical UWP from
+TravellerMap is preserved. FastAPI only (11 new tests).
+
+**Bug fix: `/api/system/svg` routing** — the SVG endpoint was registered after
+`GET /api/system/{name}`, causing "svg" to be matched as a world name and
+returning JSON instead of an SVG image. Fixed by moving the SVG endpoint
+registration before both `{name}/card` and `{name}` wildcard routes.
+
+---
+
+## Drop-line prominence + inclination-gated orbit depth cues (Session 113)
+
+`system_map.py` — two refinements to the Session 112 perspective depth cues:
+
+- **Drop-line prominence:** all three drop-line `<line>` elements increased from
+  `stroke-width="0.8" stroke-dasharray="2,3" opacity="0.55"` to
+  `stroke-width="1.4" stroke-dasharray="3,3" opacity="0.75"` — roughly twice as
+  visible against the background.
+- **Inclination threshold for orbit split:** the near/far opacity split is now
+  suppressed for orbits where `abs(inclination) < 3°` (`math.radians(3.0)`).
+  Near-equatorial orbits draw as a single full-opacity arc, avoiding an
+  imperceptible split that added no depth information. Applies to both world arcs
+  and companion star dashed arcs; the threshold matches the existing shadow-arc
+  minimum inclination convention.
+
+---
+
+## Perspective orbit depth cues and drop lines (Session 112)
+
+`system_map.py` — two depth-cue enhancements for perspective mode:
+
+**Orbit arc transparency split:** each perspective orbit arc is split at its midpoint
+(α=0° rightmost point, screen index `n_seg//2`) into two path segments:
+
+- **Near half** (upper screen, toward viewer): drawn at normal opacity.
+- **Far half** (lower screen, receding from viewer): drawn at 40% of normal opacity
+  (minimum 0.08), giving a clear visual cue that the back of the orbit lies behind
+  the orbital plane.
+
+Both halves share the same stroke colour, width, and dash pattern. Applied to regular
+world/belt-fallback orbit arcs and companion star dashed arcs. Non-perspective (half-arc)
+mode is unchanged.
+
+**Drop lines:** when an orbit is inclined (body displaced above or below the reference
+plane), a dotted `<line>` is drawn from the edge of the world or companion star sphere
+down to its projected position on the x-y plane (z=0). The endpoint reuses `smy_z0`
+already computed by the shadow-ellipse block (`cy − y4·persp_y`, no z contribution).
+Style: `stroke=palette.axis`, `stroke-width=0.8`, `stroke-dasharray="2,3"`,
+`opacity=0.55`. Suppressed when the displacement is ≤ symbol-radius + 1 px.
+
+---
+
+## 3-D sphere glyphs, ring systems, and belt-width arcs (Session 111)
+
+`system_map.py` — three visual enhancements to star and world rendering:
+
+- **3-D sphere glyphs:** all filled circles (primary star, companion stars, gas giants,
+  terrestrial worlds) now use SVG radial gradient fills (`_sphere_gradient_def`/`_sph`).
+  Each gradient has a lightened highlight at cx=35% cy=30%, the base colour at 50%, and
+  a darkened edge at 100%, giving a convincing sphere-shading effect on all background
+  colours. Gradients are emitted once in the SVG `<defs>` block, collected from all
+  star and world colours in the system before the arc zones are drawn.
+- **3-D ring systems:** gas giants with `is_ring=True` moon(s) now render a
+  foreshortened ring annulus. `_gg_ring_px` reads `Moon.ring_centre_pd`/`ring_span_pd`
+  to size the ring in pixels. `_ring_halves` produces two SVG annular arc paths: a rear
+  half drawn before the sphere (opacity 0.40) and a front half drawn after (opacity 0.65),
+  so the planet appears embedded in the ring plane. In top-down mode the ring appears
+  circular; in perspective mode it is foreshortened by `persp_y = sin(15°)`.
+- **Belt perspective bands:** belt orbits are no longer represented by a `<rect>` marker
+  or thick stroke. `_belt_band_path` generates a filled annular band using
+  `_orbit_screen_pts` for both the inner edge (`log1p(inner_au) × log_scale`) and outer
+  edge (`log1p(outer_au) × log_scale`), with `e=0` (circular belt boundaries). The filled
+  path is the correct perspective projection of a flat disc in the orbital plane, including
+  inclination and z-rotation. In top-down mode the band appears as a symmetric annular
+  arc; in perspective mode it is a foreshortened elliptical band. Where no
+  `BeltPhysical` data is attached the fallback is a thin stroke arc. Belt orbits are
+  excluded from the inclination shadow-arc rendering.
+
+---
+
+## Perspective map companion star + shadow polish (Session 109)
+
+`system_map.py` — four targeted enhancements to the perspective rendering mode:
+
+- **Companion star circles:** companion star markers now use `_star_r_px` to render
+  a filled circle (same logic as the primary star glyph) instead of a ★ text character.
+  Designation label repositioned above the circle.
+- **Companion star shadows:** blurred shadow ellipse drawn at the orbital-plane
+  projection of each companion star marker. Companion orbit shadows (blurred shadow arc)
+  added for inclined companion orbits, matching world orbit shadow behaviour.
+- **Flat shadow ellipses:** world and star shadows changed from `<circle>` to
+  `<ellipse rx ry=rx·sin(15°)>` so they appear as flat ovals lying on the orbital
+  reference plane at the correct 15° foreshortening.
+- **Legend at top:** the arc-zone legend is now anchored at `y_top + 14` with a
+  compact fixed 13 px row pitch (was `arc_zone_h × 9.2%`, far too large for tall zones)
+  and brightened from opacity 0.75 to 0.92.
+
+`gen-ui/app.py`:
+- System map now rendered via `QWebEngineView` (Chromium) instead of
+  `QSvgRenderer → QPixmap → QLabel`. Qt's SVG renderer silently produced
+  incorrect output for SVGs containing `feGaussianBlur` filters (added for
+  perspective shadow arcs), making the light-theme background appear black.
+  Chromium renders all SVG features and respects palette background colours.
+- Iso-grid opacity for dark mode raised 0.22 → 0.45 so the floor grid is visible
+  against the near-black background.
+
+---
+
+## Perspective system map visual overhaul (Session 108)
+
+`system_map.py` — comprehensive overhaul of the perspective rendering mode:
+
+- **Full ellipse orbits:** perspective orbit and shadow arcs now use `half_deg=180°`,
+  producing closed 360° polylines clipped to each arc zone via `<clipPath>`.
+- **Z-rotation:** all orbit/shadow polylines rotated 30° CW around the z-axis
+  (`_ROT_Z = radians(30°)`), giving a more natural perspective on the orbital plane.
+- **Shadow arcs:** inclined orbits now project a blurred shadow onto the z=0 plane
+  via `_shadow_orbit_arc`; drawn with `<feGaussianBlur stdDeviation="3">`.
+- **Angle symbols:** small 6px arcs drawn at the α=0 and α=π crossings of each
+  orbit and its shadow, showing the inclination angle visually.
+- **World icon shadows:** blurred filled circles placed at the shadow-projected
+  marker position for gas giant and terrestrial worlds.
+- **World icon halved:** world glyph radii halved for less visual clutter.
+- **Orbital inclinations enabled:** `--perspective` CLI flag now passes
+  `orbital_inclination=True` to `generate_full_system`.
+- **New helpers:** `_orbit_screen_pts`, `_shadow_orbit_arc`; `_orbit_half_deg` and
+  `_orbit_marker` extended with `rot_z` parameter.
+
+---
+
+## Orbital plane disc + dashing cleanup (Session 107)
+
+`system_map.py` — two changes:
+
+- **Orbital plane disc:** in perspective mode each arc zone draws a faint
+  `<ellipse>` centred on the star (`rx = max_r`, `ry = max_r × persp_y`),
+  clipped to the zone and drawn beneath the isometric grid. Fill-opacity
+  0.10/0.12, stroke-opacity 0.30/0.38 (dark/light mode). The disc makes the
+  tilted orbital plane visible as a translucent surface.
+
+- **Dashing reserved for inclination:** belt and empty orbit arcs changed from
+  dashed to solid (`dash="none"`). Dashed lines now exclusively signal the
+  "hidden behind the orbital plane" far arc (Session 106 near/far split).
+
+---
+
+## Near/far arc split for inclined orbits (Session 106)
+
+`system_map.py` — in perspective mode, inclined orbits are now drawn as two
+half-arcs. The solid **near arc** (above the orbital reference plane) and the
+dashed **far arc** (below, `stroke-dasharray="5,4"`, ~45% opacity) are split at
+the rightmost point of the arc, which is where the tilted orbit crosses the
+reference plane in projection. Applied to all non-empty, non-companion-star arcs
+when `orbital_inclination=True`. No effect in top-down mode.
+
+---
+
+## Perspective isometric floor grid (Session 105)
+
+`system_map.py` — new `_iso_grid` helper generates an understated diamond-tiled
+floor grid in perspective mode. Two families of diagonal lines (slopes ±`persp_y`)
+are analytically clipped to each arc zone and drawn before orbit arcs. Opacity is
+0.11 in dark mode and 0.17 in light mode, using `palette.axis` so the grid adapts
+to both themes without additional palette fields. No effect in top-down mode.
+
+---
+
+## Perspective arc centring fix (Session 104)
+
+Fixed two bugs in `system_map.py` affecting perspective mode when orbital
+eccentricity or inclination are enabled:
+
+- **Retrograde inclination bug:** orbits with inclination > 90° produced a
+  negative `ry` via `cos(incl) < 0`, causing arcs to be drawn centred far to
+  the right of the star. Fixed by using `abs(math.cos(incl_rad))` in
+  `_orbit_half_deg`, `_orbit_arc`, and `_orbit_marker`.
+- **Eccentricity float:** eccentric orbits used the ellipse focus
+  (`star_cx + a_px * e`) as the arc centre rather than the star. In perspective
+  mode, where more orbits reach `half_deg = 90°` (full semicircle) due to
+  compressed `ry`, this caused arcs to visually float away from the star. Fixed
+  by always centring arcs on `star_cx`. Eccentricity is still visible as a
+  compressed y-radius (`b_px < a_px`).
+
+---
+
+## Graceful JSON version mismatch + hardened from_dict() (Session 103, issue #117)
+
+**gen-ui/app.py — version mismatch warning:**
+- Opening a JSON saved with a different app version now shows `QMessageBox.warning()`
+  with Yes/No buttons ("Some fields may be missing or unrecognised. Continue
+  loading?"). Previously: `QMessageBox.critical()` + hard abort regardless.
+
+**Hardened `from_dict()` — replaced bare `d["key"]` with `.get()` + safe defaults:**
+- `WorldDetail.from_dict()`: `d["sah"]` → `d.get("sah", "000")`
+- `WorldPhysical.from_dict()`: 9 constructor fields (composition, diameter_km,
+  density_g_cm3, mass_earth, gravity_g, escape_velocity_km_s, axial_tilt_deg,
+  day_length_hours, tidal_status) → `.get()` with sensible defaults
+- `BeltPhysical.from_dict()`: 11 constructor fields → `.get()` with sensible
+  defaults (resource_rating defaults to 7; bulk defaults to 5)
+- `Moon.from_dict()`: `d["size"]` → `d.get("size", "0")`
+
+Unexpected keys were already silently ignored by all `from_dict()` methods (only
+known keys are read). No changes needed there.
+
+4 new tests in `TestFromDictMissingFields`.
+
+**Issue #113 closed:** "Larger worlds for non-mainworld terrestrial bodies" was
+implemented in Session 88. Closed with comment.
+
+---
+
+## Body Names for All System Bodies (Session 102, issue #131)
+
+`attach_body_names(system)` added to `traveller_system_gen.py`. Must be called
+after `attach_detail()` (moons don't exist until then). Deterministic and
+idempotent. Naming scheme:
+
+- Stars (non-companions): `<mw>-Primary`, `<mw>-Secondary`, …
+- Companion stars: not named (name stays `""`)
+- Non-mainworld worlds: `<mw>-A`, `<mw>-B`, … (terrestrials + GGs, one counter)
+- Belts: `<mw>-Belt-A`, `<mw>-Belt-B`, … (separate counter)
+- Non-ring moons: `<orbit>-alpha`, `<orbit>-beta`, … (rings skipped)
+
+Data-structure changes (all `name: str = ""` or `field(default="", init=False)`):
+- `Star.name` — regular init field; emitted unconditionally in `to_dict()`
+- `OrbitSlot.name` — post-init field; emitted conditionally when non-empty
+- `Moon.name` — post-init field; emitted conditionally when non-empty
+- `WorldDetail.name` — `__slots__` entry; emitted conditionally; mirrored from parent orbit/moon
+
+Display changes:
+- `templates/system_card.html` — Name column added as leftmost column in orbital survey table (`.name-cell` CSS, max-width 16ch, text-overflow ellipsis); `TravellerSystem.to_html()` now includes `"name"` key in orbit and moon row dicts
+- `templates/system_detail.html` — same Name column treatment for the standalone detail renderer
+- `render_system_json.py` — `"name"` key added to orbit and moon row dicts
+
+Caller wiring: `attach_body_names(system)` called immediately after every
+`attach_detail()` call in `fastapi/app.py`, `gen-ui/app.py`, and
+`azure-api/function_app.py`.
+
+12 new tests in `TestBodyNames` class.
+
+---
+
+## City Population Rounding (Session 101)
+
+`_round_sig(n: int, sig: int = 3) -> int` helper added to
+`traveller_world_population_detail.py`. Applied to `major_city_total_population`
+and each individual `City.population` immediately before they are stored in the
+`PopulationDetail` dataclass. Raw values continue to drive internal distribution
+arithmetic; only the stored/displayed values are rounded.
+
+`test_city_pops_within_total` tolerance widened from `+1` to `max(1, total//200)`
+(0.5%) — independent rounding means the sum of displayed city populations can
+slightly exceed the rounded total.
+
+---
+
+## Bug Fix: Biodiversity Rating Formula (Session 100)
+
+The WBH Biodiversity Rating formula was incorrectly implemented as
+`2D − 7 + Biomass + ⌈Biocomplexity / 2⌉`. The correct WBH formula (confirmed
+from book image) is `2D − 7 + ⌈(Biomass + Biocomplexity) / 2⌉` — average of
+both ratings, ceiling-rounded. Two test values updated in `TestBiodiversityRating`:
+`test_biocomplexity_ceil_odd` (8 → 7) and `test_high_biomass_raises_result` (14 → 9).
+
+---
+
+## Refactor: traveller_world_atmosphere_detail.py (Session 100)
+
+Atmosphere-derived temperature procedures extracted from `traveller_world_physical.py`
+into a new `traveller_world_atmosphere_detail.py` module (~310 lines relocated):
+
+- Basic Mean Temperature table, DMs, and `_compute_mean_temperature`
+- Albedo grouping constants and `_roll_albedo`
+- Greenhouse factor grouping constants and `_roll_greenhouse_factor`
+- High/Low temperature variance factors (`_axial_tilt_factor`, `_rotation_factor`,
+  `_geographic_factor`)
+- `generate_advanced_mean_temperature` (public API)
+- `RunawayGreenhouseResult` dataclass and `check_runaway_greenhouse` (public API)
+
+`traveller_world_physical.py` retains only physical body procedures
+(composition, density, diameter, axial tilt, rotation, tidal lock, seismic stress,
+resource rating). Import sites updated: `gen-ui/app.py`, `fastapi/app.py`,
+`azure-api/function_app.py`, `traveller_belt_physical.py`, `tests/test_world_physical.py`.
+
+---
+
+## WBH Social: Government Detail (Session 99, issue #96)
+
+New module `traveller_world_government_detail.py` implements WBH Social
+Characteristics Checklist §3 (Government). Exposes an optional, separate
+generation step mirroring the population detail pattern.
+
+### Generation pipeline
+
+- **Step 1 — Centralisation:** 2D + DMs (government code, PCR) →
+  Confederal / Federal / Unitary.
+- **Step 2 — Authority:** 2D + DMs (government code, centralisation) →
+  Legislative / Executive / Judicial / Balanced.
+- **Step 3 — Structure:** per-government special rules then the Functional
+  Structure table (Demos / Single Council / Multiple Councils / Ruler).
+  Balanced authority rolls all three branch structures separately.
+- **Factions:** D3 + DM count (government code), each faction rolls
+  government type (2D−7+pop), strength (2D), and relationship to ruling body
+  (1D+DM). External factions start at numeral II.
+
+### Government profile string
+
+- Non-balanced: `G-CAS` (e.g., `4-FES` = Gov 4, Federal, Executive, Single Council)
+- Balanced: `G-CB-LS-ES-JS` (e.g., `4-FB-LM-ES-JS`)
+
+### New dataclasses
+
+- `Faction` — numeral, government type/name, strength code/label, relationship code/label
+- `GovernmentDetail` — centralisation, authority, primary structure (or three
+  branch structures for Balanced), profile string, factions list
+
+### Integration
+
+- `World.government_detail` — new `Optional[GovernmentDetail]` field; emitted
+  in `to_dict()` and restored by `from_dict()`.
+- `WorldDetail.government_detail` — same pattern for secondary worlds.
+- Government detail card added to `templates/world_card.html`.
+- FastAPI: `parse_government_detail()` in `fastapi/helpers.py`;
+  `attach_government_detail()` wired into 4 endpoints.
+
+### Scope exclusions
+
+- Government code 0 (no government) returns `None` — no procedure applies.
+- Government code 7 (Balkanisation) returns `None` — Balkanised faction/nation
+  procedure deferred to issue #130.
+
+---
+
+## FastAPI Web UI — Full Options Parity + Save (Session 98)
+
+### system.html — full options parity with gen-ui
+
+The Full System page now exposes every generation option available in the
+desktop app. Controls are reorganised into two rows:
+
+**Primary row:** Name, Seed, Format, Detail / Full / Select MW, Generate.
+
+**Sub-row (new):**
+- *System options* — NHZ Atm, Biomass Rule, Runaway GH, Indep Gov (disabled
+  when neither Detail nor Full is checked, since they only apply when secondary
+  world detail is generated).
+- *Population* — Pop Detail checkbox (standalone; always enabled).
+- *Settlement* — dropdown: Standard / Long-settled / Well-settled / Backwater /
+  Unsettled.
+
+Backend changes to `fastapi/helpers.py` and `fastapi/app.py`:
+- `parse_settlement_type(request, body) → str` — validates against 5 keys;
+  defaults to `"standard"`.
+- `parse_population_detail(request, body) → bool` — standard bool flag.
+- `_run_select_mainworld()` gains `settlement_type` param and passes it to
+  `apply_mainworld_social()`.
+- Endpoints 3 (`/api/world/{name}/card`), 5 (`/api/system/full`), 7
+  (`/api/system`), and 8 (`/api/system/{name}/card`) now parse and act on both
+  new params.
+
+### Save functionality (both pages)
+
+After each successful generation a **Save** group appears in the seed badge row:
+- **index.html** (Mainworld Only): `HTML` and `JSON` buttons.
+- **system.html** (Full System): `HTML`, `Text`, and `JSON` buttons.
+
+Each button re-fetches from the API using the same seed and generation options,
+then triggers a browser download with a meaningful filename
+(`{slug}-world.html`, `{slug}-system.json`, etc.). The save state is cleared
+whenever a new generation starts.
+
+### Timestamped console logging
+
+`fastapi/app.py` now calls `logging.config.dictConfig` at module level to
+apply `"%(asctime)s %(levelname)-8s %(name)s: %(message)s"` to all console
+output — both the app's own logger and uvicorn's access/error loggers.
+`uvicorn.error` is set to WARNING to suppress duplicate startup banners.
+
+1906 tests pass. No schema changes.
+
+---
+
+## Settlement Type Population Modifiers (Session 97, issue #128)
+
+Four optional settlement types now apply atmosphere-dependent DMs to the
+mainworld population roll, keeping the result within the 0–10 range.
+
+| Settlement type | Atm 5/6/8 | Atm 4/7/9 | Atm 0/1/2/3 | All other |
+|----------------|-----------|-----------|-------------|-----------|
+| Standard       |    +0     |    +0     |     +0      |    +0     |
+| Long-settled   |    +3     |    +2     |     +1      |    +0     |
+| Well-settled   |    +2     |    +1     |     —       |    −1     |
+| Backwater      |    +1     |    −1     |     −3      |    −5     |
+| Unsettled      |    −4     |    −5     |     —       |    −7     |
+
+Implementation: `_SETTLEMENT_DMS` and `_SETTLEMENT_DEFAULT_DM` module-level
+dicts; `_population_settlement_dm(settlement_type, atmosphere) → int` private
+helper; `generate_population(settlement_dm=0)` gains an optional DM parameter
+(result clamped `min(10, roll(2, -2 + dm))`); `generate_world()` and
+`apply_mainworld_social()` both gain `settlement_type: str = "standard"`.
+
+Gen-ui: `_OptionsDialog` gains a `QGroupBox("Settlement type")` with five
+`QRadioButton`s (Standard / Long-settled / Well-settled / Backwater / Unsettled).
+Standard is the default. Persisted as `opt_settlement_type` in `QSettings`.
+Not applied on TravellerMap paths.
+
+No schema change. 22 new tests in `TestSettlementType`. 1906 tests pass.
+
+---
+
+## FastAPI Web UI Split and World Card Detail Endpoint (Session 96)
+
+`fastapi/static/index.html` and `fastapi/static/system.html` are now two
+separate pages with nav links between them:
+
+- **Mainworld Only** (`index.html`) — single-page, full-width; calls
+  `/api/world/{name}/card` (no physical or biological detail). Output matches
+  gen-ui with System detail and Population detail both unchecked.
+- **Full System** (`system.html`) — calls two API endpoints in parallel when
+  format is HTML: `/api/world/{name}/card?detail=true` (Mainworld tab) and the
+  system card endpoint (System tab). Detail / Full / Select MW options available.
+
+`/api/world/{name}/card` gains a `detail` parameter (FastAPI only):
+
+- `detail=false` (default) — minimal path: atmosphere detail + hydrographic
+  detail only; no physical or biological cards. Matches gen-ui minimal output.
+- `detail=true` — full path: generates a complete system, runs
+  `attach_detail()`, and returns the mainworld HTML with all cards.
+
+`_OptionsDialog` in `gen-ui/app.py`: the checkable `QGroupBox("System detail")`
+replaced with a plain `QCheckBox` (matching the size and style of the
+"Population detail" checkbox) plus an indented `QWidget` for sub-options. The
+sub-options widget is hidden (not merely disabled) when System detail is
+unchecked. `QGroupBox` import and its `_CSS_DARK` rule removed.
+
+---
+
+## Population Detail — PCR, Urbanisation, Major Cities (Session 95, issue #95)
+
+New module `traveller_world_population_detail.py`. Dataclasses `City` and
+`PopulationDetail`. Public functions `generate_pcr()`, `generate_urbanisation_pct()`,
+`generate_population_detail()`, `attach_population_detail()`.
+
+**PCR** — 1D + DMs (size, TL, gov, trade codes, tidal lock, atm) → 0–9.
+Force-9 short-circuit when 1D > pop_code (pop < 6 only). Min PCR = 1 for pop ≥ 9.
+
+**Urbanisation %** — 2D + DMs → range table (inner dice for exact %). Some DMs
+carry hard min/max constraints (e.g. Pop 9 → min 18+1D%; TL 2 → max 20+1D%).
+Minimum supersedes conflicting maximum (WBH rule).
+
+**Major cities** — 5-case dispatch (PCR 0, pop≤5/PCR 9, pop≤5/PCR 1–8,
+pop≥6/PCR 9, pop≥6/PCR 1–8). Case 5 formula: `ceil(2D−PCR+urb×20/PCR)`.
+Case 5 total major pop: `(PCR/(1D+7)) × urban_pop`.
+
+**City population distribution** — 2–3 cities: `(1D+3)×10%` proportional split.
+4+ cities: chunk algorithm (remaining pool ÷ PCR chunks, cycled via 1D rolls).
+
+**Population profile** — `{pop_hex}-{p}-{pcr}-{urb%}-{city_count}`.
+
+`World.population_detail: Optional[PopulationDetail]` added (field, to_dict,
+from_dict). `WorldDetail.population_detail: Optional[object]` added similarly.
+`_world_html_ctx()` exposes `pop_detail` and pre-formatted population strings.
+`world_card.html` gains a "Population detail" card positioned after Biological
+detail. All `.inner-label` card headings rendered in bold (`font-weight: 600`).
+`gen-ui/app.py` gains `_opt_population_detail` option (standalone checkbox in
+Options dialog, not nested under System detail), persisted in QSettings.
+`attach_population_detail()` called from both `_finish_generation()` and
+`_finish_system_generation()` when the option is enabled.
+
+**Bug fix:** `attach_population_detail()` was referencing `mw.physical` instead
+of `mw.size_detail`, causing `AttributeError` at runtime. Fixed.
+
+`traveller_world_schema.json` updated: `population_detail` object added (11
+sub-fields). `APP_VERSION` bumped `1.4.1` → `1.5.0`.
+
+23 new tests in `TestPopulationDetail`. 1884 total.
+
+---
+
+## Secondary World Classifications (Session 94, issue #18)
+
+WBH p.163 defines seven roles a secondary world can play in its system. The code
+now checks eligibility and rolls in table order, assigning at most one
+classification per inhabited secondary world or moon.
+
+| Classification | Code | Requirements | Roll |
+|---|---|---|---|
+| Colony | Cy | Secondary Pop 5+, Gov 6 | Automatic |
+| Farming | Fa | HZ, Atm 4–9, Hyd 2+ | Automatic |
+| Freeport | Fp | Secondary Gov 0–5, TL 8+ | 10+; DM−2 if MW starport A/B |
+| Military Base | Mb | MW TL 8+, not Poor, Gov 6 | 12+; DM+4 if MW has bases; DM+2 if secondary Gov 6 |
+| Mining Facility | Mi | MW Industrial, secondary Pop 2+ | Belt: 6+; Terrestrial: 10+ |
+| Penal Colony | Pe | MW TL 9+, LL 8+, Gov 6 | 10+; DM+2 if secondary LL 8+ |
+| Research Base | Rb | MW Pop 6+, TL 8+, not Poor | 10+; DM+2 if MW TL 12+ |
+
+`WorldDetail` gains `classification: Optional[str]` (emitted in JSON when set).
+The code is also appended to `WorldDetail.trade_codes` so it appears in profile
+displays. `_apply_classification()` is called from `generate_system_detail()`,
+`_moon_detail()`, and `apply_secondary_social()`. `system_body_table()` appends
+`[Classification Name]` to orbit and moon rows.
+
+14 new tests in `TestSecondaryWorldClassification`. 1861 tests pass.
+
+---
+
+## Secondary Social Generation After Mainworld Selection (Session 92 cont.)
+
+After mainworld selection gives the mainworld its real UWP, `apply_secondary_social()`
+re-applies social data to every secondary WorldDetail using the correct mainworld
+baseline. This includes re-rolling the population cap (`mw_pop − 1D`), and
+regenerating population, government, law level, TL, spaceport, and trade codes for
+all secondary orbit slots and their moons. The satellite WorldDetail created by
+`attach_detail()` (which used placeholder values) is also synced.
+
+---
+
+## Mainworld Selection (Session 92, issue #125)
+
+`select_mainworld(system, rng)` in `traveller_system_gen.py` scores all terrestrial
+candidates and promotes the highest-scoring world to mainworld (WBH pp.155-156).
+Scoring weights: Habitability ×50, Native sophonts ×50, Resource rating ×30,
+Best refuelling ×10 (GG satellite = 2, hydro ≥ 5 = 1, else 0). On a 3D roll of
+18 a candidate is selected randomly instead. When a secondary wins, the new
+mainworld is regenerated via `generate_mainworld_at_orbit()` and the old
+mainworld is demoted to a `WorldDetail`. Returns `True` when a swap occurred.
+
+`WorldDetail` gains `native_sophont: bool` (set by `_set_biocomplexity()` when
+biocomplexity ≥ 8; emitted in JSON only when `True`).
+
+Exposed on system endpoints as `select_mainworld=true`; wired in FastAPI UI as
+a "Select MW" checkbox. Not applied on TravellerMap or `from-world` paths.
+
+---
+
+## Deferred Social Generation — Physical-Only Worlds (Session 91, issue #124)
+
+`generate_mainworld_at_orbit()` now returns a **physical-only** world (SAH,
+atmosphere detail, hydrographic detail, gas giant/belt counts). Social steps
+(population, government, law, starport, TL, bases, trade codes, travel zone)
+are no longer rolled during system generation.
+
+The new `apply_mainworld_social(world, rng=None)` function in
+`traveller_world_gen.py` performs the deferred steps and must be called after
+mainworld selection (a future issue). Until then, system-generated worlds carry
+interim placeholder values: `starport='X'`, all social codes 0, empty bases and
+trade code lists, and `travel_zone='Green'`.
+
+**Note:** this is a seed-breaking change — any seed previously used with
+`generate_full_system()` will now produce a different social outcome for the
+mainworld because the social dice rolls have been removed from the sequence.
+
+---
+
+## FastAPI Web UI and gen-ui fixes (Session 93)
+
+- **FastAPI web UI** — `fastapi/static/index.html` served at `/` (uvicorn redirects
+  root to `/static/index.html`). Two-panel dark-themed page: Mainworld panel calls
+  `/api/world/{name}/card` or `/api/world` (JSON); System panel calls card, full,
+  or JSON endpoints with Detail/Full checkboxes. Seed badge is copyable. Server
+  status indicator pings `/api/world?seed=1` on load.
+- **gen-ui Chromium noise suppressed** — `QTWEBENGINE_CHROMIUM_FLAGS=--log-level=3`
+  set before `QApplication` construction in `gen-ui/app.py`; silences the harmless
+  `TASK_CATEGORY_POLICY: (os/kern) invalid argument` stderr line on macOS.
+- **CLI flowcharts** — four Mermaid flowcharts added to `docs/`:
+  `traveller_world_gen_flowchart.md`, `traveller_system_gen_flowchart.md`,
+  `traveller_map_fetch_flowchart.md`, `system_map_flowchart.md`.
+
+---
+
+## FastAPI Server (Session 90)
+
+A parallel REST server (`fastapi/`) exposes all 11 endpoints of the Azure
+Functions API using FastAPI + uvicorn instead of Azure Functions.
+
+- **No authentication** — designed to run behind a gateway or reverse proxy.
+- **Rate limiting** — SlowAPI per-IP limiter; configurable via
+  `RATE_LIMIT_PER_MINUTE` env var (default `100/minute`).
+- **Run locally** — `cd fastapi && uvicorn app:app --reload` (port 8000).
+- **Test coverage** — 130 new tests in `tests/test_fastapi_app.py` using
+  FastAPI's `TestClient`; no Azure SDK stubs needed.
+- `fastapi/helpers.py` is a flat module (not `shared/`) to avoid import
+  namespace conflicts with `azure-api/shared/` when both are on `sys.path`.
+
+---
+
+## Secondary World Independent Government (Session 89, issue #17)
+
+Secondary worlds can now be generated as independently governed (WBH p.162
+Case 2) instead of always using the captive/dependent government table (Case 1).
+When the new **Independent government** option is enabled in the Options dialog,
+every inhabited secondary world (terrestrial, belt, and moon) rolls government as
+`2D − 7 + Population` — the same formula as a mainworld — instead of the 1D
+captive table. The law level for Case 2 worlds with government 6 uses the
+standard `2D − 7 + 6` formula instead of the captive-government relationship
+table. `WorldDetail` gains an `is_independent_government` boolean field emitted
+in JSON when `True`. The option is disabled by default and persisted in
+QSettings.
+
+---
+
+## Larger Worlds for Non-Mainworld Terrestrial Bodies (Session 88, issue #113)
+
+Secondary terrestrial worlds with size 10–15 (eHex A–F) now use the full WBH
+`2D-7+Size` atmosphere formula. Previously both `_terrestrial_sah()` and
+`_moon_detail()` in `traveller_world_detail.py` capped the size at 9 when
+calling `generate_atmosphere()`, meaning a size-12 super-Earth got the same
+thin atmosphere roll as a size-9 world. The cap is replaced with
+`min(generate_atmosphere(size), 15)`, applying the correct size DM while
+clamping to code 15 (F — Unusual Atmosphere) to exclude NHZ-only codes 16–17.
+SAH encoding (`to_hex()`) and `WorldDetail.profile` parsing already handled
+sizes A–F correctly; no other changes required.
+
+---
+
 # Release Notes — v1.4.0 (draft)
 
 **Branch:** `v1.4.0` → `main`

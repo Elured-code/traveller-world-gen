@@ -22,35 +22,37 @@ from traveller_world_gen import World
 from tables import TIDAL_STATUS_LABELS
 from traveller_world_physical import (
     WorldPhysical,
-    RunawayGreenhouseResult,
     _apply_seismic_stress,
     _compute_stellar_day,
     _apply_tidal_lock_result,
-    _axial_tilt_factor,
-    _compute_mean_temperature,
     _compute_rss,
     _compute_tidal_ss,
     _compute_tidal_amplitude,
-    _geographic_factor,
     _moon_mass_earth,
     _moon_tidal_effect_m,
     _orbital_period_hours,
-    _orbit_dm_for_mean_temp,
     _planet_moon_lock_dm,
     _reroll_eccentricity_tidal,
-    _roll_albedo,
     _roll_axial_tilt_1d,
-    _roll_greenhouse_factor,
     _roll_tidal_lock_status,
-    _rotation_factor,
     _star_tidal_effect_m,
     _tidal_lock_dm,
     apply_moon_tidal_effects,
     apply_biological_resource_dms,
-    check_runaway_greenhouse,
-    generate_advanced_mean_temperature,
     generate_world_physical,
     _density_resource_dm,
+)
+from traveller_world_atmosphere_detail import (
+    RunawayGreenhouseResult,
+    _axial_tilt_factor,
+    _compute_mean_temperature,
+    _geographic_factor,
+    _orbit_dm_for_mean_temp,
+    _roll_albedo,
+    _roll_greenhouse_factor,
+    _rotation_factor,
+    check_runaway_greenhouse,
+    generate_advanced_mean_temperature,
 )
 
 
@@ -378,10 +380,13 @@ class TestGenerateWorldPhysical:
         assert result.tidal_status == "none"
 
     def test_tidal_status_set_when_orbit_data_provided(self):
-        # Close orbit, heavy star, old age → should produce a non-"none" status
+        # Close orbit, heavy star, old age → should produce a non-"none" status.
+        # Seeded RNG to isolate from module-level _rng state in other tests.
+        import random  # pylint: disable=import-outside-toplevel
         w = _World(size=6, atmosphere=6)
         result = generate_world_physical(
-            w, age_gyr=12.0, orbit_number=1.5, orbit_au=0.4, star_mass=1.0
+            w, age_gyr=12.0, orbit_number=1.5, orbit_au=0.4, star_mass=1.0,
+            rng=random.Random(0),
         )
         assert result is not None
         assert result.tidal_status in TIDAL_STATUS_LABELS

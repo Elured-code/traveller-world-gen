@@ -25,11 +25,12 @@ The diagram has two zones stacked vertically:
 
 | Section | What it contains |
 |---------|-----------------|
-| Imports | `math`, `argparse`, `dataclass`, `svg` generation helpers |
+| Imports | `math`, `argparse`, `dataclass`, and standard library only — no drawing library |
 | `ColourPalette` | Frozen dataclass holding all colour hex codes |
 | `PALETTE_DARK` / `PALETTE_LIGHT` | Dark and light colour palettes |
-| Arc/marker helpers | `_arc_path()`, `_marker_xy()`, `_orbit_half_deg()` |
-| SVG builder | `build_system_map_svg()` — assembles the complete SVG string |
+| Geometry helpers | `_orbit_screen_pts`, `_orbit_arc`, `_shadow_orbit_arc`, `_orbit_marker`, `_orbit_half_deg` |
+| Visual helpers | `_sphere_gradient_def`, `_sph`, `_gg_ring_px`, `_ring_halves`, `_belt_band_path`, `_iso_grid` |
+| SVG builder | `build_svg()` — assembles the complete SVG string |
 | `main()` | Command-line entry point |
 
 ---
@@ -70,51 +71,62 @@ configuration objects.
 
 ## Arc geometry
 
-### `_arc_path(cx, cy, r, half_deg)`
+### `_orbit_screen_pts(star_cx, cy, a_px, e, half_deg, persp_y, incl_rad, rot_z, shadow, n_seg)`
 
-Returns an SVG path for a symmetric arc centred on `(cx, cy)` with radius `r`.
-`half_deg` is the angle above (and below) horizontal:
+The core geometry function. Returns a list of `n_seg + 1` screen `(x, y)` points
+along an orbit ellipse, applying three transformations in order:
 
-- `half_deg = 30` → a short arc that spans 60° total
-- `half_deg = 90` → a full right-facing semicircle
+1. **Inclination** — tilt around the x-axis by `incl_rad` radians
+2. **Z-rotation** — rotate 30° clockwise from above (`_ROT_Z`)
+3. **Orthographic projection** — viewed 15° above the orbital plane (`_PERSP_Y = sin(15°)`)
 
-The arc always sweeps **clockwise** through the rightmost point `(cx + r, cy)`.
+When `shadow=True`, the z-contribution is dropped, projecting the orbit onto the
+flat reference plane (z = 0). This gives the shadow arc that appears beneath an
+inclined orbit in perspective mode.
 
-```python
-a  = math.radians(half_deg)
-x1 = cx + r * math.cos(a)    # upper endpoint
-y1 = cy - r * math.sin(a)
-x2 = cx + r * math.cos(a)    # lower endpoint (same x, opposite y)
-y2 = cy + r * math.sin(a)
-```
+`n_seg = 72` gives 73 points sweeping from `+half_deg` to `−half_deg`.  When
+`half_deg = 180°` the result is a closed 360° ellipse.
 
-`math.cos` and `math.sin` take angles in **radians** (not degrees). `math.radians()`
-converts degrees to radians. One full circle is 2π radians ≈ 6.28.
+### `_orbit_arc(star_cx, cy, a_px, e, half_deg, persp_y, incl_rad, rot_z)`
 
-### `_marker_xy(cx, cy, r, half_deg)`
+Returns an SVG path string for an orbit arc. When `rot_z = 0` uses an exact SVG
+`A` arc command (fast). When `rot_z ≠ 0` builds a 72-segment polyline via
+`_orbit_screen_pts`.
 
-Returns the `(x, y)` position where the world glyph is drawn. The marker sits
-**one third of the way down the arc** from the top endpoint:
+In **top-down mode** (`persp_y = 1.0`) orbits are right-facing concentric arcs
+limited by the arc-zone height. In **perspective mode** (`persp_y ≈ 0.259`,
+`half_deg = 180°`) they are full ellipses, and the arc loop emits two separate
+`<path>` elements: a **near half** (upper screen, normal opacity) and a **far
+half** (lower screen, 40% of normal opacity) to give the viewer a depth cue.
 
-```python
-a = math.radians(half_deg / 3)
-return (cx + r * math.cos(a), cy - r * math.sin(a))
-```
+### `_orbit_marker(star_cx, cy, a_px, e, half_deg, persp_y, incl_rad, rot_z)`
 
-This places the glyph between the top of the arc and the rightmost horizontal
-point, which gives better visual separation between worlds on different orbits.
+Returns the `(x, y)` pixel position where the world glyph is drawn — one third
+of the way down the arc from the top endpoint.  The same 3-D rotation and
+projection used by `_orbit_screen_pts` is applied, including the z-elevation
+contribution, so the marker sits correctly on the inclined orbit.
 
 ---
 
 ## World glyph types
 
+Every filled circle uses a **radial gradient** (`_sphere_gradient_def`) so it
+looks like a lit sphere — a bright highlight in the upper-left, the base colour
+in the middle, and a darkened edge. This is built once per unique colour and
+stored in the SVG `<defs>` block.
+
 | `world_type` | Shape | Colour |
 |---|---|---|
-| `gas_giant` | Filled circle (radius from `gg_sah` size digit) | `palette.gg` |
-| `terrestrial` (inhabited) | Filled circle | `palette.inh` |
-| `terrestrial` (uninhabited) | Filled circle | `palette.uninh` |
-| `belt` | Small diamond | `palette.belt` |
-| Mainworld | Extra ring around the glyph | `palette.mainworld` |
+| `gas_giant` | Sphere; optional foreshortened ring annulus | `palette.gg` |
+| `terrestrial` (inhabited) | Sphere | `palette.inh` |
+| `terrestrial` (uninhabited) | Sphere | `palette.uninh` |
+| `belt` | Filled annular band (correct perspective projection) | `palette.belt` |
+| `empty` | Small dot | `palette.axis` |
+| Mainworld | Extra ring stroke around the glyph | `palette.mainworld` |
+
+In perspective mode, inclined bodies also draw a **drop line** — a short dotted
+line from the bottom edge of the sphere down to its shadow point on the orbital
+plane, making the three-dimensional position immediately readable.
 
 Temperature zones affect the arc **stroke colour** (see `_TEMP_COLS`), not the glyph.
 
@@ -123,16 +135,21 @@ Temperature zones affect the arc **stroke colour** (see `_TEMP_COLS`), not the g
 ## The public API
 
 ```python
-svg_string = build_system_map_svg(
-    system,          # TravellerSystem
-    name="Regina",   # displayed in the title bar
-    canvas_w=1600,   # total width in pixels
-    white_bg=False,  # True for white background (print-friendly)
+svg_string, canvas_h = build_svg(
+    system,                 # TravellerSystem
+    name="Regina",          # displayed in the title bar
+    canvas_w=1600,          # total width in pixels
+    palette=PALETTE_DARK,   # ColourPalette — use PALETTE_LIGHT for white background
+    perspective=False,      # True for perspective (3-D looking) view
 )
 ```
 
-Returns a complete SVG string that can be written to a `.svg` file, embedded in HTML,
-or displayed by the PySide6 GUI.
+Returns a `(svg_string, canvas_height_px)` tuple. The SVG string is a complete
+document that can be written to a `.svg` file, embedded in an HTML `<body>`, or
+displayed in the PySide6 GUI via `QWebEngineView.setHtml(html)`.
+
+> **Note:** The function was renamed `build_svg` (from `build_system_map_svg`)
+> when the palette and perspective parameters were added.
 
 ---
 
@@ -141,22 +158,46 @@ or displayed by the PySide6 GUI.
 ```bash
 python system_map.py --seed 42 --name "Reega" --out /tmp/map.svg
 python system_map.py --seed 42 --white-bg --width 2400
+python system_map.py --seed 42 --perspective
 ```
 
 `main()` generates a full system with `generate_full_system()`, runs `attach_detail()`,
-calls `build_system_map_svg()`, writes the SVG file, and opens it with the default
-viewer.
+calls `build_svg()`, writes the SVG file, and opens it with the default viewer.
+`--perspective` also enables `orbital_inclination=True` so inclined orbits are generated.
+
+---
+
+## Perspective mode
+
+Pass `perspective=True` (or `--perspective` on the CLI) to render the system in a
+pseudo-3D view:
+
+- Orbits become full 360° ellipses, rotated 30° around the z-axis and observed
+  from 15° above the orbital plane.
+- Inclined orbits draw a blurred **shadow arc** on the reference plane and an
+  **angle symbol** at the orbit crossings.
+- **Depth cues:** for orbits inclined ≥ 3°, the far half (receding behind the
+  plane) is drawn at 40% opacity; the near half keeps full opacity. Orbits
+  inclined less than 3° draw uniformly — the split adds no visible information
+  for nearly equatorial orbits.
+- **Drop lines:** bodies above or below the plane get a dotted line connecting the
+  bottom of their sphere to their shadow point, making the 3-D position obvious.
+- An **isometric floor grid** is drawn behind all orbits to reinforce the depth
+  perspective.
 
 ---
 
 ## How this fits in the pipeline
 
 ```
-TravellerSystem   (already generated and detail-attached)
+TravellerSystem   (generated + detail attached)
         │
         ▼
-build_system_map_svg(system, name, canvas_w, white_bg)
+build_svg(system, name, canvas_w, palette, perspective)
         │
         ▼
-SVG string  →  written to file or displayed in GUI
+(svg_string, canvas_h)
+        │
+        ├── write to .svg file (standalone CLI)
+        └── wrap in HTML → QWebEngineView.setHtml() (gen-ui)
 ```

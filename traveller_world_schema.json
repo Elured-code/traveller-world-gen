@@ -459,6 +459,80 @@
       "minimum": 0,
       "description": "The RNG seed used to generate this world. Pass this value as the 'seed' parameter to reproduce identical output. For system-endpoint responses, also pass the three boolean flags defined in $defs/system_generation_options."
     },
+    "population_detail": {
+      "type": "object",
+      "description": "WBH Social Characteristics population profile. Present only when population detail generation has been explicitly requested. Includes PCR, urbanisation %, urban population, and major city populations.",
+      "required": ["total_population", "p_value", "pcr", "pcr_label", "urbanisation_pct", "urban_population", "major_city_count", "major_city_total_population", "cities", "population_profile"],
+      "additionalProperties": false,
+      "properties": {
+        "total_population": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total world population: p_value × 10^pop_code."
+        },
+        "p_value": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9,
+          "description": "Population multiplier digit (1–9), same as population_multiplier."
+        },
+        "pcr": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9,
+          "description": "Population Concentration Rating (0 = extremely dispersed, 9 = extremely concentrated)."
+        },
+        "pcr_label": {
+          "type": "string",
+          "description": "Human-readable PCR label, e.g. 'Partially Dispersed'."
+        },
+        "urbanisation_pct": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Percentage of the world population living in urban settlements."
+        },
+        "urban_population": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total world population × urbanisation_pct / 100."
+        },
+        "major_city_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of major cities (0–31)."
+        },
+        "major_city_total_population": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Combined population of all major cities."
+        },
+        "cities": {
+          "type": "array",
+          "description": "Individual major city entries, up to 10, sorted largest first.",
+          "items": {
+            "type": "object",
+            "required": ["population"],
+            "additionalProperties": false,
+            "properties": {
+              "population": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "codes": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "City designation codes, e.g. ['Cw'] for world capital."
+              }
+            }
+          }
+        },
+        "population_profile": {
+          "type": "string",
+          "description": "Compressed population profile string: P-p-C-%-M (pop code, P value, PCR, urbanisation %, major city count). Example: '6-5-3-39-7'."
+        }
+      }
+    },
     "size_detail": {
       "description": "Physical characteristics of the mainworld. Present only when physical detail has been generated. Exactly one of two shapes: WorldPhysical (terrestrial) or BeltPhysical (asteroid belt).",
       "oneOf": [
@@ -475,6 +549,7 @@
             "escape_velocity_km_s",
             "axial_tilt_deg",
             "day_length_hours",
+            "basic_day_length_hours",
             "tidal_status"
           ],
           "additionalProperties": false,
@@ -518,7 +593,12 @@
             "day_length_hours": {
               "type": "number",
               "exclusiveMinimum": 0,
-              "description": "Rotation period in hours."
+              "description": "Rotation period in hours (post-tidal final value)."
+            },
+            "basic_day_length_hours": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Pre-tidal basic rotation period in hours, before tidal lock braking is applied."
             },
             "tidal_status": {
               "type": "string",
@@ -723,6 +803,34 @@
       "type": "integer",
       "minimum": 0,
       "description": "Habitability rating (WBH p.131): 10 + DMs for size, atmosphere, hydrographics, tidal lock, temperature, and gravity. 0 = actively hostile; 10 = Terra-equivalent baseline. Absent when physical detail has not been generated."
+    },
+    "tech_detail": {
+      "type": "object",
+      "description": "WBH Social Characteristics tech level profile (§5). Present only when social detail generation has been explicitly requested. Includes high/low common TL, quality-of-life, transportation, and military sub-TLs, and a technology profile string.",
+      "required": [
+        "tl_high_common", "tl_low_common",
+        "tl_energy", "tl_electronics", "tl_manufacturing", "tl_medical", "tl_environmental",
+        "tl_land", "tl_sea", "tl_air", "tl_space",
+        "tl_military_personal", "tl_military_heavy",
+        "technology_profile"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "tl_high_common":       { "type": "integer", "minimum": 0, "description": "High common TL = UWP TL. The highest technology generally available." },
+        "tl_low_common":        { "type": "integer", "minimum": 0, "description": "Low common TL. Floor of current technology in use; bounded [TL÷2, TL]." },
+        "tl_energy":            { "type": "integer", "minimum": 0, "description": "Energy quality-of-life sub-TL." },
+        "tl_electronics":       { "type": "integer", "minimum": 0, "description": "Electronics quality-of-life sub-TL." },
+        "tl_manufacturing":     { "type": "integer", "minimum": 0, "description": "Manufacturing quality-of-life sub-TL." },
+        "tl_medical":           { "type": "integer", "minimum": 0, "description": "Medical quality-of-life sub-TL." },
+        "tl_environmental":     { "type": "integer", "minimum": 0, "description": "Environmental quality-of-life sub-TL." },
+        "tl_land":              { "type": "integer", "minimum": 0, "description": "Land transportation sub-TL." },
+        "tl_sea":               { "type": "integer", "minimum": 0, "description": "Sea transportation sub-TL. 0 when hydrographics = 0." },
+        "tl_air":               { "type": "integer", "minimum": 0, "description": "Air transportation sub-TL. 0 when atmosphere = 0 and overall TL ≤ 5." },
+        "tl_space":             { "type": "integer", "minimum": 0, "description": "Space transportation sub-TL." },
+        "tl_military_personal": { "type": "integer", "minimum": 0, "description": "Personal military equipment sub-TL. 0 when law level = 0." },
+        "tl_military_heavy":    { "type": "integer", "minimum": 0, "description": "Heavy military equipment sub-TL." },
+        "technology_profile":   { "type": "string", "description": "WBH technology profile string in format H-L-QQQQQ-TTTT-MM (all eHex digits). Example: 'C-8-BBA98-9870-A8'." }
+      }
     }
   },
   "$defs": {

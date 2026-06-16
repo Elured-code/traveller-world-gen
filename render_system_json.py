@@ -160,6 +160,7 @@ def _moon_rows(moons: list[dict]) -> list[dict]:
         orb_range = moon.get("orbit_range", "")
 
         rows.append({
+            "name":       moon.get("name", ""),
             "idx":        mi,
             "pd_str":     f"{orbit_pd:.1f} PD" if orbit_pd is not None else "",
             "km_str":     f"{orbit_km:,.0f} km" if orbit_km is not None else "",
@@ -253,6 +254,7 @@ def _orbit_rows(orbits_data: dict) -> tuple[list[dict], bool]:  # pylint: disabl
             note_parts.append(notes_s)
 
         rows.append({
+            "name":             slot.get("name", ""),
             "star":             slot.get("star", "?"),
             "slot_index":       slot.get("slot_index", ""),
             "orbit_num":        f"{slot.get('orbit_number', 0.0):.2f}",
