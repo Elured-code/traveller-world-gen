@@ -205,6 +205,16 @@ logging.config.dictConfig({
 })
 
 # ---------------------------------------------------------------------------
+# Azure Monitor telemetry — only active when running in Azure
+# ---------------------------------------------------------------------------
+if os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING"):
+    try:
+        from azure.monitor.opentelemetry import configure_azure_monitor  # type: ignore[import]
+        configure_azure_monitor()
+    except ImportError:
+        logger.warning("azure-monitor-opentelemetry not installed; App Insights tracing disabled")
+
+# ---------------------------------------------------------------------------
 # Rate limiting
 # ---------------------------------------------------------------------------
 
