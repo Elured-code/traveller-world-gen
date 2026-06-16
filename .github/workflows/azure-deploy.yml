@@ -57,11 +57,12 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install dependencies into package
+        run: pip install --target azure-api/.python_packages/lib/site-packages -r azure-api/requirements.txt
+
       - name: Deploy
-        uses: azure/functions-action@v1
+        uses: azure/functions-action@v2
         with:
           app-name: ${{ inputs.functionapp_name || secrets.AZURE_FUNCTIONAPP_NAME }}
           package: azure-api
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          scm-do-build-during-deployment: true
-          enable-oryx-build: true
