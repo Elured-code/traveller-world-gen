@@ -1,8 +1,38 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–126
-**Tests:** 2124
+**Sessions:** 88–130
+**Tests:** 2460
+
+---
+
+## T5 Cultural Extension Conversion (Session 130)
+
+**Cx to cultural traits mapping.** When reading a mainworld from TravellerMap,
+the T5 Cultural Extension (Cx) field is now available as 4 eHex characters (HASS:
+Heterogeneity, Acceptance, Strangeness, Symbols). `generate_culture_detail_from_cx()`
+converts these to the first four cultural traits (Diversity, Xenophilia,
+Uniqueness, Symbology) with WBH-specified clamping rules based on population,
+importance, and tech level. The remaining four traits (Cohesion, Progressiveness,
+Expansionism, Militancy) are rolled with dice + DMs using the derived Diversity
+and Xenophilia values to respect interplay constraints.
+
+**Implementation details.** `MapWorldData` adds `cx: str` and `importance: int`
+fields extracted from TravellerMap's `"Cx"` and `"Ix"` API fields. In
+`generate_system_from_map()`, after mainworld reconstruction, `world.cx` and
+`world.importance` are stamped as dynamic attributes. `attach_culture_detail()`
+checks for the `cx` attribute and routes to the Cx conversion path when present;
+otherwise uses standard generation. Secondary worlds never receive Cx attributes
+(only available from TravellerMap mainworld). Backward compatibility: all missing
+fields in `CultureDetail.from_dict()` default to 1 for old saved data.
+
+**Schema change.** `CultureDetail.to_dict()` now emits 16 trait fields (8 values
++ 8 labels) plus `cultural_profile` — all new since v1.5.0 (Session 127–129
+implemented the 8 traits). This requires a schema bump; version → **v1.5.28**.
+
+**Tests:** 30 new tests covering `_parse_cx_string()`, `generate_culture_detail_from_cx()`
+(all four derived mappings + rolled traits), and `attach_culture_detail()` routing.
+2460 tests pass; pylint 10.00/10.
 
 ---
 
