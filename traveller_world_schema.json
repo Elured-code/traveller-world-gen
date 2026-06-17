@@ -812,6 +812,7 @@
         "tl_energy", "tl_electronics", "tl_manufacturing", "tl_medical", "tl_environmental",
         "tl_land", "tl_sea", "tl_air", "tl_space",
         "tl_military_personal", "tl_military_heavy",
+        "tl_novelty",
         "technology_profile"
       ],
       "additionalProperties": false,
@@ -829,7 +830,8 @@
         "tl_space":             { "type": "integer", "minimum": 0, "description": "Space transportation sub-TL." },
         "tl_military_personal": { "type": "integer", "minimum": 0, "description": "Personal military equipment sub-TL. 0 when law level = 0." },
         "tl_military_heavy":    { "type": "integer", "minimum": 0, "description": "Heavy military equipment sub-TL." },
-        "technology_profile":   { "type": "string", "description": "WBH technology profile string in format H-L-QQQQQ-TTTT-MM (all eHex digits). Example: 'C-8-BBA98-9870-A8'." }
+        "tl_novelty":           { "type": "integer", "minimum": 0, "description": "Novelty TL (issue #154). Placeholder: equals tl_high_common until the WBH §5 per-nation procedure is implemented." },
+        "technology_profile":   { "type": "string", "description": "WBH technology profile string in format H-L-QQQQQ-TTTT-MM-N (all eHex digits). Example: 'C-8-BBA98-9870-A8-C'. The trailing -N segment is the Novelty TL (placeholder)." }
       }
     },
     "culture_detail": {
