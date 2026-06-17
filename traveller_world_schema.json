@@ -831,6 +831,99 @@
         "tl_military_heavy":    { "type": "integer", "minimum": 0, "description": "Heavy military equipment sub-TL." },
         "technology_profile":   { "type": "string", "description": "WBH technology profile string in format H-L-QQQQQ-TTTT-MM (all eHex digits). Example: 'C-8-BBA98-9870-A8'." }
       }
+    },
+    "culture_detail": {
+      "type": "object",
+      "description": "WBH Social Characteristics culture profile. Present only when culture detail generation has been explicitly requested. Includes 8 cultural traits (Diversity, Xenophilia, Uniqueness, Symbology, Cohesion, Progressiveness, Expansionism, Militancy) with labels and a compressed DXUS-CPEM profile string.",
+      "required": ["diversity", "diversity_label", "xenophilia", "xenophilia_label", "uniqueness", "uniqueness_label", "symbology", "symbology_label", "cohesion", "cohesion_label", "progressiveness", "progressiveness_label", "expansionism", "expansionism_label", "militancy", "militancy_label", "cultural_profile"],
+      "additionalProperties": false,
+      "properties": {
+        "diversity": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Diversity trait value (1–35). Indicates cultural monolithic vs. balkanised range."
+        },
+        "diversity_label": {
+          "type": "string",
+          "enum": ["Monolithic", "Homogeneous", "Diverse", "Multicultural", "Balkanised"],
+          "description": "Human-readable diversity label based on trait value."
+        },
+        "xenophilia": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Xenophilia trait value (1–35). Indicates openness to aliens (xenophobia to welcoming)."
+        },
+        "xenophilia_label": {
+          "type": "string",
+          "enum": ["Xenophobic", "Moderate", "Welcoming"],
+          "description": "Human-readable xenophilia label based on trait value."
+        },
+        "uniqueness": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Uniqueness trait value (1–35). Indicates cultural distinctiveness."
+        },
+        "uniqueness_label": {
+          "type": "string",
+          "enum": ["Indistinct", "Typical", "Distinct", "Exotic"],
+          "description": "Human-readable uniqueness label based on trait value."
+        },
+        "symbology": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Symbology trait value (1–35). Indicates extent of abstract symbolic meaning in culture."
+        },
+        "symbology_label": {
+          "type": "string",
+          "enum": ["Mundane", "Moderate", "Prominent", "Pervasive"],
+          "description": "Human-readable symbology label based on trait value."
+        },
+        "cohesion": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cohesion trait value (1–35). Indicates individualism vs. collectivism."
+        },
+        "cohesion_label": {
+          "type": "string",
+          "enum": ["Individualistic", "Moderate", "Communal", "Collectivist"],
+          "description": "Human-readable cohesion label based on trait value."
+        },
+        "progressiveness": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Progressiveness trait value (1–35). Indicates cultural decay vs. innovation."
+        },
+        "progressiveness_label": {
+          "type": "string",
+          "enum": ["Moribund", "Conservative", "Moderate", "Progressive", "Innovative"],
+          "description": "Human-readable progressiveness label based on trait value."
+        },
+        "expansionism": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Expansionism trait value (1–35). Indicates cultural insularity vs. imperialist expansion."
+        },
+        "expansionism_label": {
+          "type": "string",
+          "enum": ["Insular", "Moderate", "Expansive", "Imperialist"],
+          "description": "Human-readable expansionism label based on trait value."
+        },
+        "militancy": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Militancy trait value (1–35). Indicates cultural peacefulness vs. militarism."
+        },
+        "militancy_label": {
+          "type": "string",
+          "enum": ["Peaceful", "Moderate", "Aggressive", "Militaristic"],
+          "description": "Human-readable militancy label based on trait value."
+        },
+        "cultural_profile": {
+          "type": "string",
+          "pattern": "^[0-9A-Z]{4}-[0-9A-Z]{4}$",
+          "description": "Compressed cultural profile string in DXUS-CPEM format (9 chars: 4 eHex, hyphen, 4 eHex). D=Diversity, X=Xenophilia, U=Uniqueness, S=Symbology, C=Cohesion, P=Progressiveness, E=Expansionism, M=Militancy. Example: '7567-8432'."
+        }
+      }
     }
   },
   "$defs": {
