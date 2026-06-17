@@ -60,6 +60,7 @@ if TYPE_CHECKING:
     from traveller_world_government_detail import GovernmentDetail
     from traveller_world_law_detail import LawDetail
     from traveller_world_tech_detail import TechDetail
+    from traveller_world_culture_detail import CultureDetail
 
 
 # ---------------------------------------------------------------------------
@@ -1552,6 +1553,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                                     # WBH Social Characteristics tech level profile.
                                     # Set by attach_tech_detail() (Session 116, issue #98).
                                     # None by default; only set when "Social detail" enabled.
+    culture_detail:    Optional["CultureDetail"]     = field(default=None, init=False)
+                                    # WBH Culture section: diversity trait (and future traits).
+                                    # Set by attach_culture_detail() (Session 127, issue #99).
+                                    # None by default; only set when "Social detail" enabled.
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1671,6 +1676,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.law_detail is not None else {}),
             **({"tech_detail": self.tech_detail.to_dict()}
                if self.tech_detail is not None else {}),
+            **({"culture_detail": self.culture_detail.to_dict()}
+               if self.culture_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1860,6 +1867,9 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("tech_detail") is not None:
             from traveller_world_tech_detail import TechDetail as _TD  # pylint: disable=import-outside-toplevel
             world.tech_detail = _TD.from_dict(d["tech_detail"])
+        if d.get("culture_detail") is not None:
+            from traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
+            world.culture_detail = _CD.from_dict(d["culture_detail"])
 
         return world
 
@@ -2164,6 +2174,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "gov_detail": world.government_detail,
         "law_detail": world.law_detail,
         "tech_detail": world.tech_detail,
+        "culture_detail": world.culture_detail,
     }
 
 

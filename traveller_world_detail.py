@@ -854,7 +854,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
                  "is_independent_government", "native_sophont", "classification",
                  "population_detail", "government_detail", "law_detail",
-                 "tech_detail", "name")
+                 "tech_detail", "culture_detail", "name")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -878,6 +878,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.law_detail: Optional[object] = None
         # traveller_world_tech_detail.TechDetail — set by attach_tech_detail()
         self.tech_detail: Optional[object] = None
+        # traveller_world_culture_detail.CultureDetail — set by attach_culture_detail()
+        self.culture_detail: Optional[object] = None
         self.name: str = ""  # set by attach_body_names()
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
@@ -970,6 +972,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["law_detail"] = self.law_detail.to_dict()  # type: ignore[attr-defined]
         if self.tech_detail is not None:
             d["tech_detail"] = self.tech_detail.to_dict()  # type: ignore[attr-defined]
+        if self.culture_detail is not None:
+            d["culture_detail"] = self.culture_detail.to_dict()  # type: ignore[attr-defined]
         return d
 
     @classmethod
@@ -1015,6 +1019,9 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         if d.get("tech_detail") is not None:
             from traveller_world_tech_detail import TechDetail as _TD  # pylint: disable=import-outside-toplevel
             obj.tech_detail = _TD.from_dict(d["tech_detail"])
+        if d.get("culture_detail") is not None:
+            from traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
+            obj.culture_detail = _CD.from_dict(d["culture_detail"])
         return obj
 
 

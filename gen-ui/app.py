@@ -907,6 +907,27 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     world.government, world.law_level,  # type: ignore[attr-defined]
                     world.starport, pcr=pcr,  # type: ignore[attr-defined]
                 )
+                cx: str = getattr(world, "cx", "")
+                if cx:
+                    from traveller_world_culture_detail import generate_culture_detail_from_cx  # pylint: disable=import-outside-toplevel
+                    world.culture_detail = generate_culture_detail_from_cx(  # type: ignore[attr-defined]
+                        cx=cx,
+                        population=world.population,  # type: ignore[attr-defined]
+                        importance=getattr(world, "importance", 0),
+                        government=world.government,  # type: ignore[attr-defined]
+                        law_level=world.law_level,  # type: ignore[attr-defined]
+                        pcr=pcr,
+                        starport=world.starport,  # type: ignore[attr-defined]
+                        tech_level=world.tech_level,  # type: ignore[attr-defined]
+                    )
+                else:
+                    from traveller_world_culture_detail import generate_culture_detail  # pylint: disable=import-outside-toplevel
+                    world.culture_detail = generate_culture_detail(  # type: ignore[attr-defined]
+                        world.population, world.government,  # type: ignore[attr-defined]
+                        world.law_level, pcr=pcr,  # type: ignore[attr-defined]
+                        starport=world.starport,  # type: ignore[attr-defined]
+                        tech_level=world.tech_level,  # type: ignore[attr-defined]
+                    )
         self._act_save.setEnabled(True)
         self._show_summary(world)
 

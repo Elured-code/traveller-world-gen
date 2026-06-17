@@ -153,7 +153,9 @@ class MapWorldData:  # pylint: disable=too-many-instance-attributes
     zone:      str   # "" / " " = Green, "A" = Amber, "R" = Red
     pbg:       str   # Population-Belt-Gas digit string, e.g. "703"
     stars_str: str   # stellar classification, e.g. "G2 V M7 V"
-    worlds:    int = 0  # total world count from TravellerMap "Worlds" field
+    worlds:    int = 0   # total world count from TravellerMap "Worlds" field
+    cx:        str = ""  # T5 Cultural Extension, e.g. "7567" (stripped of parens)
+    importance: int = 0  # T5 Importance Extension integer (e.g. +2 → 2)
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +181,15 @@ def _raw_field(raw: dict, *keys: str, default: str = "") -> str:
         if val is not None and str(val).strip():
             return str(val).strip()
     return default
+
+
+def _parse_importance(ix_str: str) -> int:
+    """Parse the Importance integer from a TravellerMap Ix string like '{ +2 }'."""
+    raw = ix_str.strip("{} \t")
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
 
 
 def _world_sector_name(world_record: dict) -> str:
@@ -304,6 +315,9 @@ def fetch_world_data(
     # /data endpoint returns Sector as a plain string
     sector_name = _world_sector_name(raw) or sector or "Unknown"
 
+    cx_raw = _raw_field(raw, "Cx", "CulturalExtension", default="").strip("() \t")
+    ix_raw = _raw_field(raw, "Ix", "ImportanceExtension", "Importance", default="")
+
     return MapWorldData(
         name      = _raw_field(raw, "Name",                     default=name    or "Unknown"),
         sector    = sector_name,
@@ -315,6 +329,8 @@ def fetch_world_data(
         pbg       = _raw_field(raw, "PBG", "Pbg",               default="000"),
         stars_str = _raw_field(raw, "Stellar", "Stars", "Star",  default="G2 V"),
         worlds    = int(_raw_field(raw, "Worlds", "worlds",      default="0") or "0"),
+        cx        = cx_raw,
+        importance = _parse_importance(ix_raw),
     )
 
 
@@ -687,6 +703,9 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
 
     # Step 4: canonical mainworld — UWP used verbatim, no dice rolls
     world = reconstruct_world(map_data)
+    if map_data.cx:
+        world.cx = map_data.cx              # type: ignore[attr-defined]
+        world.importance = map_data.importance  # type: ignore[attr-defined]
 
     # Step 5: reconcile orbit slot types with canonical PBG gas-giant and belt
     # counts.  generate_orbits() used random rolls; we reassign world types

@@ -511,6 +511,21 @@
   </div>
   {% endif %}
 
+  {% if ctx.culture_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Culture detail</p>
+    {{ drow("Cultural profile", ctx.culture_detail.cultural_profile) }}
+    {{ drow("Diversity", ctx.culture_detail.diversity|string + " — " + ctx.culture_detail.diversity_label) }}
+    {{ drow("Xenophilia", ctx.culture_detail.xenophilia|string + " — " + ctx.culture_detail.xenophilia_label) }}
+    {{ drow("Uniqueness", ctx.culture_detail.uniqueness|string + " — " + ctx.culture_detail.uniqueness_label) }}
+    {{ drow("Symbology", ctx.culture_detail.symbology|string + " — " + ctx.culture_detail.symbology_label) }}
+    {{ drow("Cohesion", ctx.culture_detail.cohesion|string + " — " + ctx.culture_detail.cohesion_label) }}
+    {{ drow("Progressiveness", ctx.culture_detail.progressiveness|string + " — " + ctx.culture_detail.progressiveness_label) }}
+    {{ drow("Expansionism", ctx.culture_detail.expansionism|string + " — " + ctx.culture_detail.expansionism_label) }}
+    {{ drow("Militancy", ctx.culture_detail.militancy|string + " — " + ctx.culture_detail.militancy_label) }}
+  </div>
+  {% endif %}
+
   <details>
     <summary>Raw JSON</summary>
     <pre>{{ ctx.json_str }}</pre>

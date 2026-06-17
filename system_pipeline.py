@@ -29,6 +29,7 @@ from traveller_world_population_detail import attach_population_detail
 from traveller_world_government_detail import attach_government_detail
 from traveller_world_law_detail import attach_law_detail
 from traveller_world_tech_detail import attach_tech_detail
+from traveller_world_culture_detail import attach_culture_detail
 from traveller_system_gen import select_mainworld, attach_body_names
 
 
@@ -285,3 +286,4 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
         attach_government_detail(system, rng=rng)
         attach_law_detail(system, rng=rng)
         attach_tech_detail(system, rng=rng)
+        attach_culture_detail(system, rng=rng)

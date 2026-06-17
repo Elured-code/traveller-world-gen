@@ -172,6 +172,7 @@ from traveller_world_population_detail import attach_population_detail
 from traveller_world_government_detail import attach_government_detail
 from traveller_world_law_detail import attach_law_detail
 from traveller_world_tech_detail import attach_tech_detail
+from traveller_world_culture_detail import attach_culture_detail
 from traveller_map_fetch import generate_system_from_map
 from system_pipeline import PipelineOptions, run_detail_pipeline
 
@@ -727,6 +728,7 @@ async def generate_world_card(request: Request) -> Response:  # pylint: disable=
                 attach_government_detail(system, rng=rng)
                 attach_law_detail(system, rng=rng)
                 attach_tech_detail(system, rng=rng)
+                attach_culture_detail(system, rng=rng)
             world = system.mainworld
         else:
             # Minimal path: matches gen-ui with system detail and population detail off.
@@ -1403,6 +1405,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
             attach_government_detail(system, rng=rng)
             attach_law_detail(system, rng=rng)
             attach_tech_detail(system, rng=rng)
+            attach_culture_detail(system, rng=rng)
     except Exception as exc:
         logger.exception("Error in map system full detail generation: %s", exc)
         return error(
@@ -1612,6 +1615,7 @@ async def generate_map_world_card(request: Request) -> Response:  # pylint: disa
             attach_government_detail(system, rng=rng)
             attach_law_detail(system, rng=rng)
             attach_tech_detail(system, rng=rng)
+            attach_culture_detail(system, rng=rng)
     except Exception as exc:
         logger.exception("Error in map world card detail generation: %s", exc)
         return error(
