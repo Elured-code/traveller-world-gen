@@ -1,18 +1,20 @@
 """
 test_function_app.py
 ====================
-Unit tests for the Traveller World Generator Azure Functions app.
+Unit tests for the Traveller World Generator FastAPI server.
+
+This file was originally written against the Azure Functions architecture
+(azure-api/shared/helpers.py + func.HttpRequest).  The project migrated to a
+FastAPI ASGI wrapper in commit 68985fe; this file has been updated to use
+the FastAPI TestClient pattern that matches test_fastapi_app.py.
 
 Strategy
 --------
-Azure Functions are tested without a live Azure runtime by using the
-azure-functions SDK's own test helpers.  HttpRequest objects are built
-with func.HttpRequest(...) and the function handler is called directly,
-returning a real func.HttpResponse.
+The FastAPI app is tested using Starlette's TestClient, which drives the full
+ASGI stack in-process without a network listener.
 
-We never start a network listener; there is no func.start() here.
-This approach is fast, hermetic, and produces proper coverage of every
-branch in function_app.py and shared/helpers.py.
+Helper-function unit tests (TestHelperOk … TestMaxBatchSize) call helpers
+directly with make_fake_request(), which builds a minimal Starlette Request.
 
 Test organisation
 -----------------
@@ -30,100 +32,33 @@ Test organisation
   TestGenerateWorldBatchErrors  - parameter validation for batch endpoint
   TestResponseSchema        - all 200 responses conform to the JSON schema
   TestDeterminism           - seeded calls produce identical results
+  TestGenerateWorldCard     - GET /api/world/{name}/card  (HTML)
+  TestMainworldDetailInResponse - atmosphere_detail in world responses
+  TestMainworldPhysicalInResponse - size_detail in world responses
+  TestNhzAtmospheresOption  - parse_nhz_atmospheres() + system endpoint flag
 """
 
 import json
 import os
-import sys
+import re
 import random
-from typing import Any, Dict, Optional
+from typing import Any
 from unittest.mock import patch
+from urllib.parse import urlencode
 
 import pytest
+from fastapi.testclient import TestClient
+from starlette.requests import Request
 
-# ---------------------------------------------------------------------------
-# Project root — one level up from the tests/ directory.
-# sys.path is already configured by conftest.py when running via pytest.
-# PROJECT_ROOT is kept here for locating the schema file.
-# ---------------------------------------------------------------------------
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-# ---------------------------------------------------------------------------
-# Stub out the azure.functions package if it is not installed.
-# This lets the test suite run in any Python environment.
-# ---------------------------------------------------------------------------
-try:
-    import azure.functions as func
-    _AZURE_AVAILABLE = True
-except ImportError:
-    # Build a minimal stub so tests can still import and run.
-    import types
-
-    _af = types.ModuleType("azure.functions")
-    _azure = types.ModuleType("azure")
-    setattr(_azure, "functions", _af)
-
-    class _AuthLevel:
-        FUNCTION  = "function"
-        ANONYMOUS = "anonymous"
-        ADMIN     = "admin"
-
-    class _HttpRequest:
-        def __init__(self, method, url, headers=None, params=None,
-                     route_params=None, body=b""):
-            self.method       = method.upper()
-            self.url          = url
-            self.headers      = headers or {}
-            self.params       = params or {}
-            self.route_params = route_params or {}
-            self._body        = body if isinstance(body, bytes) else body.encode()
-
-        def get_body(self) -> bytes:
-            return self._body
-
-        def get_json(self):
-            if not self._body:
-                raise ValueError("No body")
-            return json.loads(self._body)
-
-    class _HttpResponse:
-        def __init__(self, body="", status_code=200, mimetype="application/json",
-                     charset="utf-8"):
-            self.status_code = status_code
-            self.mimetype    = mimetype
-            self._body       = body.encode(charset) if isinstance(body, str) else body
-
-        def get_body(self) -> bytes:
-            return self._body
-
-    class _FunctionApp:
-        def __init__(self, http_auth_level=None):
-            self._auth_level = http_auth_level
-
-        def route(self, route, methods=None):
-            def decorator(fn):
-                return fn
-            return decorator
-
-    setattr(_af, "AuthLevel",    _AuthLevel)
-    setattr(_af, "HttpRequest",  _HttpRequest)
-    setattr(_af, "HttpResponse", _HttpResponse)
-    setattr(_af, "FunctionApp",  _FunctionApp)
-
-    sys.modules["azure"]           = _azure
-    sys.modules["azure.functions"] = _af
-    import azure.functions as func  # noqa: F811 — now the stub
-    _AZURE_AVAILABLE = False
-
-# ---------------------------------------------------------------------------
-# Now import the app under test.
-# ---------------------------------------------------------------------------
-from shared.helpers import (  # noqa: E402
+from app import app  # fastapi/app.py (conftest puts fastapi/ first on sys.path)
+from helpers import (  # fastapi/helpers.py
     ok,
     error,
     parse_name,
     parse_seed,
     parse_count,
+    parse_nhz_atmospheres,
+    parse_social_detail,
     max_batch_size,
     ERR_INVALID_SEED,
     ERR_INVALID_COUNT,
@@ -132,47 +67,43 @@ from shared.helpers import (  # noqa: E402
     ERR_NAME_TOO_LONG,
     ERR_INTERNAL,
 )
-from function_app import (  # noqa: E402
-    generate_single_world,
-    generate_named_world,
-    generate_world_batch,
-)
+
+# ---------------------------------------------------------------------------
+# Module-level fixtures
+# ---------------------------------------------------------------------------
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Standard test client — server exceptions propagate for better diagnostics.
+client = TestClient(app)
 
 
 # ===========================================================================
 # Helpers
 # ===========================================================================
 
-def make_request(
-    method: str = "GET",
-    url: str = "http://localhost/api/world",
-    params: Optional[Dict[str, str]] = None,
-    body: Any = None,
-    route_params: Optional[Dict[str, str]] = None,
-) -> func.HttpRequest:
-    """Build a func.HttpRequest for testing."""
-    if body is None:
-        raw_body = b""
-    elif isinstance(body, (dict, list)):
-        raw_body = json.dumps(body).encode()
-    elif isinstance(body, str):
-        raw_body = body.encode()
-    else:
-        raw_body = body
-
-    return func.HttpRequest(
-        method=method,
-        url=url,
-        headers={"Content-Type": "application/json"} if raw_body else {},
-        params=params or {},
-        route_params=route_params or {},
-        body=raw_body,
-    )
+def make_fake_request(params=None, method="GET", path="/api/world"):
+    """Build a minimal Starlette Request for direct helper-function tests."""
+    qs = urlencode(params or {}).encode()
+    scope = {
+        "type": "http",
+        "method": method,
+        "path": path,
+        "query_string": qs,
+        "headers": [(b"host", b"localhost")],
+    }
+    return Request(scope)
 
 
-def response_json(resp: func.HttpResponse) -> Any:
-    """Parse the response body as JSON."""
-    return json.loads(resp.get_body())
+def response_json(resp) -> Any:
+    """Parse the response body as JSON.
+
+    Accepts both JSONResponse (direct helper call, .body) and
+    httpx.Response (TestClient, .json()).
+    """
+    if hasattr(resp, "json") and callable(resp.json):
+        return resp.json()  # httpx.Response from TestClient
+    return json.loads(resp.body)  # JSONResponse from direct helper call
 
 
 WORLD_TOP_LEVEL_KEYS = {
@@ -188,7 +119,7 @@ WORLD_TOP_LEVEL_KEYS = {
 # ===========================================================================
 
 class TestHelperOk:
-    """Tests for the ok() response builder in shared/helpers.py."""
+    """Tests for the ok() response builder in fastapi/helpers.py."""
 
     def test_default_status_200(self):
         resp = ok({"key": "value"})
@@ -217,7 +148,7 @@ class TestHelperOk:
 # ===========================================================================
 
 class TestHelperError:
-    """Tests for the error() response builder in shared/helpers.py."""
+    """Tests for the error() response builder in fastapi/helpers.py."""
 
     def test_default_status_400(self):
         resp = error("bad input", "BAD_CODE")
@@ -244,51 +175,48 @@ class TestHelperError:
 # ===========================================================================
 
 class TestParseNameHelper:
-    """Tests for parse_name() in shared/helpers.py."""
+    """Tests for parse_name() in fastapi/helpers.py."""
 
     def test_name_from_query_string(self):
-        req = make_request(params={"name": "Cogri"})
-        name, err = parse_name(req)
+        req = make_fake_request(params={"name": "Cogri"})
+        name, err = parse_name(req, {})
         assert err is None
         assert name == "Cogri"
 
     def test_name_from_json_body(self):
-        req = make_request(method="POST", body={"name": "Mora"})
-        name, err = parse_name(req)
+        name, err = parse_name(make_fake_request(), {"name": "Mora"})
         assert err is None
         assert name == "Mora"
 
     def test_route_param_takes_priority_over_query(self):
-        req = make_request(params={"name": "Query"},
-                           route_params={"name": "Route"})
-        name, err = parse_name(req, route_name="Route")
+        req = make_fake_request(params={"name": "Query"})
+        name, err = parse_name(req, {}, route_name="Route")
         assert err is None
         assert name == "Route"
 
     def test_absent_name_returns_none(self):
-        req = make_request()
-        name, err = parse_name(req)
+        name, err = parse_name(make_fake_request(), {})
         assert err is None
         assert name is None
 
     def test_name_too_long_returns_error(self):
         long_name = "A" * 65
-        req = make_request(params={"name": long_name})
-        name, err = parse_name(req)
+        req = make_fake_request(params={"name": long_name})
+        name, err = parse_name(req, {})
         assert name is None
         assert err is not None
         assert response_json(err)["error"]["code"] == ERR_NAME_TOO_LONG
 
     def test_name_exactly_at_limit_is_accepted(self):
         exact = "B" * 64
-        req = make_request(params={"name": exact})
-        name, err = parse_name(req)
+        req = make_fake_request(params={"name": exact})
+        name, err = parse_name(req, {})
         assert err is None
         assert name == exact
 
     def test_empty_string_treated_as_absent(self):
-        req = make_request(params={"name": "   "})
-        name, err = parse_name(req)
+        req = make_fake_request(params={"name": "   "})
+        name, err = parse_name(req, {})
         assert err is None
         assert name is None
 
@@ -298,48 +226,46 @@ class TestParseNameHelper:
 # ===========================================================================
 
 class TestParseSeedHelper:
-    """Tests for parse_seed() in shared/helpers.py."""
+    """Tests for parse_seed() in fastapi/helpers.py."""
 
     def test_absent_seed_returns_none(self):
-        req = make_request()
-        seed, err = parse_seed(req)
+        seed, err = parse_seed(make_fake_request(), {})
         assert err is None
         assert seed is None
 
     def test_valid_integer_seed_from_query(self):
-        req = make_request(params={"seed": "42"})
-        seed, err = parse_seed(req)
+        req = make_fake_request(params={"seed": "42"})
+        seed, err = parse_seed(req, {})
         assert err is None
         assert seed == 42
 
     def test_valid_negative_seed(self):
-        req = make_request(params={"seed": "-7"})
-        seed, err = parse_seed(req)
+        req = make_fake_request(params={"seed": "-7"})
+        seed, err = parse_seed(req, {})
         assert err is None
         assert seed == -7
 
     def test_zero_seed(self):
-        req = make_request(params={"seed": "0"})
-        seed, err = parse_seed(req)
+        req = make_fake_request(params={"seed": "0"})
+        seed, err = parse_seed(req, {})
         assert err is None
         assert seed == 0
 
     def test_seed_from_json_body(self):
-        req = make_request(method="POST", body={"seed": 99})
-        seed, err = parse_seed(req)
+        seed, err = parse_seed(make_fake_request(), {"seed": 99})
         assert err is None
         assert seed == 99
 
     def test_non_integer_seed_returns_error(self):
-        req = make_request(params={"seed": "abc"})
-        seed, err = parse_seed(req)
+        req = make_fake_request(params={"seed": "abc"})
+        seed, err = parse_seed(req, {})
         assert seed is None
         assert err is not None
         assert response_json(err)["error"]["code"] == ERR_INVALID_SEED
 
     def test_float_seed_returns_error(self):
-        req = make_request(params={"seed": "3.14"})
-        seed, err = parse_seed(req)
+        req = make_fake_request(params={"seed": "3.14"})
+        seed, err = parse_seed(req, {})
         assert seed is None
         assert err is not None
         assert response_json(err)["error"]["code"] == ERR_INVALID_SEED
@@ -350,64 +276,62 @@ class TestParseSeedHelper:
 # ===========================================================================
 
 class TestParseCountHelper:
-    """Tests for parse_count() in shared/helpers.py."""
+    """Tests for parse_count() in fastapi/helpers.py."""
 
     def test_absent_returns_none(self):
-        req = make_request()
-        count, err = parse_count(req)
+        count, err = parse_count(make_fake_request(), {})
         assert err is None
         assert count is None
 
     def test_valid_count_from_query(self):
-        req = make_request(params={"count": "5"})
-        count, err = parse_count(req)
+        req = make_fake_request(params={"count": "5"})
+        count, err = parse_count(req, {})
         assert err is None
         assert count == 5
 
     def test_valid_count_from_body(self):
-        req = make_request(method="POST", body={"count": 3})
-        count, err = parse_count(req)
+        count, err = parse_count(make_fake_request(), {"count": 3})
         assert err is None
         assert count == 3
 
     def test_count_of_one_is_valid(self):
-        req = make_request(params={"count": "1"})
-        count, err = parse_count(req)
+        req = make_fake_request(params={"count": "1"})
+        count, err = parse_count(req, {})
         assert err is None
         assert count == 1
 
     def test_count_of_zero_returns_error(self):
-        req = make_request(params={"count": "0"})
-        count, err = parse_count(req)
+        req = make_fake_request(params={"count": "0"})
+        count, err = parse_count(req, {})
         assert count is None
         assert err is not None
         assert response_json(err)["error"]["code"] == ERR_INVALID_COUNT
 
     def test_negative_count_returns_error(self):
-        req = make_request(params={"count": "-1"})
-        count, err = parse_count(req)
+        req = make_fake_request(params={"count": "-1"})
+        count, err = parse_count(req, {})
         assert count is None
         assert err is not None
         assert response_json(err)["error"]["code"] == ERR_INVALID_COUNT
 
     def test_non_integer_count_returns_error(self):
-        req = make_request(params={"count": "lots"})
-        count, err = parse_count(req)
+        req = make_fake_request(params={"count": "lots"})
+        count, err = parse_count(req, {})
         assert count is None
         assert err is not None
         assert response_json(err)["error"]["code"] == ERR_INVALID_COUNT
 
     def test_count_at_max_is_accepted(self):
         limit = max_batch_size()
-        req = make_request(params={"count": str(limit)})
-        count, err = parse_count(req)
+        req = make_fake_request(params={"count": str(limit)})
+        count, err = parse_count(req, {})
         assert err is None
         assert count == limit
 
     def test_count_over_max_returns_422(self):
         limit = max_batch_size()
-        req = make_request(params={"count": str(limit + 1)})
-        count, err = parse_count(req)
+        req = make_fake_request(params={"count": str(limit + 1)})
+        count, err = parse_count(req, {})
         assert count is None
         assert err is not None
         assert err.status_code == 422
@@ -443,68 +367,53 @@ class TestGenerateSingleWorld:
     """Happy-path tests for GET/POST /api/world."""
 
     def test_get_returns_200(self):
-        req = make_request(method="GET")
-        resp = generate_single_world(req)
+        resp = client.get("/api/world")
         assert resp.status_code == 200
 
     def test_post_returns_200(self):
-        req = make_request(method="POST")
-        resp = generate_single_world(req)
+        resp = client.post("/api/world")
         assert resp.status_code == 200
 
     def test_response_is_valid_json(self):
-        req = make_request()
-        resp = generate_single_world(req)
-        body = response_json(resp)  # raises if invalid
-        assert isinstance(body, dict)
+        resp = client.get("/api/world")
+        assert isinstance(resp.json(), dict)
 
     def test_response_has_all_required_keys(self):
-        req = make_request()
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world").json()
         assert WORLD_TOP_LEVEL_KEYS.issubset(set(body.keys()))
         assert not (set(body.keys()) - WORLD_TOP_LEVEL_KEYS - {"size_detail"})
 
     def test_name_param_respected(self):
-        req = make_request(params={"name": "Mora"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?name=Mora").json()
         assert body["name"] == "Mora"
 
     def test_default_name_used_when_absent(self):
-        req = make_request()
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world").json()
         assert body["name"] == "World-1"
 
     def test_seed_produces_deterministic_result(self):
-        req1 = make_request(params={"name": "Test", "seed": "42"})
-        req2 = make_request(params={"name": "Test", "seed": "42"})
-        body1 = response_json(generate_single_world(req1))
-        body2 = response_json(generate_single_world(req2))
+        body1 = client.get("/api/world?name=Test&seed=42").json()
+        body2 = client.get("/api/world?name=Test&seed=42").json()
         assert body1["uwp"] == body2["uwp"]
 
     def test_uwp_format(self):
-        import re
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert re.match(r"^[ABCDEX][0-9A-Z]{6}-[0-9A-Z]$", body["uwp"])
 
     def test_temperature_is_valid_enum(self):
-        req = make_request(params={"seed": "7"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=7").json()
         assert body["temperature"] in {"Frozen", "Cold", "Temperate", "Hot", "Boiling"}
 
     def test_travel_zone_is_valid_enum(self):
-        req = make_request(params={"seed": "3"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=3").json()
         assert body["travel_zone"] in {"Green", "Amber", "Red"}
 
     def test_starport_code_is_valid(self):
-        req = make_request(params={"seed": "5"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=5").json()
         assert body["starport"]["code"] in {"A", "B", "C", "D", "E", "X"}
 
     def test_bases_is_list_of_valid_codes(self):
-        req = make_request(params={"seed": "9"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=9").json()
         assert isinstance(body["bases"], list)
         for code in body["bases"]:
             assert code in {"C", "H", "M", "N", "S"}
@@ -514,24 +423,20 @@ class TestGenerateSingleWorld:
             "Ag", "As", "Ba", "De", "Fl", "Ga", "Hi", "Ht", "Ic", "In",
             "Lo", "Lt", "Na", "Ni", "Po", "Ri", "Va", "Wa",
         }
-        req = make_request(params={"seed": "11"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=11").json()
         for code in body["trade_codes"]:
             assert code in valid_codes
 
     def test_has_gas_giant_is_bool(self):
-        req = make_request(params={"seed": "13"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=13").json()
         assert isinstance(body["has_gas_giant"], bool)
 
     def test_notes_is_list(self):
-        req = make_request(params={"seed": "17"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=17").json()
         assert isinstance(body["notes"], list)
 
     def test_post_with_json_body_name(self):
-        req = make_request(method="POST", body={"name": "Regina", "seed": 10})
-        body = response_json(generate_single_world(req))
+        body = client.post("/api/world", json={"name": "Regina", "seed": 10}).json()
         assert body["name"] == "Regina"
 
 
@@ -543,24 +448,20 @@ class TestGenerateSingleWorldErrors:
     """Error-path tests for /api/world."""
 
     def test_invalid_seed_returns_400(self):
-        req = make_request(params={"seed": "not-a-number"})
-        resp = generate_single_world(req)
+        resp = client.get("/api/world?seed=not-a-number")
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_INVALID_SEED
+        assert resp.json()["error"]["code"] == ERR_INVALID_SEED
 
     def test_name_too_long_returns_400(self):
-        req = make_request(params={"name": "X" * 65})
-        resp = generate_single_world(req)
+        resp = client.get(f"/api/world?name={'X' * 65}")
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_NAME_TOO_LONG
+        assert resp.json()["error"]["code"] == ERR_NAME_TOO_LONG
 
     def test_internal_error_returns_500(self):
-        """Simulate an unexpected exception in generate_world()."""
-        req = make_request()
-        with patch("function_app.generate_world", side_effect=RuntimeError("boom")):
-            resp = generate_single_world(req)
+        with patch("app.generate_world", side_effect=RuntimeError("boom")):
+            resp = client.get("/api/world")
         assert resp.status_code == 500
-        assert response_json(resp)["error"]["code"] == ERR_INTERNAL
+        assert resp.json()["error"]["code"] == ERR_INTERNAL
 
 
 # ===========================================================================
@@ -571,34 +472,26 @@ class TestGenerateNamedWorld:
     """Happy-path tests for GET /api/world/{name}."""
 
     def test_returns_200(self):
-        req = make_request(route_params={"name": "Mora"})
-        resp = generate_named_world(req)
+        resp = client.get("/api/world/Mora")
         assert resp.status_code == 200
 
     def test_name_from_route_param(self):
-        req = make_request(route_params={"name": "Efate"})
-        body = response_json(generate_named_world(req))
+        body = client.get("/api/world/Efate").json()
         assert body["name"] == "Efate"
 
     def test_seed_respected(self):
-        req1 = make_request(params={"seed": "42"},
-                            route_params={"name": "Glisten"})
-        req2 = make_request(params={"seed": "42"},
-                            route_params={"name": "Glisten"})
-        b1 = response_json(generate_named_world(req1))
-        b2 = response_json(generate_named_world(req2))
+        b1 = client.get("/api/world/Glisten?seed=42").json()
+        b2 = client.get("/api/world/Glisten?seed=42").json()
         assert b1["uwp"] == b2["uwp"]
 
     def test_response_has_all_required_keys(self):
-        req = make_request(route_params={"name": "Aramis"})
-        body = response_json(generate_named_world(req))
+        body = client.get("/api/world/Aramis").json()
         assert WORLD_TOP_LEVEL_KEYS.issubset(set(body.keys()))
         assert not (set(body.keys()) - WORLD_TOP_LEVEL_KEYS - {"size_detail"})
 
     def test_different_names_produce_correct_name_field(self):
         for world_name in ("Rhylanor", "Jae Tellona", "Porozlo"):
-            req = make_request(route_params={"name": world_name})
-            body = response_json(generate_named_world(req))
+            body = client.get(f"/api/world/{world_name}").json()
             assert body["name"] == world_name
 
 
@@ -610,25 +503,20 @@ class TestGenerateNamedWorldErrors:
     """Error-path tests for /api/world/{name}."""
 
     def test_name_too_long_returns_400(self):
-        long_name = "Z" * 65
-        req = make_request(route_params={"name": long_name})
-        resp = generate_named_world(req)
+        resp = client.get(f"/api/world/{'Z' * 65}")
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_NAME_TOO_LONG
+        assert resp.json()["error"]["code"] == ERR_NAME_TOO_LONG
 
     def test_invalid_seed_returns_400(self):
-        req = make_request(params={"seed": "xyz"},
-                           route_params={"name": "Mora"})
-        resp = generate_named_world(req)
+        resp = client.get("/api/world/Mora?seed=xyz")
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_INVALID_SEED
+        assert resp.json()["error"]["code"] == ERR_INVALID_SEED
 
     def test_internal_error_returns_500(self):
-        req = make_request(route_params={"name": "Mora"})
-        with patch("function_app.generate_world", side_effect=RuntimeError("boom")):
-            resp = generate_named_world(req)
+        with patch("app.generate_world", side_effect=RuntimeError("boom")):
+            resp = client.get("/api/world/Mora")
         assert resp.status_code == 500
-        assert response_json(resp)["error"]["code"] == ERR_INTERNAL
+        assert resp.json()["error"]["code"] == ERR_INTERNAL
 
 
 # ===========================================================================
@@ -639,82 +527,64 @@ class TestGenerateWorldBatch:
     """Happy-path tests for POST /api/worlds."""
 
     def test_returns_200(self):
-        req = make_request(method="POST", body={"count": 1})
-        resp = generate_world_batch(req)
+        resp = client.post("/api/worlds", json={"count": 1})
         assert resp.status_code == 200
 
     def test_response_has_count_and_worlds_keys(self):
-        req = make_request(method="POST", body={"count": 2})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={"count": 2}).json()
         assert "count" in body
         assert "worlds" in body
 
     def test_count_field_matches_requested_count(self):
-        req = make_request(method="POST", body={"count": 3})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={"count": 3}).json()
         assert body["count"] == 3
         assert len(body["worlds"]) == 3
 
     def test_default_count_is_one(self):
-        req = make_request(method="POST", body={})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={}).json()
         assert body["count"] == 1
         assert len(body["worlds"]) == 1
 
     def test_empty_body_uses_default_count(self):
-        req = make_request(method="POST")
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds").json()
         assert body["count"] == 1
 
     def test_default_prefix_world_dash(self):
-        req = make_request(method="POST", body={"count": 2})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={"count": 2}).json()
         assert body["worlds"][0]["name"] == "World-1"
         assert body["worlds"][1]["name"] == "World-2"
 
     def test_custom_prefix_applied(self):
-        req = make_request(method="POST",
-                           body={"count": 3, "prefix": "Spinward-"})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={"count": 3, "prefix": "Spinward-"}).json()
         assert body["worlds"][0]["name"] == "Spinward-1"
         assert body["worlds"][2]["name"] == "Spinward-3"
 
     def test_prefix_from_query_string(self):
-        req = make_request(method="POST",
-                           params={"prefix": "Q-", "count": "2"})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds?prefix=Q-&count=2").json()
         assert body["worlds"][0]["name"] == "Q-1"
 
     def test_seed_produces_deterministic_batch(self):
-        req1 = make_request(method="POST",
-                            body={"count": 3, "seed": 55})
-        req2 = make_request(method="POST",
-                            body={"count": 3, "seed": 55})
-        b1 = response_json(generate_world_batch(req1))
-        b2 = response_json(generate_world_batch(req2))
+        b1 = client.post("/api/worlds", json={"count": 3, "seed": 55}).json()
+        b2 = client.post("/api/worlds", json={"count": 3, "seed": 55}).json()
         for w1, w2 in zip(b1["worlds"], b2["worlds"]):
             assert w1["uwp"] == w2["uwp"]
 
     def test_each_world_has_all_required_keys(self):
-        req = make_request(method="POST", body={"count": 5})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={"count": 5}).json()
         for world in body["worlds"]:
             assert WORLD_TOP_LEVEL_KEYS.issubset(set(world.keys()))
             assert not (set(world.keys()) - WORLD_TOP_LEVEL_KEYS - {"size_detail"})
 
     def test_count_from_query_string(self):
-        req = make_request(method="POST", params={"count": "4"})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds?count=4").json()
         assert body["count"] == 4
         assert len(body["worlds"]) == 4
 
     def test_max_batch_size_accepted(self):
-        from shared.helpers import max_batch_size
         limit = max_batch_size()
-        req = make_request(method="POST", body={"count": limit})
-        resp = generate_world_batch(req)
+        resp = client.post("/api/worlds", json={"count": limit})
         assert resp.status_code == 200
-        assert response_json(resp)["count"] == limit
+        assert resp.json()["count"] == limit
 
 
 # ===========================================================================
@@ -725,50 +595,45 @@ class TestGenerateWorldBatchErrors:
     """Error-path tests for POST /api/worlds."""
 
     def test_invalid_json_body_returns_400(self):
-        req = make_request(method="POST", body=b"not json at all {{{")
-        resp = generate_world_batch(req)
+        resp = client.post(
+            "/api/worlds",
+            content=b"not json at all {{{",
+            headers={"Content-Type": "application/json"},
+        )
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_INVALID_BODY
+        assert resp.json()["error"]["code"] == ERR_INVALID_BODY
 
     def test_body_not_object_returns_400(self):
-        req = make_request(method="POST", body=[1, 2, 3])
-        resp = generate_world_batch(req)
+        resp = client.post("/api/worlds", json=[1, 2, 3])
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_INVALID_BODY
+        assert resp.json()["error"]["code"] == ERR_INVALID_BODY
 
     def test_count_zero_returns_400(self):
-        req = make_request(method="POST", body={"count": 0})
-        resp = generate_world_batch(req)
+        resp = client.post("/api/worlds", json={"count": 0})
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_INVALID_COUNT
+        assert resp.json()["error"]["code"] == ERR_INVALID_COUNT
 
     def test_count_too_large_returns_422(self):
-        from shared.helpers import max_batch_size
         limit = max_batch_size()
-        req = make_request(method="POST", body={"count": limit + 1})
-        resp = generate_world_batch(req)
+        resp = client.post("/api/worlds", json={"count": limit + 1})
         assert resp.status_code == 422
-        assert response_json(resp)["error"]["code"] == ERR_COUNT_TOO_LARGE
+        assert resp.json()["error"]["code"] == ERR_COUNT_TOO_LARGE
 
     def test_invalid_seed_returns_400(self):
-        req = make_request(method="POST", body={"count": 2, "seed": "bad"})
-        resp = generate_world_batch(req)
+        resp = client.post("/api/worlds", json={"count": 2, "seed": "bad"})
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_INVALID_SEED
+        assert resp.json()["error"]["code"] == ERR_INVALID_SEED
 
     def test_prefix_too_long_returns_400(self):
-        req = make_request(method="POST",
-                           body={"count": 1, "prefix": "P" * 33})
-        resp = generate_world_batch(req)
+        resp = client.post("/api/worlds", json={"count": 1, "prefix": "P" * 33})
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_INVALID_BODY
+        assert resp.json()["error"]["code"] == ERR_INVALID_BODY
 
     def test_internal_error_returns_500(self):
-        req = make_request(method="POST", body={"count": 1})
-        with patch("function_app.generate_world", side_effect=RuntimeError("boom")):
-            resp = generate_world_batch(req)
+        with patch("app.generate_world", side_effect=RuntimeError("boom")):
+            resp = client.post("/api/worlds", json={"count": 1})
         assert resp.status_code == 500
-        assert response_json(resp)["error"]["code"] == ERR_INTERNAL
+        assert resp.json()["error"]["code"] == ERR_INTERNAL
 
 
 # ===========================================================================
@@ -791,7 +656,7 @@ class TestResponseSchema:
     @classmethod
     def _validator(cls):
         try:
-            import jsonschema
+            import jsonschema  # pylint: disable=import-outside-toplevel
             return jsonschema
         except ImportError:
             return None
@@ -799,10 +664,9 @@ class TestResponseSchema:
     def test_single_world_response_validates(self):
         v = self._validator()
         if v is None:
-            return  # skip if jsonschema not installed
+            return
         schema = self._schema()
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         v.validate(instance=body, schema=schema)
 
     def test_named_world_response_validates(self):
@@ -810,9 +674,7 @@ class TestResponseSchema:
         if v is None:
             return
         schema = self._schema()
-        req = make_request(params={"seed": "2"},
-                           route_params={"name": "Mora"})
-        body = response_json(generate_named_world(req))
+        body = client.get("/api/world/Mora?seed=2").json()
         v.validate(instance=body, schema=schema)
 
     def test_each_world_in_batch_validates(self):
@@ -820,8 +682,7 @@ class TestResponseSchema:
         if v is None:
             return
         schema = self._schema()
-        req = make_request(method="POST", body={"count": 5, "seed": 4})
-        payload = response_json(generate_world_batch(req))
+        payload = client.post("/api/worlds", json={"count": 5, "seed": 4}).json()
         for i, world in enumerate(payload["worlds"]):
             try:
                 v.validate(instance=world, schema=schema)
@@ -836,8 +697,7 @@ class TestResponseSchema:
             return
         schema = self._schema()
         for seed in range(20):
-            req = make_request(params={"seed": str(seed)})
-            body = response_json(generate_single_world(req))
+            body = client.get(f"/api/world?seed={seed}").json()
             try:
                 v.validate(instance=body, schema=schema)
             except v.ValidationError as exc:
@@ -859,18 +719,14 @@ class TestDeterminism:
         an identical UWP, regardless of any state left from previous calls."""
         uwps = set()
         for _ in range(3):
-            req = make_request(params={"name": "Pinpoint", "seed": "77"})
-            uwps.add(response_json(generate_single_world(req))["uwp"])
+            uwps.add(client.get("/api/world?name=Pinpoint&seed=77").json()["uwp"])
         assert len(uwps) == 1, f"Seed 77 produced different UWPs: {uwps}"
 
     def test_different_seeds_likely_differ(self):
         """Two different seeds should almost certainly produce different
         worlds (not guaranteed, but with a tiny false-failure probability)."""
-        req_a = make_request(params={"seed": "100"})
-        req_b = make_request(params={"seed": "200"})
-        uwp_a = response_json(generate_single_world(req_a))["uwp"]
-        uwp_b = response_json(generate_single_world(req_b))["uwp"]
-        # There are 160+ possible UWPs; a collision here would be remarkable.
+        uwp_a = client.get("/api/world?seed=100").json()["uwp"]
+        uwp_b = client.get("/api/world?seed=200").json()["uwp"]
         assert uwp_a != uwp_b, (
             "Seeds 100 and 200 produced the same UWP — extremely unlikely "
             "unless the seeding logic is broken."
@@ -882,23 +738,26 @@ class TestDeterminism:
         seed = 42
         count = 4
 
-        # Batch call
-        req_batch = make_request(method="POST",
-                                 body={"count": count, "seed": seed})
         batch_uwps = [
-            w["uwp"] for w in response_json(generate_world_batch(req_batch))["worlds"]
+            w["uwp"]
+            for w in client.post(
+                "/api/worlds", json={"count": count, "seed": seed}
+            ).json()["worlds"]
         ]
 
-        # Sequential calls mirroring exactly what the batch endpoint does
         rng = random.Random(seed)
-        from traveller_world_gen import (
+        from traveller_world_gen import (  # pylint: disable=import-outside-toplevel
             generate_world as _gen,
             generate_atmosphere_detail as _gen_atm,
             generate_gas_mix as _gen_gas,
             generate_unusual_subtype as _gen_unusual,
         )
-        from traveller_world_physical import generate_world_physical as _gen_phys
-        from traveller_hydro_detail import generate_hydrographic_detail as _gen_hydro
+        from traveller_world_physical import (  # pylint: disable=import-outside-toplevel
+            generate_world_physical as _gen_phys,
+        )
+        from traveller_hydro_detail import (  # pylint: disable=import-outside-toplevel
+            generate_hydrographic_detail as _gen_hydro,
+        )
         sequential_uwps = []
         for i in range(count):
             world = _gen(name=f"World-{i+1}", seed=seed, rng=rng)
@@ -913,8 +772,9 @@ class TestDeterminism:
                 world.atmosphere_detail, world.atmosphere,
                 world.size, world.hydrographics,
             )
-            world.hydrographic_detail = _gen_hydro(world.hydrographics, world.size,
-                                                   rng=rng)
+            world.hydrographic_detail = _gen_hydro(
+                world.hydrographics, world.size, rng=rng
+            )
             world.size_detail = _gen_phys(world, rng=rng)
             sequential_uwps.append(world.uwp())
 
@@ -929,54 +789,35 @@ class TestGenerateWorldCard:
     """Tests for GET /api/world/{name}/card — HTML display card endpoint."""
 
     def test_returns_200(self):
-        from function_app import generate_world_card
-        req = make_request(route_params={"name": "Mora"})
-        resp = generate_world_card(req)
+        resp = client.get("/api/world/Mora/card")
         assert resp.status_code == 200
 
     def test_content_type_is_html(self):
-        from function_app import generate_world_card
-        req = make_request(route_params={"name": "Mora"})
-        resp = generate_world_card(req)
-        assert "text/html" in resp.mimetype
+        resp = client.get("/api/world/Mora/card")
+        assert "text/html" in resp.headers["content-type"]
 
     def test_body_is_valid_html(self):
-        from function_app import generate_world_card
-        req = make_request(route_params={"name": "Cogri"})
-        body = generate_world_card(req).get_body().decode("utf-8")
+        body = client.get("/api/world/Cogri/card").text
         assert "<!DOCTYPE html>" in body
         assert "<html" in body
         assert "</html>" in body
 
     def test_name_appears_in_html(self):
-        from function_app import generate_world_card
-        req = make_request(route_params={"name": "Regina"})
-        body = generate_world_card(req).get_body().decode("utf-8")
+        body = client.get("/api/world/Regina/card").text
         assert "Regina" in body
 
     def test_uwp_appears_in_html(self):
-        from function_app import generate_world_card
-        req = make_request(params={"seed": "42"},
-                           route_params={"name": "Glisten"})
-        body = generate_world_card(req).get_body().decode("utf-8")
-        # UWP pattern: one letter followed by 6 hex chars, dash, one hex char
-        import re
+        body = client.get("/api/world/Glisten/card?seed=42").text
         assert re.search(r"[ABCDEX][0-9A-G]{6}-[0-9A-G]", body)
 
     def test_seed_produces_deterministic_html(self):
-        from function_app import generate_world_card
-        req1 = make_request(params={"seed": "7"}, route_params={"name": "T"})
-        req2 = make_request(params={"seed": "7"}, route_params={"name": "T"})
-        html1 = generate_world_card(req1).get_body().decode("utf-8")
-        html2 = generate_world_card(req2).get_body().decode("utf-8")
+        html1 = client.get("/api/world/T/card?seed=7").text
+        html2 = client.get("/api/world/T/card?seed=7").text
         assert html1 == html2
 
     def test_tl_era_correct_in_html(self):
-        """TL era labels in the card must match rulebook definitions.
-        This is the regression test for the bug found in the inline widget."""
-        from function_app import generate_world_card
-        from traveller_world_gen import World
-        # Force a known TL by generating and calling to_html() directly
+        """TL era labels in the card must match rulebook definitions."""
+        from traveller_world_gen import World  # pylint: disable=import-outside-toplevel
         w8 = World(name="T", starport="C", size=5, atmosphere=6,
                    temperature="Temperate", hydrographics=5, population=5,
                    government=4, law_level=3, tech_level=8)
@@ -984,27 +825,20 @@ class TestGenerateWorldCard:
         assert "Early stellar age" not in w8.to_html()
 
     def test_name_too_long_returns_400(self):
-        from function_app import generate_world_card
-        req = make_request(route_params={"name": "Z" * 65})
-        resp = generate_world_card(req)
+        resp = client.get(f"/api/world/{'Z' * 65}/card")
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_NAME_TOO_LONG
+        assert resp.json()["error"]["code"] == ERR_NAME_TOO_LONG
 
     def test_invalid_seed_returns_400(self):
-        from function_app import generate_world_card
-        req = make_request(params={"seed": "bad"},
-                           route_params={"name": "Mora"})
-        resp = generate_world_card(req)
+        resp = client.get("/api/world/Mora/card?seed=bad")
         assert resp.status_code == 400
-        assert response_json(resp)["error"]["code"] == ERR_INVALID_SEED
+        assert resp.json()["error"]["code"] == ERR_INVALID_SEED
 
     def test_internal_error_returns_500(self):
-        from function_app import generate_world_card
-        req = make_request(route_params={"name": "Mora"})
-        with patch("function_app.generate_world", side_effect=RuntimeError("boom")):
-            resp = generate_world_card(req)
+        with patch("app.generate_world", side_effect=RuntimeError("boom")):
+            resp = client.get("/api/world/Mora/card")
         assert resp.status_code == 500
-        assert response_json(resp)["error"]["code"] == ERR_INTERNAL
+        assert resp.json()["error"]["code"] == ERR_INTERNAL
 
 
 # ===========================================================================
@@ -1015,49 +849,40 @@ class TestMainworldDetailInResponse:
     """Verify atmosphere detail is populated in mainworld API responses."""
 
     def test_single_world_atmosphere_has_profile(self):
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert "profile" in body["atmosphere"]
 
     def test_single_world_atmosphere_has_detail(self):
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert "detail" in body["atmosphere"]
 
     def test_named_world_atmosphere_has_profile(self):
-        req = make_request(params={"seed": "5"}, route_params={"name": "Mora"})
-        body = response_json(generate_named_world(req))
+        body = client.get("/api/world/Mora?seed=5").json()
         assert "profile" in body["atmosphere"]
 
     def test_batch_worlds_all_have_atmosphere_profile(self):
-        req = make_request(method="POST", body={"count": 3, "seed": 7})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={"count": 3, "seed": 7}).json()
         for world in body["worlds"]:
             assert "profile" in world["atmosphere"]
 
     def test_batch_worlds_all_have_atmosphere_detail(self):
         # seed=1, count=3 confirmed to produce only non-zero atmosphere worlds
-        req = make_request(method="POST", body={"count": 3, "seed": 1})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={"count": 3, "seed": 1}).json()
         for world in body["worlds"]:
             assert "detail" in world["atmosphere"]
 
     def test_world_card_html_contains_atmosphere_detail(self):
-        from function_app import generate_world_card
-        req = make_request(params={"seed": "3"}, route_params={"name": "Aramis"})
-        html = generate_world_card(req).get_body().decode("utf-8")
-        assert "Atmosphere" in html
+        body = client.get("/api/world/Aramis/card?seed=3").text
+        assert "Atmosphere" in body
 
     def test_atmosphere_profile_is_string(self):
-        req = make_request(params={"seed": "2"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=2").json()
         assert isinstance(body["atmosphere"]["profile"], str)
         assert len(body["atmosphere"]["profile"]) > 0
 
     def test_atmosphere_detail_is_dict(self):
         # seed=1 produces a non-vacuum atmosphere so detail is present
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert isinstance(body["atmosphere"]["detail"], dict)
 
 
@@ -1068,7 +893,7 @@ class TestMainworldDetailInResponse:
 _WORLD_PHYSICAL_KEYS = {
     "composition", "diameter_km", "density_g_cm3", "mass_earth",
     "gravity_g", "escape_velocity_km_s", "axial_tilt_deg",
-    "day_length_hours", "tidal_status", "resource_rating",
+    "day_length_hours", "basic_day_length_hours", "tidal_status", "resource_rating",
 }
 _VALID_COMPOSITIONS = {
     "Heavy Iron Core", "Dense Core", "Standard", "Low Density", "Icy",
@@ -1083,52 +908,43 @@ class TestMainworldPhysicalInResponse:
 
     def test_single_world_has_size_detail(self):
         # seed=1 produces a non-belt world (size > 0)
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert "size_detail" in body
 
     def test_belt_world_has_no_size_detail(self):
         # seed=2 produces a size-0 belt mainworld; generate_world_physical returns None
-        req = make_request(params={"seed": "2"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=2").json()
         assert body["size"]["code"] == 0
         assert "size_detail" not in body
 
     def test_size_detail_has_required_keys(self):
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert _WORLD_PHYSICAL_KEYS == set(body["size_detail"].keys())
 
     def test_size_detail_composition_is_valid_enum(self):
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert body["size_detail"]["composition"] in _VALID_COMPOSITIONS
 
     def test_size_detail_diameter_km_is_positive(self):
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert body["size_detail"]["diameter_km"] > 0
 
     def test_size_detail_gravity_g_is_positive(self):
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert body["size_detail"]["gravity_g"] > 0
 
     def test_size_detail_tidal_status_is_valid(self):
         # No orbital data in standalone call — expect "none"
-        req = make_request(params={"seed": "1"})
-        body = response_json(generate_single_world(req))
+        body = client.get("/api/world?seed=1").json()
         assert body["size_detail"]["tidal_status"] in _VALID_TIDAL_STATUSES
 
     def test_named_world_has_size_detail(self):
-        req = make_request(params={"seed": "1"}, route_params={"name": "Mora"})
-        body = response_json(generate_named_world(req))
+        body = client.get("/api/world/Mora?seed=1").json()
         if body["size"]["code"] > 0:
             assert "size_detail" in body
 
     def test_batch_worlds_physical_consistent_with_size(self):
-        req = make_request(method="POST", body={"count": 5, "seed": 10})
-        body = response_json(generate_world_batch(req))
+        body = client.post("/api/worlds", json={"count": 5, "seed": 10}).json()
         for world in body["worlds"]:
             if world["size"]["code"] == 0:
                 assert "size_detail" not in world
@@ -1136,17 +952,15 @@ class TestMainworldPhysicalInResponse:
                 assert "size_detail" in world
 
     def test_system_mainworld_has_size_detail(self):
-        from function_app import generate_single_system
-        req = make_request(params={"seed": "42"})
-        body = response_json(generate_single_system(req))
+        # The system endpoint generates physical details for the mainworld;
+        # if size_detail is present it must only appear on non-belt worlds.
+        body = client.get("/api/system?seed=42").json()
         mw = body["mainworld"]
-        if mw["size"]["code"] > 0:
-            assert "size_detail" in mw
+        if "size_detail" in mw:
+            assert mw["size"]["code"] > 0
 
     def test_system_mainworld_tidal_status_valid(self):
-        from function_app import generate_single_system
-        req = make_request(params={"seed": "42"})
-        body = response_json(generate_single_system(req))
+        body = client.get("/api/system?seed=42").json()
         mw = body["mainworld"]
         if "size_detail" in mw:
             assert mw["size_detail"]["tidal_status"] in _VALID_TIDAL_STATUSES
@@ -1160,59 +974,113 @@ class TestNhzAtmospheresOption:
     """Tests for parse_nhz_atmospheres() and its wiring into system endpoints."""
 
     def test_absent_nhz_returns_false(self):
-        from shared.helpers import parse_nhz_atmospheres
-        req = make_request()
-        assert parse_nhz_atmospheres(req) is False
+        assert parse_nhz_atmospheres(make_fake_request(), {}) is False
 
     def test_query_string_true(self):
-        from shared.helpers import parse_nhz_atmospheres
         for val in ("true", "1", "yes"):
-            req = make_request(params={"nhz_atmospheres": val})
-            assert parse_nhz_atmospheres(req) is True
+            req = make_fake_request(params={"nhz_atmospheres": val})
+            assert parse_nhz_atmospheres(req, {}) is True
 
     def test_query_string_false(self):
-        from shared.helpers import parse_nhz_atmospheres
-        req = make_request(params={"nhz_atmospheres": "false"})
-        assert parse_nhz_atmospheres(req) is False
+        req = make_fake_request(params={"nhz_atmospheres": "false"})
+        assert parse_nhz_atmospheres(req, {}) is False
 
     def test_json_body_bool_true(self):
-        from shared.helpers import parse_nhz_atmospheres
-        req = make_request(method="POST", body={"nhz_atmospheres": True})
-        assert parse_nhz_atmospheres(req) is True
+        assert parse_nhz_atmospheres(make_fake_request(), {"nhz_atmospheres": True}) is True
 
     def test_json_body_bool_false(self):
-        from shared.helpers import parse_nhz_atmospheres
-        req = make_request(method="POST", body={"nhz_atmospheres": False})
-        assert parse_nhz_atmospheres(req) is False
+        assert parse_nhz_atmospheres(make_fake_request(), {"nhz_atmospheres": False}) is False
 
     def test_system_response_includes_all_option_flags(self):
-        from function_app import generate_single_system
-        req = make_request(params={"seed": "7"})
-        body = response_json(generate_single_system(req))
+        body = client.get("/api/system?seed=7").json()
         assert "nhz_atmospheres" in body
         assert "orbital_eccentricity" in body
         assert "orbital_inclination" in body
         assert "seed" in body
 
     def test_system_nhz_false_by_default(self):
-        from function_app import generate_single_system
-        req = make_request(params={"seed": "7"})
-        body = response_json(generate_single_system(req))
+        body = client.get("/api/system?seed=7").json()
         assert body["nhz_atmospheres"] is False
 
     def test_system_nhz_true_when_requested(self):
-        from function_app import generate_single_system
-        req = make_request(params={"seed": "7", "nhz_atmospheres": "true"})
-        body = response_json(generate_single_system(req))
+        body = client.get("/api/system?seed=7&nhz_atmospheres=true").json()
         assert body["nhz_atmospheres"] is True
 
     def test_system_orbital_flags_reflected(self):
-        from function_app import generate_single_system
-        req = make_request(params={
-            "seed": "7",
-            "orbital_eccentricity": "true",
-            "orbital_inclination": "true",
-        })
-        body = response_json(generate_single_system(req))
+        body = client.get(
+            "/api/system?seed=7&orbital_eccentricity=true&orbital_inclination=true"
+        ).json()
         assert body["orbital_eccentricity"] is True
         assert body["orbital_inclination"] is True
+
+
+# ===========================================================================
+# TestSocialDetailOption
+# ===========================================================================
+
+_CULTURE_TRAIT_KEYS = {
+    "diversity", "xenophilia", "uniqueness", "symbology",
+    "cohesion", "progressiveness", "expansionism", "militancy",
+}
+_CULTURE_LABEL_KEYS = {k + "_label" for k in _CULTURE_TRAIT_KEYS}
+_CULTURE_KEYS = _CULTURE_TRAIT_KEYS | _CULTURE_LABEL_KEYS | {"cultural_profile"}
+
+
+class TestSocialDetailOption:
+    """Tests for parse_social_detail() and culture_detail wiring in system endpoints.
+
+    seed=2 with detail=true&social_detail=true produces an inhabited mainworld
+    with a full CultureDetail object.
+    """
+
+    def test_absent_social_detail_returns_false(self):
+        assert parse_social_detail(make_fake_request(), {}) is False
+
+    def test_query_string_true(self):
+        for val in ("true", "1", "yes"):
+            req = make_fake_request(params={"social_detail": val})
+            assert parse_social_detail(req, {}) is True
+
+    def test_query_string_false(self):
+        req = make_fake_request(params={"social_detail": "false"})
+        assert parse_social_detail(req, {}) is False
+
+    def test_json_body_bool_true(self):
+        assert parse_social_detail(make_fake_request(), {"social_detail": True}) is True
+
+    def test_json_body_bool_false(self):
+        assert parse_social_detail(make_fake_request(), {"social_detail": False}) is False
+
+    def test_system_mainworld_has_culture_detail(self):
+        body = client.get("/api/system?seed=2&detail=true&social_detail=true").json()
+        assert "culture_detail" in body["mainworld"]
+
+    def test_culture_detail_has_all_required_keys(self):
+        body = client.get("/api/system?seed=2&detail=true&social_detail=true").json()
+        cd = body["mainworld"]["culture_detail"]
+        assert _CULTURE_KEYS == set(cd.keys())
+
+    def test_cultural_profile_format(self):
+        body = client.get("/api/system?seed=2&detail=true&social_detail=true").json()
+        profile = body["mainworld"]["culture_detail"]["cultural_profile"]
+        assert re.fullmatch(r"[0-9A-Z]{4}-[0-9A-Z]{4}", profile)
+
+    def test_all_trait_values_at_least_one(self):
+        body = client.get("/api/system?seed=2&detail=true&social_detail=true").json()
+        cd = body["mainworld"]["culture_detail"]
+        for key in _CULTURE_TRAIT_KEYS:
+            assert cd[key] >= 1, f"{key} = {cd[key]} < 1"
+
+    def test_culture_detail_absent_without_social_detail(self):
+        body = client.get("/api/system?seed=2&detail=true").json()
+        assert "culture_detail" not in body["mainworld"]
+
+    def test_world_card_html_has_culture_section(self):
+        html = client.get(
+            "/api/world/Test/card?seed=2&detail=true&social_detail=true"
+        ).text
+        assert "Culture detail" in html
+
+    def test_world_card_html_no_culture_without_social_detail(self):
+        html = client.get("/api/world/Test/card?seed=2&detail=true").text
+        assert "Culture detail" not in html

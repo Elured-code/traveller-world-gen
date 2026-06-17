@@ -1,8 +1,28 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–130
-**Tests:** 2460
+**Sessions:** 88–131
+**Tests:** 2478
+
+---
+
+## Social Detail Test Coverage (Session 131)
+
+**Test additions for social detail API + UI.** FastAPI endpoints and gen-ui
+app now have comprehensive test coverage for the social detail feature
+(implemented in Sessions 127–130). New `TestSocialDetailOption` class in
+`tests/test_function_app.py` (12 tests) covers `parse_social_detail()` helper
+and system/world card endpoints with the `social_detail` flag — verifies
+culture_detail is present when flag is True, absent when False, profile format
+compliance, and trait value floor (all ≥ 1). World card HTML includes/excludes
+the Culture section based on the flag. New `TestSocialDetailGeneration` class
+in `tests/test_genui_app.py` (6 tests) with `social_system_app_win` fixture
+covers gen-ui path: culture_detail None/present with the option, profile format,
+trait floors, and HTML presence/absence. UAT plan updated with §15 "Social
+detail and cultural profile" (6 test cases) covering checkbox, culture
+absent/present, profile format, trait floors, and secondary worlds.
+
+**Test count:** 18 new tests; 2478 total (was 2460); pylint 10.00/10.
 
 ---
 

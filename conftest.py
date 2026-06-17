@@ -50,6 +50,11 @@ def reset_module_rngs():
     import traveller_orbit_gen
     import traveller_moon_gen
     import traveller_world_detail
+    import traveller_world_population_detail
+    import traveller_world_government_detail
+    import traveller_world_law_detail
+    import traveller_world_tech_detail
+    import traveller_world_culture_detail
     # pylint: enable=import-outside-toplevel
 
     _modules = [
@@ -61,6 +66,11 @@ def reset_module_rngs():
         traveller_orbit_gen,
         traveller_moon_gen,
         traveller_world_detail,
+        traveller_world_population_detail,
+        traveller_world_government_detail,
+        traveller_world_law_detail,
+        traveller_world_tech_detail,
+        traveller_world_culture_detail,
     ]
 
     for mod in _modules:

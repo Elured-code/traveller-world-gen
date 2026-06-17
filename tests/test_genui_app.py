@@ -119,6 +119,18 @@ def system_app_win(app_win):
         w.close()
 
 
+@pytest.fixture
+def social_system_app_win(app_win):
+    """AppWindow with full system + social detail enabled, seed 1."""
+    app_win._opt_full_system = True
+    app_win._opt_social_detail = True
+    app_win._seed_entry.setText("1")
+    app_win._generate_btn.click()
+    yield app_win
+    for w in list(app_win._survey_windows) + list(app_win._map_windows):
+        w.close()
+
+
 def _default_options(parent) -> _OptionsDialog:
     """Helper: _OptionsDialog with every option at its default value."""
     return _OptionsDialog(
@@ -889,3 +901,38 @@ class TestHeaderButtons:
     def test_map_click_is_noop_without_system(self, app_win):
         app_win._on_map_clicked()
         assert len(app_win._map_windows) == 0
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 14. Social detail and cultural profile
+# ════════════════════════════════════════════════════════════════════════════
+
+import re as _re  # noqa: E402
+
+
+class TestSocialDetailGeneration:
+    """Verify culture_detail is generated (or absent) based on _opt_social_detail."""
+
+    def test_culture_detail_none_without_social_detail(self, system_app_win):
+        assert system_app_win._current_world.culture_detail is None
+
+    def test_culture_detail_present_with_social_detail(self, social_system_app_win):
+        assert social_system_app_win._current_world.culture_detail is not None
+
+    def test_cultural_profile_format(self, social_system_app_win):
+        profile = social_system_app_win._current_world.culture_detail.cultural_profile
+        assert _re.fullmatch(r"[0-9A-Z]{4}-[0-9A-Z]{4}", profile)
+
+    def test_all_trait_values_at_least_one(self, social_system_app_win):
+        cd = social_system_app_win._current_world.culture_detail
+        for attr in ("diversity", "xenophilia", "uniqueness", "symbology",
+                     "cohesion", "progressiveness", "expansionism", "militancy"):
+            assert getattr(cd, attr) >= 1, f"{attr} < 1"
+
+    def test_culture_section_in_mainworld_html(self, social_system_app_win):
+        html = social_system_app_win._current_world.to_html()
+        assert "Culture detail" in html
+
+    def test_culture_section_absent_without_social_detail(self, system_app_win):
+        html = system_app_win._current_world.to_html()
+        assert "Culture detail" not in html

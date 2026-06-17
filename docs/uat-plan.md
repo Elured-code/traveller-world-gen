@@ -1,7 +1,7 @@
 # gen-ui User Acceptance Test Plan
 
 **Application:** `gen-ui/app.py` — PySide6 desktop UI for the Traveller World & System Generator  
-**Last updated:** 2026-06-15 (Session 123)  
+**Last updated:** 2026-06-17 (Session 131)  
 **Test type:** Manual (no automated runner)
 
 ---
@@ -206,3 +206,16 @@ re-run outcome alongside the original.
 | UAT-080 | Switching back to Procedural restores procedural controls | TravellerMap source selected | Click "Procedural" radio | Name and seed fields visible; TM-specific fields hidden | |
 | UAT-081 | Seed shown after generation matches seed used | Procedural source; seed field empty | Click "Generate" | Seed field shows the integer seed that was used; generating again with that value produces the same world (see UAT-005) | |
 | UAT-082 | Re-generating without changing options produces different world | Procedural source; "System detail" unchecked | Generate; note UWP; click "Generate" again without entering a seed | New seed auto-assigned; world UWP differs from previous result | |
+
+---
+
+## 15. Social detail and cultural profile
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-083 | "Social detail" checkbox present in Options dialog | App running | Open Options | "Social detail" checkbox visible | |
+| UAT-084 | Culture section absent when "Social detail" unchecked | "System detail" checked; "Social detail" unchecked | Generate with default options; observe Mainworld tab | World card has no "Culture detail" section | |
+| UAT-085 | Culture section present when "Social detail" checked | "System detail" and "Social detail" both checked; world is inhabited (Population > 0) | Generate; observe Mainworld tab | World card shows "Culture detail" header, "Cultural profile" row (e.g. `7567-8432`), and rows for all 8 traits (Diversity, Xenophilia, Uniqueness, Symbology, Cohesion, Progressiveness, Expansionism, Militancy) each with a value and label | |
+| UAT-086 | Cultural profile string is DXUS-CPEM format | Social detail enabled; inhabited mainworld generated | Observe "Cultural profile" row in world card | Profile is exactly 9 characters: four eHex digits, a hyphen, four eHex digits (e.g. `85C9-A7B8`) | |
+| UAT-087 | All eight trait values are at least 1 | Social detail enabled; inhabited mainworld generated | Observe the 8 trait rows in the Culture section | Each numeric value shown is ≥ 1 | |
+| UAT-088 | Inhabited secondary worlds also receive culture detail | "Social detail" checked; system has an inhabited secondary world | Generate system; observe secondary world card | Secondary world card also shows a "Culture detail" section with 8 traits and profile | |
