@@ -259,9 +259,9 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few
 # ---------------------------------------------------------------------------
 # App Insights — direct ingestion, bypasses Azure Functions host SDK
 # ---------------------------------------------------------------------------
-# The AsgiFunctionApp wrapper does not emit host-level invocation telemetry
-# to App Insights reliably.  This middleware posts one RequestData envelope
-# per request directly to the ingestion REST endpoint using only stdlib.
+# Host SDK request telemetry is suppressed via Host.Results=None in host.json.
+# This middleware is the sole request telemetry source across all deployment
+# targets (Azure Functions, AWS Lambda via mangum, bare uvicorn).
 # ---------------------------------------------------------------------------
 
 _AI_IKEY: str = ""
