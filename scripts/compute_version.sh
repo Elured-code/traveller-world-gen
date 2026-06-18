@@ -3,7 +3,9 @@
 #
 # Version scheme:
 #   Major.Minor — from branch name (v1.5.x → 1.5), fallback to VERSION file
-#   Patch       — count of commits that touched traveller_world_schema.json
+#   Patch       — count of schema-bump-N tags (one created by CI per push that
+#                 changes traveller_world_schema.json).  Falls back to counting
+#                 schema-touching commits when no tags exist (local dev / first run).
 #   Build       — $1 argument (GitHub run_number in CI); "local" when absent
 #
 # Usage (local):   bash scripts/compute_version.sh
@@ -25,9 +27,13 @@ else
     MAJOR=0; MINOR=0
 fi
 
-# ── Patch: schema-touching commits ───────────────────────────────────────────
-PATCH=$(git -C "$REPO_ROOT" log --oneline HEAD -- traveller_world_schema.json \
-        | wc -l | tr -d ' ')
+# ── Patch: schema-bump tags (one per CI push where schema changed) ────────────
+PATCH=$(git -C "$REPO_ROOT" tag -l 'schema-bump-*' | wc -l | tr -d ' ')
+if [ "$PATCH" -eq 0 ]; then
+    # No tags yet — fall back to counting schema-touching commits (local dev)
+    PATCH=$(git -C "$REPO_ROOT" log --oneline HEAD -- traveller_world_schema.json \
+            | wc -l | tr -d ' ')
+fi
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 # CI passes github.run_number; locally fall back to total git commit count.

@@ -23,7 +23,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history needed for schema-commit patch count
+          fetch-depth: 0   # full history needed for tag enumeration
+          fetch-tags: true
+
+      - name: Check if schema changed
+        id: schema_check
+        run: |
+          LAST_TAG=$(git tag -l 'schema-bump-*' | sort -V | tail -1)
+          if [ -z "$LAST_TAG" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff "$LAST_TAG" HEAD -- traveller_world_schema.json | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tag schema bump
+        if: steps.schema_check.outputs.changed == 'true'
+        run: |
+          NEXT=$(( $(git tag -l 'schema-bump-*' | wc -l) + 1 ))
+          git tag "schema-bump-$NEXT"
+          git push origin "schema-bump-$NEXT"
 
       - name: Compute version
         run: bash scripts/compute_version.sh ${{ github.run_number }}
@@ -49,7 +69,9 @@ jobs:
             traveller_world_atmosphere_detail.py \
             traveller_world_detail.py \
             traveller_world_gen.py \
+            traveller_world_culture_detail.py \
             traveller_world_government_detail.py \
+            traveller_world_importance.py \
             traveller_world_law_detail.py \
             traveller_world_physical.py \
             traveller_world_population_detail.py \
