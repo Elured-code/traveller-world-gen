@@ -1,8 +1,55 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–132
-**Tests:** 2545
+**Sessions:** 88–133
+**Tests:** 2613
+
+---
+
+## Economic Characteristics (Session 133)
+
+**Full WBH economic profile per world** (issue #100). `WorldImportance` gains
+nine new fields computed by `attach_importance_detail()`:
+
+- **Labour Factor** — `population − 1`, clamped ≥ 0; zero for uninhabited worlds
+  and worlds of population 1.
+- **Infrastructure Factor** — importance + population DMs; `None` for worlds with
+  no infrastructure (below a threshold).
+- **Efficiency Factor** — die-roll based (−5 to +5); pop 0 is fixed at −5; pops
+  1–6 roll 2D6−7 + DMs; pops 7+ roll 2D3−4 + DMs. DMs from government type, law
+  level, PCR, cultural progressiveness, and cultural expansionism. A result of 0
+  is treated internally as +1 per WBH convention.
+- **Resource Units** — RF × LF × IF × EF; any zero factor is treated as 1; only
+  EF can yield a negative total.
+- **GWP Base Value** — IF_adj + min(RF_adj, IF_adj); both adjusted to ≥ 1 for
+  inhabited worlds, giving a maximum of 2 × IF.
+- **GWP Per Capita / Total GWP** — base value scaled by TL, starport, government,
+  and trade-code multipliers; positive EF multiplies, negative EF divides by
+  (1 − EF). Total in MCr = per-capita × 10^population / 1,000,000.
+- **Development Score** — (GWP_pc / 1000) × (1 − IR/100); Inequality Rating
+  defaults to 0 until implemented (issue deferred).
+- **Economics Profile** — compact string e.g. `"765+2"`: RF/LF/IF as eHex
+  digits + EF as a signed integer.
+
+**Resource Factor on WorldPhysical** — new `resource_factor` field on
+`WorldPhysical` (and `World.to_dict()`): resource_rating adjusted by TL/trade
+DMs (TL 9–12 → +1, 13–15 → +2, 16+ → +3; Ag −1, In +2, As −1, Ni −1, Ri +1),
+clamped to [0, 12]. Computed by `attach_resource_factor()` in
+`system_pipeline.py` after `apply_mainworld_social()`.
+
+**Schema update.** `traveller_world_schema.json` updated with all new
+`importance_detail` properties and the top-level `resource_factor` property.
+
+**World card.** New rows in the culture detail section of `world_card.html`:
+Labour Factor, Infrastructure Factor, Resource Factor, Efficiency Factor,
+Resource Units (danger-highlighted when negative), GWP Base Value, GWP Per
+Capita (formatted with comma separator), Total GWP (MCr), Development Score,
+Economics Profile (highlighted).
+
+**Deferred.** Tariff rates (WBH p.181) tracked in issue #157. Inequality Rating
+base roll unconfirmed — deferred until source text is available.
+
+**Test count:** 68 new tests; 2613 total (was 2545); pylint 10.00/10.
 
 ---
 
