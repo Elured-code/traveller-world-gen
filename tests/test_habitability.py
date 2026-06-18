@@ -2,7 +2,7 @@
 pytest unit tests for generate_habitability_rating() (WBH p.131).
 """
 import pytest
-from traveller_world_detail import generate_habitability_rating
+from traveller_gen.traveller_world_detail import generate_habitability_rating
 
 
 # ---------------------------------------------------------------------------

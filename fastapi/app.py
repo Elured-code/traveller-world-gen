@@ -102,18 +102,10 @@ import urllib.request
 import uuid
 from typing import Optional
 
-# Make project-root generation modules importable when this file is loaded
-# from within the fastapi/ subdirectory.
+# helpers.py is a flat module in the fastapi/ subdirectory.
 _here = os.path.dirname(os.path.abspath(__file__))
-_root = os.path.dirname(_here)
-sys.path.insert(0, _root)   # traveller_* generation modules
 sys.path.insert(0, _here)   # helpers.py (this file's own directory)
 
-# All endpoint handlers deliberately catch Exception broadly so that any
-# unexpected generation error returns a structured 500 rather than crashing.
-# The sys.path.insert above must precede the generation-module imports.
-# Pylint cannot resolve imports from within fastapi/ without the sys.path fix,
-# and classifies slowapi/helpers differently than fastapi on some configurations.
 # pylint: disable=wrong-import-position,import-error,too-many-lines
 # pylint: disable=locally-disabled,suppressed-message
 # pylint: disable=broad-exception-caught,wrong-import-order
@@ -139,10 +131,10 @@ from helpers import (
     parse_seed, parse_sector, parse_world_json,
 )
 
-from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT
+from traveller_gen.system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT
 
 try:
-    import _version as _ver  # type: ignore[import]
+    from traveller_gen import _version as _ver  # type: ignore[import]
     _APP_VERSION = _ver.__version__
 except ImportError:
     _APP_VERSION = "0.0.0+dev"
@@ -150,32 +142,32 @@ except ImportError:
 # FastAPI light-mode background matches the page (#f4f0e4), not pure white.
 _PALETTE_LIGHT = dataclasses.replace(PALETTE_LIGHT, bg="#f4f0e4")
 
-from traveller_world_gen import (
+from traveller_gen.traveller_world_gen import (
     World, generate_world, generate_atmosphere_detail, generate_gas_mix,
     generate_unusual_subtype, generate_hydrographics, apply_mainworld_social,
 )
-from traveller_belt_physical import BeltPhysical
-from traveller_world_physical import (
+from traveller_gen.traveller_belt_physical import BeltPhysical
+from traveller_gen.traveller_world_physical import (
     generate_world_physical, apply_moon_tidal_effects, attach_resource_factor,
 )
-from traveller_world_atmosphere_detail import (
+from traveller_gen.traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
-from traveller_hydro_detail import generate_hydrographic_detail
-from traveller_system_gen import (
+from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail
+from traveller_gen.traveller_system_gen import (
     generate_full_system, generate_system_from_world, attach_body_names,
 )
-from traveller_world_detail import (
+from traveller_gen.traveller_world_detail import (
     attach_detail, gg_diameter_from_sah, apply_secondary_social,
 )
-from traveller_world_population_detail import attach_population_detail
-from traveller_world_government_detail import attach_government_detail
-from traveller_world_law_detail import attach_law_detail
-from traveller_world_tech_detail import attach_tech_detail
-from traveller_world_culture_detail import attach_culture_detail
-from traveller_world_importance import attach_importance_detail
-from traveller_map_fetch import generate_system_from_map
-from system_pipeline import PipelineOptions, run_detail_pipeline
+from traveller_gen.traveller_world_population_detail import attach_population_detail
+from traveller_gen.traveller_world_government_detail import attach_government_detail
+from traveller_gen.traveller_world_law_detail import attach_law_detail
+from traveller_gen.traveller_world_tech_detail import attach_tech_detail
+from traveller_gen.traveller_world_culture_detail import attach_culture_detail
+from traveller_gen.traveller_world_importance import attach_importance_detail
+from traveller_gen.traveller_map_fetch import generate_system_from_map
+from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline
 
 logger = logging.getLogger(__name__)
 

@@ -32,10 +32,10 @@ import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-from traveller_world_physical import WorldPhysical
+from .traveller_world_physical import WorldPhysical
 
 if TYPE_CHECKING:
-    from traveller_system_gen import TravellerSystem
+    from .traveller_system_gen import TravellerSystem
 
 _rng: random.Random = random  # type: ignore[assignment]
 

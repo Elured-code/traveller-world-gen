@@ -1,3 +1,7 @@
+# NOTE: the traveller-gen package (generation modules) is NOT listed here.
+# It is bundled directly into this directory by scripts/prepare_azure.sh via
+# `pip install --target azure-api/ .` — no registry entry is needed.
+
 # Azure Functions Python worker
 azure-functions>=1.18.0
 

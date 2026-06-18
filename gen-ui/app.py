@@ -33,9 +33,6 @@ import random
 import secrets
 import sys
 
-# Allow importing from the project root when run directly from any directory.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from PySide6.QtCore import Qt, QSettings, QThread, Signal  # noqa: E402
 from PySide6.QtGui import (  # noqa: E402
     QAction, QFontDatabase, QKeySequence, QShortcut,
@@ -65,22 +62,22 @@ from PySide6.QtWidgets import (  # noqa: E402
     QWidget,
 )
 
-from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
+from traveller_gen.system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
 
 
-from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
-from traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
-from traveller_world_gen import (  # noqa: E402
+from traveller_gen.traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
+from traveller_gen.traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
+from traveller_gen.traveller_world_gen import (  # noqa: E402
     World,
     generate_atmosphere_detail,
     generate_gas_mix,
     generate_unusual_subtype,
     generate_world,
 )
-from tables import ZONE_CSS_CLASS  # noqa: E402
-from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
-from system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
-from world_codes import APP_VERSION  # noqa: E402
+from traveller_gen.tables import ZONE_CSS_CLASS  # noqa: E402
+from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
+from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
+from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 
 try:
     import _version as _genui_ver  # noqa: E402

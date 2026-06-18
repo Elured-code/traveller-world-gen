@@ -16,11 +16,11 @@ from unittest.mock import patch
 
 import pytest
 
-from traveller_moon_gen import Moon  # pylint: disable=import-error
-from traveller_world_gen import World
+from traveller_gen.traveller_moon_gen import Moon  # pylint: disable=import-error
+from traveller_gen.traveller_world_gen import World
 
-from tables import TIDAL_STATUS_LABELS
-from traveller_world_physical import (
+from traveller_gen.tables import TIDAL_STATUS_LABELS
+from traveller_gen.traveller_world_physical import (
     WorldPhysical,
     _apply_seismic_stress,
     _compute_stellar_day,
@@ -42,7 +42,7 @@ from traveller_world_physical import (
     generate_world_physical,
     _density_resource_dm,
 )
-from traveller_world_atmosphere_detail import (
+from traveller_gen.traveller_world_atmosphere_detail import (
     RunawayGreenhouseResult,
     _axial_tilt_factor,
     _compute_mean_temperature,
@@ -258,31 +258,31 @@ class TestApplyTidalLockResult:
         assert status == "braking"
 
     def test_result_7_prograde(self):
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             day, _, status = _apply_tidal_lock_result(7, self.DAY, 15.0, self.PERIOD)
         assert day == 3 * 5 * 24
         assert status == "prograde"
 
     def test_result_8_prograde(self):
-        with patch("traveller_world_physical.random.randint", return_value=2):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=2):
             day, _, status = _apply_tidal_lock_result(8, self.DAY, 15.0, self.PERIOD)
         assert day == 2 * 20 * 24
         assert status == "prograde"
 
     def test_result_9_retrograde_tilt_flipped(self):
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             day, tilt, status = _apply_tidal_lock_result(9, self.DAY, 30.0, self.PERIOD)
         assert day == 1 * 10 * 24
         assert tilt == pytest.approx(180.0 - 30.0)
         assert status == "retrograde"
 
     def test_result_9_retrograde_tilt_unchanged_if_already_retrograde(self):
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             _, tilt, _ = _apply_tidal_lock_result(9, self.DAY, 120.0, self.PERIOD)
         assert tilt == 120.0
 
     def test_result_10_retrograde(self):
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             day, tilt, status = _apply_tidal_lock_result(10, self.DAY, 45.0, self.PERIOD)
         assert day == 1 * 50 * 24
         assert tilt == pytest.approx(180.0 - 45.0)
@@ -295,7 +295,7 @@ class TestApplyTidalLockResult:
 
     def test_result_11_axial_tilt_rerolled_when_above_3(self):
         # tilt > 3° → rerolled as (2D-2)/10; patch dice to return 4 → (4+4-2)/10=0.6
-        with patch("traveller_world_physical.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=4):
             _, tilt, _ = _apply_tidal_lock_result(11, self.DAY, 45.0, self.PERIOD)
         assert tilt == pytest.approx((4 + 4 - 2) / 10.0)
 
@@ -315,7 +315,7 @@ class TestApplyTidalLockResult:
         # Broken lock: first 2D=12 → reroll → reroll gives 2 → "none"
         roll_sequence = iter([6, 6,   # broken-lock check: 12
                               1, 1])  # reroll: 2 → "none"
-        with patch("traveller_world_physical.random.randint", side_effect=roll_sequence):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=roll_sequence):
             _, _, status = _apply_tidal_lock_result(
                 12, self.DAY, 1.0, self.PERIOD, allow_broken_check=True
             )
@@ -323,7 +323,7 @@ class TestApplyTidalLockResult:
 
     def test_broken_lock_not_12_stays_locked(self):
         # Broken lock check: 2D ≠ 12 → lock stands
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             _, _, status = _apply_tidal_lock_result(
                 12, self.DAY, 1.0, self.PERIOD, allow_broken_check=True
             )
@@ -351,7 +351,7 @@ class TestRollTidalLockStatus:
     def test_dm_ge_plus10_auto_1_1_lock(self):
         # Very close orbit (orbit_number=0.1), heavy star, old system → DM ≥ 10
         # DM: -4 + ceil(6/3)=2 + (4+floor(10×0.9))=4+9=13 + age>10=4 + star>5=2 = 17
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             _, _, status = self._call(
                 orbit_number=0.1, star_mass=6.0, age_gyr=12.0,
             )
@@ -414,21 +414,21 @@ class TestGenerateWorldPhysical:
 class TestRollAxialTilt1d:
     def test_all_bands_in_range(self):
         for band in range(1, 7):
-            with patch("traveller_world_physical.random.randint", side_effect=[band, 3, 3, 3]):
+            with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=[band, 3, 3, 3]):
                 result = _roll_axial_tilt_1d()
             assert 0.0 <= result <= 180.0
 
     def test_band_1_formula(self):
         # band=1, inner=1 → round((1-1)/50, 2) == 0.0
-        with patch("traveller_world_physical.random.randint", side_effect=[1, 1]):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=[1, 1]):
             assert _roll_axial_tilt_1d() == pytest.approx(0.0)
         # band=1, inner=6 → round((6-1)/50, 2) == 0.1
-        with patch("traveller_world_physical.random.randint", side_effect=[1, 6]):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=[1, 6]):
             assert _roll_axial_tilt_1d() == pytest.approx(0.1)
 
     def test_band_6_calls_extreme_table(self):
-        with patch("traveller_world_physical._roll_extreme_axial_tilt", return_value=137.0) as mock_ext, \
-             patch("traveller_world_physical.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_physical._roll_extreme_axial_tilt", return_value=137.0) as mock_ext, \
+             patch("traveller_gen.traveller_world_physical.random.randint", return_value=6):
             result = _roll_axial_tilt_1d()
         mock_ext.assert_called_once()
         assert result == pytest.approx(137.0)
@@ -444,7 +444,7 @@ class TestApplyTidalLockResult1dTilt:
 
     def test_result_12_axial_tilt_always_rerolled(self):
         # Even a low axial_tilt (0.5°) gets recomputed unconditionally for 1:1 lock
-        with patch("traveller_world_physical._roll_axial_tilt_1d", return_value=99.9):
+        with patch("traveller_gen.traveller_world_physical._roll_axial_tilt_1d", return_value=99.9):
             _, tilt, status = _apply_tidal_lock_result(
                 12, self.DAY, 0.5, self.PERIOD, allow_broken_check=False
             )
@@ -465,13 +465,13 @@ class TestRerollEccentricityTidal:
     def test_dm_minus2_applied(self):
         # DM=-2: force first two dice to 1 each → 1+1-2=0 → row (5,-0.001,1,1000)
         # frac = 1/1000 = 0.001; result = max(0.0, -0.001 + 0.001) = 0.0
-        with patch("traveller_world_physical.random.randint", side_effect=[1, 1, 1]):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=[1, 1, 1]):
             result = _reroll_eccentricity_tidal(2.0, 1.0)
         assert result == pytest.approx(0.0)
 
     def test_orbit_below_1_old_system_applies_extra_dm(self):
         # orbit_number=0.5, age_gyr=5.0 → dm=-3; 1+1-3=-1 → clamped to row (5,-0.001,1,1000)
-        with patch("traveller_world_physical.random.randint", side_effect=[1, 1, 1]):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=[1, 1, 1]):
             result = _reroll_eccentricity_tidal(0.5, 5.0)
         assert result == pytest.approx(0.0)
 
@@ -484,7 +484,7 @@ class TestEccentricityAdjusted:
     def test_eccentricity_adjusted_none_below_threshold(self):
         # orbit_eccentricity=0.05 (≤ 0.1) → no reroll → eccentricity_adjusted is None
         w = _World(size=3, atmosphere=0)
-        with patch("traveller_world_physical._roll_tidal_lock_status",
+        with patch("traveller_gen.traveller_world_physical._roll_tidal_lock_status",
                    return_value=(720.0, 5.0, "1:1_lock")):
             wp = generate_world_physical(
                 w, age_gyr=10.0, orbit_number=0.5, orbit_au=0.3, star_mass=0.2,
@@ -497,9 +497,9 @@ class TestEccentricityAdjusted:
         # eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
         # Force new_ecc=0.5 (> orbit_eccentricity=0.2) → adjusted=0.2
         w = _World(size=3, atmosphere=0)
-        with patch("traveller_world_physical._roll_tidal_lock_status",
+        with patch("traveller_gen.traveller_world_physical._roll_tidal_lock_status",
                    return_value=(720.0, 5.0, "1:1_lock")), \
-             patch("traveller_world_physical._reroll_eccentricity_tidal", return_value=0.5):
+             patch("traveller_gen.traveller_world_physical._reroll_eccentricity_tidal", return_value=0.5):
             wp = generate_world_physical(
                 w, age_gyr=10.0, orbit_number=0.5, orbit_au=0.3, star_mass=0.2,
                 orbit_eccentricity=0.2,
@@ -690,7 +690,7 @@ class TestRollTidalLockStatusMoons:
 
     def test_no_moons_behaves_as_before(self):
         """Result with moons=None matches result with moons=[] — no regression."""
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             r1 = _roll_tidal_lock_status(**self._KWARGS)
             r2 = _roll_tidal_lock_status(**self._KWARGS, moons=[])
         assert r1 == r2
@@ -702,7 +702,7 @@ class TestRollTidalLockStatusMoons:
         """
         moon = _make_moon(6, orbit_pd=2.0, orbit_period_hours=100.0)
         # DM for planet-to-moon: -10 + 6 (size) + 5+ceil(3*5)=20 (pd<5) = 16 → auto lock
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             result = _roll_tidal_lock_status(**self._KWARGS, moons=[moon])
         _, _, status = result
         assert status == "1:1_lock"
@@ -711,7 +711,7 @@ class TestRollTidalLockStatusMoons:
         """When moon DM == star DM, moon case is rolled first (WBH p.107)."""
         # Patch randint so first 2D roll returns 2 (no lock) — moon case tried first
         # and produces "none"; star case is then rolled and also returns "none"
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             moon = _make_moon(1, orbit_pd=30.0, orbit_period_hours=500.0)
             result = _roll_tidal_lock_status(**self._KWARGS, moons=[moon])
         _, _, status = result
@@ -751,7 +751,7 @@ class TestApplyMoonTidalEffects:
         """
         ring = _make_moon(0, is_ring=True, orbit_period_hours=50.0)
         wp = _make_wp(day_length=24.0)
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             apply_moon_tidal_effects(wp, moons=[ring], **self._KWARGS)
         assert wp.day_length != pytest.approx(50.0)
 
@@ -850,7 +850,7 @@ class TestComputeMeanTemperature:
     def test_below_10k_triggers_1d5_roll(self):
         """When extrapolated result < 10K (modified roll ≤ -34), returns 1D+5."""
         # hz_deviation=20 → orbit_dm=-42, roll=7-42=-35 → T=178+(-35)*5=3K < 10K
-        with patch("traveller_world_physical.random.randint", return_value=4) as mock_roll:
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=4) as mock_roll:
             result = _compute_mean_temperature(20.0, 0)
         mock_roll.assert_called_once_with(1, 6)
         assert result == 9  # 4 + 5
@@ -858,7 +858,7 @@ class TestComputeMeanTemperature:
     def test_1d5_result_range(self):
         """1D+5 produces values 6–11K for die results 1–6."""
         for die in range(1, 7):
-            with patch("traveller_world_physical.random.randint", return_value=die):
+            with patch("traveller_gen.traveller_world_physical.random.randint", return_value=die):
                 result = _compute_mean_temperature(20.0, 0)
             assert result == die + 5
 
@@ -869,7 +869,7 @@ class TestComputeMeanTemperature:
         # atm=10 → DM+2 → modified_roll = 7 - 44 + 2 = -35 (too low)
         # hz_deviation=19 → orbit_dm = -4 - round(18*2) = -40
         # atm=0 → DM=0 → modified_roll = 7 - 40 = -33 → T = 178 + (-33)*5 = 13K
-        with patch("traveller_world_physical.random.randint") as mock_roll:
+        with patch("traveller_gen.traveller_world_physical.random.randint") as mock_roll:
             result = _compute_mean_temperature(19.0, 0)
         mock_roll.assert_not_called()
         assert result == 13  # 178 + (-33)*5 = 13K, no 1D+5
@@ -877,7 +877,7 @@ class TestComputeMeanTemperature:
     def test_generate_world_physical_sets_mean_temperature(self):
         """mean_temperature_k is set when hz_deviation is provided."""
         world = _World(size=6, atmosphere=6)
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             wp = generate_world_physical(world, hz_deviation=0.0)
         assert wp is not None
         assert wp.mean_temperature_k == 288  # HZ world, atm 6 → roll 7 → 288K
@@ -885,7 +885,7 @@ class TestComputeMeanTemperature:
     def test_generate_world_physical_no_mean_temp_without_hz(self):
         """mean_temperature_k is None when hz_deviation is not provided."""
         world = _World(size=6, atmosphere=6)
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             wp = generate_world_physical(world)
         assert wp is not None
         assert wp.mean_temperature_k is None
@@ -893,7 +893,7 @@ class TestComputeMeanTemperature:
     def test_to_dict_includes_mean_temperature(self):
         """to_dict() emits mean_temperature_k when set."""
         world = _World(size=6, atmosphere=6)
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             wp = generate_world_physical(world, hz_deviation=0.0)
         assert wp is not None
         d = wp.to_dict()
@@ -902,7 +902,7 @@ class TestComputeMeanTemperature:
     def test_to_dict_omits_mean_temperature_when_none(self):
         """to_dict() omits mean_temperature_k when not computed."""
         world = _World(size=6, atmosphere=6)
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             wp = generate_world_physical(world)
         assert wp is not None
         assert "mean_temperature_k" not in wp.to_dict()
@@ -1151,7 +1151,7 @@ class TestApplyMoonTidalEffectsSeismic:
     def test_seismic_computed_with_no_moons(self):
         """Seismic stress is computed even when moons list is empty."""
         wp = self._make_wp()
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             apply_moon_tidal_effects(
                 wp, moons=[], world_size=6, world_atmosphere=6,
                 age_gyr=3.0, orbit_number=3.0, orbit_au=1.0,
@@ -1164,7 +1164,7 @@ class TestApplyMoonTidalEffectsSeismic:
         """is_moon=True increases RSS by applying the DM+1 bonus."""
         wp1 = self._make_wp()
         wp2 = self._make_wp()
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             apply_moon_tidal_effects(
                 wp1, moons=[], world_size=5, world_atmosphere=0,
                 age_gyr=1.0, orbit_number=3.0, orbit_au=1.0,
@@ -1566,20 +1566,20 @@ class TestRollAlbedo:
 
     def test_rocky_world_base_min(self):
         # Rocky (density>0.5); 2D-2 min=0 → 0.04+0=0.04; atm 0 no modifier; hydro 0 no modifier
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             # 2×1=2; 2-2=0; base=0.04+0×0.02=0.04; clamp min 0.02 → 0.04
             result = _roll_albedo(atmosphere=0, hydrographics=0, density=4.0, hz_deviation=0.0)
         assert result == pytest.approx(0.04, abs=1e-6)
 
     def test_rocky_world_base_max_no_modifiers(self):
         # Rocky; 2D-2 max=10; base=0.04+10×0.02=0.24; atm 0; hydro 0
-        with patch("traveller_world_physical.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=6):
             result = _roll_albedo(atmosphere=0, hydrographics=0, density=4.0, hz_deviation=0.0)
         assert result == pytest.approx(0.24, abs=1e-6)
 
     def test_icy_world_classification(self):
         # density ≤ 0.5, hz_deviation ≤ 2.0 → icy; 2D-3 min=-1 → 0.20-0.05=0.15; clamp 0.02
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             # 2×1=2; 2-3=-1; base=0.20+(-1×0.05)=0.15; atm 0; hydro 0
             result = _roll_albedo(atmosphere=0, hydrographics=0, density=0.4, hz_deviation=1.0)
         assert result == pytest.approx(0.15, abs=1e-6)
@@ -1587,36 +1587,36 @@ class TestRollAlbedo:
     def test_icy_far_world_classification(self):
         # density ≤ 0.5, hz_deviation > 2.0 → icy-far
         # 2D-2 with all-6: 12-2=10; base=0.25+10×0.07=0.95
-        with patch("traveller_world_physical.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=6):
             result = _roll_albedo(atmosphere=0, hydrographics=0, density=0.4, hz_deviation=3.0)
         assert result == pytest.approx(0.95, abs=1e-6)
 
     def test_albedo_clamped_above_0_98(self):
         # Very high rolls should be clamped to 0.98
-        with patch("traveller_world_physical.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=6):
             # Icy-far base=0.95; atm heavy (2D-2)×0.05=10×0.05=0.50 → 1.45 → clamped 0.98
             result = _roll_albedo(atmosphere=11, hydrographics=0, density=0.4, hz_deviation=3.0)
         assert result == pytest.approx(0.98, abs=1e-6)
 
     def test_albedo_clamped_below_0_02(self):
         # Very low rolls should produce at least 0.02
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             # Icy base 0.15; atm thin (2D-3)=-1×0.01=-0.01; hydro 2-5 (2D-2)=0×0.02=0
             # 0.15-0.01=0.14; still above 0.02
             result = _roll_albedo(atmosphere=1, hydrographics=3, density=0.4, hz_deviation=1.0)
         assert result >= 0.02
 
     def test_mid_atmosphere_adds_positive(self):
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             base = _roll_albedo(atmosphere=0, hydrographics=0, density=4.0, hz_deviation=0.0)
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             mid = _roll_albedo(atmosphere=6, hydrographics=0, density=4.0, hz_deviation=0.0)
         assert mid > base
 
     def test_hydro_6_plus_adds_modifier(self):
-        with patch("traveller_world_physical.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=4):
             no_hydro = _roll_albedo(atmosphere=0, hydrographics=0, density=4.0, hz_deviation=0.0)
-        with patch("traveller_world_physical.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=4):
             high_hydro = _roll_albedo(atmosphere=0, hydrographics=8, density=4.0, hz_deviation=0.0)
         # 2D-4 with die=4: 2×4-4=4; 4×0.03=0.12; so high_hydro should be > no_hydro
         assert high_hydro > no_hydro
@@ -1642,31 +1642,31 @@ class TestRollGreenhouseFactor:
 
     def test_standard_atm_positive(self):
         # Standard atm 6, pressure 1.0 bar; initial=0.5; 3D min=3 → +0.03; result≥0.53
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             result = _roll_greenhouse_factor(atmosphere=6, pressure_bar=1.0)
         assert result == pytest.approx(0.5 + 3 * 0.01, abs=1e-6)
 
     def test_standard_atm_scales_with_pressure(self):
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             low = _roll_greenhouse_factor(atmosphere=6, pressure_bar=1.0)
             high = _roll_greenhouse_factor(atmosphere=6, pressure_bar=4.0)
         assert high > low
 
     def test_exotic_atm_multiplier_clamp(self):
         # Atm 10 exotic; 1D=1 → max(0.5, 1-1)=max(0.5, 0)=0.5; initial=0.5×√1=0.5 → 0.5×0.5=0.25
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             result = _roll_greenhouse_factor(atmosphere=10, pressure_bar=1.0)
         assert result == pytest.approx(0.5 * 0.5, abs=1e-4)
 
     def test_exotic_atm_higher_die(self):
         # 1D=4 → max(0.5, 4-1)=max(0.5, 3)=3; initial=0.5; result=0.5×3=1.5
-        with patch("traveller_world_physical.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=4):
             result = _roll_greenhouse_factor(atmosphere=10, pressure_bar=1.0)
         assert result == pytest.approx(0.5 * 3.0, abs=1e-4)
 
     def test_extreme_atm_die_1_to_5(self):
         # Atm 11 extreme; 1D=3 → multiplier=3; initial=0.5; result=0.5×3=1.5
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             result = _roll_greenhouse_factor(atmosphere=11, pressure_bar=1.0)
         assert result == pytest.approx(0.5 * 3.0, abs=1e-4)
 
@@ -1674,21 +1674,21 @@ class TestRollGreenhouseFactor:
         # 1D=6 → multiplier=3D=3×6=18; initial=0.5; result=0.5×18=9.0
         def _seq_randint(*_args):
             return 6
-        with patch("traveller_world_physical.random.randint", side_effect=_seq_randint):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=_seq_randint):
             result = _roll_greenhouse_factor(atmosphere=11, pressure_bar=1.0)
         # 3D with all 6 → 18
         assert result == pytest.approx(0.5 * 18.0, abs=1e-4)
 
     def test_atm_14_is_standard(self):
         # Atm 14 (Low) is in _ATM_GH_STANDARD
-        with patch("traveller_world_physical.random.randint", return_value=2):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=2):
             result = _roll_greenhouse_factor(atmosphere=14, pressure_bar=1.0)
         assert result > 0.0
         # Should equal initial + 3D×0.01 = 0.5 + 6×0.01 = 0.56
         assert result == pytest.approx(0.5 + 6 * 0.01, abs=1e-6)
 
     def test_atm_13_very_dense_standard(self):
-        with patch("traveller_world_physical.random.randint", return_value=2):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=2):
             result = _roll_greenhouse_factor(atmosphere=13, pressure_bar=10.0)
         # initial = 0.5 × √10 ≈ 1.5811; + 6×0.01 = 1.6411
         assert result == pytest.approx(0.5 * math.sqrt(10.0) + 6 * 0.01, abs=1e-4)
@@ -1789,7 +1789,7 @@ class TestGenerateAdvancedMeanTemperature:
             assert (wp.greenhouse_factor or 0.0) >= 0.0
 
     def test_vacuum_atmosphere_zero_greenhouse(self):
-        with patch("traveller_world_physical.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=3):
             wp = self._run(atmosphere=0, pressure_bar=0.0, luminosity=1.0, orbit_au=1.0)
         assert wp.greenhouse_factor == 0.0
 
@@ -2099,7 +2099,7 @@ class TestStellarDayIntegration:
         # Force 1:1 tidal lock by making _roll_tidal_lock_status return that status
         w = _World(size=6, atmosphere=0)
         t_orb = round((1.0 ** 1.5) * 8766.0, 1)
-        with patch("traveller_world_physical._roll_tidal_lock_status",
+        with patch("traveller_gen.traveller_world_physical._roll_tidal_lock_status",
                    return_value=(t_orb, 0.0, "1:1_lock")):
             wp = generate_world_physical(
                 w, age_gyr=5.0,
@@ -2156,7 +2156,7 @@ class TestCheckRunawayGreenhouse:
 
     def test_roll_attempted_when_temp_304(self):
         """304 K is the minimum that triggers the check."""
-        with patch("traveller_world_physical.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=6):
             # 2×6=12, age DM +ceil(5.0)=+5, temp DM +(304-303)//10=0 → 17 ≥ 12
             result = check_runaway_greenhouse(6, 304, 5.0, 6)
         assert result is not None
@@ -2167,28 +2167,28 @@ class TestCheckRunawayGreenhouse:
         """Age 3.1 Gyr → DM+4 (ceil), not DM+3 (floor)."""
         # Force 2D to return 2 (minimum). Need dm_age + dm_temp ≥ 10 to hit 12.
         # dm_temp = (323-303)//10 = 2. So we need dm_age ≥ 8. Use age 7.1 → ceil=8.
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             # 2×1=2, dm_age=ceil(7.1)=8, dm_temp=(323-303)//10=2 → 12: runaway
             result = check_runaway_greenhouse(6, 323, 7.1, 6)
         assert result is not None
 
     def test_dm_age_exact_integer(self):
         """Age exactly 5.0 Gyr → DM+5 (ceil(5.0)=5)."""
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             # 2, dm_age=5, dm_temp=(313-303)//10=1 → 8: no runaway
             result = check_runaway_greenhouse(6, 313, 5.0, 6)
         assert result is None
 
     def test_dm_temp_floor_division(self):
         """DM+1 per full 10 K above 303: 312 K → DM+0 (not DM+1)."""
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             # 2, dm_age=1(ceil 0.5), dm_temp=(312-303)//10=0 → 3: no runaway
             result = check_runaway_greenhouse(6, 312, 0.5, 6)
         assert result is None
 
     def test_dm_temp_exact_10_above(self):
         """313 K is exactly 10 above 303 → DM+1."""
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             # 2, dm_age=ceil(0.1)=1, dm_temp=1 → 4: no runaway
             result = check_runaway_greenhouse(6, 313, 0.1, 6)
         assert result is None
@@ -2198,14 +2198,14 @@ class TestCheckRunawayGreenhouse:
     def test_roll_below_12_no_runaway(self):
         """Ensure that a combined total of 11 returns None."""
         # Set 2D to return 2 (1+1), age=4.5→dm_age=5, temp=303+40→dm_temp=4 → 11
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             result = check_runaway_greenhouse(6, 343, 4.5, 6)
         # 2 + 5 + 4 = 11 → no runaway
         assert result is None
 
     def test_roll_exactly_12_triggers_runaway(self):
         """Combined total of exactly 12 → runaway."""
-        with patch("traveller_world_physical.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=1):
             # 2 + ceil(5.0)=5 + (353-303)//10=5 = 12 → runaway
             result = check_runaway_greenhouse(6, 353, 5.0, 6)
         assert result is not None
@@ -2214,7 +2214,7 @@ class TestCheckRunawayGreenhouse:
 
     @pytest.mark.parametrize("atm", [10, 11, 12, 15])
     def test_already_abc_f_no_new_atmosphere(self, atm):
-        with patch("traveller_world_physical.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_physical.random.randint", return_value=6):
             result = check_runaway_greenhouse(atm, 400, 5.0, 6)
         assert result is not None
         assert result.new_atmosphere is None
@@ -2225,7 +2225,7 @@ class TestCheckRunawayGreenhouse:
         """1D result ≤ 1 → A (10)."""
         # Force 2D part to ensure runaway (both 6), then 1D forced to 1
         rolls = iter([6, 6, 1])
-        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=rolls):
             result = check_runaway_greenhouse(6, 400, 0.1, 6)
         assert result is not None
         assert result.new_atmosphere == 10
@@ -2233,7 +2233,7 @@ class TestCheckRunawayGreenhouse:
     def test_new_atm_die_3_gives_corrosive(self):
         """1D result 2–4 → B (11)."""
         rolls = iter([6, 6, 3])
-        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=rolls):
             result = check_runaway_greenhouse(6, 400, 0.1, 6)
         assert result is not None
         assert result.new_atmosphere == 11
@@ -2241,7 +2241,7 @@ class TestCheckRunawayGreenhouse:
     def test_new_atm_die_6_gives_insidious(self):
         """1D result ≥ 5 → C (12)."""
         rolls = iter([6, 6, 6])
-        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=rolls):
             result = check_runaway_greenhouse(6, 400, 0.1, 6)
         assert result is not None
         assert result.new_atmosphere == 12
@@ -2249,7 +2249,7 @@ class TestCheckRunawayGreenhouse:
     def test_size_dm_minus2_biases_toward_a(self):
         """Size 3 (2–5 range) applies DM-2: die 3 → adjusted 1 → A."""
         rolls = iter([6, 6, 3])
-        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=rolls):
             result = check_runaway_greenhouse(6, 400, 0.1, 3)
         assert result is not None
         assert result.new_atmosphere == 10  # 3 + (-2) = 1 → A
@@ -2257,7 +2257,7 @@ class TestCheckRunawayGreenhouse:
     def test_tainted_atm_dm_plus1_biases_toward_c(self):
         """Tainted Atm 7 (tainted) applies DM+1: die 4 → adjusted 5 → C."""
         rolls = iter([6, 6, 4])
-        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=rolls):
             result = check_runaway_greenhouse(7, 400, 0.1, 6)
         assert result is not None
         assert result.new_atmosphere == 12  # 4 + 1 = 5 → C
@@ -2265,7 +2265,7 @@ class TestCheckRunawayGreenhouse:
     def test_d_atmosphere_gets_new_code(self):
         """Atm D (13) → code changes on runaway."""
         rolls = iter([6, 6, 3])
-        with patch("traveller_world_physical.random.randint", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_physical.random.randint", side_effect=rolls):
             result = check_runaway_greenhouse(13, 400, 0.1, 6)
         assert result is not None
         assert result.new_atmosphere == 11  # die 3 → B

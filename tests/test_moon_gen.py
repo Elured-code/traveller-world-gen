@@ -16,7 +16,7 @@ Tests cover:
 from unittest.mock import patch
 import pytest
 
-from traveller_moon_gen import (  # pylint: disable=import-error
+from traveller_gen.traveller_moon_gen import (  # pylint: disable=import-error
     generate_moons,
     _hill_sphere_au,
     _hill_sphere_pd,
@@ -67,10 +67,10 @@ class TestMoonRemoval:
 
     def test_no_moons_or_rings_when_hill_pd_below_0_5(self):
         """hill_pd=0.4 → moon_limit=0 → everything removed."""
-        with patch("traveller_moon_gen._moon_quantity", return_value=1), \
-             patch("traveller_moon_gen._hill_sphere_pd", return_value=0.4), \
-             patch("traveller_moon_gen._hill_sphere_au", return_value=1.0), \
-             patch("traveller_moon_gen.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_moon_gen._moon_quantity", return_value=1), \
+             patch("traveller_gen.traveller_moon_gen._hill_sphere_pd", return_value=0.4), \
+             patch("traveller_gen.traveller_moon_gen._hill_sphere_au", return_value=1.0), \
+             patch("traveller_gen.traveller_moon_gen.random.randint", return_value=3):
             result = generate_moons(
                 size_code=5, orbit_number=2.0,
                 orbit_au=1.0, star_mass_solar=1.0,
@@ -79,10 +79,10 @@ class TestMoonRemoval:
 
     def test_moon_becomes_ring_when_hill_moon_limit_is_1(self):
         """hill_pd=2.5 → moon_limit=1; one sig moon is converted to a ring."""
-        with patch("traveller_moon_gen._moon_quantity", return_value=1), \
-             patch("traveller_moon_gen._hill_sphere_pd", return_value=2.5), \
-             patch("traveller_moon_gen._hill_sphere_au", return_value=1.0), \
-             patch("traveller_moon_gen.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_moon_gen._moon_quantity", return_value=1), \
+             patch("traveller_gen.traveller_moon_gen._hill_sphere_pd", return_value=2.5), \
+             patch("traveller_gen.traveller_moon_gen._hill_sphere_au", return_value=1.0), \
+             patch("traveller_gen.traveller_moon_gen.random.randint", return_value=3):
             moons = generate_moons(
                 size_code=5, orbit_number=2.0,
                 orbit_au=1.0, star_mass_solar=1.0,
@@ -92,9 +92,9 @@ class TestMoonRemoval:
 
     def test_ring_survives_when_hill_moon_limit_is_1(self):
         """hill_pd=2.5 → moon_limit=1; a pre-existing ring survives."""
-        with patch("traveller_moon_gen._moon_quantity", return_value=0), \
-             patch("traveller_moon_gen._hill_sphere_pd", return_value=2.5), \
-             patch("traveller_moon_gen._hill_sphere_au", return_value=1.0):
+        with patch("traveller_gen.traveller_moon_gen._moon_quantity", return_value=0), \
+             patch("traveller_gen.traveller_moon_gen._hill_sphere_pd", return_value=2.5), \
+             patch("traveller_gen.traveller_moon_gen._hill_sphere_au", return_value=1.0):
             moons = generate_moons(
                 size_code=5, orbit_number=2.0,
                 orbit_au=1.0, star_mass_solar=1.0,
@@ -133,32 +133,32 @@ class TestOrbitRolling:
 
     def test_inner_range_result(self):
         """1D=1 → inner; 2D=12 (r2d=10); formula: 10×60÷60+2 = 12.0 PD."""
-        with patch("traveller_moon_gen.random.randint", return_value=1), \
-             patch("traveller_moon_gen._roll", return_value=12):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=1), \
+             patch("traveller_gen.traveller_moon_gen._roll", return_value=12):
             pd, rng = _roll_moon_pd(60)
         assert rng == "inner"
         assert pd == 12.0
 
     def test_middle_range_result(self):
         """1D=4 → middle; 2D=12 (r2d=10); MOR=60: 10×2+10+3 = 33.0 PD."""
-        with patch("traveller_moon_gen.random.randint", return_value=4), \
-             patch("traveller_moon_gen._roll", return_value=12):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=4), \
+             patch("traveller_gen.traveller_moon_gen._roll", return_value=12):
             pd, rng = _roll_moon_pd(60)
         assert rng == "middle"
         assert pd == 33.0
 
     def test_outer_range_result(self):
         """1D=6 → outer; 2D=12 (r2d=10); MOR=60: 10×3+30+4 = 64.0 PD."""
-        with patch("traveller_moon_gen.random.randint", return_value=6), \
-             patch("traveller_moon_gen._roll", return_value=12):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6), \
+             patch("traveller_gen.traveller_moon_gen._roll", return_value=12):
             pd, rng = _roll_moon_pd(60)
         assert rng == "outer"
         assert pd == 64.0
 
     def test_dm1_shifts_range_toward_inner_when_mor_lt_60(self):
         """MOR=30 → DM+1; natural roll=3 becomes effective 4 → middle range."""
-        with patch("traveller_moon_gen.random.randint", return_value=3), \
-             patch("traveller_moon_gen._roll", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=3), \
+             patch("traveller_gen.traveller_moon_gen._roll", return_value=6):
             _, rng = _roll_moon_pd(30)
         assert rng == "middle"
 
@@ -190,21 +190,21 @@ class TestRingPlacement:
 
     def test_ring_centre_formula(self):
         """roll(2)=8 → centre=0.4+1.0=1.4; roll(3)=6 → span=0.06+0.07=0.13."""
-        with patch("traveller_moon_gen._roll", side_effect=[8, 6]):
+        with patch("traveller_gen.traveller_moon_gen._roll", side_effect=[8, 6]):
             centre, span = _place_ring(12800.0)
         assert centre == pytest.approx(1.4, abs=0.001)
         assert span == pytest.approx(0.13, abs=0.001)
 
     def test_ring_span_formula(self):
         """roll(2)=10 → centre=0.4+1.25=1.65; roll(3)=10 → span=0.10+0.07=0.17."""
-        with patch("traveller_moon_gen._roll", side_effect=[10, 10]):
+        with patch("traveller_gen.traveller_moon_gen._roll", side_effect=[10, 10]):
             centre, span = _place_ring(12800.0)
         assert centre == pytest.approx(1.65, abs=0.001)
         assert span == pytest.approx(0.17, abs=0.001)
 
     def test_inner_edge_clamp(self):
         """roll(2)=2 (naive centre=0.65), roll(3)=18 (span=0.25): inner edge 0.525 → clamped."""
-        with patch("traveller_moon_gen._roll", side_effect=[2, 18]):
+        with patch("traveller_gen.traveller_moon_gen._roll", side_effect=[2, 18]):
             centre, span = _place_ring(12800.0)
         assert centre - span / 2.0 >= 0.549  # innermost edge ≥ 0.55 PD
 
@@ -262,20 +262,20 @@ class TestMoonQuantityAdjacencyDMs:
 
     def test_no_dm_baseline(self):
         """Without any adjacency condition, DM is 0 (no penalty)."""
-        with patch("traveller_moon_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6):
             result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M")
         assert result == 4  # 2D-8 with both dice=6 → 12-8=4
 
     def test_dm_orbit_below_one(self):
         """Orbit# < 1.0 applies DM-1 per die (already implemented; regression guard)."""
-        with patch("traveller_moon_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6):
             result = _moon_quantity(8, orbit_number=0.5, is_gas_giant=False, gg_category="M")
         assert result == 2  # 12 - 2(dm) - 8 = 2
 
     def test_dm_companion_exclusion_zone(self):
         """Orbit inside a companion exclusion zone applies DM-1 per die."""
         zones = [(2.0, 6.0)]   # orbit 3.0 is inside
-        with patch("traveller_moon_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6):
             result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
                                     companion_exclusion_zones=zones)
         assert result == 2
@@ -283,28 +283,28 @@ class TestMoonQuantityAdjacencyDMs:
     def test_no_dm_outside_exclusion_zone(self):
         """Orbit outside all exclusion zones gets no DM."""
         zones = [(5.0, 9.0)]   # orbit 3.0 is outside
-        with patch("traveller_moon_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6):
             result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
                                     companion_exclusion_zones=zones)
         assert result == 4
 
     def test_dm_adjacent_to_mao(self):
         """Orbit within 1.0 of host star MAO applies DM-1 per die."""
-        with patch("traveller_moon_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6):
             result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
                                     star_mao=3.5)   # |3.0 - 3.5| = 0.5 ≤ 1.0
         assert result == 2
 
     def test_no_dm_far_from_mao(self):
         """Orbit more than 1.0 from MAO gets no DM from MAO condition."""
-        with patch("traveller_moon_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6):
             result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
                                     star_mao=5.0)   # |3.0 - 5.0| = 2.0 > 1.0
         assert result == 4
 
     def test_dm_adjacent_outermost_far(self):
         """is_adjacent_outermost_far=True applies DM-1 per die."""
-        with patch("traveller_moon_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6):
             result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
                                     is_adjacent_outermost_far=True)
         assert result == 2
@@ -312,7 +312,7 @@ class TestMoonQuantityAdjacencyDMs:
     def test_only_one_dm_applies(self):
         """When multiple conditions are true, DM is still only -1 per die (not stacked)."""
         zones = [(2.0, 6.0)]
-        with patch("traveller_moon_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_moon_gen.random.randint", return_value=6):
             result = _moon_quantity(8, orbit_number=3.0, is_gas_giant=False, gg_category="M",
                                     companion_exclusion_zones=zones,
                                     star_mao=3.5,
@@ -403,8 +403,8 @@ class TestMoonEccentricityInclination:
         import random as _r
         _r.seed(9)  # seed giving at least one sig moon for size-8 at 1.5 AU
         with (
-            patch("traveller_moon_gen.roll_eccentricity", return_value=0.35),
-            patch("traveller_moon_gen.roll_inclination", return_value=0.0),
+            patch("traveller_gen.traveller_moon_gen.roll_eccentricity", return_value=0.35),
+            patch("traveller_gen.traveller_moon_gen.roll_inclination", return_value=0.0),
         ):
             moons = generate_moons(
                 size_code=8, orbit_number=3.0,
@@ -422,8 +422,8 @@ class TestMoonEccentricityInclination:
         import random as _r
         _r.seed(9)
         with (
-            patch("traveller_moon_gen.roll_eccentricity", return_value=0.0),
-            patch("traveller_moon_gen.roll_inclination", return_value=45.0),
+            patch("traveller_gen.traveller_moon_gen.roll_eccentricity", return_value=0.0),
+            patch("traveller_gen.traveller_moon_gen.roll_inclination", return_value=45.0),
         ):
             moons = generate_moons(
                 size_code=8, orbit_number=3.0,
@@ -441,8 +441,8 @@ class TestMoonEccentricityInclination:
         import random as _r
         _r.seed(9)
         with (
-            patch("traveller_moon_gen.roll_eccentricity", return_value=0.0),
-            patch("traveller_moon_gen.roll_inclination", return_value=0.0),
+            patch("traveller_gen.traveller_moon_gen.roll_eccentricity", return_value=0.0),
+            patch("traveller_gen.traveller_moon_gen.roll_inclination", return_value=0.0),
         ):
             moons = generate_moons(
                 size_code=8, orbit_number=3.0,
@@ -478,9 +478,9 @@ class TestPerigeeRocheCheck:
         import random as _r
         _r.seed(1)
         with (
-            patch("traveller_moon_gen._roll_moon_pd", return_value=(2.5, "inner")),
-            patch("traveller_moon_gen.roll_eccentricity", return_value=0.4),
-            patch("traveller_moon_gen.roll_inclination", return_value=10.0),
+            patch("traveller_gen.traveller_moon_gen._roll_moon_pd", return_value=(2.5, "inner")),
+            patch("traveller_gen.traveller_moon_gen.roll_eccentricity", return_value=0.4),
+            patch("traveller_gen.traveller_moon_gen.roll_inclination", return_value=10.0),
         ):
             moons = generate_moons(
                 size_code=0, orbit_number=4.0,
@@ -501,9 +501,9 @@ class TestPerigeeRocheCheck:
         import random as _r
         _r.seed(1)
         with (
-            patch("traveller_moon_gen._roll_moon_pd", return_value=(4.0, "inner")),
-            patch("traveller_moon_gen.roll_eccentricity", return_value=0.4),
-            patch("traveller_moon_gen.roll_inclination", return_value=5.0),
+            patch("traveller_gen.traveller_moon_gen._roll_moon_pd", return_value=(4.0, "inner")),
+            patch("traveller_gen.traveller_moon_gen.roll_eccentricity", return_value=0.4),
+            patch("traveller_gen.traveller_moon_gen.roll_inclination", return_value=5.0),
         ):
             moons = generate_moons(
                 size_code=0, orbit_number=4.0,

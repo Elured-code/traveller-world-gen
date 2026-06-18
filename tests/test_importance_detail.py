@@ -1,7 +1,7 @@
 """Tests for traveller_world_importance — world importance calculation."""
 
 import pytest
-from traveller_world_importance import WorldImportance, generate_importance_detail
+from traveller_gen.traveller_world_importance import WorldImportance, generate_importance_detail
 
 
 # ---------------------------------------------------------------------------
@@ -377,7 +377,7 @@ class TestInfrastructureFactor:
 
 class TestResourceUnits:
     def _ru(self, rf=5, lf=6, inf=4, ef=2):
-        from traveller_world_importance import compute_resource_units
+        from traveller_gen.traveller_world_importance import compute_resource_units
         return compute_resource_units(
             resource_factor=rf, labour_factor=lf,
             infrastructure_factor=inf, efficiency_factor=ef,
@@ -419,7 +419,7 @@ class TestResourceUnits:
 
 class TestGwpBase:
     def _base(self, inf, rf):
-        from traveller_world_importance import compute_gwp_base
+        from traveller_gen.traveller_world_importance import compute_gwp_base
         return compute_gwp_base(infrastructure_factor=inf, resource_factor=rf)
 
     def test_book_example_if6_rf7(self):
@@ -460,7 +460,7 @@ class TestGwpBase:
 class TestComputeGwp:
     def _gwp(self, population=7, starport="C", tech_level=10,
              government=4, trade_codes=None, gwp_base=6, efficiency_factor=2):
-        from traveller_world_importance import compute_gwp
+        from traveller_gen.traveller_world_importance import compute_gwp
         return compute_gwp(
             population=population, starport=starport, tech_level=tech_level,
             government=government, trade_codes=trade_codes or [],
@@ -468,7 +468,7 @@ class TestComputeGwp:
         )
 
     def test_pop_0_returns_zeros(self):
-        from traveller_world_importance import compute_gwp
+        from traveller_gen.traveller_world_importance import compute_gwp
         pc, mcr = compute_gwp(0, "A", 12, 4, [], 6, 3)
         assert pc == 0
         assert mcr == 0.0
@@ -524,7 +524,7 @@ class TestComputeGwp:
 
 class TestDevelopmentScore:
     def _ds(self, gwp_per_capita, inequality_rating=0):
-        from traveller_world_importance import compute_development_score
+        from traveller_gen.traveller_world_importance import compute_development_score
         return compute_development_score(gwp_per_capita, inequality_rating)
 
     def test_zero_ir_equals_gwp_over_1000(self):
@@ -559,7 +559,7 @@ class TestDevelopmentScore:
 
 class TestEconomicsProfile:
     def _ep(self, rf=7, lf=6, inf=5, ef=2):
-        from traveller_world_importance import compute_economics_profile
+        from traveller_gen.traveller_world_importance import compute_economics_profile
         return compute_economics_profile(
             resource_factor=rf, labour_factor=lf,
             infrastructure_factor=inf, efficiency_factor=ef,
@@ -595,7 +595,7 @@ class TestEconomicsProfile:
         assert wi.economics_profile is None
 
     def test_round_trip(self):
-        from traveller_world_importance import WorldImportance
+        from traveller_gen.traveller_world_importance import WorldImportance
         wi = WorldImportance.from_dict({"importance": 1, "economics_profile": "765+2"})
         assert wi.economics_profile == "765+2"
         assert wi.to_dict()["economics_profile"] == "765+2"
@@ -610,7 +610,7 @@ class TestEfficiencyFactor:
 
     def _ef(self, population=7, government=4, law_level=3,
             pcr=5, progressiveness=6, expansionism=6, rng=None):
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         import random as _random
         r = rng or _random.Random(1)
         return compute_efficiency_factor(
@@ -621,12 +621,12 @@ class TestEfficiencyFactor:
         )
 
     def test_pop_0_returns_minus_5(self):
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         assert compute_efficiency_factor(0, 4, 3, 5, 6, 6) == -5
 
     def test_result_never_zero(self):
         import random as _random
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         for seed in range(200):
             r = _random.Random(seed)
             ef = compute_efficiency_factor(5, 4, 3, 5, 6, 6, rng=r)
@@ -634,7 +634,7 @@ class TestEfficiencyFactor:
 
     def test_result_in_range(self):
         import random as _random
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         for seed in range(200):
             r = _random.Random(seed)
             ef = compute_efficiency_factor(7, 4, 3, 5, 6, 6, rng=r)
@@ -642,7 +642,7 @@ class TestEfficiencyFactor:
 
     def test_gov_minus_set_lowers_dm(self):
         import random as _random
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         rng = _random.Random(42)
         # Government 0 → DM-1 (minus set)
         ef_0  = compute_efficiency_factor(7, 0,  3, 5, 6, 6, rng=_random.Random(42))
@@ -653,14 +653,14 @@ class TestEfficiencyFactor:
 
     def test_gov_not_in_any_set_gives_no_dm(self):
         import random as _random
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         # Government 7 (Balkanization) is in neither set — no DM
         ef_7 = compute_efficiency_factor(7, 7, 3, 5, 6, 6, rng=_random.Random(42))
         assert -5 <= ef_7 <= 5  # in range; value itself not deterministic without RNG control
 
     def test_low_law_level_adds_one(self):
         import random as _random
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         # Law 4 (+1 DM) vs law 5 (no DM), same RNG
         ef_low  = compute_efficiency_factor(7, 7, 4, 5, 6, 6, rng=_random.Random(99))
         ef_mid  = compute_efficiency_factor(7, 7, 5, 5, 6, 6, rng=_random.Random(99))
@@ -668,7 +668,7 @@ class TestEfficiencyFactor:
 
     def test_high_law_level_subtracts_one(self):
         import random as _random
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         # Law 10+ (−1 DM) vs law 5 (no DM)
         ef_hi  = compute_efficiency_factor(7, 7, 10, 5, 6, 6, rng=_random.Random(99))
         ef_mid = compute_efficiency_factor(7, 7, 5,  5, 6, 6, rng=_random.Random(99))
@@ -676,14 +676,14 @@ class TestEfficiencyFactor:
 
     def test_high_progressiveness_adds_one(self):
         import random as _random
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         ef_high = compute_efficiency_factor(7, 7, 5, 5, 9,  6, rng=_random.Random(99))
         ef_mid  = compute_efficiency_factor(7, 7, 5, 5, 6,  6, rng=_random.Random(99))
         assert ef_high >= ef_mid
 
     def test_low_expansionism_subtracts_one(self):
         import random as _random
-        from traveller_world_importance import compute_efficiency_factor
+        from traveller_gen.traveller_world_importance import compute_efficiency_factor
         ef_low = compute_efficiency_factor(7, 7, 5, 5, 6, 2, rng=_random.Random(99))
         ef_mid = compute_efficiency_factor(7, 7, 5, 5, 6, 6, rng=_random.Random(99))
         assert ef_low <= ef_mid
@@ -693,7 +693,7 @@ class TestEfficiencyFactor:
         assert wi.efficiency_factor is None
 
     def test_round_trip_with_efficiency_factor(self):
-        from traveller_world_importance import WorldImportance
+        from traveller_gen.traveller_world_importance import WorldImportance
         wi = WorldImportance(
             importance=2, starport_dm=1, population_dm=0, tech_dm=1,
             agricultural_dm=0, industrial_dm=0, rich_dm=0,
@@ -713,7 +713,7 @@ class TestEfficiencyFactor:
         assert restored.gwp_total_mcr == 240000.0
 
     def test_round_trip_efficiency_factor_absent(self):
-        from traveller_world_importance import WorldImportance
+        from traveller_gen.traveller_world_importance import WorldImportance
         wi = WorldImportance.from_dict({"importance": 1})
         assert wi.efficiency_factor is None
         assert wi.resource_units is None

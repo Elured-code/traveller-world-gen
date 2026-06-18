@@ -45,9 +45,9 @@ import random
 _rng: random.Random = random  # type: ignore[assignment]
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
-from traveller_stellar_gen import Star, StarSystem, _orbit_to_au, ORBIT_AU
+from .traveller_stellar_gen import Star, StarSystem, _orbit_to_au, ORBIT_AU
 if TYPE_CHECKING:
-    from traveller_world_detail import WorldDetail
+    from .traveller_world_detail import WorldDetail
 
 
 def roll(n: int, dm: int = 0) -> int:
@@ -365,7 +365,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
         slot.name = str(d.get("name", ""))
         detail_d = d.get("detail")
         if detail_d:
-            from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+            from .traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
             slot.detail = WorldDetail.from_dict(detail_d)
         return slot
 
@@ -996,7 +996,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
 def generate_full_system(seed=None, orbital_eccentricity: bool = False,
                          orbital_inclination: bool = False):
     """Generate a stellar system with orbits, optionally seeding the RNG."""
-    from traveller_stellar_gen import generate_stellar_data  # pylint: disable=import-outside-toplevel
+    from .traveller_stellar_gen import generate_stellar_data  # pylint: disable=import-outside-toplevel
     rng = random.Random(seed) if seed is not None else None
     system = generate_stellar_data(rng=rng)
     orbits = generate_orbits(system, rng=rng, orbital_eccentricity=orbital_eccentricity,

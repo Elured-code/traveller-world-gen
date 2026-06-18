@@ -646,7 +646,7 @@ class TestResponseSchema:
     These tests use jsonschema if installed; they skip gracefully if not.
     """
 
-    SCHEMA_PATH = os.path.join(PROJECT_ROOT, "traveller_world_schema.json")
+    SCHEMA_PATH = os.path.join(PROJECT_ROOT, "src", "traveller_gen", "traveller_world_schema.json")
 
     @classmethod
     def _schema(cls):
@@ -746,16 +746,16 @@ class TestDeterminism:
         ]
 
         rng = random.Random(seed)
-        from traveller_world_gen import (  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import (  # pylint: disable=import-outside-toplevel
             generate_world as _gen,
             generate_atmosphere_detail as _gen_atm,
             generate_gas_mix as _gen_gas,
             generate_unusual_subtype as _gen_unusual,
         )
-        from traveller_world_physical import (  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_physical import (  # pylint: disable=import-outside-toplevel
             generate_world_physical as _gen_phys,
         )
-        from traveller_hydro_detail import (  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_hydro_detail import (  # pylint: disable=import-outside-toplevel
             generate_hydrographic_detail as _gen_hydro,
         )
         sequential_uwps = []
@@ -817,7 +817,7 @@ class TestGenerateWorldCard:
 
     def test_tl_era_correct_in_html(self):
         """TL era labels in the card must match rulebook definitions."""
-        from traveller_world_gen import World  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import World  # pylint: disable=import-outside-toplevel
         w8 = World(name="T", starport="C", size=5, atmosphere=6,
                    temperature="Temperate", hydrographics=5, population=5,
                    government=4, law_level=3, tech_level=8)

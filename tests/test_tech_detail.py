@@ -23,9 +23,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from traveller_system_gen import generate_full_system
-from traveller_world_detail import attach_detail
-from traveller_world_tech_detail import (
+from traveller_gen.traveller_system_gen import generate_full_system
+from traveller_gen.traveller_world_detail import attach_detail
+from traveller_gen.traveller_world_tech_detail import (
     TechDetail,
     generate_tech_detail,
     attach_tech_detail,

@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from traveller_system_gen import TravellerSystem
+    from .traveller_system_gen import TravellerSystem
 
 _rng: random.Random = random  # type: ignore[assignment]
 

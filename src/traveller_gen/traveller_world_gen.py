@@ -42,26 +42,26 @@ import argparse
 from dataclasses import dataclass, field
 from typing import List, Optional, Union, TYPE_CHECKING
 
-from traveller_belt_physical import BeltPhysical
-from traveller_hydro_detail import HydrographicDetail
-from html_render import render
-from world_codes import (
+from .traveller_belt_physical import BeltPhysical
+from .traveller_hydro_detail import HydrographicDetail
+from .html_render import render
+from .world_codes import (
     APP_VERSION, AtmosphereCode, StarportCode, TemperatureCategory, TradeCode, TravelZone,
 )
-from tables import (
+from .tables import (
     SIZE_DIAMETER_LABEL, SIZE_GRAVITY_LABEL, POPULATION_RANGE,
     TRADE_CODE_FULL, BASE_FULL, ZONE_CSS_CLASS, TIDAL_STATUS_LABELS,
     BIOCOMPLEXITY_DESC, habitability_description,
 )
 
 if TYPE_CHECKING:
-    from traveller_world_physical import WorldPhysical
-    from traveller_world_population_detail import PopulationDetail
-    from traveller_world_government_detail import GovernmentDetail
-    from traveller_world_law_detail import LawDetail
-    from traveller_world_tech_detail import TechDetail
-    from traveller_world_culture_detail import CultureDetail
-    from traveller_world_importance import WorldImportance
+    from .traveller_world_physical import WorldPhysical
+    from .traveller_world_population_detail import PopulationDetail
+    from .traveller_world_government_detail import GovernmentDetail
+    from .traveller_world_law_detail import LawDetail
+    from .traveller_world_tech_detail import TechDetail
+    from .traveller_world_culture_detail import CultureDetail
+    from .traveller_world_importance import WorldImportance
 
 
 # ---------------------------------------------------------------------------
@@ -1842,7 +1842,7 @@ class World:  # pylint: disable=too-many-instance-attributes
         sd = d.get("size_detail")
         if sd:
             if "composition" in sd:
-                from traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
+                from .traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
                 world.size_detail = WorldPhysical.from_dict(sd)
             else:
                 world.size_detail = BeltPhysical.from_dict(sd)
@@ -1863,22 +1863,22 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("seed") is not None:
             world.seed = int(d["seed"])
         if d.get("population_detail") is not None:
-            from traveller_world_population_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_population_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
             world.population_detail = _PD.from_dict(d["population_detail"])
         if d.get("government_detail") is not None:
-            from traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
             world.government_detail = _GD.from_dict(d["government_detail"])
         if d.get("law_detail") is not None:
-            from traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
             world.law_detail = _LD.from_dict(d["law_detail"])
         if d.get("tech_detail") is not None:
-            from traveller_world_tech_detail import TechDetail as _TD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_tech_detail import TechDetail as _TD  # pylint: disable=import-outside-toplevel
             world.tech_detail = _TD.from_dict(d["tech_detail"])
         if d.get("culture_detail") is not None:
-            from traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
             world.culture_detail = _CD.from_dict(d["culture_detail"])
         if d.get("importance_detail") is not None:
-            from traveller_world_importance import WorldImportance as _WI  # pylint: disable=import-outside-toplevel
+            from .traveller_world_importance import WorldImportance as _WI  # pylint: disable=import-outside-toplevel
             world.importance_detail = _WI.from_dict(d["importance_detail"])
 
         return world

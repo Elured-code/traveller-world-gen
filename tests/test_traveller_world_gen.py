@@ -50,7 +50,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # sys.path is configured by conftest.py — no manual insert needed here
 
-from traveller_world_gen import (
+from traveller_gen.traveller_world_gen import (
     roll,
     to_hex,
     starport_class_from_roll,
@@ -128,8 +128,8 @@ from traveller_world_gen import (
     _SETTLEMENT_DMS,
     _SETTLEMENT_DEFAULT_DM,
 )
-from traveller_system_gen import generate_full_system, select_mainworld, attach_body_names
-from traveller_world_population_detail import (
+from traveller_gen.traveller_system_gen import generate_full_system, select_mainworld, attach_body_names
+from traveller_gen.traveller_world_population_detail import (
     generate_pcr,
     generate_urbanisation_pct,
     generate_population_detail,
@@ -137,7 +137,7 @@ from traveller_world_population_detail import (
     City,
     PopulationDetail,
 )
-from traveller_world_government_detail import (
+from traveller_gen.traveller_world_government_detail import (
     generate_centralisation,
     generate_authority,
     generate_factions,
@@ -146,13 +146,13 @@ from traveller_world_government_detail import (
     Faction,
     GovernmentDetail,
 )
-from traveller_world_detail import (
+from traveller_gen.traveller_world_detail import (
     attach_detail, _ehex_to_int, generate_biomass_rating, WorldDetail,
     reattach_mainworld_orbit,
 )
-from traveller_hydro_detail import HydrographicDetail
-from traveller_world_physical import WorldPhysical
-from traveller_belt_physical import BeltPhysical
+from traveller_gen.traveller_hydro_detail import HydrographicDetail
+from traveller_gen.traveller_world_physical import WorldPhysical
+from traveller_gen.traveller_belt_physical import BeltPhysical
 
 
 # ===========================================================================
@@ -162,7 +162,7 @@ from traveller_belt_physical import BeltPhysical
 def fixed_roll(value: int):
     """Return a context manager that makes every random.randint() return
     *value*, so roll(N, modifier) == N*value + modifier (clamped to 0)."""
-    return patch("traveller_world_gen.random.randint", return_value=value)
+    return patch("traveller_gen.traveller_world_gen.random.randint", return_value=value)
 
 
 # ===========================================================================
@@ -908,14 +908,14 @@ class TestTaintSubtypeRoll:
 
     def test_biologic_produced_on_roll_4(self):
         """Forced subtype roll of 4 (DM 0 for atm code 2) → Biologic."""
-        with patch("traveller_world_gen.roll", side_effect=[4, 6, 6]):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=[4, 6, 6]):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "B"
         assert taint.subtype == "Biologic"
 
     def test_biologic_produced_on_roll_9(self):
         """Forced subtype roll of 9 (DM 0 for atm code 2) → Biologic."""
-        with patch("traveller_world_gen.roll", side_effect=[9, 6, 6]):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=[9, 6, 6]):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "B"
         assert taint.subtype == "Biologic"
@@ -941,27 +941,27 @@ class TestTaintSubtypeRoll:
 
     def test_needs_second_only_on_result_10(self):
         # With DM-2 on code 4, raw 2D of 12 → 10 → needs_second.
-        with patch("traveller_world_gen.roll", return_value=12):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=12):
             taint, needs_second = _roll_single_taint(4)
         assert taint.subtype_code == "P"
         assert needs_second is True
 
     def test_no_second_roll_needed_for_non_10(self):
         # Force raw 2D of 8 on code 4 → 8-2=6 → Particulates (no second).
-        with patch("traveller_world_gen.roll", return_value=8):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=8):
             taint, needs_second = _roll_single_taint(4)
         assert taint.subtype_code == "P"
         assert needs_second is False
 
     def test_dm_minus_2_applied_for_code_4(self):
         # With DM-2, a raw roll of 4 → Low Oxygen; ppo < 0.1 so L is accepted.
-        with patch("traveller_world_gen.roll", return_value=4):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=4):
             taint, _ = _roll_single_taint(4, ppo=0.05)
         assert taint.subtype_code == "L"
 
     def test_dm_plus_2_applied_for_code_9(self):
         # With DM+2, a raw roll of 10 → 12 → High Oxygen; ppo > 0.5 so H is accepted.
-        with patch("traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
             taint, _ = _roll_single_taint(9, ppo=0.6)
         assert taint.subtype_code == "H"
 
@@ -995,33 +995,33 @@ class TestTaintPpoValidation:
     def test_high_oxygen_rerolled_when_ppo_normal(self):
         # Force a 2D roll of 12 (H) but ppo is in the normal range → must reroll.
         rolls = iter([12, 6, 6, 6])  # first → H (rejected), second → result 6 (Gas Mix)
-        with patch("traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
             taint, _ = _roll_single_taint(7, ppo=0.3)
         assert taint.subtype_code != "H"
 
     def test_high_oxygen_accepted_when_ppo_above_threshold(self):
-        with patch("traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
             taint, _ = _roll_single_taint(9, ppo=0.6)
         assert taint.subtype_code == "H"
 
     def test_low_oxygen_rerolled_when_ppo_normal(self):
         # Force a 2D roll of 2 (L) but ppo is in the normal range → must reroll.
         rolls = iter([2, 6, 6, 6])  # first → L (rejected), second → result 6 (Gas Mix)
-        with patch("traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
             taint, _ = _roll_single_taint(7, ppo=0.3)
         assert taint.subtype_code != "L"
 
     def test_low_oxygen_accepted_when_ppo_below_threshold(self):
-        with patch("traveller_world_gen.roll", return_value=4):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=4):
             taint, _ = _roll_single_taint(4, ppo=0.05)
         assert taint.subtype_code == "L"
 
     def test_h_and_l_allowed_when_ppo_none(self):
         # ppo=None disables the constraint — H and L must be reachable.
-        with patch("traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
             taint_h, _ = _roll_single_taint(9, ppo=None)
         assert taint_h.subtype_code == "H"
-        with patch("traveller_world_gen.roll", return_value=4):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=4):
             taint_l, _ = _roll_single_taint(4, ppo=None)
         assert taint_l.subtype_code == "L"
 
@@ -1062,7 +1062,7 @@ class TestTaintSeverityAndPersistence:
         # Force Low Oxygen subtype (roll 2 on code 2 → raw 2 → L).
         # Then roll 2 for severity → raw 2+4=6 → code 3.
         rolls = iter([2, 2, 5])   # subtype=2→L, severity=2→2+4=6→code3, persistence=5
-        with patch("traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "L"
         assert taint.severity_code == 3    # 2+4=6 → code 3
@@ -1073,7 +1073,7 @@ class TestTaintSeverityAndPersistence:
         # Severity roll=9 → 9+4=13 → clamped to 9.
         # Persistence roll=2 → 2+6=8 → code 8.
         rolls = iter([2, 9, 2])
-        with patch("traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "L"
         assert taint.severity_code == 9
@@ -1083,7 +1083,7 @@ class TestTaintSeverityAndPersistence:
         # L subtype, severity code < 8 → persistence DM is +4.
         # Force: subtype=2→L, severity=2→2+4=6→code3, persistence=2→2+4=6→code6.
         rolls = iter([2, 2, 2])
-        with patch("traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "L"
         assert taint.severity_code == 3
@@ -1093,7 +1093,7 @@ class TestTaintSeverityAndPersistence:
         # Force Gas Mix (roll 5 on code 2 → raw 5 → G).
         # Severity roll=7, no DM → raw 7 → code 4.
         rolls = iter([5, 7, 3])
-        with patch("traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "G"
         assert taint.severity_code == 4   # 7-3=4, no DM
@@ -1424,7 +1424,7 @@ class TestAtmosphereDetailTaints:
         # Three calls to roll: subtype(12), severity(5), persistence(3),
         # then second taint subtype(6), severity(4), persistence(2).
         rolls = iter([12, 5, 3, 5, 4, 2])
-        with patch("traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
             detail = generate_atmosphere_detail(4, size=5)
         assert len(detail.taints) == 2
         assert detail.taints[0].subtype_code == "P"
@@ -1432,7 +1432,7 @@ class TestAtmosphereDetailTaints:
     def test_second_taint_has_valid_fields(self):
         # Verify second taint from result-10 is fully populated.
         rolls = iter([12, 5, 3, 7, 6, 4])
-        with patch("traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
             detail = generate_atmosphere_detail(4, size=5)
         second = detail.taints[1]
         assert 1 <= second.severity_code <= 9
@@ -1471,7 +1471,7 @@ class TestAtmosphereDetailTaints:
     def test_schema_validates_tainted_world(self):
         import jsonschema
         schema_path = os.path.join(
-            os.path.dirname(__file__), "..", "traveller_world_schema.json"
+            os.path.dirname(__file__), "..", "src", "traveller_gen", "traveller_world_schema.json"
         )
         with open(schema_path, encoding="utf-8") as f:
             schema = json.load(f)
@@ -2084,13 +2084,13 @@ class TestGeneratePopulationMultiplier:
     def test_minimum_value_is_one_with_lowest_dice(self):
         # Both D3 = 1 (simulated by randint returning 1):
         # first D3 = ceil(1/2)=1 → offset 0; second D3 = ceil(1/2)=1 → +1; total = 1
-        with patch("traveller_world_gen.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=1):
             assert generate_population_multiplier(3) == 1
 
     def test_maximum_value_is_nine_with_highest_dice(self):
         # Both D3 = 3 (simulated by randint returning 6):
         # first D3 = ceil(6/2)=3 → offset 6; second D3 = ceil(6/2)=3 → +3; total = 9
-        with patch("traveller_world_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=6):
             assert generate_population_multiplier(3) == 9
 
     def test_mid_value_correct(self):
@@ -2099,7 +2099,7 @@ class TestGeneratePopulationMultiplier:
         def mock_roll(a, b):
             call_count[0] += 1
             return 3  # ceil(3/2)=2 for both calls
-        with patch("traveller_world_gen.random.randint", side_effect=mock_roll):
+        with patch("traveller_gen.traveller_world_gen.random.randint", side_effect=mock_roll):
             result = generate_population_multiplier(3)
             assert result == 5  # offset 3 + 2 = 5
 
@@ -2133,30 +2133,30 @@ class TestGenerateGasGiantCount:
 
     def test_minimum_is_one(self):
         # Lowest 2D roll (2) → ≤4 → 1
-        with patch("traveller_world_gen.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=1):
             assert generate_gas_giant_count() == 1
 
     def test_maximum_is_six(self):
         # Highest standard 2D roll (12) → 12 → 5; we need 13+ for 6
         # roll() uses max(0, total+modifier); use modifier approach
         # Since generate_gas_giant_count uses roll(2) directly, patch to give 12
-        with patch("traveller_world_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=6):
             assert generate_gas_giant_count() == 5  # 12 → exactly 5
 
     def test_result_7_to_8_gives_three(self):
         # 2D(all 4s)=8 → 3 gas giants
-        with patch("traveller_world_gen.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=4):
             assert generate_gas_giant_count() == 3
 
     def test_result_9_to_11_gives_four(self):
         # 2D(all 5s)=10 → 4 gas giants
-        with patch("traveller_world_gen.random.randint", return_value=5):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=5):
             assert generate_gas_giant_count() == 4
 
     def test_result_5_to_6_gives_two(self):
         # 2D(one 1, one 2) = 3 → ≤4 → 1; need sum of 5 or 6
         # 2D with each die=3: sum=6 → 2 gas giants
-        with patch("traveller_world_gen.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=3):
             assert generate_gas_giant_count() == 2
 
     def test_statistical_range(self):
@@ -2177,7 +2177,7 @@ class TestGenerateGasGiantCount:
             (12, 5),           # 12 → 5
         ]
         for roll_total, expected in cases:
-            with _patch("traveller_world_gen.roll", return_value=roll_total):
+            with _patch("traveller_gen.traveller_world_gen.roll", return_value=roll_total):
                 result = generate_gas_giant_count()
                 assert result == expected, (
                     f"roll={roll_total} expected {expected} got {result}"
@@ -2202,18 +2202,18 @@ class TestGenerateBeltCount:
 
     def test_no_belts_when_existence_roll_below_8(self):
         # 2D(all 1s) = 2 < 8 → no belts; Size 5 so no +1 for asteroid
-        with patch("traveller_world_gen.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=1):
             assert generate_belt_count(False, 5) == 0
 
     def test_size_zero_always_adds_one_belt(self):
         # Size 0 = asteroid mainworld → always +1 regardless of existence roll
-        with patch("traveller_world_gen.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=1):
             # Existence roll = 2 (fails), but +1 for Size 0
             assert generate_belt_count(False, 0) == 1
 
     def test_size_zero_with_rolled_belts_adds_one(self):
         # Existence roll succeeds (2D(6s)=12 ≥ 8), quantity = 3, +1 for Size 0 = 4
-        with patch("traveller_world_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=6):
             result = generate_belt_count(False, 0)
             assert result >= 1  # at minimum +1 for asteroid mainworld
 
@@ -2235,7 +2235,7 @@ class TestGenerateBeltCount:
             val = roll_values[idx[0] % len(roll_values)]
             idx[0] += 1
             return val + dm
-        with _patch("traveller_world_gen.roll", side_effect=mock_roll):
+        with _patch("traveller_gen.traveller_world_gen.roll", side_effect=mock_roll):
             result = generate_belt_count(False, 5)
             assert result == 1
 
@@ -2248,7 +2248,7 @@ class TestGenerateBeltCount:
             val = roll_values[idx[0] % len(roll_values)]
             idx[0] += 1
             return val + dm
-        with _patch("traveller_world_gen.roll", side_effect=mock_roll):
+        with _patch("traveller_gen.traveller_world_gen.roll", side_effect=mock_roll):
             result = generate_belt_count(False, 5)
             assert result == 2
 
@@ -2261,7 +2261,7 @@ class TestGenerateBeltCount:
             val = roll_values[idx[0] % len(roll_values)]
             idx[0] += 1
             return val + dm
-        with _patch("traveller_world_gen.roll", side_effect=mock_roll):
+        with _patch("traveller_gen.traveller_world_gen.roll", side_effect=mock_roll):
             result = generate_belt_count(False, 5)
             assert result == 3
 
@@ -4136,7 +4136,7 @@ class TestJsonSchema:
     """
 
     # Path to the schema, relative to this test file.
-    SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "traveller_world_schema.json")
+    SCHEMA_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src", "traveller_gen", "traveller_world_schema.json")
 
     @classmethod
     def _load_schema(cls) -> dict:
@@ -4398,21 +4398,21 @@ class TestGasGiantOrbitSlot:
     """Tests for gg_sah rolled at orbit-gen time and gas giant mainworld fix."""
 
     def test_gg_sah_roll_returns_valid_prefix(self):
-        from traveller_orbit_gen import _gg_sah_roll
+        from traveller_gen.traveller_orbit_gen import _gg_sah_roll
         for _ in range(100):
             sah = _gg_sah_roll("G", "V")
             assert sah[:2] in ("GS", "GM", "GL"), f"unexpected prefix in {sah!r}"
 
     def test_gg_sah_roll_diameter_digit_is_valid_ehex(self):
-        from traveller_orbit_gen import _gg_sah_roll, _GG_EHEX
+        from traveller_gen.traveller_orbit_gen import _gg_sah_roll, _GG_EHEX
         for _ in range(100):
             sah = _gg_sah_roll("K", "V")
             assert len(sah) == 3
             assert sah[2].upper() in _GG_EHEX, f"invalid diameter digit in {sah!r}"
 
     def test_gg_sah_on_orbit_slot_set_for_gas_giants(self):
-        from traveller_orbit_gen import generate_orbits
-        from traveller_stellar_gen import generate_stellar_data
+        from traveller_gen.traveller_orbit_gen import generate_orbits
+        from traveller_gen.traveller_stellar_gen import generate_stellar_data
         import random as _random
         _random.seed(42)
         stellar = generate_stellar_data()
@@ -4423,8 +4423,8 @@ class TestGasGiantOrbitSlot:
             assert slot.gg_sah[:2] in ("GS", "GM", "GL"), f"bad gg_sah {slot.gg_sah!r}"
 
     def test_non_gas_giant_slots_have_empty_gg_sah(self):
-        from traveller_orbit_gen import generate_orbits
-        from traveller_stellar_gen import generate_stellar_data
+        from traveller_gen.traveller_orbit_gen import generate_orbits
+        from traveller_gen.traveller_stellar_gen import generate_stellar_data
         import random as _random
         _random.seed(7)
         stellar = generate_stellar_data()
@@ -4436,23 +4436,23 @@ class TestGasGiantOrbitSlot:
                 )
 
     def test_gg_diameter_parses_decimal_digits(self):
-        from world_codes import gg_diameter_from_sah
+        from traveller_gen.world_codes import gg_diameter_from_sah
         assert gg_diameter_from_sah("GM9") == 9
         assert gg_diameter_from_sah("GS4") == 4
         assert gg_diameter_from_sah("GL0") == 0
 
     def test_gg_diameter_parses_hex_letter(self):
-        from world_codes import gg_diameter_from_sah
+        from traveller_gen.world_codes import gg_diameter_from_sah
         assert gg_diameter_from_sah("GLC") == 12
         assert gg_diameter_from_sah("GLF") == 15
 
     def test_gg_diameter_fallback_for_empty(self):
-        from world_codes import gg_diameter_from_sah
+        from traveller_gen.world_codes import gg_diameter_from_sah
         assert gg_diameter_from_sah("") == 8
         assert gg_diameter_from_sah("XX") == 8
 
     def test_gas_giant_mainworld_size_less_than_gg(self):
-        from traveller_system_gen import generate_full_system
+        from traveller_gen.traveller_system_gen import generate_full_system
         # Run many seeds to catch gas-giant-mainworld cases
         found = False
         for seed in range(200):
@@ -4469,7 +4469,7 @@ class TestGasGiantOrbitSlot:
         assert found, "no gas-giant-mainworld case found in 200 seeds — increase range"
 
     def test_gas_giant_mainworld_note_present(self):
-        from traveller_system_gen import generate_full_system
+        from traveller_gen.traveller_system_gen import generate_full_system
         for seed in range(200):
             system = generate_full_system("Test", seed=seed)
             if system.mainworld_orbit and system.mainworld_orbit.world_type == "gas_giant":
@@ -4482,8 +4482,8 @@ class TestGasGiantOrbitSlot:
         pytest.skip("no gas-giant-mainworld case found in 200 seeds")
 
     def test_gg_sah_in_to_dict(self):
-        from traveller_orbit_gen import generate_orbits
-        from traveller_stellar_gen import generate_stellar_data
+        from traveller_gen.traveller_orbit_gen import generate_orbits
+        from traveller_gen.traveller_stellar_gen import generate_stellar_data
         import random as _random
         _random.seed(42)
         stellar = generate_stellar_data()
@@ -4500,31 +4500,31 @@ class TestOrbitToAu:
     """Orbit# to AU conversion — verifies the flat-region bug (0.5:0.2) is gone."""
 
     def test_sub_half_orbit_increases_with_orbit_number(self):
-        from traveller_stellar_gen import _orbit_to_au
+        from traveller_gen.traveller_stellar_gen import _orbit_to_au
         # Orbit# 0.1 must be farther than Orbit# 0.0 and closer than Orbit# 0.5
         assert _orbit_to_au(0.0) < _orbit_to_au(0.1) < _orbit_to_au(0.5)
 
     def test_orbit_0_is_0_2_au(self):
-        from traveller_stellar_gen import _orbit_to_au
+        from traveller_gen.traveller_stellar_gen import _orbit_to_au
         assert _orbit_to_au(0.0) == pytest.approx(0.2)
 
     def test_orbit_half_is_0_3_au(self):
-        from traveller_stellar_gen import _orbit_to_au
+        from traveller_gen.traveller_stellar_gen import _orbit_to_au
         assert _orbit_to_au(0.5) == pytest.approx(0.3)
 
     def test_orbit_1_is_0_4_au(self):
-        from traveller_stellar_gen import _orbit_to_au
+        from traveller_gen.traveller_stellar_gen import _orbit_to_au
         assert _orbit_to_au(1.0) == pytest.approx(0.4)
 
     def test_roundtrip_sub_1(self):
-        from traveller_stellar_gen import _orbit_to_au
-        from traveller_orbit_gen import _au_to_orbit
+        from traveller_gen.traveller_stellar_gen import _orbit_to_au
+        from traveller_gen.traveller_orbit_gen import _au_to_orbit
         for on in (0.1, 0.2, 0.3, 0.4, 0.5, 0.65):
             assert _au_to_orbit(_orbit_to_au(on)) == pytest.approx(on, abs=0.01)
 
     def test_companion_orbits_are_not_all_identical(self):
         # Companion orbit numbers 0.05–0.65 must produce distinct AU values.
-        from traveller_stellar_gen import _orbit_to_au
+        from traveller_gen.traveller_stellar_gen import _orbit_to_au
         aus = {_orbit_to_au(on) for on in (0.05, 0.1, 0.3, 0.5, 0.65)}
         assert len(aus) == 5, f"expected 5 distinct AU values, got {aus}"
 
@@ -5051,20 +5051,20 @@ class TestOptionalTaintCodes13And14:
 
     def test_taint_fires_when_die_ge_4(self):
         from unittest.mock import patch
-        with patch("traveller_world_gen.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=4):
             detail = generate_atmosphere_detail(13, 8)
         assert len(detail.taints) >= 1
 
     def test_taint_suppressed_when_die_lt_4(self):
         from unittest.mock import patch
-        with patch("traveller_world_gen.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=3):
             detail = generate_atmosphere_detail(13, 8)
         assert len(detail.taints) == 0
 
     def test_taint_fires_for_code_14(self):
         from unittest.mock import patch
         # return_value=4: 1D check = 4 ≥ 4 fires; roll(2)=8 → Sulphur (S), not H/L.
-        with patch("traveller_world_gen.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_gen.random.randint", return_value=4):
             detail = generate_atmosphere_detail(14, 9)
         assert len(detail.taints) >= 1
 
@@ -5109,14 +5109,14 @@ class TestUnusualSubtypeRoll:
         def side_effect():
             call_count[0] += 1
             return 16 if call_count[0] <= 5 else 26
-        with patch("traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
             result = _roll_unusual_subtype(5, 7)
         assert result.subtype_code != "6"
 
     def test_layered_accepted_when_gravity_gt_1_2(self):
         """Size 9 → gravity=1.25 > 1.2, Layered should be accepted."""
         from unittest.mock import patch
-        with patch("traveller_world_gen._d26", return_value=16):
+        with patch("traveller_gen.traveller_world_gen._d26", return_value=16):
             result = _roll_unusual_subtype(9, 7)
         assert result.subtype_code == "6"
         assert result.subtype_name == "Layered"
@@ -5127,7 +5127,7 @@ class TestUnusualSubtypeRoll:
         def side_effect():
             call_count[0] += 1
             return 21 if call_count[0] <= 5 else 26
-        with patch("traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
             result = _roll_unusual_subtype(10, 8)
         assert result.subtype_code != "7"
 
@@ -5137,7 +5137,7 @@ class TestUnusualSubtypeRoll:
         def side_effect():
             call_count[0] += 1
             return 22 if call_count[0] <= 5 else 26
-        with patch("traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
             result = _roll_unusual_subtype(8, 3)
         assert result.subtype_code != "8"
 
@@ -5147,13 +5147,13 @@ class TestUnusualSubtypeRoll:
         def side_effect():
             call_count[0] += 1
             return 25 if call_count[0] <= 3 else 26
-        with patch("traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
             result = _roll_unusual_subtype(8, 7, allow_combination=False)
         assert result.subtype_code != ""
 
     def test_combination_allowed_returns_empty_code(self):
         from unittest.mock import patch
-        with patch("traveller_world_gen._d26", return_value=25):
+        with patch("traveller_gen.traveller_world_gen._d26", return_value=25):
             result = _roll_unusual_subtype(8, 7, allow_combination=True)
         assert result.subtype_code == ""
 
@@ -5185,20 +5185,20 @@ class TestGenerateUnusualSubtype:
             if call_count[0] == 1:
                 return 25  # Combination on first roll
             return 26      # "Other" for both subsequent rolls
-        with patch("traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
             generate_unusual_subtype(detail, 15, 8, 7)
         assert len(detail.unusual_subtypes) == 2
 
     def test_combination_no_entry_with_empty_code(self):
         from unittest.mock import patch
         detail = AtmosphereDetail()
-        with patch("traveller_world_gen._d26", side_effect=[25, 26, 23]):
+        with patch("traveller_gen.traveller_world_gen._d26", side_effect=[25, 26, 23]):
             generate_unusual_subtype(detail, 15, 8, 7)
         for sub in detail.unusual_subtypes:
             assert sub.subtype_code != ""
 
     def test_unusual_subtypes_exported(self):
-        import traveller_world_gen as twg
+        from traveller_gen import traveller_world_gen as twg
         assert hasattr(twg, "generate_unusual_subtype")
         assert hasattr(twg, "UnusualSubtype")
 
@@ -5357,73 +5357,73 @@ class TestNhzAtmosphereTableLookup:
 
     def test_hot_a_none_for_low_roll(self):
         # Hot A (hz ≤ -2.01), roll result 0 → entry 0 → atm 0 (None)
-        with patch("traveller_world_gen.roll", return_value=0):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=0):
             atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
         assert atm == 0
         assert key is None
 
     def test_hot_a_exotic_base_when_irritant_not_rolled(self):
         # Hot A, result 5 → (10, 5, 4, True, False), 1D=3 < 4 → base_key 5 (Thin)
-        with patch("traveller_world_gen.roll", return_value=5):
-            with patch("traveller_world_gen.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=5):
+            with patch("traveller_gen.traveller_world_gen.random.randint", return_value=3):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
         assert atm == 10
         assert key == 5
 
     def test_hot_a_exotic_irritant_when_roll_ge_4(self):
         # Hot A, result 5 → (10, 5, 4, True, False), 1D=4 → irr_key 4 (Thin Irritant)
-        with patch("traveller_world_gen.roll", return_value=5):
-            with patch("traveller_world_gen.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=5):
+            with patch("traveller_gen.traveller_world_gen.random.randint", return_value=4):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
         assert atm == 10
         assert key == 4
 
     def test_hot_a_corrosive_for_result_10(self):
         # Hot A, result 10 → (11, None, None, False, False)
-        with patch("traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
             atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
         assert atm == 11
         assert key is None
 
     def test_hot_b_fixed_exotic_no_irritant_roll(self):
         # Hot B (hz -1.01 to -2.0), result 6 → (10, 6, None, False, False) — Standard, no roll
-        with patch("traveller_world_gen.roll", return_value=6):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=6):
             atm, key = generate_nhz_atmosphere(5, hz_deviation=-1.5)
         assert atm == 10
         assert key == 6
 
     def test_hot_b_very_dense_with_irritant_roll(self):
         # Hot B, result 10 → (10, 10, 11, True, False), 1D=4 → irr_key 11 (VD Irritant)
-        with patch("traveller_world_gen.roll", return_value=10):
-            with patch("traveller_world_gen.random.randint", return_value=4):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
+            with patch("traveller_gen.traveller_world_gen.random.randint", return_value=4):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-1.5)
         assert atm == 10
         assert key == 11
 
     def test_cold_a_trace_for_result_2(self):
         # Cold A (hz +1.01 to +3.0), result 2 → (1, None, None, False, False) → Trace
-        with patch("traveller_world_gen.roll", return_value=2):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=2):
             atm, key = generate_nhz_atmosphere(5, hz_deviation=2.0)
         assert atm == 1
         assert key is None
 
     def test_cold_a_very_dense_d_for_result_13(self):
         # Cold A, result 13 → (13, None, None, False, False) → Very Dense
-        with patch("traveller_world_gen.roll", return_value=13):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=13):
             atm, key = generate_nhz_atmosphere(10, hz_deviation=2.0)
         assert atm == 13
         assert key is None
 
     def test_cold_b_gas_helium_for_result_13(self):
         # Cold B (hz ≥ +3.01), result 13 → (16, None, None, False, False) → Gas Helium
-        with patch("traveller_world_gen.roll", return_value=13):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=13):
             atm, key = generate_nhz_atmosphere(10, hz_deviation=4.0)
         assert atm == 16
         assert key is None
 
     def test_cold_b_gas_hydrogen_for_result_14(self):
         # Cold B, result 14 → (17, None, None, False, False) → Gas Hydrogen
-        with patch("traveller_world_gen.roll", return_value=14):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=14):
             atm, key = generate_nhz_atmosphere(10, hz_deviation=4.0)
         assert atm == 17
         assert key is None
@@ -5431,8 +5431,8 @@ class TestNhzAtmosphereTableLookup:
     def test_dagger_dm_triggers_irritant_on_roll_3(self):
         # Hot A, result 7 → (10, 8, 9, True, True), hz=-3.5 (dagger applies)
         # 1D=3, DM+1 → 4 ≥ 4 → irr_key 9 (Dense Irritant)
-        with patch("traveller_world_gen.roll", return_value=7):
-            with patch("traveller_world_gen.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=7):
+            with patch("traveller_gen.traveller_world_gen.random.randint", return_value=3):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.5)
         assert atm == 10
         assert key == 9
@@ -5440,8 +5440,8 @@ class TestNhzAtmosphereTableLookup:
     def test_dagger_dm_absent_when_hz_gt_minus3(self):
         # Hot A, result 7 → (10, 8, 9, True, True), hz=-2.5 (dagger does NOT apply)
         # 1D=3, no DM → 3 < 4 → base_key 8 (Dense)
-        with patch("traveller_world_gen.roll", return_value=7):
-            with patch("traveller_world_gen.random.randint", return_value=3):
+        with patch("traveller_gen.traveller_world_gen.roll", return_value=7):
+            with patch("traveller_gen.traveller_world_gen.random.randint", return_value=3):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-2.5)
         assert atm == 10
         assert key == 8
@@ -5592,7 +5592,7 @@ class TestNhzSecondaryWorlds:
         # abs(hz_deviation) <= 1.0 — the standard CRB roll is used there.
         from unittest.mock import patch as _patch
         with _patch(
-            "traveller_world_detail.generate_nhz_atmosphere",
+            "traveller_gen.traveller_world_detail.generate_nhz_atmosphere",
             wraps=generate_nhz_atmosphere,
         ) as mock_nhz:
             sys = generate_full_system("T", seed=_NHZ_TEST_SEED, nhz_atmospheres=True)
@@ -5635,7 +5635,7 @@ class TestCompanionExclusionZone:
         # Seed 39 has a close secondary (Star B) at orbit# ~0.90.
         # WBH exclusion zone: [0.90-1.0, 0.90+3.0] = [-0.10, 3.90].
         # All primary-star worlds must be at orbit# >= 3.90 after the fix.
-        from traveller_system_gen import generate_full_system
+        from traveller_gen.traveller_system_gen import generate_full_system
 
         sys = generate_full_system("X", seed=39)
         stars = sys.stellar_system.stars
@@ -5668,7 +5668,7 @@ class TestCompanionExclusionZone:
         # Scan 500 seeds; for every system with a close companion whose
         # companion_orbit - 1.0 < primary MAO, assert no primary world lands
         # inside the [companion-1, companion+3] band.
-        from traveller_system_gen import generate_full_system
+        from traveller_gen.traveller_system_gen import generate_full_system
 
         for seed in range(500):
             sys = generate_full_system("X", seed=seed)
@@ -5882,7 +5882,7 @@ class TestReconcileOrbitTypes:
     def _make_orbit(self, star_desig, orbit_number, world_type,
                     is_mainworld=False, is_empty=False):
         """Build a minimal OrbitSlot for reconciliation tests."""
-        from traveller_orbit_gen import OrbitSlot
+        from traveller_gen.traveller_orbit_gen import OrbitSlot
         o = OrbitSlot(
             star_designation=star_desig,
             orbit_number=orbit_number,
@@ -5898,8 +5898,8 @@ class TestReconcileOrbitTypes:
 
     def _make_orbits(self, slots):
         """Build a minimal SystemOrbits from a list of OrbitSlot objects."""
-        from traveller_orbit_gen import SystemOrbits
-        from traveller_stellar_gen import StarSystem
+        from traveller_gen.traveller_orbit_gen import SystemOrbits
+        from traveller_gen.traveller_stellar_gen import StarSystem
         so = SystemOrbits(stellar_system=StarSystem())
         so.orbits = slots
         return so
@@ -5907,7 +5907,7 @@ class TestReconcileOrbitTypes:
     def test_belt_shortage_filled_from_empty_slots(self):
         # canonical_belt=3 but only 2 non-empty non-mw slots exist;
         # after reconciliation orbits.belt_count must equal 3.
-        from traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "terrestrial"),
             self._make_orbit("A", 2.0, "terrestrial"),
@@ -5925,7 +5925,7 @@ class TestReconcileOrbitTypes:
     def test_gg_shortage_filled_from_empty_slots(self):
         # canonical_gg=3 but only 2 non-empty non-mw slots exist;
         # after reconciliation orbits.gas_giant_count must equal 3.
-        from traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "terrestrial"),
             self._make_orbit("A", 2.0, "terrestrial"),
@@ -5943,7 +5943,7 @@ class TestReconcileOrbitTypes:
         # Mainworld is a belt (size 0); PBG says belt_count=2.
         # WBH convention: that count includes the mainworld belt.
         # After reconciliation + mainworld type assignment, total belts = 2.
-        from traveller_map_fetch import (
+        from traveller_gen.traveller_map_fetch import (
             _reconcile_orbit_types, _recount_orbit_metadata,
         )
         slots = [
@@ -5968,7 +5968,7 @@ class TestReconcileOrbitTypes:
         # 4 non-mw non-empty slots: canonical_gg=2, canonical_belt=1 leaves 1
         # non-mw terrestrial.  The mainworld slot (terrestrial) is also counted
         # by _recount_orbit_metadata, so terrestrial_count == 2.
-        from traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_orbit_types, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "terrestrial"),
             self._make_orbit("A", 2.0, "terrestrial"),
@@ -5994,7 +5994,7 @@ class TestReconcileWorldCount:
 
     def _make_orbit(self, star_desig, orbit_number, world_type,
                     is_mainworld=False, is_empty=False):
-        from traveller_orbit_gen import OrbitSlot
+        from traveller_gen.traveller_orbit_gen import OrbitSlot
         o = OrbitSlot(
             star_designation=star_desig,
             orbit_number=orbit_number,
@@ -6009,16 +6009,16 @@ class TestReconcileWorldCount:
         return o
 
     def _make_orbits(self, slots):
-        from traveller_orbit_gen import SystemOrbits
-        from traveller_stellar_gen import StarSystem
-        from traveller_map_fetch import _recount_orbit_metadata
+        from traveller_gen.traveller_orbit_gen import SystemOrbits
+        from traveller_gen.traveller_stellar_gen import StarSystem
+        from traveller_gen.traveller_map_fetch import _recount_orbit_metadata
         so = SystemOrbits(stellar_system=StarSystem())
         so.orbits = slots
         _recount_orbit_metadata(so)
         return so
 
     def test_noop_when_worlds_zero(self):
-        from traveller_map_fetch import _reconcile_world_count
+        from traveller_gen.traveller_map_fetch import _reconcile_world_count
         slots = [
             self._make_orbit("A", 1.0, "gas_giant"),
             self._make_orbit("A", 2.0, "terrestrial"),
@@ -6031,7 +6031,7 @@ class TestReconcileWorldCount:
 
     def test_noop_when_exact_match(self):
         # GG=2, Belt=1, Terr=2 (mainworld + 1) → Worlds=5 → no change
-        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "gas_giant"),
             self._make_orbit("A", 2.0, "gas_giant"),
@@ -6049,7 +6049,7 @@ class TestReconcileWorldCount:
 
     def test_promotes_empty_slots_to_terrestrial(self):
         # GG=2, Belt=1, want Worlds=8 → target_terr=5, currently terr=1 (mainworld only)
-        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "gas_giant"),
             self._make_orbit("A", 2.0, "gas_giant"),
@@ -6068,7 +6068,7 @@ class TestReconcileWorldCount:
 
     def test_demotes_excess_terrestrials(self):
         # GG=2, Belt=1, currently terr=4, want Worlds=4 → target_terr=1 (mainworld only)
-        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "gas_giant"),
             self._make_orbit("A", 2.0, "gas_giant"),
@@ -6086,7 +6086,7 @@ class TestReconcileWorldCount:
 
     def test_clamps_to_one_when_worlds_less_than_gg_plus_belt_plus_one(self):
         # GG=3, Belt=0, Worlds=2 → target_terr = max(1, 2-3-0) = 1
-        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "gas_giant"),
             self._make_orbit("A", 2.0, "gas_giant"),
@@ -6103,7 +6103,7 @@ class TestReconcileWorldCount:
     def test_mainworld_slot_never_demoted(self):
         # Even when demoting excess, mainworld candidate is always preserved.
         # GG=0, Belt=0, Worlds=1 → target_terr=1; currently terr=3 → demote 2 non-mw
-        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "terrestrial"),
             self._make_orbit("A", 2.0, "terrestrial"),
@@ -6120,7 +6120,7 @@ class TestReconcileWorldCount:
         # Mainworld is a GG satellite: host GG in gas_giant_count, mainworld in
         # terrestrial_count.  Formula target_terr = Worlds - GG - Belt is correct.
         # GG=1 (host GG), Belt=0, Worlds=3 → target_terr=2 (mainworld + 1 other)
-        from traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
+        from traveller_gen.traveller_map_fetch import _reconcile_world_count, _recount_orbit_metadata
         slots = [
             self._make_orbit("A", 1.0, "gas_giant"),       # host GG
             self._make_orbit("A", 2.0, "terrestrial", is_mainworld=True),  # satellite
@@ -6143,7 +6143,7 @@ class TestOrbitalEccentricity:
 
     def test_eccentricity_zero_by_default(self):
         # With orbital_eccentricity=False (default) no eccentricity is rolled.
-        from traveller_system_gen import generate_full_system
+        from traveller_gen.traveller_system_gen import generate_full_system
         sys = generate_full_system("X", seed=42)
         for o in sys.system_orbits.orbits:
             assert o.eccentricity == 0.0, (
@@ -6157,7 +6157,7 @@ class TestOrbitalEccentricity:
 
     def test_eccentricity_range_when_enabled(self):
         # With orbital_eccentricity=True all non-empty eccentricities are in [0, 0.999].
-        from traveller_system_gen import generate_full_system
+        from traveller_gen.traveller_system_gen import generate_full_system
         sys = generate_full_system("X", seed=42, orbital_eccentricity=True)
         for o in sys.system_orbits.orbits:
             if o.world_type != "empty":
@@ -6168,7 +6168,7 @@ class TestOrbitalEccentricity:
 
     def test_no_empty_slot_eccentricity(self):
         # Empty orbit slots always have eccentricity == 0.0 even when flag is True.
-        from traveller_system_gen import generate_full_system
+        from traveller_gen.traveller_system_gen import generate_full_system
         sys = generate_full_system("X", seed=42, orbital_eccentricity=True)
         for o in sys.system_orbits.orbits:
             if o.world_type == "empty":
@@ -6179,7 +6179,7 @@ class TestOrbitalEccentricity:
 
     def test_star_eccentricity_computed_in_binary(self):
         # Secondary (close/near/far) stars get eccentricity when flag is True.
-        from traveller_system_gen import generate_full_system
+        from traveller_gen.traveller_system_gen import generate_full_system
         for seed in range(200):
             sys = generate_full_system("X", seed=seed, orbital_eccentricity=True)
             sec = [s for s in sys.stellar_system.stars
@@ -6195,7 +6195,7 @@ class TestOrbitalEccentricity:
 
     def test_orbit_au_min_max_in_to_dict(self):
         # to_dict() emits eccentricity + min/max AU when eccentricity > 0.
-        from traveller_orbit_gen import OrbitSlot
+        from traveller_gen.traveller_orbit_gen import OrbitSlot
         slot = OrbitSlot(
             star_designation="A",
             orbit_number=3.0,
@@ -6219,7 +6219,7 @@ class TestOrbitalEccentricity:
         # Patch traveller_orbit_gen.roll directly so we control the return value
         # of each dice call rather than fighting the 2d6 sum mechanics.
         import unittest.mock as mock
-        from traveller_orbit_gen import roll_eccentricity as _roll_eccentricity
+        from traveller_gen.traveller_orbit_gen import roll_eccentricity as _roll_eccentricity
         # (forced_first_roll, second_roll, expected_lo, expected_hi)
         # second_roll=3 gives a mid-range result for all rows.
         cases = [
@@ -6231,7 +6231,7 @@ class TestOrbitalEccentricity:
             (12, 3, 0.400, 0.900),   # row 12+: base 0.300 + 3/20   = 0.450
         ]
         for first, second, lo, hi in cases:
-            with mock.patch("traveller_orbit_gen.roll",
+            with mock.patch("traveller_gen.traveller_orbit_gen.roll",
                             side_effect=[first, second]):
                 val = _roll_eccentricity(3.0, 5.0)
             assert lo <= val <= hi, (
@@ -6248,7 +6248,7 @@ class TestGenerateSystemFromMapOrbitalFlags:
     wired through generate_system_from_map()."""
 
     def _make_map_data(self):
-        from traveller_map_fetch import MapWorldData
+        from traveller_gen.traveller_map_fetch import MapWorldData
         return MapWorldData(
             name="Regina",
             sector="Spinward Marches",
@@ -6263,9 +6263,9 @@ class TestGenerateSystemFromMapOrbitalFlags:
 
     def _call(self, **kwargs):
         import unittest.mock as mock
-        from traveller_map_fetch import generate_system_from_map
+        from traveller_gen.traveller_map_fetch import generate_system_from_map
         data = self._make_map_data()
-        with mock.patch("traveller_map_fetch.fetch_world_data", return_value=data):
+        with mock.patch("traveller_gen.traveller_map_fetch.fetch_world_data", return_value=data):
             return generate_system_from_map(
                 name=data.name, sector=data.sector, seed=42, **kwargs
             )
@@ -6311,7 +6311,7 @@ class TestGGMassRoll:
     """_roll_gg_mass() returns values in WBH table ranges for each GG category."""
 
     def test_gs_range(self):
-        from traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
         # GS: 5 × (1D + 1) = 10–35 M⊕
         with patch("random.randint", return_value=1):
             assert _roll_gg_mass("GS") == 10.0
@@ -6319,21 +6319,21 @@ class TestGGMassRoll:
             assert _roll_gg_mass("GS") == 35.0
 
     def test_gm_range(self):
-        from traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
         # GM: 20 × (3D − 1); roll(3) min=3, max=18 → 40–340 M⊕
-        with patch("traveller_orbit_gen.roll", return_value=3):
+        with patch("traveller_gen.traveller_orbit_gen.roll", return_value=3):
             assert _roll_gg_mass("GM") == 40.0
-        with patch("traveller_orbit_gen.roll", return_value=18):
+        with patch("traveller_gen.traveller_orbit_gen.roll", return_value=18):
             assert _roll_gg_mass("GM") == 340.0
 
     def test_gl_range(self):
-        from traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_orbit_gen import _roll_gg_mass  # pylint: disable=import-outside-toplevel
         # GL: D3 × 50 × (3D + 4); min = 1×50×7=350, max = 3×50×22=3300
         with patch("random.randint", return_value=1), \
-             patch("traveller_orbit_gen.roll", return_value=3):
+             patch("traveller_gen.traveller_orbit_gen.roll", return_value=3):
             assert _roll_gg_mass("GL") == 350.0
         with patch("random.randint", return_value=3), \
-             patch("traveller_orbit_gen.roll", return_value=18):
+             patch("traveller_gen.traveller_orbit_gen.roll", return_value=18):
             assert _roll_gg_mass("GL") == 3300.0
 
 
@@ -6352,7 +6352,7 @@ class TestLargeSecondaryWorldAtmosphere:
 
     def _hz_slot(self):
         """Minimal HZ terrestrial OrbitSlot for calling _terrestrial_sah()."""
-        from traveller_orbit_gen import OrbitSlot  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_orbit_gen import OrbitSlot  # pylint: disable=import-outside-toplevel
         return OrbitSlot(
             star_designation="A", orbit_number=3.0, orbit_au=1.0,
             slot_index=0, world_type="terrestrial", is_habitable_zone=True,
@@ -6363,9 +6363,9 @@ class TestLargeSecondaryWorldAtmosphere:
     def test_size10_atmosphere_reaches_15(self):
         # Size 10: formula is 2D+3, max=15.  Old cap (min(10,9)=9 → 2D+2, max=14)
         # made atmosphere=15 unreachable.  Force roll to return 15 and verify.
-        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
-        with patch("traveller_world_detail._terrestrial_size", return_value=10), \
-             patch("traveller_world_gen.roll", side_effect=[15, 5]):
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_gen.traveller_world_detail._terrestrial_size", return_value=10), \
+             patch("traveller_gen.traveller_world_gen.roll", side_effect=[15, 5]):
             # side_effect order: atmosphere roll, then hydrographics roll
             _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
         assert atm == 15
@@ -6376,9 +6376,9 @@ class TestLargeSecondaryWorldAtmosphere:
     def test_large_size_atmosphere_clamped_to_15(self, size, max_formula_result):
         # Sizes 11-15 use 2D+(size-7); the formula can yield 16-20 with all-6 dice.
         # The result must always be clamped to ≤ 15 (codes 16-17 are NHZ-only).
-        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
-        with patch("traveller_world_detail._terrestrial_size", return_value=size), \
-             patch("traveller_world_gen.roll", side_effect=[max_formula_result, 5]):
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_gen.traveller_world_detail._terrestrial_size", return_value=size), \
+             patch("traveller_gen.traveller_world_gen.roll", side_effect=[max_formula_result, 5]):
             _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
         assert atm == 15, (
             f"size={size}: formula yields {max_formula_result} but must clamp to 15"
@@ -6388,9 +6388,9 @@ class TestLargeSecondaryWorldAtmosphere:
     def test_large_size_atmosphere_exceeds_old_size9_max(self, size):
         # Old cap: generate_atmosphere(9) → 2D+2, absolute max = 14.
         # New formula for sizes 11-15: 2D+(size-7), so atm=15 must now be reachable.
-        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
-        with patch("traveller_world_detail._terrestrial_size", return_value=size), \
-             patch("traveller_world_gen.roll", side_effect=[15, 5]):
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        with patch("traveller_gen.traveller_world_detail._terrestrial_size", return_value=size), \
+             patch("traveller_gen.traveller_world_gen.roll", side_effect=[15, 5]):
             _, atm, _ = _twd._terrestrial_sah(self._hz_slot(), False, random.Random(0))
         assert atm == 15, (
             f"size={size}: forced roll=15 should give atm=15 (old cap gave max 14)"
@@ -6399,13 +6399,13 @@ class TestLargeSecondaryWorldAtmosphere:
     def test_large_moon_atmosphere_clamped_to_15(self):
         # _moon_detail() had the same cap.  For a size-11 moon, force roll > 15
         # and verify it is clamped to 15.
-        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
-        from traveller_moon_gen import Moon  # pylint: disable=import-outside-toplevel
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_moon_gen import Moon  # pylint: disable=import-outside-toplevel
         moon = Moon(size_code=11)
         # roll calls in _moon_detail: atmosphere then hydrographics.
         # Social dice go through _rng.randint() directly and are not intercepted.
         rng = random.Random(1)
-        with patch("traveller_world_gen.roll", side_effect=[17, 5]):
+        with patch("traveller_gen.traveller_world_gen.roll", side_effect=[17, 5]):
             detail = _twd._moon_detail(
                 moon=moon, hz_deviation=0.0,
                 mwc=_twd._MWCtx(pop=8, gov=5, law=5, tl=10,
@@ -6417,11 +6417,11 @@ class TestLargeSecondaryWorldAtmosphere:
 
     def test_large_secondary_atmosphere_always_valid_over_seeds(self):
         # Over 300 seeds with forced size-11, atmosphere must always be in [0,15].
-        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         slot = self._hz_slot()
         for seed in range(300):
             random.seed(seed)
-            with patch("traveller_world_detail._terrestrial_size", return_value=11):
+            with patch("traveller_gen.traveller_world_detail._terrestrial_size", return_value=11):
                 _, atm, _ = _twd._terrestrial_sah(slot, False, random.Random(seed))
             assert 0 <= atm <= 15, (
                 f"seed={seed}: size-11 secondary produced atmosphere {atm} outside [0,15]"
@@ -6433,7 +6433,7 @@ class TestIndependentGovernment:
 
     def test_independent_government_range(self):
         """_independent_government(pop) returns max(0, 2D-7+pop) which is always ≥ 0."""
-        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         for pop in range(0, 10):
             for seed in range(50):
                 gov = _twd._independent_government(pop, random.Random(seed))
@@ -6442,7 +6442,7 @@ class TestIndependentGovernment:
 
     def test_default_case1_government_codes(self):
         """Without independent_government, _secondary_government only produces {0,1,2,3,6}."""
-        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         codes_seen: set = set()
         for seed in range(200):
             gov = _twd._secondary_government(6, 3, random.Random(seed))
@@ -6453,7 +6453,7 @@ class TestIndependentGovernment:
 
     def test_worlddetail_flag_stored_when_true(self):
         """WorldDetail(is_independent_government=True).to_dict() contains the key."""
-        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
         wd = WorldDetail(sah="473", population=3, government=5,
                          is_independent_government=True)
         d = wd.to_dict()
@@ -6461,13 +6461,13 @@ class TestIndependentGovernment:
 
     def test_worlddetail_flag_absent_when_false(self):
         """WorldDetail().to_dict() does NOT emit is_independent_government."""
-        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
         wd = WorldDetail(sah="473")
         assert "is_independent_government" not in wd.to_dict()
 
     def test_worlddetail_flag_round_trip(self):
         """from_dict(wd.to_dict()) preserves is_independent_government=True."""
-        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
         wd = WorldDetail(sah="473", population=3, government=5,
                          is_independent_government=True)
         wd2 = WorldDetail.from_dict(wd.to_dict())
@@ -6475,7 +6475,7 @@ class TestIndependentGovernment:
 
     def test_generate_system_detail_propagates_flag(self):
         """With independent_government=True, inhabited secondaries carry the flag."""
-        from traveller_world_detail import generate_system_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import generate_system_detail  # pylint: disable=import-outside-toplevel
         found_inhabited = False
         for seed in range(500):
             system = generate_full_system(seed=seed)
@@ -6496,7 +6496,7 @@ class TestIndependentGovernment:
 
     def test_law_level_independent_skips_captive_table(self):
         """With independent=True, gov==6 uses 2D-7+6 = max(0, 2D-1), not captive table."""
-        import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         # With mainworld_law=99, the captive table would produce ~99 or higher.
         # The independent formula must stay in [0, 11] (max 2D-1 = 12-1 = 11).
         mainworld_law = 99
@@ -6649,7 +6649,7 @@ class TestSelectMainworld:
 
     def test_apply_mainworld_social_populates_uwp(self):
         """apply_mainworld_social() fills in a valid UWP after physical-only world."""
-        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
         system = generate_full_system("T", seed=3)
         mw = system.mainworld
         assert mw is not None
@@ -6665,7 +6665,7 @@ class TestSelectMainworld:
 
     def _force_swap(self, seed_range=50):
         """Return (system, orig_orbit) with a confirmed swap applied."""
-        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
         system, winner_orbit = self._make_system_with_terrestrial_secondary()
         mw = system.mainworld
         winner_orbit.detail.habitability_rating = 20
@@ -6760,12 +6760,12 @@ class TestSecondaryWorldClassification:
 
     def test_classification_defaults_none(self):
         """Freshly constructed WorldDetail has classification=None."""
-        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
         assert WorldDetail(sah="473").classification is None
 
     def test_to_dict_emits_classification(self):
         """to_dict() includes 'classification' key when set."""
-        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
         wd = WorldDetail(sah="473", population=5, government=3,
                          law_level=4, tech_level=8, spaceport="G")
         wd.classification = "Fp"
@@ -6776,12 +6776,12 @@ class TestSecondaryWorldClassification:
 
     def test_to_dict_omits_classification_when_none(self):
         """to_dict() does NOT emit 'classification' key when None."""
-        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
         assert "classification" not in WorldDetail(sah="473").to_dict()
 
     def test_from_dict_round_trip(self):
         """from_dict(wd.to_dict()) preserves classification."""
-        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
         wd = WorldDetail(sah="563", population=6, government=2,
                          law_level=3, tech_level=9, spaceport="F")
         wd.classification = "Rb"
@@ -6791,7 +6791,7 @@ class TestSecondaryWorldClassification:
 
     def test_from_dict_classification_none_when_absent(self):
         """from_dict() leaves classification=None when key is absent."""
-        from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
         wd = WorldDetail.from_dict({"sah": "473"})
         assert wd.classification is None
 
@@ -6799,7 +6799,7 @@ class TestSecondaryWorldClassification:
 
     def _call(self, **kw):
         """Thin wrapper that supplies neutral defaults and calls the private fn."""
-        import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
+        from traveller_gen import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
         mw_kw = dict(mw_pop=7, mw_gov=5, mw_law=5, mw_tl=9,
                      mw_trade_codes=[], mw_bases=[], mw_starport="C")
         call_kw = dict(pop=3, gov=2, tl=7, law_level=4, atm=6, hyd=5,
@@ -6856,7 +6856,7 @@ class TestSecondaryWorldClassification:
 
     def test_belt_gets_mining_facility_when_eligible(self):
         """Belt with mainworld Industrial and pop 2+ eventually gets Mi on roll 6+."""
-        import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
+        from traveller_gen import traveller_world_detail as twd  # pylint: disable=import-outside-toplevel
         # gov=0, tl=5: fails Freeport (needs TL 8+) so Mining Facility is the first
         # contested check to pass.  Loop until Mi is assigned.
         found = False
@@ -6877,8 +6877,8 @@ class TestSecondaryWorldClassification:
 
     def test_generate_system_detail_classification_set(self):
         """Inhabited secondaries from generate_system_detail() have a valid or None classification."""
-        from traveller_world_detail import generate_system_detail  # pylint: disable=import-outside-toplevel
-        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import generate_system_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
         found_inhabited = False
         for seed in range(200):
             system = generate_full_system(seed=seed)
@@ -6895,8 +6895,8 @@ class TestSecondaryWorldClassification:
 
     def test_apply_secondary_social_sets_classification(self):
         """apply_secondary_social() assigns classification after re-rolling social data."""
-        from traveller_world_detail import apply_secondary_social  # pylint: disable=import-outside-toplevel
-        from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import apply_secondary_social  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
         found = False
         for seed in range(300):
             system = generate_full_system(seed=seed)
@@ -6965,7 +6965,7 @@ class TestPopulationDetail:
     def test_pcr_9_when_1d_exceeds_pop(self):
         # For pop_code=1, a 1D roll of 2–6 gives PCR=9 immediately.
         # Patch first randint to always return 6 (> pop_code 1).
-        with patch("traveller_world_population_detail._rng") as mock_rng:
+        with patch("traveller_gen.traveller_world_population_detail._rng") as mock_rng:
             mock_rng.randint.return_value = 6
             pcr = generate_pcr(1, 8, 9, 3, [])
         assert pcr == 9
@@ -6974,7 +6974,7 @@ class TestPopulationDetail:
         # If roll == pop_code (== 3), the first check (> pop_code) fails
         # and we proceed to the table roll — result should not be forced 9
         # from the first check.  We verify by seeding consistently.
-        with patch("traveller_world_population_detail._rng") as mock_rng:
+        with patch("traveller_gen.traveller_world_population_detail._rng") as mock_rng:
             # First call (the comparison roll) returns 3 = pop_code → no force-9
             # Second call (the table roll) also returns 3
             mock_rng.randint.side_effect = [3, 3]
@@ -7029,7 +7029,7 @@ class TestPopulationDetail:
     def test_case1_pcr0_no_cities(self):
         # Force PCR=0: pop 6 skips the comparison check; table roll=1 + DMs.
         # Ag (DM-2) + TL9 (DM+1) = DM-1 → roll 1 + DM-1 = 0 → PCR=0
-        with patch("traveller_world_population_detail._rng") as mock_rng:
+        with patch("traveller_gen.traveller_world_population_detail._rng") as mock_rng:
             mock_rng.randint.side_effect = [1] * 200
             det = generate_population_detail(6, 5, 8, 9, 3, 4, ["Ag"])
         assert det is not None
@@ -7039,7 +7039,7 @@ class TestPopulationDetail:
 
     def test_case2_pop5_pcr9_one_city(self):
         # Pop 5, PCR 9 → 1 major city = total urban pop
-        with patch("traveller_world_population_detail._rng") as mock_rng:
+        with patch("traveller_gen.traveller_world_population_detail._rng") as mock_rng:
             # First check: 1D (6) > pop_code (5) → PCR = 9
             mock_rng.randint.side_effect = [6] + [5] * 100
         det = generate_population_detail(5, 5, 8, 9, 3, 4, [],
@@ -7259,7 +7259,7 @@ class TestSettlementType:
 
     def test_generate_population_dm_clamped_max(self):
         # With a large positive DM the result must stay ≤ 10 regardless of dice
-        import traveller_world_gen as _m
+        from traveller_gen import traveller_world_gen as _m
         orig = _m._rng
         _m._rng = random.Random(999)
         results = {generate_population(settlement_dm=10) for _ in range(50)}
@@ -7268,7 +7268,7 @@ class TestSettlementType:
 
     def test_generate_population_dm_clamped_min(self):
         # With a large negative DM the result must stay ≥ 0 regardless of dice
-        import traveller_world_gen as _m
+        from traveller_gen import traveller_world_gen as _m
         orig = _m._rng
         _m._rng = random.Random(999)
         results = {generate_population(settlement_dm=-20) for _ in range(50)}
@@ -7544,7 +7544,7 @@ class TestGovernmentDetail:
 def _name_system(name: str = "Test", seed: int = 370):
     """Helper: generate, detail, and name a system."""
     system = generate_full_system(name, seed=seed)
-    from traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+    from traveller_gen.traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
     random.seed(seed)   # deterministic social/detail regardless of prior test state
     apply_mainworld_social(system.mainworld)
     attach_detail(system)
@@ -7705,7 +7705,7 @@ class TestFromDictMissingFields:
         assert obj.mean_temperature_k == 0
 
     def test_moon_from_dict_missing_size(self):
-        from traveller_moon_gen import Moon  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_moon_gen import Moon  # pylint: disable=import-outside-toplevel
         moon = Moon.from_dict({})
         assert moon.size_code == 0
         assert not moon.is_ring
@@ -7718,7 +7718,7 @@ class TestFromDictMissingFields:
 class TestLawDetail:
     """Tests for traveller_world_law_detail — judicial system, subcategory scores, profiles."""
 
-    from traveller_world_law_detail import generate_law_detail, attach_law_detail, LawDetail  # noqa: E402
+    from traveller_gen.traveller_world_law_detail import generate_law_detail, attach_law_detail, LawDetail  # noqa: E402
 
     # ------------------------------------------------------------------
     # Helpers
@@ -7726,7 +7726,7 @@ class TestLawDetail:
 
     def _detail(self, law_level=5, gov_code=4, tech_level=7, pcr=0,
                 gov_authority_code="", rng=None):
-        from traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
         return generate_law_detail(law_level, gov_code, tech_level,
                                    pcr=pcr, gov_authority_code=gov_authority_code, rng=rng)
 
@@ -7735,7 +7735,7 @@ class TestLawDetail:
     # ------------------------------------------------------------------
 
     def test_returns_none_for_law_level_0(self):
-        from traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_law_detail import generate_law_detail  # pylint: disable=import-outside-toplevel
         assert generate_law_detail(0, gov_code=4) is None
 
     # ------------------------------------------------------------------
@@ -7878,7 +7878,7 @@ class TestLawDetail:
         assert required.issubset(d.keys()), f"Missing keys: {required - d.keys()}"
 
     def test_from_dict_roundtrip(self):
-        from traveller_world_law_detail import LawDetail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_law_detail import LawDetail  # pylint: disable=import-outside-toplevel
         for seed in range(50):
             det = self._detail(rng=random.Random(seed))
             assert det is not None
@@ -7910,7 +7910,7 @@ class TestLawDetail:
     # ------------------------------------------------------------------
 
     def test_attach_sets_mainworld_law_detail(self):
-        from traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
         system = generate_full_system(seed=42)
         assert system.mainworld is not None
         assert system.mainworld.law_detail is None
@@ -7919,7 +7919,7 @@ class TestLawDetail:
             assert system.mainworld.law_detail is not None
 
     def test_attach_skips_uninhabited_mainworld(self):
-        from traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
         # Use a seed that produces an uninhabited world
         for seed in range(200):
             system = generate_full_system(seed=seed)

@@ -28,8 +28,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from html_render import render as _render_template
-from tables import TIDAL_STATUS_LABELS, ZONE_CSS_CLASS, BASE_FULL
+from traveller_gen.html_render import render as _render_template
+from traveller_gen.tables import TIDAL_STATUS_LABELS, ZONE_CSS_CLASS, BASE_FULL
 
 # ---------------------------------------------------------------------------
 # Helpers

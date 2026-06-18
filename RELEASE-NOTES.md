@@ -1,8 +1,47 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–133
+**Sessions:** 88–134
 **Tests:** 2613
+
+---
+
+## Package Migration — src/traveller_gen/ (Session 134)
+
+**Issues #155 and #156.** All 22 generation modules moved from the project root
+to an installable `src/traveller_gen/` Python package. `pyproject.toml` added
+with `setuptools.build_meta`; `pip install -e .` replaces all `sys.path` hacks
+for local development.
+
+**CLI entry points registered** in `pyproject.toml`:
+
+- `traveller-world` → `traveller_gen.traveller_world_gen:main`
+- `traveller-mapfetch` → `traveller_gen.traveller_map_fetch:main`
+
+**Azure deployment simplified.** `scripts/prepare_azure.sh` and the CI workflow
+now run `pip install --target azure-api/ --no-deps .` instead of a file-by-file
+`cp` list. This eliminates the `azure-sync` maintenance step — adding a new module
+to the package no longer requires touching either script.
+
+**Import paths changed.**
+
+- Within the package: all imports converted to relative (`from . import X`,
+  `from .module import Y`), including function-body lazy imports.
+- External callers: `from traveller_gen.traveller_X import Y`
+  (`azure-api/function_app.py`, `fastapi/app.py`, `gen-ui/app.py`).
+- Tests: `from traveller_gen.traveller_X import Y`; patch targets updated to
+  `"traveller_gen.traveller_X.something"`.
+
+**`conftest.py` rewritten** — removed `sys.path.insert(0, _root)`; generation
+modules are now importable as a package without path manipulation.
+
+**`scripts/compute_version.sh`** updated to write to
+`src/traveller_gen/_version.py` (was project root `_version.py`).
+
+**`pyrightconfig.json`** drops `"."` from `extraPaths` — editable install
+provides the resolution path.
+
+**Test count:** 2613 (unchanged — pure refactor, no new tests).
 
 ---
 

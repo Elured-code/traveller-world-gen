@@ -74,8 +74,8 @@ from typing import Optional, TYPE_CHECKING
 _rng: random.Random = random  # type: ignore[assignment]
 
 if TYPE_CHECKING:
-    from traveller_world_gen import World
-    from traveller_moon_gen import Moon
+    from .traveller_world_gen import World
+    from .traveller_moon_gen import Moon
 
 
 # ---------------------------------------------------------------------------
@@ -1092,7 +1092,7 @@ def generate_world_physical(  # pylint: disable=too-many-positional-arguments,to
         new_ecc = _reroll_eccentricity_tidal(orbit_number or 0.0, age_gyr)
         wp.eccentricity_adjusted = min(orbit_eccentricity, new_ecc)
     if hz_deviation is not None:
-        from traveller_world_atmosphere_detail import _compute_mean_temperature  # pylint: disable=import-outside-toplevel
+        from .traveller_world_atmosphere_detail import _compute_mean_temperature  # pylint: disable=import-outside-toplevel
         wp.mean_temperature_k = _compute_mean_temperature(hz_deviation, world.atmosphere)
     if orbit_au is not None and star_mass is not None and world.size > 0:
         wp.tidal_amplitude_m = _compute_tidal_amplitude(world.size, star_mass, orbit_au)

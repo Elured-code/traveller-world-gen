@@ -26,7 +26,7 @@ Usage — command line
 
 Usage — Python API
 ------------------
-    from traveller_map_fetch import generate_system_from_map
+    from .traveller_map_fetch import generate_system_from_map
 
     # By name + sector (sector always required with name)
     system = generate_system_from_map(
@@ -77,7 +77,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from traveller_stellar_gen import (
+from .traveller_stellar_gen import (
     Star,
     StarSystem,
     _generate_system_age,
@@ -85,14 +85,14 @@ from traveller_stellar_gen import (
     _secondary_orbit,
     _star_properties,
 )
-from traveller_orbit_gen import SystemOrbits, generate_orbits
-from traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
-from traveller_world_gen import (
+from .traveller_orbit_gen import SystemOrbits, generate_orbits
+from .traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
+from .traveller_world_gen import (
     World, generate_atmosphere_detail, generate_gas_mix, generate_unusual_subtype,
 )
-from traveller_world_detail import attach_detail
-from traveller_hydro_detail import generate_hydrographic_detail
-from world_codes import StarportCode
+from .traveller_world_detail import attach_detail
+from .traveller_hydro_detail import generate_hydrographic_detail
+from .world_codes import StarportCode
 
 
 # ---------------------------------------------------------------------------

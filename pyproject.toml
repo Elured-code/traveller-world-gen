@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "traveller-gen"
+version = "1.5.0"
+description = "Traveller RPG star system and world generator"
+requires-python = ">=3.11"
+dependencies = [
+    "jsonschema>=4.21.0,<5.0.0",
+    "Jinja2>=3.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+traveller_gen = ["templates/**/*", "traveller_world_schema.json"]
+
+[project.scripts]
+traveller-world = "traveller_gen.traveller_world_gen:main"
+traveller-mapfetch = "traveller_gen.traveller_map_fetch:main"

@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest  # pylint: disable=import-error
 
-from traveller_world_detail import (  # pylint: disable=import-error
+from traveller_gen.traveller_world_detail import (  # pylint: disable=import-error
     generate_biomass_rating,
     generate_biocomplexity_rating,
     generate_sophont_checks,
@@ -45,7 +45,7 @@ def _roll_biomass(atm, hydro, age_gyr, temperature_zone,
     # Each call uses two randint(1,6) calls; we fix them both to half
     half = dice_total // 2
     rem  = dice_total - half
-    with patch("traveller_world_detail.random.randint", side_effect=[half, rem]):
+    with patch("traveller_gen.traveller_world_detail.random.randint", side_effect=[half, rem]):
         return generate_biomass_rating(
             atm=atm, hydro=hydro, age_gyr=age_gyr,
             temperature_zone=temperature_zone,
@@ -526,7 +526,7 @@ def _roll_biocomplexity(biomass, atm, age_gyr, has_low_o=False, dice_total=7):
     """
     half = dice_total // 2
     rem  = dice_total - half
-    with patch("traveller_world_detail.random.randint", side_effect=[half, rem]):
+    with patch("traveller_gen.traveller_world_detail.random.randint", side_effect=[half, rem]):
         return generate_biocomplexity_rating(biomass, atm, age_gyr, has_low_o)
 
 
@@ -638,7 +638,7 @@ class TestBiocomplexitySpecialCases:
         # biomass=1, dice=2, atm=0 (DM-2), age=0.5 (DM-10):
         # base = 2-7+1 = -4; dm = -12; result = max(1, -4-12) = 1
         half, rem = 1, 1
-        with patch("traveller_world_detail.random.randint", side_effect=[half, rem]):
+        with patch("traveller_gen.traveller_world_detail.random.randint", side_effect=[half, rem]):
             result = generate_biocomplexity_rating(1, 0, 0.5)
         assert result >= 1
 
@@ -677,7 +677,7 @@ class TestBiocomplexitySpecialCases:
 
 def _roll_sophont(biocomplexity, age_gyr, dice_rolls):
     """Call generate_sophont_checks with a fixed sequence of 2D rolls."""
-    with patch("traveller_world_detail.random.randint", side_effect=dice_rolls):
+    with patch("traveller_gen.traveller_world_detail.random.randint", side_effect=dice_rolls):
         return generate_sophont_checks(biocomplexity, age_gyr)
 
 
@@ -758,7 +758,7 @@ class TestSophontChecks:
 def _roll_biodiversity(biomass: int, biocomplexity: int, rolls: list[int]) -> int:
     """Helper: patch randint to fixed values and call generate_biodiversity_rating."""
     it = iter(rolls)
-    with patch("traveller_world_detail.random.randint", side_effect=lambda a, b: next(it)):
+    with patch("traveller_gen.traveller_world_detail.random.randint", side_effect=lambda a, b: next(it)):
         return generate_biodiversity_rating(biomass, biocomplexity)
 
 
@@ -791,7 +791,7 @@ class TestBiodiversityRating:
 
     def test_high_value_encodes_as_ehex(self):
         # Ensure biodiversity >= 10 produces a single eHex char in profile
-        from traveller_world_gen import to_hex  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import to_hex  # pylint: disable=import-outside-toplevel
         rating = _roll_biodiversity(9, 9, [6, 6])  # 12-7+ceil(9)=14
         assert len(to_hex(rating)) == 1
 
@@ -809,7 +809,7 @@ def _roll_compat(
 ) -> int:
     """Helper: patch randint and call generate_compatibility_rating."""
     it = iter(rolls)
-    with patch("traveller_world_detail.random.randint", side_effect=lambda a, b: next(it)):
+    with patch("traveller_gen.traveller_world_detail.random.randint", side_effect=lambda a, b: next(it)):
         return generate_compatibility_rating(biocomplexity, atm, age_gyr, has_taint)
 
 
@@ -862,7 +862,7 @@ class TestCompatibilityRating:
     def test_lifeform_profile_four_ehex_chars(self):
         # Roll a world with known biomass/biocomplexity/biodiversity/compatibility
         # and verify the profile string is exactly 4 eHex characters.
-        from traveller_world_gen import to_hex  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import to_hex  # pylint: disable=import-outside-toplevel
         bio = 5
         cx = 3
         div = _roll_biodiversity(bio, cx, [4, 4])   # 8-7+ceil((5+3)/2)=1+4=5
@@ -875,7 +875,7 @@ class TestCompatibilityRating:
     def test_biomass_zero_fields_are_none(self):
         # The _apply_biomass() guard means no calls happen for biomass=0;
         # verify the World fields are None by default.
-        from traveller_world_gen import World  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import World  # pylint: disable=import-outside-toplevel
         w = World(
             name="Test", size=6, atmosphere=6, temperature="Temperate",
             hydrographics=5, population=0, government=0, law_level=0,
@@ -888,7 +888,7 @@ class TestCompatibilityRating:
         assert w.lifeform_profile is None
 
     def test_from_dict_restores_all_three_fields(self):
-        from traveller_world_gen import World  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_gen import World  # pylint: disable=import-outside-toplevel
         d = {
             "name": "X", "size": 6, "atmosphere": 6, "temperature": "Temperate",
             "hydrographics": 5, "population": 5, "government": 3, "law_level": 2,
@@ -1087,8 +1087,8 @@ class TestAtmosphereDetailNoneGuard:
 
     def test_apply_biomass_no_crash_with_none_atmosphere_detail(self):
         """_apply_biomass runs without error when atmosphere_detail is None."""
-        from traveller_system_gen import generate_full_system    # pylint: disable=import-outside-toplevel
-        from traveller_world_physical import generate_world_physical  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_system_gen import generate_full_system    # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_physical import generate_world_physical  # pylint: disable=import-outside-toplevel
         system = None
         for seed in range(100):
             s = generate_full_system(seed=seed)
@@ -1111,8 +1111,8 @@ class TestAtmosphereDetailNoneGuard:
     def test_biomass_zero_leaves_downstream_fields_none(self):
         """When _apply_biomass produces biomass_rating == 0, biodiversity/
         compatibility/lifeform_profile remain None."""
-        from traveller_system_gen import generate_full_system    # pylint: disable=import-outside-toplevel
-        from traveller_world_physical import generate_world_physical  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_system_gen import generate_full_system    # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_physical import generate_world_physical  # pylint: disable=import-outside-toplevel
         system = None
         for seed in range(100):
             s = generate_full_system(seed=seed)
@@ -1136,7 +1136,7 @@ class TestAtmosphereDetailNoneGuard:
         mw.compatibility_rating = None
         mw.lifeform_profile = None
         # dice=1+1=2 with atm 0 (DM-6), hydro 0 (DM-4) guarantees biomass=0
-        with patch("traveller_world_detail.random.randint", return_value=1):
+        with patch("traveller_gen.traveller_world_detail.random.randint", return_value=1):
             _apply_biomass(system)
         assert mw.biomass_rating == 0
         assert mw.biodiversity_rating is None
@@ -1197,7 +1197,7 @@ class TestOptionalInhospitableRule:
         (exactly 2 random.randint calls; no group roll is made)."""
         orbit = self._make_orbit(sah="000", is_hz=False, temp_zone="frozen")
         system = self._make_system([orbit])
-        with patch("traveller_world_detail.random.randint", return_value=1) as mock_roll:
+        with patch("traveller_gen.traveller_world_detail.random.randint", return_value=1) as mock_roll:
             _apply_biomass(system)
         # 2 calls = 1 biomass 2D; no group-roll calls
         assert mock_roll.call_count == 2
@@ -1212,7 +1212,7 @@ class TestOptionalInhospitableRule:
             self._make_orbit(sah="880", is_hz=False, temp_zone="temperate"),
         ]
         system = self._make_system(orbits)
-        with patch("traveller_world_detail.random.randint",
+        with patch("traveller_gen.traveller_world_detail.random.randint",
                    side_effect=[3, 4]) as mock_roll:
             _apply_biomass(system, optional_inhospitable_rule=True)
         assert mock_roll.call_count == 2          # group roll only
@@ -1228,7 +1228,7 @@ class TestOptionalInhospitableRule:
         # After the loop: group roll for _inhospitable.
         # bc=14≥8 → sophont check (6,6 → current_roll=14≥13 → 2 dice only)
         # Order: [hz_bio*2, hz_bc*2, hz_sophont*2, group*2]
-        with patch("traveller_world_detail.random.randint",
+        with patch("traveller_gen.traveller_world_detail.random.randint",
                    side_effect=[6, 6, 6, 6, 6, 6, 1, 1]):
             _apply_biomass(system, optional_inhospitable_rule=True)
         assert nhz.detail.biomass_rating == 0
@@ -1245,9 +1245,9 @@ class TestOptionalInhospitableRule:
         system = self._make_system([winner, loser])
         # [group*2, winner_bio*2, winner_bc*2, winner_sophont*2]
         # bc=14≥8 → sophont check (6,6 → current_roll=14≥13 → 2 dice only)
-        with patch("traveller_world_detail.random.randint",
+        with patch("traveller_gen.traveller_world_detail.random.randint",
                    side_effect=[6, 6, 6, 6, 6, 6, 6, 6]):
-            with patch("traveller_world_detail.random.randrange", return_value=0):
+            with patch("traveller_gen.traveller_world_detail.random.randrange", return_value=0):
                 _apply_biomass(system, optional_inhospitable_rule=True)
         # SAH "880" → atm=8(DM+2), hydro=0(DM-4), temperate(DM+2), net DM=0 → biomass 12
         assert winner.detail.biomass_rating == 12
@@ -1260,9 +1260,9 @@ class TestOptionalInhospitableRule:
         system = self._make_system([winner, loser])
         # winner's biomass=0 → no biocomplexity; loser is zeroed without dice.
         # Exactly 4 calls: 2 group + 2 winner biomass.
-        with patch("traveller_world_detail.random.randint",
+        with patch("traveller_gen.traveller_world_detail.random.randint",
                    side_effect=[6, 6, 6, 6]) as mock_roll:
-            with patch("traveller_world_detail.random.randrange", return_value=0):
+            with patch("traveller_gen.traveller_world_detail.random.randrange", return_value=0):
                 _apply_biomass(system, optional_inhospitable_rule=True)
         assert mock_roll.call_count == 4   # no extra dice for loser
         assert loser.detail.biomass_rating == 0
@@ -1276,9 +1276,9 @@ class TestOptionalInhospitableRule:
         system = self._make_system([winner, loser])
         # [group*2, winner_bio*2, winner_bc*2, winner_sophont*2, moon_bio*2, moon_bc*2, moon_sophont*2]
         # bc=14≥8 for both winner and moon → sophont check (6,6 → 2 dice each)
-        with patch("traveller_world_detail.random.randint",
+        with patch("traveller_gen.traveller_world_detail.random.randint",
                    side_effect=[6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6]):
-            with patch("traveller_world_detail.random.randrange", return_value=0):
+            with patch("traveller_gen.traveller_world_detail.random.randrange", return_value=0):
                 _apply_biomass(system, optional_inhospitable_rule=True)
         # moon SAH "880" → atm=8(DM+2), hydro=0(DM-4), temperate(DM+2), net DM=0 → biomass 12
         assert moon.detail.biomass_rating == 12
@@ -1291,9 +1291,9 @@ class TestOptionalInhospitableRule:
         winner = self._make_orbit(sah="000", is_hz=False)
         system = self._make_system([winner, loser])
         # winner biomass=0 (atm0/frozen/dice12 → 0); no biocomplexity; loser zeroed.
-        with patch("traveller_world_detail.random.randint",
+        with patch("traveller_gen.traveller_world_detail.random.randint",
                    side_effect=[6, 6, 6, 6]):
-            with patch("traveller_world_detail.random.randrange", return_value=0):
+            with patch("traveller_gen.traveller_world_detail.random.randrange", return_value=0):
                 _apply_biomass(system, optional_inhospitable_rule=True)
         assert moon.detail.biomass_rating == 0
 
@@ -1306,7 +1306,7 @@ class TestOptionalInhospitableRule:
         # In-HZ world: bio (2) + biocomplexity (2) + sophont check (2) = 6 calls.
         # bc=14≥8 → sophont check with (6,6 → current_roll=14≥13 → 2 dice only).
         # If a group roll were wrongly made it would consume 2 extra calls.
-        with patch("traveller_world_detail.random.randint",
+        with patch("traveller_gen.traveller_world_detail.random.randint",
                    side_effect=[6, 6, 6, 6, 6, 6]) as mock_roll:
             _apply_biomass(system, optional_inhospitable_rule=True)
         assert mock_roll.call_count == 6
@@ -1317,9 +1317,9 @@ class TestOptionalInhospitableRule:
 
     def test_attach_detail_passes_inhospitable_flag(self):
         """attach_detail() forwards optional_inhospitable_rule to _apply_biomass."""
-        from traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel
         system = generate_full_system(seed=0)
-        with patch("traveller_world_detail._apply_biomass") as mock_apply:
+        with patch("traveller_gen.traveller_world_detail._apply_biomass") as mock_apply:
             attach_detail(system, optional_inhospitable_rule=True)
         mock_apply.assert_called_once()
         _, kwargs = mock_apply.call_args
