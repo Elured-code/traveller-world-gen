@@ -156,7 +156,7 @@ from traveller_world_gen import (
 )
 from traveller_belt_physical import BeltPhysical
 from traveller_world_physical import (
-    generate_world_physical, apply_moon_tidal_effects,
+    generate_world_physical, apply_moon_tidal_effects, attach_resource_factor,
 )
 from traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
@@ -724,6 +724,7 @@ async def generate_world_card(request: Request) -> Response:  # pylint: disable=
             _apply_mainworld_moon_tidal(system)
             attach_detail(system, rng=rng)
             attach_body_names(system)
+            attach_resource_factor(system, rng=rng)
             if want_social_detail:
                 attach_population_detail(system, rng=rng)
                 attach_government_detail(system, rng=rng)
@@ -931,6 +932,7 @@ async def generate_system_from_existing_world(request: Request) -> Response:  # 
                           optional_inhospitable_rule=want_inhospitable)
             attach_body_names(system)
             _apply_mainworld_moon_tidal(system)
+            attach_resource_factor(system, rng=rng)
     except Exception as exc:
         logger.exception("Error generating system from world: %s", exc)
         return error("An unexpected error occurred while generating the system.",
@@ -1242,6 +1244,7 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
                       optional_inhospitable_rule=want_inhospitable)
         attach_body_names(system)
         _apply_mainworld_moon_tidal(system)
+        attach_resource_factor(system, rng=rng)
     mw = system.mainworld
     logger.info(
         "Generated map system name=%s stars=%d worlds=%d detail=%s format=%s uwp=%s",
@@ -1401,6 +1404,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
                       optional_inhospitable_rule=want_inhospitable)
         attach_body_names(system)
         _apply_mainworld_moon_tidal(system)
+        attach_resource_factor(system, rng=rng)
         apply_secondary_social(system, independent_government=want_indep, rng=rng)
         if want_social_detail:
             attach_population_detail(system, rng=rng)
@@ -1535,7 +1539,7 @@ async def generate_map_system_svg(request: Request) -> Response:  # pylint: disa
 
 @app.get("/api/map/world/card")
 @limiter.limit(_RATE_LIMIT)
-async def generate_map_world_card(request: Request) -> Response:  # pylint: disable=too-many-locals,too-many-return-statements
+async def generate_map_world_card(request: Request) -> Response:  # pylint: disable=too-many-locals,too-many-return-statements,too-many-statements
     """Fetch canonical data from TravellerMap and return a detailed mainworld HTML card.
 
     Runs the same full detail pipeline as /api/map/system/full (attach_detail,
@@ -1612,6 +1616,7 @@ async def generate_map_world_card(request: Request) -> Response:  # pylint: disa
                       optional_inhospitable_rule=want_inhospitable)
         attach_body_names(system)
         _apply_mainworld_moon_tidal(system)
+        attach_resource_factor(system, rng=rng)
         apply_secondary_social(system, independent_government=want_indep, rng=rng)
         if want_social_detail:
             attach_population_detail(system, rng=rng)

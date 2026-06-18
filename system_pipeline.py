@@ -16,7 +16,9 @@ from typing import Optional
 
 from traveller_belt_physical import BeltPhysical
 from traveller_world_gen import generate_hydrographics, apply_mainworld_social
-from traveller_world_physical import generate_world_physical, apply_moon_tidal_effects
+from traveller_world_physical import (
+    generate_world_physical, apply_moon_tidal_effects, attach_resource_factor,
+)
 from traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
@@ -270,6 +272,8 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
         apply_mainworld_social(
             system.mainworld, rng=rng, settlement_type=options.settlement_type,
         )
+        if options.want_detail:
+            attach_resource_factor(system, rng=rng)
 
     if swapped and options.want_detail:
         reattach_mainworld_orbit(system, rng=rng)

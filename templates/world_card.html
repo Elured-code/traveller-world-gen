@@ -287,6 +287,9 @@
     {% if p.resource_rating is not none %}
     {{ drow("Resource rating", p.resource_rating|string) }}
     {% endif %}
+    {% if p.resource_factor is not none %}
+    {{ drow("Resource factor", p.resource_factor|string) }}
+    {% endif %}
     {{ drow("Axial tilt", p.axial_tilt|string ~ "°") }}
     {{ drow("Day length", "%.1f h"|format(p.day_length)) }}
     {% if p.stellar_day_hours is not none %}

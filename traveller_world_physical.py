@@ -797,6 +797,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
     stellar_day_hours: Optional[float] = field(default=None, init=False)
     runaway_greenhouse: Optional[bool] = field(default=None, init=False)
     resource_rating:    Optional[int]  = field(default=None, init=False)
+    resource_factor:    Optional[int]  = field(default=None, init=False)
 
     @classmethod
     def from_dict(cls, d: dict) -> "WorldPhysical":
@@ -838,6 +839,7 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             bool(d["runaway_greenhouse"]) if d.get("runaway_greenhouse") is not None else None
         )
         obj.resource_rating = _ii("resource_rating")
+        obj.resource_factor = _ii("resource_factor")
         return obj
 
     def to_dict(self) -> dict:  # pylint: disable=too-many-branches
@@ -886,6 +888,8 @@ class WorldPhysical:  # pylint: disable=too-many-instance-attributes
             d["runaway_greenhouse"] = self.runaway_greenhouse
         if self.resource_rating is not None:
             d["resource_rating"] = self.resource_rating
+        if self.resource_factor is not None:
+            d["resource_factor"] = self.resource_factor
         return d
 
 
@@ -928,6 +932,66 @@ def apply_biological_resource_dms(
         elif compatibility <= 3 and bio >= 1:
             rr -= 1
     return max(2, min(12, rr))
+
+
+def compute_resource_factor(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    resource_rating: int,
+    tech_level: int,
+    trade_codes: list,
+    belt_count: int,
+    gas_giant_count: int,
+    rng: Optional[random.Random] = None,
+) -> int:
+    """Apply depletion and TL8+ DMs to produce the resource factor (WBH p.131).
+
+    Steps:
+      1. Industrial or Agricultural worlds subtract 1D-1 (min 2) for depletion.
+      2. TL 8+: add belt_count + gas_giant_count for space-based resource access.
+
+    When depletion floors to 2, the TL8+ bonus still applies, so the effective
+    minimum for a TL8+ In/Ag world is 2 + belt_count + gas_giant_count.
+    """
+    r = rng if rng is not None else _rng
+    factor = resource_rating
+    tl8_bonus = (belt_count + gas_giant_count) if tech_level >= 8 else 0
+
+    if "In" in trade_codes or "Ag" in trade_codes:
+        depletion = r.randint(1, 6) - 1  # 1D-1
+        factor = max(2, factor - depletion)
+
+    factor += tl8_bonus
+    return factor
+
+
+def attach_resource_factor(
+    system: "object",
+    rng: Optional[random.Random] = None,
+) -> None:
+    """Compute and attach resource_factor to the mainworld WorldPhysical.
+
+    Must be called after both generate_world_physical() (or _attach_physical())
+    and apply_mainworld_social() so that tech_level and trade_codes are set.
+    No-op if mainworld is None, size_detail is not WorldPhysical, or
+    resource_rating has not been computed.
+    """
+    mw = getattr(system, "mainworld", None)
+    if mw is None:
+        return
+    if not isinstance(mw.size_detail, WorldPhysical):
+        return
+    if mw.size_detail.resource_rating is None:
+        return
+    orbits = getattr(system, "system_orbits", None)
+    belt_count    = getattr(orbits, "belt_count", 0) if orbits else 0
+    gg_count      = getattr(orbits, "gas_giant_count", 0) if orbits else 0
+    mw.size_detail.resource_factor = compute_resource_factor(
+        mw.size_detail.resource_rating,
+        mw.tech_level,
+        mw.trade_codes,
+        belt_count,
+        gg_count,
+        rng=rng,
+    )
 
 
 # ---------------------------------------------------------------------------
