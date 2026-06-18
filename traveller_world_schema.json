@@ -1028,6 +1028,10 @@
         "development_score": {
           "type": "number",
           "description": "IISS development score (WBH p.132): (GWP per capita / 1000) × (1 − Inequality Rating / 100). When inequality_rating is not yet computed, treats IR as 0."
+        },
+        "economics_profile": {
+          "type": "string",
+          "description": "Compact economics profile string (WBH Social Characteristics): RF LF IF EF where RF, LF, IF are single eHex characters and EF is a signed integer. Example: '765+2'. IF is '0' when infrastructure is absent."
         }
       }
     }

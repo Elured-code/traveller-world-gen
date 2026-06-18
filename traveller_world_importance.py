@@ -41,6 +41,13 @@ if TYPE_CHECKING:
 
 _rng: random.Random = random  # type: ignore[assignment]
 
+_EHEX = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def _ehex(n: int) -> str:
+    """Convert a non-negative int to a single eHex character (0–Z)."""
+    return _EHEX[max(0, min(n, len(_EHEX) - 1))]
+
 
 # ---------------------------------------------------------------------------
 # Dataclass
@@ -67,7 +74,8 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
     gwp_base:              Optional[int]   # IF_adj + min(RF_adj, IF_adj); None before attach
     gwp_per_capita:        Optional[int]   # GWP per capita in Cr; None before attach
     gwp_total_mcr:         Optional[float] # total GWP in MCr; None before attach
-    development_score:     Optional[float] # (GWP_pc/1000)×(1−IR/100); None before attach
+    development_score:     Optional[float]  # (GWP_pc/1000)×(1−IR/100); None before attach
+    economics_profile:     Optional[str]   # e.g. "765+2" — RF/LF/IF eHex + EF signed
 
     @property
     def importance_str(self) -> str:
@@ -106,6 +114,8 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
             d["gwp_total_mcr"] = self.gwp_total_mcr
         if self.development_score is not None:
             d["development_score"] = self.development_score
+        if self.economics_profile is not None:
+            d["economics_profile"] = self.economics_profile
         return d
 
     @classmethod
@@ -150,6 +160,7 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
                 float(d["development_score"])
                 if d.get("development_score") is not None else None
             ),
+            economics_profile=d.get("economics_profile"),
         )
 
 
@@ -257,6 +268,7 @@ def generate_importance_detail(  # pylint: disable=too-many-locals,too-many-argu
         gwp_per_capita=None,
         gwp_total_mcr=None,
         development_score=None,
+        economics_profile=None,
     )
 
 
@@ -454,6 +466,29 @@ def compute_development_score(gwp_per_capita: int, inequality_rating: int = 0) -
 
 
 # ---------------------------------------------------------------------------
+# Economics profile string
+# ---------------------------------------------------------------------------
+
+def compute_economics_profile(
+    resource_factor: Optional[int],
+    labour_factor: int,
+    infrastructure_factor: Optional[int],
+    efficiency_factor: int,
+) -> str:
+    """Build the economics profile string (WBH Social Characteristics).
+
+    Format: RF LF IF EF — e.g. "765+2" or "A90-3".
+    RF, LF, IF are single eHex characters; IF is '0' when absent.
+    EF is a signed decimal (+1…+5 or -1…-5; never 0 by rule).
+    """
+    rf_char  = _ehex(resource_factor   if resource_factor   is not None else 0)
+    lf_char  = _ehex(labour_factor)
+    if_char  = _ehex(infrastructure_factor) if infrastructure_factor is not None else "0"
+    ef_str   = f"+{efficiency_factor}" if efficiency_factor > 0 else str(efficiency_factor)
+    return f"{rf_char}{lf_char}{if_char}{ef_str}"
+
+
+# ---------------------------------------------------------------------------
 # Attach helper
 # ---------------------------------------------------------------------------
 
@@ -529,4 +564,10 @@ def attach_importance_detail(  # pylint: disable=too-many-locals
     ir = int(getattr(world, "inequality_rating", 0) or 0)
     wi.development_score = compute_development_score(  # type: ignore[attr-defined]
         gwp_pc, inequality_rating=ir,
+    )
+    wi.economics_profile = compute_economics_profile(  # type: ignore[attr-defined]
+        resource_factor=resource_factor,
+        labour_factor=wi.labour_factor,
+        infrastructure_factor=wi.infrastructure_factor,
+        efficiency_factor=ef,
     )

@@ -552,6 +552,9 @@
     {{ drow("Total GWP", "MCr%s" % "{:,.2f}".format(ctx.importance_detail.gwp_total_mcr)) }}
     {{ drow("Development score", "%.2f" % ctx.importance_detail.development_score) }}
     {% endif %}
+    {% if ctx.importance_detail.economics_profile is not none %}
+    {{ drow("Economics profile", ctx.importance_detail.economics_profile, highlight=true) }}
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}

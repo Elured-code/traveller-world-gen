@@ -554,6 +554,54 @@ class TestDevelopmentScore:
 
 
 # ---------------------------------------------------------------------------
+# Economics profile string (compute_economics_profile)
+# ---------------------------------------------------------------------------
+
+class TestEconomicsProfile:
+    def _ep(self, rf=7, lf=6, inf=5, ef=2):
+        from traveller_world_importance import compute_economics_profile
+        return compute_economics_profile(
+            resource_factor=rf, labour_factor=lf,
+            infrastructure_factor=inf, efficiency_factor=ef,
+        )
+
+    def test_format_positive_ef(self):
+        assert self._ep(7, 6, 5, 2) == "765+2"
+
+    def test_format_negative_ef(self):
+        assert self._ep(7, 6, 5, -3) == "765-3"
+
+    def test_none_inf_gives_zero_char(self):
+        assert self._ep(7, 6, None, 2) == "760+2"
+
+    def test_none_rf_gives_zero_char(self):
+        assert self._ep(None, 6, 5, 2) == "065+2"
+
+    def test_ehex_ten_gives_a(self):
+        assert self._ep(10, 9, 8, 1) == "A98+1"
+
+    def test_length_positive_ef(self):
+        result = self._ep(7, 6, 5, 2)
+        # "765+2" → 5 chars
+        assert len(result) == 5
+
+    def test_length_negative_ef(self):
+        result = self._ep(7, 6, 5, -3)
+        # "765-3" → 5 chars
+        assert len(result) == 5
+
+    def test_profile_none_before_attach(self):
+        wi = _gen(population=7, starport="A", tech_level=12)
+        assert wi.economics_profile is None
+
+    def test_round_trip(self):
+        from traveller_world_importance import WorldImportance
+        wi = WorldImportance.from_dict({"importance": 1, "economics_profile": "765+2"})
+        assert wi.economics_profile == "765+2"
+        assert wi.to_dict()["economics_profile"] == "765+2"
+
+
+# ---------------------------------------------------------------------------
 # Efficiency factor (compute_efficiency_factor)
 # ---------------------------------------------------------------------------
 
@@ -652,7 +700,7 @@ class TestEfficiencyFactor:
             base_dm=0, waystation_dm=0,
             labour_factor=6, infrastructure_factor=4, efficiency_factor=3,
             resource_units=96, gwp_base=8, gwp_per_capita=24000, gwp_total_mcr=240000.0,
-            development_score=24.0,
+            development_score=24.0, economics_profile="846+3",
         )
         d = wi.to_dict()
         assert d["efficiency_factor"] == 3
