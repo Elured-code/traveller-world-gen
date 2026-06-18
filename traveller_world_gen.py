@@ -61,6 +61,7 @@ if TYPE_CHECKING:
     from traveller_world_law_detail import LawDetail
     from traveller_world_tech_detail import TechDetail
     from traveller_world_culture_detail import CultureDetail
+    from traveller_world_importance import WorldImportance
 
 
 # ---------------------------------------------------------------------------
@@ -1777,7 +1778,7 @@ class World:  # pylint: disable=too-many-instance-attributes
                     )
 
     @classmethod
-    def from_dict(cls, d: dict) -> "World":  # pylint: disable=too-many-locals,too-many-branches
+    def from_dict(cls, d: dict) -> "World":  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         """Reconstruct a World from a dict produced by to_dict().
 
         Handles both the nested form produced by to_dict() (where 'starport',
