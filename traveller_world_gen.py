@@ -2186,6 +2186,10 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "tech_detail": world.tech_detail,
         "culture_detail": world.culture_detail,
         "importance_detail": world.importance_detail,
+        "resource_factor": (
+            getattr(world.size_detail, "resource_factor", None)
+            if world.size_detail is not None else None
+        ),
     }
 
 

@@ -1096,8 +1096,8 @@ class TestSocialDetailOption:
         imp = body["mainworld"]["importance_detail"]
         required = {"importance", "starport_dm", "population_dm", "tech_dm",
                     "agricultural_dm", "industrial_dm", "rich_dm",
-                    "base_dm", "waystation_dm"}
-        assert required == set(imp.keys())
+                    "base_dm", "waystation_dm", "labour_factor"}
+        assert required.issubset(set(imp.keys()))
 
     def test_importance_equals_sum_of_dms(self):
         body = client.get("/api/system?seed=2&detail=true&social_detail=true").json()

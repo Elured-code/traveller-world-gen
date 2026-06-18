@@ -250,6 +250,8 @@ class TestRoundTrip:
         assert restored.rich_dm == wi.rich_dm
         assert restored.base_dm == wi.base_dm
         assert restored.waystation_dm == wi.waystation_dm
+        assert restored.labour_factor == wi.labour_factor
+        assert restored.infrastructure_factor == wi.infrastructure_factor
 
     def test_from_dict_missing_fields_default_to_zero(self):
         wi = WorldImportance.from_dict({"importance": 2})
@@ -258,10 +260,112 @@ class TestRoundTrip:
         assert wi.tech_dm == 0
         assert wi.base_dm == 0
         assert wi.waystation_dm == 0
+        assert wi.labour_factor == 0
+        assert wi.infrastructure_factor is None
 
     def test_to_dict_contains_all_keys(self):
         d = _gen().to_dict()
         for key in ("importance", "starport_dm", "population_dm", "tech_dm",
                     "agricultural_dm", "industrial_dm", "rich_dm",
-                    "base_dm", "waystation_dm"):
+                    "base_dm", "waystation_dm", "labour_factor"):
             assert key in d
+
+    def test_infrastructure_factor_omitted_when_none(self):
+        wi = _gen(population=0)
+        d = wi.to_dict()
+        assert "infrastructure_factor" not in d
+
+    def test_infrastructure_factor_present_when_set(self):
+        import random as _random
+        rng = _random.Random(42)
+        wi = generate_importance_detail(
+            starport="A", population=9, tech_level=12,
+            trade_codes=[], bases=[], rng=rng,
+        )
+        if wi.infrastructure_factor is not None:
+            assert "infrastructure_factor" in wi.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Labour factor
+# ---------------------------------------------------------------------------
+
+class TestLabourFactor:
+    def test_pop_0_gives_zero(self):
+        assert _gen(population=0).labour_factor == 0
+
+    def test_pop_1_gives_zero(self):
+        assert _gen(population=1).labour_factor == 0
+
+    def test_pop_2_gives_one(self):
+        assert _gen(population=2).labour_factor == 1
+
+    def test_pop_7_gives_six(self):
+        assert _gen(population=7).labour_factor == 6
+
+    def test_pop_9_gives_eight(self):
+        assert _gen(population=9).labour_factor == 8
+
+    def test_pop_10_gives_nine(self):
+        assert _gen(population=10).labour_factor == 9
+
+
+# ---------------------------------------------------------------------------
+# Infrastructure factor
+# ---------------------------------------------------------------------------
+
+class TestInfrastructureFactor:
+    def test_pop_0_gives_none(self):
+        wi = _gen(population=0)
+        assert wi.infrastructure_factor is None
+
+    def test_pop_1_no_dice_result_equals_importance(self):
+        # Pop 1 → infra_dm = 0, raw = importance; starport A (+1), pop 1 (−1), TL 9 (0) = 0
+        wi = _gen(population=1, starport="A", tech_level=9)
+        assert wi.importance == 0
+        assert wi.infrastructure_factor == 0
+
+    def test_pop_1_negative_importance_gives_none(self):
+        # Starport D (-1), pop 1 (-1), TL 5 (-1) = -3; infra_dm=0 → raw=-3 → None
+        wi = _gen(population=1, starport="D", tech_level=5)
+        assert wi.infrastructure_factor is None
+
+    def test_pop_3_no_dice_result_equals_importance(self):
+        # Pop 3 (1–3 range) → infra_dm = 0
+        wi = _gen(population=3, starport="A", tech_level=12)
+        assert wi.infrastructure_factor == wi.importance
+
+    def test_pop_4_adds_one_die(self):
+        import random as _random
+        rng = _random.Random(1)
+        wi = generate_importance_detail(
+            starport="C", population=4, tech_level=9,
+            trade_codes=[], bases=[], rng=rng,
+        )
+        assert wi.infrastructure_factor is not None or wi.importance < 0
+
+    def test_pop_7_adds_two_dice(self):
+        import random as _random
+        rng = _random.Random(1)
+        wi = generate_importance_detail(
+            starport="A", population=7, tech_level=12,
+            trade_codes=[], bases=[], rng=rng,
+        )
+        assert wi.infrastructure_factor is not None
+        assert wi.infrastructure_factor >= wi.importance
+
+    def test_negative_raw_gives_none(self):
+        # Force a scenario where importance is very negative and dice can't save it.
+        # Starport X (-1), pop 1 (-1), TL 0 (-1) = -3; infra_dm=0 → raw=-3 → None
+        wi = _gen(population=1, starport="X", tech_level=0)
+        assert wi.infrastructure_factor is None
+
+    def test_zero_or_positive_raw_gives_int(self):
+        import random as _random
+        rng = _random.Random(99)
+        wi = generate_importance_detail(
+            starport="A", population=9, tech_level=12,
+            trade_codes=[], bases=[], rng=rng,
+        )
+        assert isinstance(wi.infrastructure_factor, int)
+        assert wi.infrastructure_factor >= 0

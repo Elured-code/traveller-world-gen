@@ -531,6 +531,15 @@
     {{ drow("Militancy", ctx.culture_detail.militancy|string + " — " + ctx.culture_detail.militancy_label) }}
     {% if ctx.importance_detail is not none %}
     {{ drow("World importance", ctx.importance_detail.importance_str, highlight=ctx.importance_detail.importance > 3) }}
+    {{ drow("Labour factor", ctx.importance_detail.labour_factor|string) }}
+    {% if ctx.importance_detail.infrastructure_factor is not none %}
+    {{ drow("Infrastructure factor", ctx.importance_detail.infrastructure_factor|string) }}
+    {% else %}
+    {{ drow("Infrastructure factor", "—") }}
+    {% endif %}
+    {% if ctx.resource_factor is not none %}
+    {{ drow("Resource factor", ctx.resource_factor|string) }}
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}

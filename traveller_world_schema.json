@@ -681,6 +681,11 @@
               "minimum": 2,
               "maximum": 12,
               "description": "Terrestrial resource rating (WBH p.131): 2D-7 + Size + density DM, clamped to [2, 12]. Biological DMs (biomass, biodiversity, compatibility) are applied deterministically by attach_detail(). Present whenever generate_world_physical() has been called for a Size 1+ world."
+            },
+            "resource_factor": {
+              "type": "integer",
+              "minimum": 2,
+              "description": "Terrestrial resource factor (WBH p.131): resource_rating after depletion DM for Industrial/Agricultural worlds (subtract 1D-1, min 2) and TL8+ bonus (+1 per belt or gas giant in the system). Set by attach_detail()."
             }
           }
         },
@@ -930,7 +935,7 @@
     "importance_detail": {
       "type": "object",
       "description": "CRB world importance score. Deterministic sum of modifiers from starport, population, tech level, trade codes, and base presence. Present only when social detail generation has been explicitly requested.",
-      "required": ["importance", "starport_dm", "population_dm", "tech_dm", "agricultural_dm", "industrial_dm", "rich_dm", "base_dm", "waystation_dm"],
+      "required": ["importance", "starport_dm", "population_dm", "tech_dm", "agricultural_dm", "industrial_dm", "rich_dm", "base_dm", "waystation_dm", "labour_factor"],
       "additionalProperties": false,
       "properties": {
         "importance": {
@@ -984,6 +989,16 @@
           "minimum": 0,
           "maximum": 1,
           "description": "+1 if an X-Boat waystation (base code W) is present."
+        },
+        "labour_factor": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Population code − 1, minimum 0. Represents the fraction of the population that directly contributes to wealth creation (WBH). 0 when population code is 0 or 1."
+        },
+        "infrastructure_factor": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Importance + population DMs (1D for pop 4–6; 2D for pop 7+). Absent when population is 0 or when the raw value is negative (no infrastructure). Present only when non-negative."
         }
       }
     }

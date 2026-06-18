@@ -731,7 +731,7 @@ async def generate_world_card(request: Request) -> Response:  # pylint: disable=
                 attach_law_detail(system, rng=rng)
                 attach_tech_detail(system, rng=rng)
                 attach_culture_detail(system, rng=rng)
-                attach_importance_detail(system)
+                attach_importance_detail(system, rng=rng)
             world = system.mainworld
         else:
             # Minimal path: matches gen-ui with system detail and population detail off.

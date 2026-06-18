@@ -292,4 +292,4 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
         attach_law_detail(system, rng=rng)
         attach_tech_detail(system, rng=rng)
         attach_culture_detail(system, rng=rng)
-        attach_importance_detail(system)
+        attach_importance_detail(system, rng=rng)
