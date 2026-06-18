@@ -418,12 +418,13 @@ FASTAPI SERVER — INSTALLER AND LAUNCHER SCRIPTS
 ------------------------------------------------
 A new install script (install.sh on macOS/Linux, install.ps1 on Windows) sets
 up the FastAPI server environment and generates platform-appropriate launcher
-scripts (run-fastapi.sh, run-fastapi.bat, or run-fastapi.ps1). Running the
-launcher starts the server without needing to navigate to the fastapi/ directory
-or remember the uvicorn command manually.
+scripts (scripts/run_fastapi.sh, scripts/run_fastapi.bat, or
+scripts/run_fastapi.ps1). Running the launcher starts the server without needing
+to navigate to the fastapi/ directory or remember the uvicorn command manually.
 
 To set up: run install.sh (or install.ps1) once from the project root. To start
-the server: run ./run-fastapi.sh (or run-fastapi.bat / run-fastapi.ps1).
+the server: run bash scripts/run_fastapi.sh (or scripts\run_fastapi.bat /
+.\scripts\run_fastapi.ps1).
 
 
 GRACEFUL JSON LOADING — VERSION MISMATCH WARNING
