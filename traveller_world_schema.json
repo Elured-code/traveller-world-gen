@@ -926,6 +926,66 @@
           "description": "Compressed cultural profile string in DXUS-CPEM format (9 chars: 4 eHex, hyphen, 4 eHex). D=Diversity, X=Xenophilia, U=Uniqueness, S=Symbology, C=Cohesion, P=Progressiveness, E=Expansionism, M=Militancy. Example: '7567-8432'."
         }
       }
+    },
+    "importance_detail": {
+      "type": "object",
+      "description": "CRB world importance score. Deterministic sum of modifiers from starport, population, tech level, trade codes, and base presence. Present only when social detail generation has been explicitly requested.",
+      "required": ["importance", "starport_dm", "population_dm", "tech_dm", "agricultural_dm", "industrial_dm", "rich_dm", "base_dm", "waystation_dm"],
+      "additionalProperties": false,
+      "properties": {
+        "importance": {
+          "type": "integer",
+          "description": "Total world importance score (typically −3 to +6)."
+        },
+        "starport_dm": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "+1 for starport A or B; −1 for D, E, or X; 0 otherwise."
+        },
+        "population_dm": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "−1 for population 0–6; +1 for population 9+; 0 for 7–8."
+        },
+        "tech_dm": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 2,
+          "description": "−1 for TL 0–8; 0 for TL 9; +1 for TL A–F (10–15); +2 for TL G+ (16+)."
+        },
+        "agricultural_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if the Agricultural (Ag) trade code is present."
+        },
+        "industrial_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if the Industrial (In) trade code is present."
+        },
+        "rich_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if the Rich (Ri) trade code is present."
+        },
+        "base_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if two or more non-Corsair bases are present."
+        },
+        "waystation_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if an X-Boat waystation (base code W) is present."
+        }
+      }
     }
   },
   "$defs": {

@@ -1557,6 +1557,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                                     # WBH Culture section: diversity trait (and future traits).
                                     # Set by attach_culture_detail() (Session 127, issue #99).
                                     # None by default; only set when "Social detail" enabled.
+    importance_detail: Optional["WorldImportance"]   = field(default=None, init=False)
+                                    # CRB world importance score (deterministic, no dice).
+                                    # Set by attach_importance_detail() (Session 132, issue #155).
+                                    # None by default; only set when "Social detail" enabled.
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1678,6 +1682,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.tech_detail is not None else {}),
             **({"culture_detail": self.culture_detail.to_dict()}
                if self.culture_detail is not None else {}),
+            **({"importance_detail": self.importance_detail.to_dict()}
+               if self.importance_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1870,6 +1876,9 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("culture_detail") is not None:
             from traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
             world.culture_detail = _CD.from_dict(d["culture_detail"])
+        if d.get("importance_detail") is not None:
+            from traveller_world_importance import WorldImportance as _WI  # pylint: disable=import-outside-toplevel
+            world.importance_detail = _WI.from_dict(d["importance_detail"])
 
         return world
 
@@ -2175,6 +2184,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "law_detail": world.law_detail,
         "tech_detail": world.tech_detail,
         "culture_detail": world.culture_detail,
+        "importance_detail": world.importance_detail,
     }
 
 

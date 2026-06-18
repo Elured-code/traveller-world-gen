@@ -936,3 +936,28 @@ class TestSocialDetailGeneration:
     def test_culture_section_absent_without_social_detail(self, system_app_win):
         html = system_app_win._current_world.to_html()
         assert "Culture detail" not in html
+
+    # -- importance_detail --
+
+    def test_importance_detail_none_without_social_detail(self, system_app_win):
+        assert system_app_win._current_world.importance_detail is None
+
+    def test_importance_detail_present_with_social_detail(self, social_system_app_win):
+        assert social_system_app_win._current_world.importance_detail is not None
+
+    def test_importance_equals_sum_of_dms(self, social_system_app_win):
+        imp = social_system_app_win._current_world.importance_detail
+        expected = (
+            imp.starport_dm + imp.population_dm + imp.tech_dm
+            + imp.agricultural_dm + imp.industrial_dm + imp.rich_dm
+            + imp.base_dm + imp.waystation_dm
+        )
+        assert imp.importance == expected
+
+    def test_importance_row_in_mainworld_html(self, social_system_app_win):
+        html = social_system_app_win._current_world.to_html()
+        assert "World importance" in html
+
+    def test_importance_row_absent_without_social_detail(self, system_app_win):
+        html = system_app_win._current_world.to_html()
+        assert "World importance" not in html

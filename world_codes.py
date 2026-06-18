@@ -82,7 +82,7 @@ try:
     import _version as _v  # type: ignore[import]
     APP_VERSION = ".".join(str(x) for x in _v.__version_tuple__)
 except ImportError:
-    APP_VERSION = "1.5.30"
+    APP_VERSION = "1.5.31"
 
 _EHEX = "0123456789ABCDEFGHIJ"
 

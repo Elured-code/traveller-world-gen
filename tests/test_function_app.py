@@ -1084,3 +1084,41 @@ class TestSocialDetailOption:
     def test_world_card_html_no_culture_without_social_detail(self):
         html = client.get("/api/world/Test/card?seed=2&detail=true").text
         assert "Culture detail" not in html
+
+    # -- importance_detail --
+
+    def test_system_mainworld_has_importance_detail(self):
+        body = client.get("/api/system?seed=2&detail=true&social_detail=true").json()
+        assert "importance_detail" in body["mainworld"]
+
+    def test_importance_detail_has_required_keys(self):
+        body = client.get("/api/system?seed=2&detail=true&social_detail=true").json()
+        imp = body["mainworld"]["importance_detail"]
+        required = {"importance", "starport_dm", "population_dm", "tech_dm",
+                    "agricultural_dm", "industrial_dm", "rich_dm",
+                    "base_dm", "waystation_dm"}
+        assert required == set(imp.keys())
+
+    def test_importance_equals_sum_of_dms(self):
+        body = client.get("/api/system?seed=2&detail=true&social_detail=true").json()
+        imp = body["mainworld"]["importance_detail"]
+        expected = (
+            imp["starport_dm"] + imp["population_dm"] + imp["tech_dm"]
+            + imp["agricultural_dm"] + imp["industrial_dm"] + imp["rich_dm"]
+            + imp["base_dm"] + imp["waystation_dm"]
+        )
+        assert imp["importance"] == expected
+
+    def test_importance_detail_absent_without_social_detail(self):
+        body = client.get("/api/system?seed=2&detail=true").json()
+        assert "importance_detail" not in body["mainworld"]
+
+    def test_world_card_html_has_importance_row(self):
+        html = client.get(
+            "/api/world/Test/card?seed=2&detail=true&social_detail=true"
+        ).text
+        assert "World importance" in html
+
+    def test_world_card_html_no_importance_without_social_detail(self):
+        html = client.get("/api/world/Test/card?seed=2&detail=true").text
+        assert "World importance" not in html

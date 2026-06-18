@@ -176,11 +176,13 @@
 </style>
 </head>
 <body>
-{% macro drow(label, value, danger=false) %}
+{% macro drow(label, value, danger=false, highlight=false) %}
 <div class="detail-row">
   <span class="row-label">{{ label }}</span>
   {% if danger %}
   <span style="font-size:13px;font-weight:500;text-align:right;color:var(--color-text-danger,#c0392b)">{{ value }}</span>
+  {% elif highlight %}
+  <span style="font-size:13px;font-weight:700;text-align:right">{{ value }}</span>
   {% else %}
   <span style="font-size:13px;font-weight:500;text-align:right">{{ value }}</span>
   {% endif %}
@@ -524,6 +526,9 @@
     {{ drow("Progressiveness", ctx.culture_detail.progressiveness|string + " — " + ctx.culture_detail.progressiveness_label) }}
     {{ drow("Expansionism", ctx.culture_detail.expansionism|string + " — " + ctx.culture_detail.expansionism_label) }}
     {{ drow("Militancy", ctx.culture_detail.militancy|string + " — " + ctx.culture_detail.militancy_label) }}
+    {% if ctx.importance_detail is not none %}
+    {{ drow("World importance", ctx.importance_detail.importance_str, highlight=ctx.importance_detail.importance > 3) }}
+    {% endif %}
   </div>
   {% endif %}
 
