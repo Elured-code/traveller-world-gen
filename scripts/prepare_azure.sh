@@ -36,6 +36,7 @@ cp \
   "$REPO_ROOT/traveller_world_schema.json" \
   "$REPO_ROOT/traveller_world_tech_detail.py" \
   "$REPO_ROOT/traveller_world_culture_detail.py" \
+  "$REPO_ROOT/traveller_world_importance.py" \
   "$REPO_ROOT/world_codes.py" \
   "$DEST/"
 
