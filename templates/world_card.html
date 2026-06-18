@@ -550,6 +550,7 @@
     {{ drow("GWP base value", ctx.importance_detail.gwp_base|string) }}
     {{ drow("GWP per capita", "Cr%s" % "{:,}".format(ctx.importance_detail.gwp_per_capita)) }}
     {{ drow("Total GWP", "MCr%s" % "{:,.2f}".format(ctx.importance_detail.gwp_total_mcr)) }}
+    {{ drow("Development score", "%.2f" % ctx.importance_detail.development_score) }}
     {% endif %}
     {% endif %}
   </div>

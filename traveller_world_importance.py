@@ -67,6 +67,7 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
     gwp_base:              Optional[int]   # IF_adj + min(RF_adj, IF_adj); None before attach
     gwp_per_capita:        Optional[int]   # GWP per capita in Cr; None before attach
     gwp_total_mcr:         Optional[float] # total GWP in MCr; None before attach
+    development_score:     Optional[float] # (GWP_pc/1000)×(1−IR/100); None before attach
 
     @property
     def importance_str(self) -> str:
@@ -103,6 +104,8 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
             d["gwp_per_capita"] = self.gwp_per_capita
         if self.gwp_total_mcr is not None:
             d["gwp_total_mcr"] = self.gwp_total_mcr
+        if self.development_score is not None:
+            d["development_score"] = self.development_score
         return d
 
     @classmethod
@@ -142,6 +145,10 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
             gwp_total_mcr= (
                 float(d["gwp_total_mcr"])
                 if d.get("gwp_total_mcr") is not None else None
+            ),
+            development_score= (
+                float(d["development_score"])
+                if d.get("development_score") is not None else None
             ),
         )
 
@@ -249,6 +256,7 @@ def generate_importance_detail(  # pylint: disable=too-many-locals,too-many-argu
         gwp_base=None,
         gwp_per_capita=None,
         gwp_total_mcr=None,
+        development_score=None,
     )
 
 
@@ -431,10 +439,25 @@ def compute_gwp(  # pylint: disable=too-many-arguments,too-many-positional-argum
 
 
 # ---------------------------------------------------------------------------
+# Development score
+# ---------------------------------------------------------------------------
+
+def compute_development_score(gwp_per_capita: int, inequality_rating: int = 0) -> float:
+    """Compute the IISS development score (WBH p.132).
+
+    Development Score = (GWP per capita / 1000) × (1 − Inequality Rating / 100)
+
+    When inequality_rating is 0 (not yet computed) the score equals GWP_pc / 1000.
+    The result is rounded to 2 decimal places.
+    """
+    return round((gwp_per_capita / 1000.0) * (1 - inequality_rating / 100.0), 2)
+
+
+# ---------------------------------------------------------------------------
 # Attach helper
 # ---------------------------------------------------------------------------
 
-def attach_importance_detail(
+def attach_importance_detail(  # pylint: disable=too-many-locals
     system: "TravellerSystem",
     rng: Optional[random.Random] = None,
 ) -> None:
@@ -500,5 +523,10 @@ def attach_importance_detail(
         gwp_base=gwp_base,
         efficiency_factor=ef,
     )
-    wi.gwp_per_capita = gwp_pc  # type: ignore[attr-defined]
+    wi.gwp_per_capita = gwp_pc   # type: ignore[attr-defined]
     wi.gwp_total_mcr  = gwp_mcr  # type: ignore[attr-defined]
+
+    ir = int(getattr(world, "inequality_rating", 0) or 0)
+    wi.development_score = compute_development_score(  # type: ignore[attr-defined]
+        gwp_pc, inequality_rating=ir,
+    )

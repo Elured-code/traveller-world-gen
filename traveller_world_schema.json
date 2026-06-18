@@ -1024,6 +1024,10 @@
           "type": "number",
           "minimum": 0,
           "description": "Total Gross World Product in MCr (Megacredits): GWP per capita × 10^population_code. May be fractional for small populations."
+        },
+        "development_score": {
+          "type": "number",
+          "description": "IISS development score (WBH p.132): (GWP per capita / 1000) × (1 − Inequality Rating / 100). When inequality_rating is not yet computed, treats IR as 0."
         }
       }
     }

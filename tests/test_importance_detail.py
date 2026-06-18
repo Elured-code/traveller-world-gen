@@ -519,6 +519,41 @@ class TestComputeGwp:
 
 
 # ---------------------------------------------------------------------------
+# Development score (compute_development_score)
+# ---------------------------------------------------------------------------
+
+class TestDevelopmentScore:
+    def _ds(self, gwp_per_capita, inequality_rating=0):
+        from traveller_world_importance import compute_development_score
+        return compute_development_score(gwp_per_capita, inequality_rating)
+
+    def test_zero_ir_equals_gwp_over_1000(self):
+        assert self._ds(5000, 0) == 5.0
+
+    def test_50_ir_halves_score(self):
+        assert self._ds(10000, 50) == 5.0
+
+    def test_100_ir_gives_zero(self):
+        assert self._ds(10000, 100) == 0.0
+
+    def test_formula_example(self):
+        # DS = (12000/1000) × (1 - 25/100) = 12 × 0.75 = 9.0
+        assert self._ds(12000, 25) == 9.0
+
+    def test_result_is_float(self):
+        assert isinstance(self._ds(5000), float)
+
+    def test_rounded_to_two_decimal_places(self):
+        # 7000/1000 × (1 - 33/100) = 7 × 0.67 = 4.69
+        result = self._ds(7000, 33)
+        assert result == round(result, 2)
+
+    def test_development_score_none_before_attach(self):
+        wi = _gen(population=7, starport="A", tech_level=12)
+        assert wi.development_score is None
+
+
+# ---------------------------------------------------------------------------
 # Efficiency factor (compute_efficiency_factor)
 # ---------------------------------------------------------------------------
 
@@ -617,6 +652,7 @@ class TestEfficiencyFactor:
             base_dm=0, waystation_dm=0,
             labour_factor=6, infrastructure_factor=4, efficiency_factor=3,
             resource_units=96, gwp_base=8, gwp_per_capita=24000, gwp_total_mcr=240000.0,
+            development_score=24.0,
         )
         d = wi.to_dict()
         assert d["efficiency_factor"] == 3
