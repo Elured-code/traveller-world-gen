@@ -543,6 +543,14 @@
     {% if ctx.importance_detail.efficiency_factor is not none %}
     {{ drow("Efficiency factor", ctx.importance_detail.efficiency_factor|string) }}
     {% endif %}
+    {% if ctx.importance_detail.resource_units is not none %}
+    {{ drow("Resource units", ctx.importance_detail.resource_units|string, danger=ctx.importance_detail.resource_units < 0) }}
+    {% endif %}
+    {% if ctx.importance_detail.gwp_per_capita is not none %}
+    {{ drow("GWP base value", ctx.importance_detail.gwp_base|string) }}
+    {{ drow("GWP per capita", "Cr%s" % "{:,}".format(ctx.importance_detail.gwp_per_capita)) }}
+    {{ drow("Total GWP", "MCr%s" % "{:,.2f}".format(ctx.importance_detail.gwp_total_mcr)) }}
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}

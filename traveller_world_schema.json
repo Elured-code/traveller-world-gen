@@ -1005,6 +1005,25 @@
           "minimum": -5,
           "maximum": 5,
           "description": "World efficiency factor (WBH p.131). Range -5 to +5; 0 is always treated as +1 (so the value is never 0). Absent until attach_importance_detail() runs. Government, law level, PCR, progressiveness, and expansionism all contribute DMs."
+        },
+        "resource_units": {
+          "type": "integer",
+          "description": "System resource units (WBH p.131): RF × LF × IF × EF. Any zero-valued factor is treated as 1. Only efficiency factor can be negative, making RU negative. Absent until attach_importance_detail() runs."
+        },
+        "gwp_base": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "GWP base value (WBH p.132): IF_adj + min(RF_adj, IF_adj). Each factor treated as at least 1. Range 2 to 2×IF."
+        },
+        "gwp_per_capita": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Gross World Product per capita in Cr. Computed from base value, TL, starport, government, and trade code modifiers, scaled by efficiency factor."
+        },
+        "gwp_total_mcr": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total Gross World Product in MCr (Megacredits): GWP per capita × 10^population_code. May be fractional for small populations."
         }
       }
     }

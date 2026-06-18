@@ -62,7 +62,11 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
     waystation_dm:         int            # 0 or +1  (X-Boat waystation, base code "W")
     labour_factor:         int            # Population code − 1, min 0; 0 when pop ≤ 1
     infrastructure_factor: Optional[int]  # importance + pop DMs; None when no infrastructure
-    efficiency_factor:     Optional[int]  # −5 to +5 (0 treated as +1); None before attach
+    efficiency_factor:     Optional[int]   # −5 to +5 (0 treated as +1); None before attach
+    resource_units:        Optional[int]   # RF × LF × IF × EF (zeros → 1); None before attach
+    gwp_base:              Optional[int]   # IF_adj + min(RF_adj, IF_adj); None before attach
+    gwp_per_capita:        Optional[int]   # GWP per capita in Cr; None before attach
+    gwp_total_mcr:         Optional[float] # total GWP in MCr; None before attach
 
     @property
     def importance_str(self) -> str:
@@ -91,6 +95,14 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
             d["infrastructure_factor"] = self.infrastructure_factor
         if self.efficiency_factor is not None:
             d["efficiency_factor"] = self.efficiency_factor
+        if self.resource_units is not None:
+            d["resource_units"] = self.resource_units
+        if self.gwp_base is not None:
+            d["gwp_base"] = self.gwp_base
+        if self.gwp_per_capita is not None:
+            d["gwp_per_capita"] = self.gwp_per_capita
+        if self.gwp_total_mcr is not None:
+            d["gwp_total_mcr"] = self.gwp_total_mcr
         return d
 
     @classmethod
@@ -114,6 +126,22 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
             efficiency_factor= (
                 int(d["efficiency_factor"])
                 if d.get("efficiency_factor") is not None else None
+            ),
+            resource_units= (
+                int(d["resource_units"])
+                if d.get("resource_units") is not None else None
+            ),
+            gwp_base= (
+                int(d["gwp_base"])
+                if d.get("gwp_base") is not None else None
+            ),
+            gwp_per_capita= (
+                int(d["gwp_per_capita"])
+                if d.get("gwp_per_capita") is not None else None
+            ),
+            gwp_total_mcr= (
+                float(d["gwp_total_mcr"])
+                if d.get("gwp_total_mcr") is not None else None
             ),
         )
 
@@ -217,6 +245,10 @@ def generate_importance_detail(  # pylint: disable=too-many-locals,too-many-argu
         labour_factor=labour_factor,
         infrastructure_factor=infrastructure_factor,
         efficiency_factor=None,
+        resource_units=None,
+        gwp_base=None,
+        gwp_per_capita=None,
+        gwp_total_mcr=None,
     )
 
 
@@ -296,6 +328,109 @@ def compute_efficiency_factor(  # pylint: disable=too-many-arguments,too-many-po
 
 
 # ---------------------------------------------------------------------------
+# Resource units
+# ---------------------------------------------------------------------------
+
+def compute_resource_units(
+    resource_factor: Optional[int],
+    labour_factor: int,
+    infrastructure_factor: Optional[int],
+    efficiency_factor: int,
+) -> int:
+    """Compute system resource units (WBH p.131).
+
+    RU = Resource Factor × Labour Factor × Infrastructure Factor × Efficiency Factor.
+    Any factor with value 0 (or absent for infrastructure) is treated as 1.
+    Only efficiency factor can produce a negative RU.
+    """
+    rf  = resource_factor   if (resource_factor  is not None and resource_factor  != 0) else 1
+    lf  = labour_factor     if labour_factor     != 0 else 1
+    inf = infrastructure_factor if (infrastructure_factor is not None and
+                                    infrastructure_factor != 0) else 1
+    return rf * lf * inf * efficiency_factor
+
+
+# ---------------------------------------------------------------------------
+# Gross World Product
+# ---------------------------------------------------------------------------
+
+_GWP_PORT_MODS: dict[str, float] = {
+    "A": 1.5, "B": 1.2, "C": 1.0, "D": 0.8, "E": 0.5,
+    "F": 0.9, "G": 0.7, "H": 0.4, "Y": 0.2, "X": 0.2,
+}
+
+_GWP_GOV_MODS: dict[int, float] = {
+    0: 1.0, 1: 1.5, 2: 1.2, 3: 0.8,  4: 1.2, 5: 1.3,
+    6: 0.6, 7: 1.0, 8: 0.9, 9: 0.8, 10: 1.0, 11: 0.7,
+    12: 1.0, 13: 0.6, 14: 0.5, 15: 0.8,
+}
+
+_GWP_TC_MODS: dict[str, float] = {
+    "Ag": 0.9, "As": 1.2, "Ga": 1.2, "In": 1.1,
+    "Na": 0.9, "Ni": 0.9, "Po": 0.8, "Ri": 1.2,
+}
+
+
+def compute_gwp_base(
+    infrastructure_factor: Optional[int],
+    resource_factor: Optional[int],
+) -> int:
+    """Compute the GWP base value (WBH p.132).
+
+    Base Value = IF_adj + min(RF_adj, IF_adj).
+    Each factor is treated as ≥ 1 when population > 0 (assumed by caller).
+    RF is capped at IF so the upper bound is 2 × IF and lower bound is 2.
+    """
+    inf_adj = max(1, infrastructure_factor) if infrastructure_factor is not None else 1
+    rf_adj  = max(1, resource_factor)       if resource_factor       is not None else 1
+    return inf_adj + min(rf_adj, inf_adj)
+
+
+def compute_gwp(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    population: int,
+    starport: str,
+    tech_level: int,
+    government: int,
+    trade_codes: list,
+    gwp_base: int,
+    efficiency_factor: int,
+) -> tuple[int, float]:
+    """Compute GWP per capita (Cr) and total GWP (MCr) (WBH p.132).
+
+    Returns (gwp_per_capita_cr, gwp_total_mcr).
+    Population 0 returns (0, 0.0).
+
+    Total Modifiers = TL Modifier × Port Modifier × Government Modifier
+                    × Trade Code Modifiers (each applicable TC applied separately).
+
+    Positive EF: GWP_pc = Cr1000 × Base × Total_Mods × EF
+    Negative EF: GWP_pc = Cr1000 × Base × Total_Mods / -(EF − 1)
+    """
+    if population == 0:
+        return (0, 0.0)
+
+    tl_mod   = max(0.05, tech_level / 10.0)
+    port_mod = _GWP_PORT_MODS.get(starport, 1.0)
+    gov_mod  = _GWP_GOV_MODS.get(government, 1.0)
+
+    tc_mod = 1.0
+    for tc in trade_codes:
+        if tc in _GWP_TC_MODS:
+            tc_mod *= _GWP_TC_MODS[tc]
+
+    total_mods = tl_mod * port_mod * gov_mod * tc_mod
+
+    if efficiency_factor > 0:
+        gwp_pc = 1000.0 * gwp_base * total_mods * efficiency_factor
+    else:
+        gwp_pc = 1000.0 * gwp_base * total_mods / (1 - efficiency_factor)
+
+    gwp_per_capita = round(gwp_pc)
+    gwp_total_mcr  = round(gwp_per_capita * (10 ** population) / 1_000_000, 2)
+    return (gwp_per_capita, gwp_total_mcr)
+
+
+# ---------------------------------------------------------------------------
 # Attach helper
 # ---------------------------------------------------------------------------
 
@@ -340,3 +475,30 @@ def attach_importance_detail(
         rng=rng,
     )
     world.importance_detail.efficiency_factor = ef  # type: ignore[attr-defined]
+
+    phys = getattr(world, "size_detail", None)
+    resource_factor = getattr(phys, "resource_factor", None) if phys is not None else None
+    wi = world.importance_detail  # type: ignore[attr-defined]
+    wi.resource_units = compute_resource_units(  # type: ignore[attr-defined]
+        resource_factor=resource_factor,
+        labour_factor=wi.labour_factor,
+        infrastructure_factor=wi.infrastructure_factor,
+        efficiency_factor=ef,
+    )
+
+    gwp_base = compute_gwp_base(
+        infrastructure_factor=wi.infrastructure_factor,
+        resource_factor=resource_factor,
+    )
+    wi.gwp_base = gwp_base  # type: ignore[attr-defined]
+    gwp_pc, gwp_mcr = compute_gwp(
+        population=world.population,
+        starport=world.starport,
+        tech_level=world.tech_level,
+        government=world.government,
+        trade_codes=world.trade_codes,
+        gwp_base=gwp_base,
+        efficiency_factor=ef,
+    )
+    wi.gwp_per_capita = gwp_pc  # type: ignore[attr-defined]
+    wi.gwp_total_mcr  = gwp_mcr  # type: ignore[attr-defined]

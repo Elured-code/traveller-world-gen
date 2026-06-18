@@ -372,6 +372,153 @@ class TestInfrastructureFactor:
 
 
 # ---------------------------------------------------------------------------
+# Resource units (compute_resource_units)
+# ---------------------------------------------------------------------------
+
+class TestResourceUnits:
+    def _ru(self, rf=5, lf=6, inf=4, ef=2):
+        from traveller_world_importance import compute_resource_units
+        return compute_resource_units(
+            resource_factor=rf, labour_factor=lf,
+            infrastructure_factor=inf, efficiency_factor=ef,
+        )
+
+    def test_basic_positive(self):
+        # 5 × 6 × 4 × 2 = 240
+        assert self._ru(rf=5, lf=6, inf=4, ef=2) == 240
+
+    def test_negative_ef_gives_negative_ru(self):
+        # 5 × 6 × 4 × -3 = -360
+        assert self._ru(rf=5, lf=6, inf=4, ef=-3) == -360
+
+    def test_zero_rf_treated_as_one(self):
+        # 0→1 × 6 × 4 × 2 = 48
+        assert self._ru(rf=0, lf=6, inf=4, ef=2) == 48
+
+    def test_zero_lf_treated_as_one(self):
+        # 5 × 0→1 × 4 × 2 = 40
+        assert self._ru(rf=5, lf=0, inf=4, ef=2) == 40
+
+    def test_none_inf_treated_as_one(self):
+        # 5 × 6 × None→1 × 2 = 60
+        assert self._ru(rf=5, lf=6, inf=None, ef=2) == 60
+
+    def test_zero_inf_treated_as_one(self):
+        assert self._ru(rf=5, lf=6, inf=0, ef=2) == 60
+
+    def test_none_rf_treated_as_one(self):
+        assert self._ru(rf=None, lf=6, inf=4, ef=2) == 48
+
+    def test_ef_one_gives_rf_lf_inf(self):
+        assert self._ru(rf=3, lf=4, inf=5, ef=1) == 60
+
+
+# ---------------------------------------------------------------------------
+# GWP base value (compute_gwp_base)
+# ---------------------------------------------------------------------------
+
+class TestGwpBase:
+    def _base(self, inf, rf):
+        from traveller_world_importance import compute_gwp_base
+        return compute_gwp_base(infrastructure_factor=inf, resource_factor=rf)
+
+    def test_book_example_if6_rf7(self):
+        # IF=6, RF=7 → RF capped at 6 → base = 6+6 = 12
+        assert self._base(6, 7) == 12
+
+    def test_book_example_if0_rf2(self):
+        # IF=0→1, RF=2→min(2,1)=1 → base = 1+1 = 2
+        assert self._base(0, 2) == 2
+
+    def test_rf_below_if(self):
+        # IF=8, RF=3 → base = 8+3 = 11
+        assert self._base(8, 3) == 11
+
+    def test_rf_equals_if(self):
+        # IF=5, RF=5 → base = 5+5 = 10
+        assert self._base(5, 5) == 10
+
+    def test_both_none_gives_two(self):
+        assert self._base(None, None) == 2
+
+    def test_none_inf_treated_as_one(self):
+        # IF=None→1, RF=5→min(5,1)=1 → base=2
+        assert self._base(None, 5) == 2
+
+    def test_min_lower_bound(self):
+        assert self._base(1, 1) == 2
+
+    def test_upper_bound_is_twice_if(self):
+        # RF always capped at IF, so max base = 2×IF
+        assert self._base(10, 999) == 20
+
+
+# ---------------------------------------------------------------------------
+# GWP computation (compute_gwp)
+# ---------------------------------------------------------------------------
+
+class TestComputeGwp:
+    def _gwp(self, population=7, starport="C", tech_level=10,
+             government=4, trade_codes=None, gwp_base=6, efficiency_factor=2):
+        from traveller_world_importance import compute_gwp
+        return compute_gwp(
+            population=population, starport=starport, tech_level=tech_level,
+            government=government, trade_codes=trade_codes or [],
+            gwp_base=gwp_base, efficiency_factor=efficiency_factor,
+        )
+
+    def test_pop_0_returns_zeros(self):
+        from traveller_world_importance import compute_gwp
+        pc, mcr = compute_gwp(0, "A", 12, 4, [], 6, 3)
+        assert pc == 0
+        assert mcr == 0.0
+
+    def test_positive_ef_formula(self):
+        # TL=10 → 1.0, Port C → 1.0, Gov 4 → 1.2, no TC, base=5, ef=2
+        # GWP_pc = 1000 × 5 × (1.0×1.0×1.2×1.0) × 2 = 12000
+        pc, _ = self._gwp(tech_level=10, government=4, gwp_base=5, efficiency_factor=2)
+        assert pc == 12000
+
+    def test_negative_ef_divides(self):
+        # TL=10→1.0, Port C→1.0, Gov 4→1.2, no TC, base=5, ef=-1
+        # GWP_pc = 1000 × 5 × 1.2 / (1 - (-1)) = 6000 / 2 = 3000
+        pc, _ = self._gwp(tech_level=10, government=4, gwp_base=5, efficiency_factor=-1)
+        assert pc == 3000
+
+    def test_tl_0_clamped_to_0p05(self):
+        # TL=0 → max(0.05, 0.0) = 0.05
+        pc, _ = self._gwp(tech_level=0, starport="C", government=7, gwp_base=4, efficiency_factor=1)
+        # 1000 × 4 × 0.05 × 1.0 × 1.0 × 1.0 = 200
+        assert pc == 200
+
+    def test_port_a_modifier_1p5(self):
+        pc_a, _ = self._gwp(starport="A", tech_level=10, government=7,
+                            gwp_base=4, efficiency_factor=1)
+        pc_c, _ = self._gwp(starport="C", tech_level=10, government=7,
+                            gwp_base=4, efficiency_factor=1)
+        assert pc_a == round(pc_c * 1.5)
+
+    def test_trade_codes_multiply(self):
+        # In (1.1) and Ri (1.2): TC modifier = 1.1 × 1.2 = 1.32
+        pc_both, _ = self._gwp(trade_codes=["In", "Ri"], tech_level=10, government=7,
+                                gwp_base=4, efficiency_factor=1)
+        pc_none, _ = self._gwp(trade_codes=[], tech_level=10, government=7,
+                                gwp_base=4, efficiency_factor=1)
+        assert round(pc_both / pc_none, 2) == 1.32
+
+    def test_total_mcr_scales_with_population(self):
+        _, mcr7 = self._gwp(population=7, gwp_base=4, efficiency_factor=1)
+        _, mcr8 = self._gwp(population=8, gwp_base=4, efficiency_factor=1)
+        # Pop 8 has 10× more people than pop 7
+        assert abs(mcr8 / mcr7 - 10.0) < 0.01
+
+    def test_result_types(self):
+        pc, mcr = self._gwp()
+        assert isinstance(pc, int)
+        assert isinstance(mcr, float)
+
+
+# ---------------------------------------------------------------------------
 # Efficiency factor (compute_efficiency_factor)
 # ---------------------------------------------------------------------------
 
@@ -463,21 +610,29 @@ class TestEfficiencyFactor:
         assert wi.efficiency_factor is None
 
     def test_round_trip_with_efficiency_factor(self):
-        import random as _random
         from traveller_world_importance import WorldImportance
         wi = WorldImportance(
             importance=2, starport_dm=1, population_dm=0, tech_dm=1,
             agricultural_dm=0, industrial_dm=0, rich_dm=0,
             base_dm=0, waystation_dm=0,
             labour_factor=6, infrastructure_factor=4, efficiency_factor=3,
+            resource_units=96, gwp_base=8, gwp_per_capita=24000, gwp_total_mcr=240000.0,
         )
         d = wi.to_dict()
         assert d["efficiency_factor"] == 3
+        assert d["resource_units"] == 96
+        assert d["gwp_per_capita"] == 24000
         restored = WorldImportance.from_dict(d)
         assert restored.efficiency_factor == 3
+        assert restored.resource_units == 96
+        assert restored.gwp_per_capita == 24000
+        assert restored.gwp_total_mcr == 240000.0
 
     def test_round_trip_efficiency_factor_absent(self):
         from traveller_world_importance import WorldImportance
         wi = WorldImportance.from_dict({"importance": 1})
         assert wi.efficiency_factor is None
+        assert wi.resource_units is None
+        assert wi.gwp_per_capita is None
         assert "efficiency_factor" not in wi.to_dict()
+        assert "gwp_per_capita" not in wi.to_dict()
