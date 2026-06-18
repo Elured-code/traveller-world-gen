@@ -49,7 +49,7 @@ _rng: random.Random = random  # type: ignore[assignment]
 @dataclass
 class WorldImportance:  # pylint: disable=too-many-instance-attributes
     """Traveller world importance score with per-condition DM breakdown,
-    plus derived labour factor and infrastructure factor."""
+    plus derived labour factor, infrastructure factor, and efficiency factor."""
 
     importance:            int            # total signed importance score
     starport_dm:           int            # −1, 0, or +1
@@ -62,6 +62,7 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
     waystation_dm:         int            # 0 or +1  (X-Boat waystation, base code "W")
     labour_factor:         int            # Population code − 1, min 0; 0 when pop ≤ 1
     infrastructure_factor: Optional[int]  # importance + pop DMs; None when no infrastructure
+    efficiency_factor:     Optional[int]  # −5 to +5 (0 treated as +1); None before attach
 
     @property
     def importance_str(self) -> str:
@@ -88,6 +89,8 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
         }
         if self.infrastructure_factor is not None:
             d["infrastructure_factor"] = self.infrastructure_factor
+        if self.efficiency_factor is not None:
+            d["efficiency_factor"] = self.efficiency_factor
         return d
 
     @classmethod
@@ -107,6 +110,10 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
             infrastructure_factor= (
                 int(d["infrastructure_factor"])
                 if d.get("infrastructure_factor") is not None else None
+            ),
+            efficiency_factor= (
+                int(d["efficiency_factor"])
+                if d.get("efficiency_factor") is not None else None
             ),
         )
 
@@ -209,7 +216,83 @@ def generate_importance_detail(  # pylint: disable=too-many-locals,too-many-argu
         waystation_dm=waystation_dm,
         labour_factor=labour_factor,
         infrastructure_factor=infrastructure_factor,
+        efficiency_factor=None,
     )
+
+
+# ---------------------------------------------------------------------------
+# Efficiency factor
+# ---------------------------------------------------------------------------
+
+# Governments that penalise efficiency (DM-1)
+_EF_GOV_MINUS = frozenset({0, 3, 6, 9, 11, 12, 15})  # 0,3,6,9,B,C,F
+# Governments that boost efficiency (DM+1)
+_EF_GOV_PLUS  = frozenset({1, 2, 4, 5, 8})            # 1,2,4,5,8
+
+
+def compute_efficiency_factor(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+    population: int,
+    government: int,
+    law_level: int,
+    pcr: int,
+    progressiveness: int,
+    expansionism: int,
+    rng: Optional[random.Random] = None,
+) -> int:
+    """Compute the world efficiency factor (WBH p.131).
+
+    Returns an integer in [-5, +5]; 0 is always converted to +1.
+    Population 0 always returns -5 (no inhabitants, no efficiency).
+
+    Parameters
+    ----------
+    population:     UWP population code (0–15)
+    government:     UWP government code (0–15)
+    law_level:      UWP law level code (0–15)
+    pcr:            Population Concentration Rating from population_detail
+    progressiveness: CultureDetail progressiveness trait (raw, 1–35)
+    expansionism:   CultureDetail expansionism trait (raw, 1–35)
+    rng:            injectable RNG for the base dice roll
+    """
+    if population == 0:
+        return -5
+
+    r = rng if rng is not None else _rng
+
+    # Base roll: 2D3-4 for pop 7+, 2D6-7 for pop 1-6
+    if population >= 7:
+        base = r.randint(1, 3) + r.randint(1, 3) - 4
+    else:
+        base = r.randint(1, 6) + r.randint(1, 6) - 7
+
+    dm = 0
+    if government in _EF_GOV_MINUS:
+        dm -= 1
+    if government in _EF_GOV_PLUS:
+        dm += 1
+
+    if law_level <= 4:
+        dm += 1
+    if law_level >= 10:      # A+
+        dm -= 1
+
+    if pcr <= 3:
+        dm -= 1
+    if pcr >= 8:
+        dm += 1
+
+    if 1 <= progressiveness <= 3:
+        dm -= 1
+    if progressiveness >= 9:
+        dm += 1
+
+    if 1 <= expansionism <= 3:
+        dm -= 1
+    if expansionism >= 9:
+        dm += 1
+
+    result = max(-5, min(5, base + dm))
+    return result if result != 0 else 1
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +308,8 @@ def attach_importance_detail(
     Applies only to the mainworld (importance is a mainworld concept).
     Skips if mainworld is None or population is 0 (uninhabited).
     Infrastructure factor rolls 1D or 2D depending on population.
+    Efficiency factor requires government, law_level, and optionally
+    population_detail.pcr and culture_detail traits.
     """
     world = system.mainworld
     if world is None or world.population == 0:
@@ -238,3 +323,20 @@ def attach_importance_detail(
         bases=world.bases,
         rng=rng,
     )
+
+    pop_det = getattr(world, "population_detail", None)
+    cult_det = getattr(world, "culture_detail", None)
+    pcr           = pop_det.pcr           if pop_det  is not None else 0
+    progressiveness = cult_det.progressiveness if cult_det is not None else 0
+    expansionism    = cult_det.expansionism    if cult_det is not None else 0
+
+    ef = compute_efficiency_factor(
+        population=world.population,
+        government=world.government,
+        law_level=world.law_level,
+        pcr=pcr,
+        progressiveness=progressiveness,
+        expansionism=expansionism,
+        rng=rng,
+    )
+    world.importance_detail.efficiency_factor = ef  # type: ignore[attr-defined]

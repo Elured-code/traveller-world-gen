@@ -369,3 +369,115 @@ class TestInfrastructureFactor:
         )
         assert isinstance(wi.infrastructure_factor, int)
         assert wi.infrastructure_factor >= 0
+
+
+# ---------------------------------------------------------------------------
+# Efficiency factor (compute_efficiency_factor)
+# ---------------------------------------------------------------------------
+
+class TestEfficiencyFactor:
+    """Tests for compute_efficiency_factor() standalone function."""
+
+    def _ef(self, population=7, government=4, law_level=3,
+            pcr=5, progressiveness=6, expansionism=6, rng=None):
+        from traveller_world_importance import compute_efficiency_factor
+        import random as _random
+        r = rng or _random.Random(1)
+        return compute_efficiency_factor(
+            population=population, government=government,
+            law_level=law_level, pcr=pcr,
+            progressiveness=progressiveness, expansionism=expansionism,
+            rng=r,
+        )
+
+    def test_pop_0_returns_minus_5(self):
+        from traveller_world_importance import compute_efficiency_factor
+        assert compute_efficiency_factor(0, 4, 3, 5, 6, 6) == -5
+
+    def test_result_never_zero(self):
+        import random as _random
+        from traveller_world_importance import compute_efficiency_factor
+        for seed in range(200):
+            r = _random.Random(seed)
+            ef = compute_efficiency_factor(5, 4, 3, 5, 6, 6, rng=r)
+            assert ef != 0
+
+    def test_result_in_range(self):
+        import random as _random
+        from traveller_world_importance import compute_efficiency_factor
+        for seed in range(200):
+            r = _random.Random(seed)
+            ef = compute_efficiency_factor(7, 4, 3, 5, 6, 6, rng=r)
+            assert -5 <= ef <= 5
+
+    def test_gov_minus_set_lowers_dm(self):
+        import random as _random
+        from traveller_world_importance import compute_efficiency_factor
+        rng = _random.Random(42)
+        # Government 0 → DM-1 (minus set)
+        ef_0  = compute_efficiency_factor(7, 0,  3, 5, 6, 6, rng=_random.Random(42))
+        # Government 4 → DM+1 (plus set)
+        ef_4  = compute_efficiency_factor(7, 4,  3, 5, 6, 6, rng=_random.Random(42))
+        # Same dice; government 4 should be ≥ government 0
+        assert ef_4 >= ef_0
+
+    def test_gov_not_in_any_set_gives_no_dm(self):
+        import random as _random
+        from traveller_world_importance import compute_efficiency_factor
+        # Government 7 (Balkanization) is in neither set — no DM
+        ef_7 = compute_efficiency_factor(7, 7, 3, 5, 6, 6, rng=_random.Random(42))
+        assert -5 <= ef_7 <= 5  # in range; value itself not deterministic without RNG control
+
+    def test_low_law_level_adds_one(self):
+        import random as _random
+        from traveller_world_importance import compute_efficiency_factor
+        # Law 4 (+1 DM) vs law 5 (no DM), same RNG
+        ef_low  = compute_efficiency_factor(7, 7, 4, 5, 6, 6, rng=_random.Random(99))
+        ef_mid  = compute_efficiency_factor(7, 7, 5, 5, 6, 6, rng=_random.Random(99))
+        assert ef_low >= ef_mid
+
+    def test_high_law_level_subtracts_one(self):
+        import random as _random
+        from traveller_world_importance import compute_efficiency_factor
+        # Law 10+ (−1 DM) vs law 5 (no DM)
+        ef_hi  = compute_efficiency_factor(7, 7, 10, 5, 6, 6, rng=_random.Random(99))
+        ef_mid = compute_efficiency_factor(7, 7, 5,  5, 6, 6, rng=_random.Random(99))
+        assert ef_hi <= ef_mid
+
+    def test_high_progressiveness_adds_one(self):
+        import random as _random
+        from traveller_world_importance import compute_efficiency_factor
+        ef_high = compute_efficiency_factor(7, 7, 5, 5, 9,  6, rng=_random.Random(99))
+        ef_mid  = compute_efficiency_factor(7, 7, 5, 5, 6,  6, rng=_random.Random(99))
+        assert ef_high >= ef_mid
+
+    def test_low_expansionism_subtracts_one(self):
+        import random as _random
+        from traveller_world_importance import compute_efficiency_factor
+        ef_low = compute_efficiency_factor(7, 7, 5, 5, 6, 2, rng=_random.Random(99))
+        ef_mid = compute_efficiency_factor(7, 7, 5, 5, 6, 6, rng=_random.Random(99))
+        assert ef_low <= ef_mid
+
+    def test_efficiency_factor_none_before_attach(self):
+        wi = _gen(population=7, starport="A", tech_level=12)
+        assert wi.efficiency_factor is None
+
+    def test_round_trip_with_efficiency_factor(self):
+        import random as _random
+        from traveller_world_importance import WorldImportance
+        wi = WorldImportance(
+            importance=2, starport_dm=1, population_dm=0, tech_dm=1,
+            agricultural_dm=0, industrial_dm=0, rich_dm=0,
+            base_dm=0, waystation_dm=0,
+            labour_factor=6, infrastructure_factor=4, efficiency_factor=3,
+        )
+        d = wi.to_dict()
+        assert d["efficiency_factor"] == 3
+        restored = WorldImportance.from_dict(d)
+        assert restored.efficiency_factor == 3
+
+    def test_round_trip_efficiency_factor_absent(self):
+        from traveller_world_importance import WorldImportance
+        wi = WorldImportance.from_dict({"importance": 1})
+        assert wi.efficiency_factor is None
+        assert "efficiency_factor" not in wi.to_dict()

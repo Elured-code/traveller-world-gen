@@ -540,6 +540,9 @@
     {% if ctx.resource_factor is not none %}
     {{ drow("Resource factor", ctx.resource_factor|string) }}
     {% endif %}
+    {% if ctx.importance_detail.efficiency_factor is not none %}
+    {{ drow("Efficiency factor", ctx.importance_detail.efficiency_factor|string) }}
+    {% endif %}
     {% endif %}
   </div>
   {% endif %}

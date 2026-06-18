@@ -999,6 +999,12 @@
           "type": "integer",
           "minimum": 0,
           "description": "Importance + population DMs (1D for pop 4–6; 2D for pop 7+). Absent when population is 0 or when the raw value is negative (no infrastructure). Present only when non-negative."
+        },
+        "efficiency_factor": {
+          "type": "integer",
+          "minimum": -5,
+          "maximum": 5,
+          "description": "World efficiency factor (WBH p.131). Range -5 to +5; 0 is always treated as +1 (so the value is never 0). Absent until attach_importance_detail() runs. Government, law level, PCR, progressiveness, and expansionism all contribute DMs."
         }
       }
     }
