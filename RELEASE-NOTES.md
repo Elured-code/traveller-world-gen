@@ -1,8 +1,47 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–131
-**Tests:** 2478
+**Sessions:** 88–132
+**Tests:** 2545
+
+---
+
+## World Importance Social Characteristic (Session 132)
+
+**Deterministic world importance score per CRB.** New module
+`traveller_world_importance.py` implements the world importance score as a
+deterministic sum of eight modifiers (no dice): starport (A/B=+1, D/E/X=−1),
+population (≤6=−1, ≥9=+1), tech level (≤8=−1, 9=0, 10–15=+1, ≥16=+2), and
+presence of Ag/In/Ri trade codes (+1 each), two or more non-Corsair bases
+(+1), and X-Boat waystation "W" base code (+1). The final signed score
+(range −3 to +6) is displayed in the world card's culture detail section
+as a single row; values > +3 are rendered bold. The component DMs are
+available in JSON output for applications that need the breakdown.
+
+**Template macro extension.** The `drow` macro in `world_card.html` gained a
+`highlight` parameter to render text bold (font-weight:700) without color
+change; this is used for importance values > +3 as a visual indicator of
+high importance. The macro previously supported only `danger` (red) styling.
+
+**Test coverage.** New module `tests/test_importance_detail.py` with 48 tests
+covers all DM conditions, boundary cases, serialization, and the Unicode minus
+sign (U+2212) in formatted output. Importance display tests added to
+`tests/test_function_app.py` (6 tests in `TestSocialDetailOption`) and
+`tests/test_genui_app.py` (5 tests in `TestSocialDetailGeneration`). UAT plan
+extended with test cases UAT-089 through UAT-092.
+
+**Bug fix.** The `azure-api/templates/world_card.html` template was out of sync
+with the root version (missing both the `highlight` parameter and importance row).
+This caused test failures in the full suite when `test_culture_detail.py` ran
+first and triggered the azure-api module path. Fixed by syncing the azure-api
+copy; both paths now produce consistent HTML. The issue highlights the value of
+module import path ordering (conftest.py: fastapi/ > azure-api/ > root) for
+dependency management, but templates must remain synchronized.
+
+**Version bump.** `APP_VERSION` incremented from 1.5.30 to 1.5.31 (patch bump
+for new JSON schema field).
+
+**Test count:** 59 new tests; 2545 total (was 2478); pylint 10.00/10.
 
 ---
 
