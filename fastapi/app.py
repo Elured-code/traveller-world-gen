@@ -89,6 +89,7 @@ The human author reviewed, directed, and is responsible for the code.
 
 import asyncio
 import dataclasses
+from datetime import datetime, timezone
 import json
 import logging
 import logging.config
@@ -305,7 +306,7 @@ def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> No
         return
     envelope = json.dumps([{
         "name": f"Microsoft.ApplicationInsights.{_AI_IKEY}.Request",
-        "time": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
+        "time": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
         "iKey": _AI_IKEY,
         "tags": {"ai.operation.name": name, "ai.cloud.roleName": "traveller-world-gen"},
         "data": {

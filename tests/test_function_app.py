@@ -1023,7 +1023,7 @@ _CULTURE_TRAIT_KEYS = {
     "cohesion", "progressiveness", "expansionism", "militancy",
 }
 _CULTURE_LABEL_KEYS = {k + "_label" for k in _CULTURE_TRAIT_KEYS}
-_CULTURE_KEYS = _CULTURE_TRAIT_KEYS | _CULTURE_LABEL_KEYS | {"cultural_profile"}
+_CULTURE_KEYS = _CULTURE_TRAIT_KEYS | _CULTURE_LABEL_KEYS | {"cultural_profile", "cultural_extension"}
 
 
 class TestSocialDetailOption:
