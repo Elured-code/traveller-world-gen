@@ -3,10 +3,9 @@
 #
 # Version scheme:
 #   Major.Minor — from branch name (v1.5.x → 1.5), fallback to VERSION file
-#   Patch       — count of schema-bump-N tags (one created by CI per push that
-#                 changes traveller_world_schema.json).  Falls back to counting
-#                 schema-touching commits when no tags exist (local dev / first run).
-#   Build       — $1 argument (GitHub run_number in CI); "local" when absent
+#   Patch       — extracted from APP_VERSION fallback in world_codes.py
+#                 (single source of truth for the manually-maintained version)
+#   Build       — $1 argument (github.run_number in CI); local commit count otherwise
 #
 # Usage (local):   bash scripts/compute_version.sh
 # Usage (CI):      bash scripts/compute_version.sh ${{ github.run_number }}
@@ -27,13 +26,14 @@ else
     MAJOR=0; MINOR=0
 fi
 
-# ── Patch: schema-bump tags (one per CI push where schema changed) ────────────
-PATCH=$(git -C "$REPO_ROOT" tag -l 'schema-bump-*' | wc -l | tr -d ' ')
-if [ "$PATCH" -eq 0 ]; then
-    # No tags yet — fall back to counting schema-touching commits (local dev)
-    PATCH=$(git -C "$REPO_ROOT" log --oneline HEAD -- traveller_world_schema.json \
-            | wc -l | tr -d ' ')
-fi
+# ── Patch: read from world_codes.py (single source of truth) ─────────────────
+# Extracts the patch digit from the APP_VERSION fallback line, e.g. "1.5.33" → 33
+WORLD_CODES="$REPO_ROOT/src/traveller_gen/world_codes.py"
+PATCH=$(python3 -c "
+import re, sys
+m = re.search(r'APP_VERSION\s*=\s*\"[0-9]+\.[0-9]+\.([0-9]+)\"', open(sys.argv[1]).read())
+print(m.group(1) if m else '0')
+" "$WORLD_CODES")
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 # CI passes github.run_number; locally fall back to total git commit count.
