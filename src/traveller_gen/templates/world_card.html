@@ -625,5 +625,59 @@
   </details>
 
 </div>
+
+<button id="about-btn" onclick="document.getElementById('about-dialog').showModal()"
+  style="position:fixed;bottom:12px;right:14px;padding:4px 10px;font-size:11px;
+         opacity:0.55;background:var(--color-bg-tertiary);color:var(--color-text-secondary);
+         border:1px solid var(--color-border);border-radius:6px;cursor:pointer;">
+  About
+</button>
+
+<dialog id="about-dialog"
+  style="max-width:480px;width:90%;padding:1.5rem;border-radius:10px;
+         background:var(--color-bg-primary);color:var(--color-text-primary);
+         border:1px solid var(--color-border);">
+  <h3 style="margin-top:0">Traveller World &amp; System Generator</h3>
+  <p>A tool for generating star systems, worlds, and survey forms for the
+  <em>Traveller</em> science-fiction role-playing game, using the rules from the
+  <em>World Builders&#x2019; Handbook</em> (Mongoose Publishing).</p>
+  <p><a href="https://github.com/Elured-code/traveller-world-gen"
+    style="color:var(--color-accent)">github.com/Elured-code/traveller-world-gen</a></p>
+  <hr style="border-color:var(--color-border)">
+  <p><strong>Classic Traveller</strong><br>Marc Miller</p>
+  <p><strong>World Builders&#x2019; Handbook</strong> (Mongoose Traveller)<br>
+  <em>Author:</em> Geir Lanesskog &bull;
+  <em>Developer:</em> Isabella Treccani-Chinelli &bull;
+  <em>Layout &amp; Graphic Design:</em> Sandrine Thirache<br>
+  <em>Illustrations:</em> Shane Watson, Quentin Soubrouillard, Gary Trow,
+  Lucas Bonatto Guerrini, Sergio Villa, Mark Graham &bull;
+  <em>Proofing:</em> Charlotte Law</p>
+  <p><strong>Mongoose Traveller Core Rulebook</strong><br>
+  <em>Developer:</em> Matthew Sprange &bull;
+  <em>Original Core Mechanics:</em> Gareth Hanrahan &bull;
+  <em>Layout:</em> Katrina Hepburn, Sandrine Thirache<br>
+  <em>Illustrations:</em> Xavier Bernard, Sergio Villa, Anderson Maia,
+  Mark Graham, Nikita Vasylchuk, Douglas Deri, Ian Stead, Ankit Yadav,
+  Cassie Gregory, Alessandro Rocco &bull; <em>Proofing:</em> Charlotte Law</p>
+  <p><strong>Traveller Inner Circle</strong><br>
+  Andrew James, Alan Welty, Colin Dunn, M. J. Dougherty, Rob Eaglestone,
+  Sam Wissa, Joshua Bell, Maksim Smelchak, Geir Lanesskog, Christopher Griffen</p>
+  <hr style="border-color:var(--color-border)">
+  <p><strong>License:</strong> MIT License</p>
+  <p style="font-size:0.8em;color:var(--color-text-secondary)">
+  <em>Traveller</em> is a registered trademark of Far Future Enterprises.
+  <em>World Builders&#x2019; Handbook</em> is published by Mongoose Publishing.
+  This is an unofficial fan tool, not affiliated with or endorsed by Mongoose
+  Publishing or Far Future Enterprises. All Traveller game rules, settings, and
+  concepts remain the intellectual property of their respective rights holders.</p>
+  <div style="text-align:right;margin-top:1rem">
+    <button onclick="document.getElementById('about-dialog').close()"
+      style="padding:6px 18px;border-radius:6px;cursor:pointer;
+             background:var(--color-accent);color:#fff;border:none;font-size:13px">
+      OK
+    </button>
+  </div>
+</dialog>
+
 </body>
 </html>

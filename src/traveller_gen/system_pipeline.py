@@ -15,7 +15,9 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .traveller_belt_physical import BeltPhysical
-from .traveller_world_gen import generate_hydrographics, apply_mainworld_social
+from .traveller_world_gen import (
+    generate_hydrographics, apply_mainworld_social, attach_travel_zone_extended,
+)
 from .traveller_world_physical import (
     generate_world_physical, apply_moon_tidal_effects, attach_resource_factor,
 )
@@ -297,3 +299,4 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
         attach_importance_detail(system, rng=rng)
         attach_starport_detail(system, rng=rng)
         attach_military_detail(system, rng=rng)
+        attach_travel_zone_extended(system, rng=rng)

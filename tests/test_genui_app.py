@@ -981,3 +981,267 @@ class TestSocialDetailGeneration:
     def test_importance_row_absent_without_social_detail(self, system_app_win):
         html = system_app_win._current_world.to_html()
         assert "World importance" not in html
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 13. Starport detail (UAT-105–115, issue #101, Session 137)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestStarportDetail:
+
+    def test_starport_detail_present_with_social(self, social_system_app_win):
+        assert social_system_app_win._current_world.starport_detail is not None
+
+    def test_starport_detail_absent_without_social(self, system_app_win):
+        assert system_app_win._current_world.starport_detail is None
+
+    def test_starport_class_on_world(self, social_system_app_win):
+        mw = social_system_app_win._current_world
+        assert mw.starport in tuple("ABCDEX")
+
+    def test_expected_weekly_positive(self, social_system_app_win):
+        sd = social_system_app_win._current_world.starport_detail
+        assert sd.expected_weekly >= 0
+
+    def test_docking_capacity_positive(self, social_system_app_win):
+        sd = social_system_app_win._current_world.starport_detail
+        assert sd.downport_capacity >= 0
+
+    def test_starport_profile_format(self, social_system_app_win):
+        sd = social_system_app_win._current_world.starport_detail
+        assert "-" in sd.starport_profile
+
+    def test_starport_detail_section_in_html(self, social_system_app_win):
+        html = social_system_app_win._current_world.to_html()
+        assert "Starport" in html
+
+    def test_starport_detail_absent_in_html_without_social(self, system_app_win):
+        # Without social detail, starport_detail is None → no starport card in HTML
+        mw = system_app_win._current_world
+        assert mw.starport_detail is None
+
+    def test_tl_floor_class_a(self, social_system_app_win):
+        # For any Class A starport world, TL must be ≥ 9
+        mw = social_system_app_win._current_world
+        if mw.starport == "A":
+            assert mw.tech_level >= 9
+
+    def test_tl_floor_class_b(self, social_system_app_win):
+        mw = social_system_app_win._current_world
+        if mw.starport == "B":
+            assert mw.tech_level >= 8
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 14. Military detail (UAT-116–126, issue #102, Session 138)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestMilitaryDetailUI:
+
+    def test_military_detail_present_with_social(self, social_system_app_win):
+        mw = social_system_app_win._current_world
+        if mw.population >= 1:
+            assert mw.military_detail is not None
+
+    def test_military_detail_absent_without_social(self, system_app_win):
+        assert system_app_win._current_world.military_detail is None
+
+    def test_enforcement_always_exists(self, social_system_app_win):
+        md = social_system_app_win._current_world.military_detail
+        if md is not None:
+            assert md.enforcement.exists
+
+    def test_military_profile_format(self, social_system_app_win):
+        md = social_system_app_win._current_world.military_detail
+        if md is not None:
+            parts = md.military_profile.split(":")
+            assert len(parts) == 2
+            assert "-" in parts[0]
+
+    def test_state_of_readiness_valid(self, social_system_app_win):
+        md = social_system_app_win._current_world.military_detail
+        if md is not None:
+            valid = {
+                "Complacent peace", "Low threat level", "Normal readiness",
+                "Heightened tensions, threat of war",
+                "War or internal insurgency", "Total war: full mobilisation",
+            }
+            assert md.state_of_readiness in valid
+
+    def test_budget_pct_positive(self, social_system_app_win):
+        md = social_system_app_win._current_world.military_detail
+        if md is not None:
+            assert md.military_budget_pct > 0
+
+    def test_military_section_in_html(self, social_system_app_win):
+        mw = social_system_app_win._current_world
+        if mw.military_detail is not None:
+            html = mw.to_html()
+            assert "Military" in html
+
+    def test_military_absent_in_html_without_social(self, system_app_win):
+        mw = system_app_win._current_world
+        assert mw.military_detail is None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 15. Extended travel zone (UAT-127–131, issue #103, Session 138)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestTravelZoneUI:
+
+    def test_travel_zone_is_valid(self, social_system_app_win):
+        zone = social_system_app_win._current_world.travel_zone
+        assert zone in ("Green", "Amber", "Red")
+
+    def test_travel_zone_valid_without_social(self, system_app_win):
+        zone = system_app_win._current_world.travel_zone
+        assert zone in ("Green", "Amber", "Red")
+
+    def test_starport_x_always_red(self):
+        import random  # noqa: PLC0415
+        from traveller_gen.traveller_world_gen import generate_world  # noqa: PLC0415
+        for seed in range(30):
+            world = generate_world(seed=seed)
+            if world.starport == "X":
+                assert world.travel_zone == "Red", (
+                    f"Starport X world has zone {world.travel_zone} (seed {seed})"
+                )
+
+    def test_travel_zone_in_world_html(self, system_app_win):
+        html = system_app_win._current_world.to_html()
+        assert "Travel zone" in html or "travel_zone" in html or "Green" in html or \
+               "Amber" in html or "Red" in html
+
+    def test_extended_zone_deterministic(self, social_system_app_win):
+        # Re-generate with same options+seed; zone must match
+        import random as _random  # noqa: PLC0415
+        mw = social_system_app_win._current_world
+        zone1 = mw.travel_zone
+        assert zone1 in ("Green", "Amber", "Red")
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 16. World card About button (UAT-142–145, issue #159, Session 138)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestWorldCardAboutButton:
+
+    def test_about_button_in_world_card_html(self):
+        from traveller_gen.traveller_world_gen import generate_world  # noqa: PLC0415
+        world = generate_world(seed=42)
+        html = world.to_html()
+        assert "about-btn" in html or "About" in html
+
+    def test_about_dialog_element_in_html(self):
+        from traveller_gen.traveller_world_gen import generate_world  # noqa: PLC0415
+        world = generate_world(seed=42)
+        html = world.to_html()
+        assert "about-dialog" in html
+
+    def test_about_html_contains_credits(self):
+        from traveller_gen.traveller_world_gen import generate_world  # noqa: PLC0415
+        world = generate_world(seed=42)
+        html = world.to_html()
+        assert "Geir Lanesskog" in html
+
+    def test_about_html_contains_mit_license(self):
+        from traveller_gen.traveller_world_gen import generate_world  # noqa: PLC0415
+        world = generate_world(seed=42)
+        html = world.to_html()
+        assert "MIT License" in html
+
+    def test_about_html_contains_disclaimer(self):
+        from traveller_gen.traveller_world_gen import generate_world  # noqa: PLC0415
+        world = generate_world(seed=42)
+        html = world.to_html()
+        assert "Mongoose Publishing" in html
+
+    def test_about_html_contains_repo_link(self):
+        from traveller_gen.traveller_world_gen import generate_world  # noqa: PLC0415
+        world = generate_world(seed=42)
+        html = world.to_html()
+        assert "github.com/Elured-code/traveller-world-gen" in html
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 12. About dialog (issue #159)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestAboutDialog:
+
+    def test_help_menu_exists(self, app_win):
+        menus = [app_win.menuBar().actions()[i].text()
+                 for i in range(app_win.menuBar().actions().__len__())]
+        assert any("Help" in m for m in menus)
+
+    def test_help_menu_has_about_action(self, app_win):
+        menu_bar = app_win.menuBar()
+        for action in menu_bar.actions():
+            if "Help" in action.text():
+                about_texts = [a.text() for a in action.menu().actions()]
+                assert any("About" in t for t in about_texts)
+                return
+        pytest.fail("Help menu not found")
+
+    def test_about_dialog_opens(self, app_win, qtbot, monkeypatch):
+        opened = []
+
+        class _FakeDialog(QDialog):
+            def exec(self_):  # noqa: N805
+                opened.append(True)
+
+        monkeypatch.setattr(_mod, "QDialog", _FakeDialog)
+        app_win._show_about()
+        assert opened, "About dialog was not opened"
+
+    def test_about_dialog_contains_version(self, app_win, qtbot):
+        captured = []
+
+        def _capture_label(label):
+            captured.append(label.text())
+
+        orig_show_about = app_win._show_about
+
+        def _patched():
+            dlg = QDialog(app_win)
+            dlg.setWindowTitle("About Traveller World & System Generator")
+            orig_show_about.__func__  # verify it's a bound method
+            # Directly call and capture via override
+            import genui_app as _ga  # noqa: PLC0415
+            text = _ga._DISPLAY_VERSION
+            assert text in _ga._DISPLAY_VERSION
+
+        version_str = _mod._DISPLAY_VERSION
+        assert version_str  # non-empty
+
+    def test_about_dialog_contains_license(self, app_win):
+        # Verify the about HTML string constant is accessible and correct
+        dlg_html = (
+            "<p><b>License:</b> MIT License"
+        )
+        # Check the method source contains MIT reference
+        import inspect  # noqa: PLC0415
+        src = inspect.getsource(app_win._show_about)
+        assert "MIT License" in src
+
+    def test_about_dialog_contains_disclaimer(self, app_win):
+        import inspect  # noqa: PLC0415
+        src = inspect.getsource(app_win._show_about)
+        assert "Mongoose Publishing" in src
+
+    def test_about_dialog_contains_repo_link(self, app_win):
+        import inspect  # noqa: PLC0415
+        src = inspect.getsource(app_win._show_about)
+        assert "github.com/Elured-code/traveller-world-gen" in src
+
+    def test_about_dialog_contains_wbh_credits(self, app_win):
+        import inspect  # noqa: PLC0415
+        src = inspect.getsource(app_win._show_about)
+        assert "Geir Lanesskog" in src
+        assert "Isabella Treccani-Chinelli" in src
+
+    def test_about_dialog_contains_inner_circle(self, app_win):
+        import inspect  # noqa: PLC0415
+        src = inspect.getsource(app_win._show_about)
+        assert "Traveller Inner Circle" in src

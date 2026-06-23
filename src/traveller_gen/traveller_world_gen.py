@@ -62,6 +62,8 @@ if TYPE_CHECKING:
     from .traveller_world_tech_detail import TechDetail
     from .traveller_world_culture_detail import CultureDetail
     from .traveller_world_importance import WorldImportance
+    from .traveller_world_starport_detail import StarportDetail
+    from .traveller_world_military_detail import MilitaryDetail
 
 
 # ---------------------------------------------------------------------------
@@ -2731,6 +2733,194 @@ def assign_travel_zone(atmosphere: int, government: int,
         or law_level >= 9
     )
     return "Amber" if amber else "Green"
+
+
+# ---------------------------------------------------------------------------
+# WBH §10 extended travel zone (probabilistic, requires social detail)
+# ---------------------------------------------------------------------------
+
+def _amber_zone_dm(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+    atmosphere: int,
+    government: int,
+    law_level: int,
+    primordial: bool,
+    mean_temp_k: Optional[int],
+    pressure_bar: Optional[float],
+    seismic_stress: Optional[int],
+    xenophilia: Optional[int],
+    militancy: Optional[int],
+    factional_uprisings: bool,
+    ongoing_war: bool,
+) -> int:
+    dm = 0
+    if primordial:
+        dm += 2
+    if atmosphere in (11, 12) or atmosphere >= 15:  # B, C, F+
+        dm += 2
+    if mean_temp_k is not None and mean_temp_k > 373:
+        dm += 2
+    if pressure_bar is not None and pressure_bar > 50.0:
+        dm += 2
+    if seismic_stress is not None and seismic_stress >= 100:
+        dm += 2
+    if government == 0:
+        dm += 4
+    elif government == 7:
+        dm += 2
+    if law_level == 0:
+        dm += 2
+    if government + law_level > 20:
+        dm += government + law_level - 16
+    if xenophilia is not None and xenophilia <= 5:
+        dm += 6 - xenophilia
+    if militancy is not None and militancy >= 9:
+        dm += militancy - 8
+    if factional_uprisings:
+        dm += 2
+    if ongoing_war:
+        dm += 4
+    return dm
+
+
+def _red_zone_dm(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    magnetar: bool,
+    pulsar: bool,
+    protostar: bool,
+    seismic_stress: Optional[int],
+    xenophilia: Optional[int],
+    militancy: Optional[int],
+    factional_uprisings: bool,
+    ongoing_war: bool,
+) -> int:
+    dm = 0
+    if magnetar:
+        dm += 10
+    if pulsar:
+        dm += 8
+    if protostar:
+        dm += 6
+    if seismic_stress is not None and seismic_stress >= 200:
+        dm += 2
+    if xenophilia is not None and 1 <= xenophilia <= 2:
+        dm += 6 - xenophilia
+    if militancy is not None and militancy >= 12:
+        dm += militancy - 8
+    if factional_uprisings:
+        dm += 2
+    if ongoing_war:
+        dm += 4
+    return dm
+
+
+def assign_travel_zone_extended(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    atmosphere: int,
+    government: int,
+    law_level: int,
+    starport: str,
+    *,
+    primordial: bool = False,
+    magnetar: bool = False,
+    pulsar: bool = False,
+    protostar: bool = False,
+    mean_temp_k: Optional[int] = None,
+    pressure_bar: Optional[float] = None,
+    seismic_stress: Optional[int] = None,
+    xenophilia: Optional[int] = None,
+    militancy: Optional[int] = None,
+    factional_uprisings: bool = False,
+    ongoing_war: bool = False,
+    rng: Optional[random.Random] = None,
+) -> str:
+    """WBH §10 probabilistic travel zone — replaces assign_travel_zone() when
+    full social detail is available.
+
+    Rolls 2D+DMs ≥ 12 independently for Red then Amber; Red takes priority.
+    Starport X is always Red regardless of rolls.
+    """
+    if starport == "X":
+        return "Red"
+
+    _r = rng if rng is not None else _rng
+
+    red_dm = _red_zone_dm(
+        magnetar=magnetar, pulsar=pulsar, protostar=protostar,
+        seismic_stress=seismic_stress, xenophilia=xenophilia,
+        militancy=militancy, factional_uprisings=factional_uprisings,
+        ongoing_war=ongoing_war,
+    )
+    if _r.randint(1, 6) + _r.randint(1, 6) + red_dm >= 12:
+        return "Red"
+
+    amber_dm = _amber_zone_dm(
+        atmosphere, government, law_level,
+        primordial=primordial, mean_temp_k=mean_temp_k,
+        pressure_bar=pressure_bar, seismic_stress=seismic_stress,
+        xenophilia=xenophilia, militancy=militancy,
+        factional_uprisings=factional_uprisings, ongoing_war=ongoing_war,
+    )
+    if _r.randint(1, 6) + _r.randint(1, 6) + amber_dm >= 12:
+        return "Amber"
+
+    return "Green"
+
+
+def attach_travel_zone_extended(  # pylint: disable=too-many-locals
+        system, rng: Optional[random.Random] = None) -> None:
+    """Overwrite mainworld travel_zone using WBH §10 extended criteria.
+
+    No-op when mainworld is None.  Requires social detail to be attached
+    for the cultural/military inputs; gracefully skips those DMs when absent.
+    """
+    mw = system.mainworld
+    if mw is None:
+        return
+
+    # Stellar flags from primary star special_notes
+    stars = system.stellar_system.stars if system.stellar_system else []
+    notes_all = " ".join(s.special_notes for s in stars if s.special_notes)
+    primordial = "Primordial" in notes_all
+    protostar  = "Protostar"  in notes_all
+    magnetar   = "Magnetar"   in notes_all
+    pulsar     = "Pulsar"     in notes_all
+
+    # Physical detail
+    mean_temp_k: Optional[int] = None
+    seismic_stress: Optional[int] = None
+    if mw.size_detail is not None and not isinstance(mw.size_detail, BeltPhysical):
+        mean_temp_k    = mw.size_detail.advanced_mean_temperature_k
+        seismic_stress = mw.size_detail.total_seismic_stress
+
+    pressure_bar: Optional[float] = None
+    if mw.atmosphere_detail is not None:
+        pressure_bar = getattr(mw.atmosphere_detail, "pressure_bar", None)
+
+    # Cultural detail
+    xenophilia: Optional[int] = None
+    militancy:  Optional[int] = None
+    if mw.culture_detail is not None:
+        xenophilia = mw.culture_detail.xenophilia
+        militancy  = mw.culture_detail.militancy
+
+    # Military readiness → factional uprisings / ongoing war
+    factional_uprisings = False
+    ongoing_war         = False
+    if mw.military_detail is not None:
+        sor = mw.military_detail.state_of_readiness
+        factional_uprisings = sor in (
+            "Heightened tensions, threat of war",
+            "War or internal insurgency",
+            "Total war: full mobilisation",
+        )
+        ongoing_war = sor in ("War or internal insurgency", "Total war: full mobilisation")
+
+    mw.travel_zone = assign_travel_zone_extended(
+        mw.atmosphere, mw.government, mw.law_level, mw.starport,
+        primordial=primordial, magnetar=magnetar, pulsar=pulsar, protostar=protostar,
+        mean_temp_k=mean_temp_k, pressure_bar=pressure_bar,
+        seismic_stress=seismic_stress, xenophilia=xenophilia, militancy=militancy,
+        factional_uprisings=factional_uprisings, ongoing_war=ongoing_war,
+        rng=rng,
+    )
 
 
 # ---------------------------------------------------------------------------
