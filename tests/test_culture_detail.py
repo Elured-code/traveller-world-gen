@@ -45,9 +45,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from traveller_system_gen import generate_full_system
-from traveller_world_detail import attach_detail
-from traveller_world_culture_detail import (
+from traveller_gen.traveller_system_gen import generate_full_system
+from traveller_gen.traveller_world_detail import attach_detail
+from traveller_gen.traveller_world_culture_detail import (
     CultureDetail,
     _diversity_label,
     _xenophilia_label,
@@ -58,6 +58,7 @@ from traveller_world_culture_detail import (
     _expansionism_label,
     _militancy_label,
     _parse_cx_string,
+    _compute_cx,
     generate_culture_detail,
     generate_culture_detail_from_cx,
     attach_culture_detail,
@@ -949,6 +950,7 @@ class TestRoundTrip:
             "expansionism", "expansionism_label",
             "militancy", "militancy_label",
             "cultural_profile",
+            "cultural_extension",
         }
 
     def test_from_dict_backward_compat_xenophilia(self):
@@ -1487,3 +1489,126 @@ class TestAttachCultureDetailCxPath:
         cd = mw.culture_detail  # type: ignore[attr-defined]
         assert cd is not None
         assert isinstance(cd, CultureDetail)
+
+
+# ---------------------------------------------------------------------------
+# _compute_cx and cultural_extension (issue #141)
+# ---------------------------------------------------------------------------
+
+class TestComputeCx:
+    """Tests for the DXUS → HASS forward conversion (_compute_cx)."""
+
+    def test_uninhabited_returns_0000(self):
+        assert _compute_cx(10, 10, 10, 10, 0, 8, 2) == "0000"
+
+    def test_known_good_conversion(self):
+        # Pop=6, TL=9, Imp=2; diversity=6, xenophilia=8, uniqueness=9, symbology=10
+        # H = clamp(6, max(1,1), 11) = 6
+        # A = clamp(8, max(1,3), 13) = 8
+        # S = round(9 × 2/3) = round(6.0) = 6
+        # S2= clamp(10, max(1,4), 14) = 10 → eHex 'A'
+        result = _compute_cx(6, 8, 9, 10, 6, 9, 2)
+        assert result == "686A"
+
+    def test_h_clamped_to_upper(self):
+        # diversity far above pop+5
+        result = _compute_cx(30, 5, 5, 5, 6, 9, 0)
+        h = _EHEX.index(result[0])
+        assert h == 11  # pop+5 = 11
+
+    def test_h_clamped_to_lower(self):
+        # diversity far below pop-5
+        result = _compute_cx(1, 5, 5, 5, 10, 9, 0)
+        h = _EHEX.index(result[0])
+        assert h == max(1, 10 - 5)  # = 5
+
+    def test_a_clamped_to_upper(self):
+        # xenophilia far above imp+pop+5
+        result = _compute_cx(5, 35, 5, 5, 6, 9, 2)
+        a = _EHEX.index(result[1])
+        assert a == 13  # imp+pop+5 = 13
+
+    def test_a_minimum_1_for_inhabited(self):
+        # imp+pop very low — lower bound still clamped to 1
+        result = _compute_cx(5, 1, 5, 5, 1, 9, -5)
+        a = _EHEX.index(result[1])
+        assert a >= 1
+
+    def test_s_strangeness_rounding(self):
+        # uniqueness=10 → round(10 × 2/3) = round(6.666) = 7
+        result = _compute_cx(5, 5, 10, 5, 6, 9, 0)
+        s = _EHEX.index(result[2])
+        assert s == 7
+
+    def test_s_minimum_1(self):
+        result = _compute_cx(5, 5, 1, 5, 6, 9, 0)
+        s = _EHEX.index(result[2])
+        assert s == 1
+
+    def test_s2_clamped_to_tl_bounds(self):
+        # symbology far above TL+5
+        result = _compute_cx(5, 5, 5, 30, 6, 9, 0)
+        s2 = _EHEX.index(result[3])
+        assert s2 == 14  # TL+5 = 14
+
+    def test_result_is_4_chars(self):
+        result = _compute_cx(8, 8, 8, 8, 6, 9, 2)
+        assert len(result) == 4
+        assert all(c in _EHEX for c in result)
+
+
+class TestCulturalExtensionField:
+    """cultural_extension stored on CultureDetail and round-trips cleanly."""
+
+    def test_generate_culture_detail_sets_extension(self):
+        cd = generate_culture_detail(
+            population=6, government=6, law_level=6,
+            tech_level=9, importance=2,
+        )
+        assert cd is not None
+        assert len(cd.cultural_extension) == 4
+        assert all(c in _EHEX for c in cd.cultural_extension)
+
+    def test_uninhabited_returns_none_not_0000(self):
+        cd = generate_culture_detail(population=0, government=0, law_level=0)
+        assert cd is None
+
+    def test_from_cx_sets_extension(self):
+        cd = generate_culture_detail_from_cx(
+            cx="7567", population=7, importance=2,
+            government=6, law_level=5, tech_level=10,
+        )
+        assert cd is not None
+        assert len(cd.cultural_extension) == 4
+
+    def test_round_trip_preserves_extension(self):
+        cd = generate_culture_detail(
+            population=7, government=5, law_level=4,
+            tech_level=10, importance=1,
+        )
+        assert cd is not None
+        d = cd.to_dict()
+        assert "cultural_extension" in d
+        cd2 = CultureDetail.from_dict(d)
+        assert cd2.cultural_extension == cd.cultural_extension
+
+    def test_from_dict_missing_extension_defaults_to_empty(self):
+        cd = generate_culture_detail(population=6, government=6, law_level=6)
+        assert cd is not None
+        d = cd.to_dict()
+        del d["cultural_extension"]
+        cd2 = CultureDetail.from_dict(d)
+        assert cd2.cultural_extension == ""
+
+    def test_extension_matches_compute_cx(self):
+        """cultural_extension on CultureDetail matches _compute_cx directly."""
+        cd = generate_culture_detail(
+            population=8, government=6, law_level=5,
+            tech_level=12, importance=3,
+        )
+        assert cd is not None
+        expected = _compute_cx(
+            cd.diversity, cd.xenophilia, cd.uniqueness, cd.symbology,
+            8, 12, 3,
+        )
+        assert cd.cultural_extension == expected

@@ -259,9 +259,11 @@ is the full 9-character DXUS-CPEM format.
 generate_culture_detail(
     population: int, government: int, law_level: int,
     pcr: int = 0, starport: str = "", tech_level: int = 0,
+    importance: int = 0,
     rng: Optional[random.Random] = None,
 ) -> Optional[CultureDetail]
     # Roll all 8 traits with 2D + DMs. Returns None for uninhabited (pop=0).
+    # Cx value computed from DXUS traits + Population, TL, Importance (Session 135).
     # Sets _rng when rng is provided. All traits have min value 1.
 
 generate_culture_detail_from_cx(
@@ -306,6 +308,25 @@ The remaining four traits (Cohesion, Progressiveness, Expansionism, Militancy)
 are always rolled with dice + DMs using the derived Diversity and Xenophilia
 values.
 
+### T5 Cultural Extension Generation (Session 135)
+
+When generating culture from rolled DXUS traits (standard generation or when reading
+Cx from TravellerMap), a T5 Cx HASS string is computed for display and export. The
+forward conversion (DXUS → HASS) applies WBH p.254 rules:
+
+```
+H (Heterogeneity)  ← Diversity  clamped to [max(1, Pop−5), Pop+5]
+A (Acceptance)     ← Xenophilia clamped to [max(1, Imp+Pop−5), Imp+Pop+5]
+S (Strangeness)    ← Uniqueness rounded as round(Uniqueness × 2/3)
+S2 (Symbols)       ← Symbology  clamped to [max(1, TL−5), TL+5]
+```
+
+Uninhabited worlds (Population code 0) yield Cx `"0000"`. All four values
+minimum 1 when populated. `_compute_cx()` helper performs the conversion; both
+`generate_culture_detail()` and `generate_culture_detail_from_cx()` call it and
+store the result in the `cultural_extension` field. The Cx is displayed in the
+world card Culture section labelled "Cultural Extension (T5)".
+
 ### Dataclass
 
 ```python
@@ -328,6 +349,7 @@ class CultureDetail:  # pylint: disable=too-many-instance-attributes
     militancy: int
     militancy_label: str
     cultural_profile: str        # DXUS-CPEM format: 9 chars, hyphen at position 4
+    cultural_extension: str      # T5 Cx HASS eHex string, e.g. "7567"; derived Session 135
 
     # to_dict() / from_dict() — backward-compat defaults missing traits to 1
 ```

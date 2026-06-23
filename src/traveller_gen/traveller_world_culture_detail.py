@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from traveller_system_gen import TravellerSystem
+    from .traveller_system_gen import TravellerSystem
 
 _rng: random.Random = random  # type: ignore[assignment]
 
@@ -156,6 +156,29 @@ def _parse_cx_string(cx: str) -> tuple:
         _from_ehex(raw[2]),   # Strangeness   → Uniqueness (scaled)
         _from_ehex(raw[3]),   # Symbols       → Symbology
     )
+
+
+def _compute_cx(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+        diversity: int, xenophilia: int, uniqueness: int, symbology: int,
+        population: int, tech_level: int, importance: int,
+) -> str:
+    """Derive the T5 Cultural Extension (Cx) HASS string from WBH trait values.
+
+    WBH p.254 forward conversion (DXUS → HASS):
+      H = Diversity  clamped to [max(1, Pop−5), Pop+5]
+      A = Xenophilia clamped to [max(1, Imp+Pop−5), Imp+Pop+5]
+      S = round(Uniqueness × 2/3)  (min 1)
+      S2= Symbology  clamped to [max(1, TL−5), TL+5]
+    Uninhabited worlds (population == 0) → "0000".
+    """
+    if population == 0:
+        return "0000"
+    h = min(population + 5, max(1, population - 5, diversity))
+    xen_centre = importance + population
+    a = min(xen_centre + 5, max(1, xen_centre - 5, xenophilia))
+    s = max(1, round(uniqueness * 2 / 3))
+    s2 = min(tech_level + 5, max(1, tech_level - 5, symbology))
+    return _ehex(h) + _ehex(a) + _ehex(s) + _ehex(s2)
 
 
 def _label_from_table(value: int, table: list[tuple[int, str]]) -> str:
@@ -437,6 +460,8 @@ class CultureDetail:  # pylint: disable=too-many-instance-attributes
     militancy_label: str        # e.g. "Militaristic"
     # DXUS-CPEM format: 8 eHex chars + 1 hyphen separator = 9 chars total
     cultural_profile: str
+    # T5 Cultural Extension derived from DXUS traits + UWP (issue #141)
+    cultural_extension: str  # 4-char HASS eHex string, e.g. "7567"; "0000" for uninhabited
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-compatible dict."""
@@ -458,6 +483,7 @@ class CultureDetail:  # pylint: disable=too-many-instance-attributes
             "militancy":              self.militancy,
             "militancy_label":        self.militancy_label,
             "cultural_profile":       self.cultural_profile,
+            "cultural_extension":     self.cultural_extension,
         }
 
     @classmethod
@@ -504,6 +530,7 @@ class CultureDetail:  # pylint: disable=too-many-instance-attributes
             militancy_label=str(d.get("militancy_label",
                 _label_from_table(militancy, _MILITANCY_LABELS))),
             cultural_profile=str(d.get("cultural_profile", default_profile)),
+            cultural_extension=str(d.get("cultural_extension", "")),
         )
 
 
@@ -518,6 +545,7 @@ def generate_culture_detail(  # pylint: disable=too-many-arguments,too-many-posi
         pcr: int = 0,
         starport: str = "",
         tech_level: int = 0,
+        importance: int = 0,
         rng: Optional[random.Random] = None,
 ) -> Optional[CultureDetail]:
     """Generate the cultural profile for one inhabited world.
@@ -584,6 +612,8 @@ def generate_culture_detail(  # pylint: disable=too-many-arguments,too-many-posi
         + _ehex(cohesion) + _ehex(progressiveness)
         + _ehex(expansionism) + _ehex(militancy)
     )
+    cx = _compute_cx(diversity, xenophilia, uniqueness, symbology,
+                     population, tech_level, importance)
 
     return CultureDetail(
         diversity=diversity,
@@ -603,6 +633,7 @@ def generate_culture_detail(  # pylint: disable=too-many-arguments,too-many-posi
         militancy=militancy,
         militancy_label=_militancy_label(militancy),
         cultural_profile=profile,
+        cultural_extension=cx,
     )
 
 
@@ -673,6 +704,8 @@ def generate_culture_detail_from_cx(  # pylint: disable=too-many-arguments,too-m
         + _ehex(cohesion) + _ehex(progressiveness)
         + _ehex(expansionism) + _ehex(militancy)
     )
+    cx_out = _compute_cx(diversity, xenophilia, uniqueness, symbology,
+                         population, tech_level, importance)
 
     return CultureDetail(
         diversity=diversity,
@@ -692,6 +725,7 @@ def generate_culture_detail_from_cx(  # pylint: disable=too-many-arguments,too-m
         militancy=militancy,
         militancy_label=_militancy_label(militancy),
         cultural_profile=profile,
+        cultural_extension=cx_out,
     )
 
 
@@ -766,6 +800,7 @@ def attach_culture_detail(
                 pcr=pcr,
                 starport=mw.starport,       # type: ignore[attr-defined]
                 tech_level=mw.tech_level,   # type: ignore[attr-defined]
+                importance=getattr(mw, "importance", 0),
                 rng=None,
             )
 

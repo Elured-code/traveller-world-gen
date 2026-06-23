@@ -59,13 +59,13 @@ import secrets
 from dataclasses import dataclass
 from typing import Optional
 
-from traveller_stellar_gen import StarSystem, generate_stellar_data
-from traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
-from traveller_belt_physical import BeltPhysical
-from traveller_hydro_detail import generate_hydrographic_detail
-from html_render import render
-from world_codes import APP_VERSION, gg_diameter_from_sah
-from traveller_world_gen import (
+from .traveller_stellar_gen import StarSystem, generate_stellar_data
+from .traveller_orbit_gen import SystemOrbits, OrbitSlot, generate_orbits
+from .traveller_belt_physical import BeltPhysical
+from .traveller_hydro_detail import generate_hydrographic_detail
+from .html_render import render
+from .world_codes import APP_VERSION, gg_diameter_from_sah
+from .traveller_world_gen import (
     World,
     generate_size,
     generate_atmosphere,
@@ -210,7 +210,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
         )
 
         if detail_attached:
-            from traveller_world_detail import system_body_table  # pylint: disable=import-outside-toplevel
+            from .traveller_world_detail import system_body_table  # pylint: disable=import-outside-toplevel
             orbital_section = system_body_table(self)
         else:
             orbital_section = self.system_orbits.summary()
@@ -503,7 +503,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     WBH atmosphere detail is attached via ``generate_atmosphere_detail()``;
     *system_age_gyr* feeds the WBH p.80 DM+1 for systems older than 4 Gyr.
     """
-    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     if rng is not None:
         _twg._rng = rng  # pylint: disable=protected-access
     world = World(name=name)
@@ -729,7 +729,7 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
                              orbital_inclination=orbital_inclination, rng=rng)
 
-    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     _twg._rng = rng  # pylint: disable=protected-access
 
     # Reconcile PBG: honour the world's canonical gas giant and belt counts
@@ -826,7 +826,7 @@ def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-m
     ``apply_mainworld_social()``.  Returns ``False`` when the pre-selected
     mainworld was confirmed as the winner (no structural change).
     """
-    from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+    from .traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
 
     r = rng if rng is not None else random
 
@@ -894,7 +894,7 @@ def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-m
     winner_orbit.is_mainworld_candidate    = True
 
     # b. Regenerate winner as a full World
-    import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
+    from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     age_gyr = system.stellar_system.primary.age_gyr
     new_mw  = generate_mainworld_at_orbit(
         name=mw.name,

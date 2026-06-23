@@ -521,6 +521,9 @@
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Culture detail</p>
     {{ drow("Cultural profile", ctx.culture_detail.cultural_profile) }}
+    {% if ctx.culture_detail.cultural_extension %}
+    {{ drow("Cultural Extension (T5)", ctx.culture_detail.cultural_extension) }}
+    {% endif %}
     {{ drow("Diversity", ctx.culture_detail.diversity|string + " — " + ctx.culture_detail.diversity_label) }}
     {{ drow("Xenophilia", ctx.culture_detail.xenophilia|string + " — " + ctx.culture_detail.xenophilia_label) }}
     {{ drow("Uniqueness", ctx.culture_detail.uniqueness|string + " — " + ctx.culture_detail.uniqueness_label) }}

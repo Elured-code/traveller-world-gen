@@ -14,26 +14,26 @@ import random
 from dataclasses import dataclass
 from typing import Optional
 
-from traveller_belt_physical import BeltPhysical
-from traveller_world_gen import generate_hydrographics, apply_mainworld_social
-from traveller_world_physical import (
+from .traveller_belt_physical import BeltPhysical
+from .traveller_world_gen import generate_hydrographics, apply_mainworld_social
+from .traveller_world_physical import (
     generate_world_physical, apply_moon_tidal_effects, attach_resource_factor,
 )
-from traveller_world_atmosphere_detail import (
+from .traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
-from traveller_hydro_detail import generate_hydrographic_detail
-from traveller_world_detail import (
+from .traveller_hydro_detail import generate_hydrographic_detail
+from .traveller_world_detail import (
     attach_detail, apply_secondary_social, reattach_mainworld_orbit,
     gg_diameter_from_sah,
 )
-from traveller_world_population_detail import attach_population_detail
-from traveller_world_government_detail import attach_government_detail
-from traveller_world_law_detail import attach_law_detail
-from traveller_world_tech_detail import attach_tech_detail
-from traveller_world_culture_detail import attach_culture_detail
-from traveller_world_importance import attach_importance_detail
-from traveller_system_gen import select_mainworld, attach_body_names
+from .traveller_world_population_detail import attach_population_detail
+from .traveller_world_government_detail import attach_government_detail
+from .traveller_world_law_detail import attach_law_detail
+from .traveller_world_tech_detail import attach_tech_detail
+from .traveller_world_culture_detail import attach_culture_detail
+from .traveller_world_importance import attach_importance_detail
+from .traveller_system_gen import select_mainworld, attach_body_names
 
 
 @dataclass

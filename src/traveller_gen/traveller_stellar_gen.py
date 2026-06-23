@@ -30,7 +30,7 @@ All dice are simulated using Python's random module, matching the Traveller
 
 Usage
 -----
-    from traveller_stellar_gen import generate_stellar_data, StarSystem
+    from .traveller_stellar_gen import generate_stellar_data, StarSystem
 
     system = generate_stellar_data()
     print(system.summary())

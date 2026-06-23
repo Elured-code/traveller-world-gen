@@ -31,52 +31,52 @@ class TestGeneratorRangeInvariants:
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_size_in_range(self, seed):
-        from traveller_world_gen import generate_world
+        from traveller_gen.traveller_world_gen import generate_world
         w = generate_world(seed=seed)
         assert 0 <= w.size <= 10, f"size={w.size} out of range for seed={seed}"
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_atmosphere_in_range(self, seed):
-        from traveller_world_gen import generate_world
+        from traveller_gen.traveller_world_gen import generate_world
         w = generate_world(seed=seed)
         assert 0 <= w.atmosphere <= 15, f"atmosphere={w.atmosphere} out of range for seed={seed}"
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_hydrographics_in_range(self, seed):
-        from traveller_world_gen import generate_world
+        from traveller_gen.traveller_world_gen import generate_world
         w = generate_world(seed=seed)
         assert 0 <= w.hydrographics <= 10, f"hydrographics={w.hydrographics} out of range for seed={seed}"
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_population_in_range(self, seed):
-        from traveller_world_gen import generate_world
+        from traveller_gen.traveller_world_gen import generate_world
         w = generate_world(seed=seed)
         assert 0 <= w.population <= 10, f"population={w.population} out of range for seed={seed}"
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_government_in_range(self, seed):
-        from traveller_world_gen import generate_world
+        from traveller_gen.traveller_world_gen import generate_world
         w = generate_world(seed=seed)
         assert 0 <= w.government <= 15, f"government={w.government} out of range for seed={seed}"
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_law_level_in_range(self, seed):
-        from traveller_world_gen import generate_world
+        from traveller_gen.traveller_world_gen import generate_world
         w = generate_world(seed=seed)
         assert 0 <= w.law_level <= 18, f"law_level={w.law_level} out of range for seed={seed}"
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_starport_is_valid(self, seed):
-        from traveller_world_gen import generate_world
-        from world_codes import StarportCode
+        from traveller_gen.traveller_world_gen import generate_world
+        from traveller_gen.world_codes import StarportCode
         w = generate_world(seed=seed)
         valid = {e.value for e in StarportCode}
         assert w.starport in valid, f"starport={w.starport!r} not in StarportCode for seed={seed}"
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_temperature_is_valid(self, seed):
-        from traveller_world_gen import generate_world
-        from world_codes import TemperatureCategory
+        from traveller_gen.traveller_world_gen import generate_world
+        from traveller_gen.world_codes import TemperatureCategory
         w = generate_world(seed=seed)
         valid = {e.value for e in TemperatureCategory}
         assert w.temperature in valid, (
@@ -85,8 +85,8 @@ class TestGeneratorRangeInvariants:
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_trade_codes_are_valid(self, seed):
-        from traveller_world_gen import generate_world
-        from world_codes import TradeCode
+        from traveller_gen.traveller_world_gen import generate_world
+        from traveller_gen.world_codes import TradeCode
         w = generate_world(seed=seed)
         valid = {e.value for e in TradeCode}
         for tc in w.trade_codes:
@@ -94,8 +94,8 @@ class TestGeneratorRangeInvariants:
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_travel_zone_is_valid(self, seed):
-        from traveller_world_gen import generate_world
-        from world_codes import TravelZone
+        from traveller_gen.traveller_world_gen import generate_world
+        from traveller_gen.world_codes import TravelZone
         w = generate_world(seed=seed)
         valid = {e.value for e in TravelZone}
         assert w.travel_zone in valid, (
@@ -113,7 +113,7 @@ class TestUWPFormat:
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     @settings(max_examples=200)
     def test_uwp_matches_pattern(self, seed):
-        from traveller_world_gen import generate_world
+        from traveller_gen.traveller_world_gen import generate_world
         w = generate_world(seed=seed)
         uwp = w.uwp()
         assert _UWP_RE.match(uwp), (
@@ -122,7 +122,7 @@ class TestUWPFormat:
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_uwp_length_is_nine(self, seed):
-        from traveller_world_gen import generate_world
+        from traveller_gen.traveller_world_gen import generate_world
         w = generate_world(seed=seed)
         assert len(w.uwp()) == 9, f"UWP {w.uwp()!r} is not 9 chars for seed={seed}"
 
@@ -137,7 +137,7 @@ class TestWorldRoundTrip:
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     @settings(max_examples=200)
     def test_uwp_preserved(self, seed):
-        from traveller_world_gen import generate_world, World
+        from traveller_gen.traveller_world_gen import generate_world, World
         world = generate_world(seed=seed)
         restored = World.from_dict(world.to_dict())
         assert world.uwp() == restored.uwp(), (
@@ -146,7 +146,7 @@ class TestWorldRoundTrip:
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_trade_codes_preserved(self, seed):
-        from traveller_world_gen import generate_world, World
+        from traveller_gen.traveller_world_gen import generate_world, World
         world = generate_world(seed=seed)
         restored = World.from_dict(world.to_dict())
         assert sorted(world.trade_codes) == sorted(restored.trade_codes), (
@@ -155,7 +155,7 @@ class TestWorldRoundTrip:
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_bases_preserved(self, seed):
-        from traveller_world_gen import generate_world, World
+        from traveller_gen.traveller_world_gen import generate_world, World
         world = generate_world(seed=seed)
         restored = World.from_dict(world.to_dict())
         assert sorted(world.bases) == sorted(restored.bases), (
@@ -164,7 +164,7 @@ class TestWorldRoundTrip:
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_travel_zone_preserved(self, seed):
-        from traveller_world_gen import generate_world, World
+        from traveller_gen.traveller_world_gen import generate_world, World
         world = generate_world(seed=seed)
         restored = World.from_dict(world.to_dict())
         assert world.travel_zone == restored.travel_zone, (
@@ -173,7 +173,7 @@ class TestWorldRoundTrip:
 
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     def test_temperature_preserved(self, seed):
-        from traveller_world_gen import generate_world, World
+        from traveller_gen.traveller_world_gen import generate_world, World
         world = generate_world(seed=seed)
         restored = World.from_dict(world.to_dict())
         assert world.temperature == restored.temperature, (
@@ -197,7 +197,7 @@ class TestValidationAcceptsGenerated:
     @given(st.integers(min_value=0, max_value=2**31 - 1))
     @settings(max_examples=200)
     def test_generated_world_passes_validation(self, seed):
-        from traveller_world_gen import generate_world, World
+        from traveller_gen.traveller_world_gen import generate_world, World
         world = generate_world(seed=seed)
         # _validate_world_codes raises ValueError on invalid data; must not raise
         World._validate_world_codes(world.to_dict())  # pylint: disable=protected-access

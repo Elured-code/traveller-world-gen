@@ -7,9 +7,9 @@ OrbitSlot, SystemOrbits, and TravellerSystem.
 
 import pytest
 
-from traveller_stellar_gen import Star, StarSystem
-from traveller_orbit_gen import OrbitSlot, SystemOrbits
-from traveller_system_gen import TravellerSystem, generate_full_system
+from traveller_gen.traveller_stellar_gen import Star, StarSystem
+from traveller_gen.traveller_orbit_gen import OrbitSlot, SystemOrbits
+from traveller_gen.traveller_system_gen import TravellerSystem, generate_full_system
 
 
 # ---------------------------------------------------------------------------
@@ -309,10 +309,10 @@ class TestSystemRoundtrip:
 class TestMoonFromDict:
     """Tests for Moon.from_dict()."""
 
-    from traveller_moon_gen import Moon
+    from traveller_gen.traveller_moon_gen import Moon
 
     def test_ring_moon_basic(self):
-        from traveller_moon_gen import Moon
+        from traveller_gen.traveller_moon_gen import Moon
         moon = Moon(size_code=0, is_ring=True)
         moon.ring_count = 3
         d = moon.to_dict()
@@ -322,7 +322,7 @@ class TestMoonFromDict:
         assert restored.ring_count == 3
 
     def test_ring_moon_with_centre_span(self):
-        from traveller_moon_gen import Moon
+        from traveller_gen.traveller_moon_gen import Moon
         moon = Moon(size_code=0, is_ring=True)
         moon.ring_centre_pd = 1.75
         moon.ring_span_pd   = 0.12
@@ -333,7 +333,7 @@ class TestMoonFromDict:
         assert restored.ring_span_pd   == pytest.approx(0.12)
 
     def test_size_s_moon(self):
-        from traveller_moon_gen import Moon
+        from traveller_gen.traveller_moon_gen import Moon
         moon = Moon(size_code="S")
         d = moon.to_dict()
         restored = Moon.from_dict(d)
@@ -341,7 +341,7 @@ class TestMoonFromDict:
         assert restored.is_ring is False
 
     def test_numeric_size_moon_with_orbit_data(self):
-        from traveller_moon_gen import Moon
+        from traveller_gen.traveller_moon_gen import Moon
         moon = Moon(size_code=4)
         moon.orbit_pd           = 12.5
         moon.orbit_km           = 75000.0
@@ -358,7 +358,7 @@ class TestMoonFromDict:
         assert restored.orbit_inclination  == 0.0
 
     def test_moon_eccentricity_inclination(self):
-        from traveller_moon_gen import Moon
+        from traveller_gen.traveller_moon_gen import Moon
         moon = Moon(size_code=3)
         moon.orbit_pd           = 5.0
         moon.orbit_km           = 20000.0
@@ -372,7 +372,7 @@ class TestMoonFromDict:
         assert restored.orbit_inclination  == pytest.approx(145.5)
 
     def test_gas_giant_moon_flag(self):
-        from traveller_moon_gen import Moon
+        from traveller_gen.traveller_moon_gen import Moon
         moon = Moon(size_code=8, is_gas_giant_moon=True)
         d = moon.to_dict()
         restored = Moon.from_dict(d)
@@ -380,8 +380,8 @@ class TestMoonFromDict:
         assert restored.size_code == 8
 
     def test_moon_with_nested_detail(self):
-        from traveller_moon_gen import Moon
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_moon_gen import Moon
+        from traveller_gen.traveller_world_detail import WorldDetail
         moon = Moon(size_code=5)
         moon.orbit_pd           = 8.0
         moon.orbit_km           = 30000.0
@@ -405,7 +405,7 @@ class TestWorldDetailFromDict:
     """Tests for WorldDetail.from_dict()."""
 
     def test_basic_uninhabited(self):
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_world_detail import WorldDetail
         wd = WorldDetail(sah="473")
         d = wd.to_dict()
         restored = WorldDetail.from_dict(d)
@@ -415,7 +415,7 @@ class TestWorldDetailFromDict:
         assert restored.inhabited is False
 
     def test_inhabited_fields_preserved(self):
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_world_detail import WorldDetail
         wd = WorldDetail(sah="566", population=5, government=3,
                          law_level=2, tech_level=8, spaceport="F")
         d = wd.to_dict()
@@ -429,7 +429,7 @@ class TestWorldDetailFromDict:
         assert restored.inhabited is True
 
     def test_trade_codes_preserved(self):
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_world_detail import WorldDetail
         wd = WorldDetail(sah="566", population=5, government=3,
                          law_level=2, tech_level=8, spaceport="F")
         d = wd.to_dict()
@@ -437,7 +437,7 @@ class TestWorldDetailFromDict:
         assert restored.trade_codes == wd.trade_codes
 
     def test_gas_giant_sah(self):
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_world_detail import WorldDetail
         wd = WorldDetail(sah="GM9")
         d = wd.to_dict()
         restored = WorldDetail.from_dict(d)
@@ -446,8 +446,8 @@ class TestWorldDetailFromDict:
         assert restored.trade_codes == []
 
     def test_moons_reconstructed(self):
-        from traveller_moon_gen import Moon
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_moon_gen import Moon
+        from traveller_gen.traveller_world_detail import WorldDetail
         m1 = Moon(size_code=3)
         m2 = Moon(size_code=0, is_ring=True)
         wd = WorldDetail(sah="473", moons=[m1, m2])
@@ -459,8 +459,8 @@ class TestWorldDetailFromDict:
         assert 0 in sizes
 
     def test_belt_physical_reconstructed(self):
-        from traveller_belt_physical import BeltPhysical
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_belt_physical import BeltPhysical
+        from traveller_gen.traveller_world_detail import WorldDetail
         bp = BeltPhysical(
             inner_au=2.1, outer_au=3.4,
             m_type_pct=15, s_type_pct=60, c_type_pct=20, other_pct=5,
@@ -473,13 +473,13 @@ class TestWorldDetailFromDict:
         d = wd.to_dict()
         restored = WorldDetail.from_dict(d)
         assert restored.physical is not None
-        from traveller_belt_physical import BeltPhysical as BP
+        from traveller_gen.traveller_belt_physical import BeltPhysical as BP
         assert isinstance(restored.physical, BP)
         assert restored.physical.inner_au == pytest.approx(2.1)
         assert restored.physical.resource_rating == 7
 
     def test_biomass_biocomplexity_preserved(self):
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_world_detail import WorldDetail
         wd = WorldDetail(sah="566")
         wd.biomass_rating       = 4
         wd.biocomplexity_rating = 3
@@ -489,7 +489,7 @@ class TestWorldDetailFromDict:
         assert restored.biocomplexity_rating == 3
 
     def test_physical_absent_stays_none(self):
-        from traveller_world_detail import WorldDetail
+        from traveller_gen.traveller_world_detail import WorldDetail
         wd = WorldDetail(sah="473")
         d = wd.to_dict()
         restored = WorldDetail.from_dict(d)
@@ -504,7 +504,7 @@ class TestOrbitDetailRoundtrip:
     """Integration tests: OrbitSlot.detail survives to_dict() → from_dict()."""
 
     def test_orbit_detail_restored_after_attach_detail(self):
-        from traveller_world_detail import attach_detail
+        from traveller_gen.traveller_world_detail import attach_detail
         system = generate_full_system(seed=42)
         attach_detail(system)
         d = system.to_dict()
@@ -517,7 +517,7 @@ class TestOrbitDetailRoundtrip:
         )
 
     def test_orbit_detail_sah_matches(self):
-        from traveller_world_detail import attach_detail
+        from traveller_gen.traveller_world_detail import attach_detail
         system = generate_full_system(seed=42)
         attach_detail(system)
         d = system.to_dict()
@@ -534,7 +534,7 @@ class TestOrbitDetailRoundtrip:
             assert new_slots[idx].detail.profile == orig.detail.profile
 
     def test_orbit_detail_moons_count_matches(self):
-        from traveller_world_detail import attach_detail
+        from traveller_gen.traveller_world_detail import attach_detail
         system = generate_full_system(seed=42)
         attach_detail(system)
         d = system.to_dict()
@@ -546,7 +546,7 @@ class TestOrbitDetailRoundtrip:
                 assert len(new.detail.moons) == len(orig.detail.moons)
 
     def test_system_to_dict_stable_after_detail_roundtrip(self):
-        from traveller_world_detail import attach_detail
+        from traveller_gen.traveller_world_detail import attach_detail
         system = generate_full_system(seed=13)
         attach_detail(system)
         d1 = system.to_dict()
@@ -568,7 +568,7 @@ class TestSystemHTMLStarHZ:
     """to_html() exposes MAO, HZCO, and HZ inner/outer limits in the Stars table."""
 
     def _html(self, seed=42):
-        from traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel
         return generate_full_system("TestWorld", seed=seed).to_html()
 
     def test_mao_column_header_present(self):

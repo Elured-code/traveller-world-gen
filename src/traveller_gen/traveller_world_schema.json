@@ -842,7 +842,7 @@
     "culture_detail": {
       "type": "object",
       "description": "WBH Social Characteristics culture profile. Present only when culture detail generation has been explicitly requested. Includes 8 cultural traits (Diversity, Xenophilia, Uniqueness, Symbology, Cohesion, Progressiveness, Expansionism, Militancy) with labels and a compressed DXUS-CPEM profile string.",
-      "required": ["diversity", "diversity_label", "xenophilia", "xenophilia_label", "uniqueness", "uniqueness_label", "symbology", "symbology_label", "cohesion", "cohesion_label", "progressiveness", "progressiveness_label", "expansionism", "expansionism_label", "militancy", "militancy_label", "cultural_profile"],
+      "required": ["diversity", "diversity_label", "xenophilia", "xenophilia_label", "uniqueness", "uniqueness_label", "symbology", "symbology_label", "cohesion", "cohesion_label", "progressiveness", "progressiveness_label", "expansionism", "expansionism_label", "militancy", "militancy_label", "cultural_profile", "cultural_extension"],
       "additionalProperties": false,
       "properties": {
         "diversity": {
@@ -929,6 +929,11 @@
           "type": "string",
           "pattern": "^[0-9A-Z]{4}-[0-9A-Z]{4}$",
           "description": "Compressed cultural profile string in DXUS-CPEM format (9 chars: 4 eHex, hyphen, 4 eHex). D=Diversity, X=Xenophilia, U=Uniqueness, S=Symbology, C=Cohesion, P=Progressiveness, E=Expansionism, M=Militancy. Example: '7567-8432'."
+        },
+        "cultural_extension": {
+          "type": "string",
+          "pattern": "^[0-9A-Z]{4}$",
+          "description": "T5 Cultural Extension (Cx) string in HASS eHex format (4 chars). H=Heterogeneity (Diversity), A=Acceptance (Xenophilia), S=Strangeness (Uniqueness × 2/3), S2=Symbols (Symbology). Computed from cultural traits per WBH p.254. Example: '7567'."
         }
       }
     },

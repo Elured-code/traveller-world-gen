@@ -1,7 +1,7 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-06-18 (Session 133)  
-**Branch:** `v1.5.0` · **Main:** `main`  
+**Last updated:** 2026-06-23 (Session 135)  
+**Branch:** `test/packaging-generation-tools` · **Main:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
 This file is a router. Read `context/common.md` first on every session, then
@@ -45,7 +45,7 @@ read only the context files listed below for the specific task at hand.
 ## Always-needed facts (no file read required)
 
 - **Pylint:** `.venv/bin/pylint <file>` — target **10.00/10 per file**
-- **Tests:** `.venv/bin/pytest tests/ -q` — **2478 tests**, all must pass
+- **Tests:** `.venv/bin/pytest tests/ -q` — **2613 tests**, all must pass
 - **RNG:** Injectable `random.Random` instance; each generation module has a
   module-level `_rng` sentinel (initially `random` the module). Public
   entry-point functions accept `rng: Optional[random.Random] = None`; when

@@ -104,7 +104,7 @@ def app_win(qtbot, fake_settings, no_webengine):
 @pytest.fixture(scope="session")
 def sample_system():
     """Session-scoped TravellerSystem used by map/survey window tests."""
-    from traveller_system_gen import generate_full_system  # noqa: PLC0415
+    from traveller_gen.traveller_system_gen import generate_full_system  # noqa: PLC0415
     return generate_full_system("Testworld", seed=42)
 
 
@@ -754,13 +754,13 @@ class TestSystemMapWindow:
         assert win.windowTitle().startswith("System Map")
 
     def test_map_window_initial_palette_is_dark(self, qtbot, no_webengine, sample_system):
-        from system_map import PALETTE_DARK  # noqa: PLC0415
+        from traveller_gen.system_map import PALETTE_DARK  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         assert win._palette is PALETTE_DARK
 
     def test_theme_toggle_switches_to_light_palette(self, qtbot, no_webengine, sample_system):
-        from system_map import PALETTE_LIGHT  # noqa: PLC0415
+        from traveller_gen.system_map import PALETTE_LIGHT  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_theme()
@@ -773,7 +773,7 @@ class TestSystemMapWindow:
         assert win._theme_btn.text() == "Dark Theme"
 
     def test_theme_double_toggle_returns_to_dark(self, qtbot, no_webengine, sample_system):
-        from system_map import PALETTE_DARK  # noqa: PLC0415
+        from traveller_gen.system_map import PALETTE_DARK  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_theme()

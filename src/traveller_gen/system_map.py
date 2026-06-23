@@ -37,9 +37,8 @@ import sys
 from dataclasses import dataclass
 from typing import Any
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from traveller_system_gen import generate_full_system  # pylint: disable=wrong-import-position
-from traveller_world_detail import attach_detail  # pylint: disable=wrong-import-position
+from .traveller_system_gen import generate_full_system
+from .traveller_world_detail import attach_detail
 
 # ---------------------------------------------------------------------------
 # Colour palettes
@@ -1204,7 +1203,7 @@ def _open_file(path: str) -> None:
 def main() -> None:  # pylint: disable=missing-function-docstring,too-many-statements
     # pylint: disable=import-outside-toplevel
     import urllib.error as _ue
-    from traveller_map_fetch import generate_system_from_map as _gsm
+    from .traveller_map_fetch import generate_system_from_map as _gsm
     # pylint: enable=import-outside-toplevel
 
     ap = argparse.ArgumentParser(

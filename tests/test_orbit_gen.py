@@ -17,7 +17,7 @@ This is an unofficial fan work, not affiliated with Mongoose Publishing.
 
 from unittest.mock import call, patch
 
-from traveller_orbit_gen import (
+from traveller_gen.traveller_orbit_gen import (
     _ANOM_ECC_DM,
     OrbitSlot,
     roll_eccentricity,
@@ -60,8 +60,8 @@ class TestRollInclination:
 
     def test_band_very_low(self):
         """2D ≤ 6 → Very Low: 1D÷2. Mock: first=3 (≤6), inner=6 → 3.0°."""
-        with patch("traveller_orbit_gen.roll", side_effect=[3]) as _mock_roll, \
-             patch("traveller_orbit_gen.random.randint", return_value=6):
+        with patch("traveller_gen.traveller_orbit_gen.roll", side_effect=[3]) as _mock_roll, \
+             patch("traveller_gen.traveller_orbit_gen.random.randint", return_value=6):
             result = roll_inclination()
         assert result == 3.0
 
@@ -69,14 +69,14 @@ class TestRollInclination:
         """2D = 7 → Low: 1D. Mock: first=7, inner randint=4 → 4.0°."""
         roll_calls = iter([7])
         randint_calls = iter([4])
-        with patch("traveller_orbit_gen.roll", side_effect=roll_calls), \
-             patch("traveller_orbit_gen.random.randint", side_effect=randint_calls):
+        with patch("traveller_gen.traveller_orbit_gen.roll", side_effect=roll_calls), \
+             patch("traveller_gen.traveller_orbit_gen.random.randint", side_effect=randint_calls):
             result = roll_inclination()
         assert result == 4.0
 
     def test_band_moderate(self):
         """2D = 8 → Moderate: 2D. Mock: first=8, second roll(2)=5 → 5.0°."""
-        with patch("traveller_orbit_gen.roll", side_effect=[8, 5]):
+        with patch("traveller_gen.traveller_orbit_gen.roll", side_effect=[8, 5]):
             result = roll_inclination()
         assert result == 5.0
 
@@ -84,8 +84,8 @@ class TestRollInclination:
         """2D = 12 → Retrograde: 180 - sub_roll. Sub: 2D=7, randint=3 → 3.0° → 177.0°."""
         roll_calls = iter([12, 7])
         randint_calls = iter([3])
-        with patch("traveller_orbit_gen.roll", side_effect=roll_calls), \
-             patch("traveller_orbit_gen.random.randint", side_effect=randint_calls):
+        with patch("traveller_gen.traveller_orbit_gen.roll", side_effect=roll_calls), \
+             patch("traveller_gen.traveller_orbit_gen.random.randint", side_effect=randint_calls):
             result = roll_inclination()
         assert result == 177.0
 
@@ -131,7 +131,7 @@ class TestAnomalyEccentricityDMs:
 
     def _assert_dm(self, anomaly_dm: int, expected_dm: int) -> None:
         """Call roll_eccentricity with anomaly_dm and check the first roll call."""
-        with patch("traveller_orbit_gen.roll",
+        with patch("traveller_gen.traveller_orbit_gen.roll",
                    side_effect=[5, 3]) as mock_roll:
             roll_eccentricity(3.0, 5.0, anomaly_dm=anomaly_dm)
         assert mock_roll.call_args_list[0] == call(2, expected_dm)
