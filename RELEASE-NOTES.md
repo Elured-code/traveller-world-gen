@@ -1,8 +1,57 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–135
-**Tests:** 2629
+**Sessions:** 88–136
+**Tests:** 2679
+
+---
+
+## Inequality Rating & World Trade Number — Issue #100 (Session 136)
+
+Two new economic indicators implemented for inhabited mainworlds.
+
+**Inequality Rating:** `compute_inequality_rating()` rolls a 2D base scaled by
+efficiency factor and applies government, law level, PCR, and infrastructure
+DMs. Range 0–100; 50 = perfectly equal baseline. Higher values indicate more
+skewed wealth distribution.
+
+| Condition | DM |
+|-----------|-----|
+| Government 6, B (11), F (15) | +10 |
+| Government 0, 1, 3, 9, C (12) | +5 |
+| Government 4, 8 | −5 |
+| Government 2 | −10 |
+| Law Level ≥ 9 | +(Law Level − 8) |
+| PCR | +PCR |
+| Infrastructure Factor | −Infrastructure Factor |
+
+One 2D roll per world during `attach_importance_detail()`. New field:
+`WorldImportance.inequality_rating` (Optional[int]). **Schema change:**
+`importance_detail.inequality_rating` property added (integer, 0–100).
+
+**World Trade Number:** `compute_world_trade_number()` is deterministic.
+Base WTN = population code + TL DM. Starport modifier from an 8×6 lookup table
+(base WTN bands: 0–1, 2–3, 4–5, 6–7, 8–9, 10–11, 12–13, 14+; starport classes
+A, B, C, D, E, X); clamped min 0. Stored as integer; displayed as eHex.
+New field: `WorldImportance.world_trade_number` (Optional[int]).
+
+**Development Score** now uses the actual inequality rating, so the formula is
+correct end-to-end: `development_score = (gwp_pc / 1000) × (1 − ir / 100)`.
+
+**UI Layout Split:** The world card Culture Detail section has been split into
+two separate cards:
+- **Culture Detail:** cultural profile (DXUS-CPEM), T5 Cultural Extension (Cx),
+  and all 8 cultural trait rows (Diversity through Militancy).
+- **Economic Detail:** world importance score, labour factor, infrastructure
+  factor, resource factor, efficiency factor, resource units, GWP base/per-capita/
+  total, inequality rating, development score, world trade number, and economics
+  profile.
+
+This separation clarifies the structure: culture traits and economics are
+orthogonal concepts even though both are part of social characteristics.
+
+**Test coverage:** 26 new tests added (`TestInequalityRating` and
+`TestWorldTradeNumber` classes). Version bump: 1.5.33 → 1.5.34.
 
 ---
 

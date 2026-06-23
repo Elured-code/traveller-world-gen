@@ -234,6 +234,8 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
     gwp_total_mcr:         Optional[float]  # total GWP in MCr; None before attach
     development_score:     Optional[float]  # (GWP_pc/1000)×(1−IR/100); None before attach
     economics_profile:     Optional[str]  # compact e.g. "765+2" — RF/LF/IF eHex + EF signed
+    inequality_rating:     Optional[int]   # 0–100; 50=baseline; 2D roll with gov/law/PCR/IF DMs
+    world_trade_number:    Optional[int]   # eHex int; deterministic TL DM + starport mod
     # property: .importance_str → "+2"/"0"/"−2" (using U+2212 minus)
     # methods: .to_dict(), .from_dict() with backward-compat defaults of 0 / None
 ```
