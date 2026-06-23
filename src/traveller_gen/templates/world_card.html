@@ -532,7 +532,12 @@
     {{ drow("Progressiveness", ctx.culture_detail.progressiveness|string + " — " + ctx.culture_detail.progressiveness_label) }}
     {{ drow("Expansionism", ctx.culture_detail.expansionism|string + " — " + ctx.culture_detail.expansionism_label) }}
     {{ drow("Militancy", ctx.culture_detail.militancy|string + " — " + ctx.culture_detail.militancy_label) }}
-    {% if ctx.importance_detail is not none %}
+  </div>
+  {% endif %}
+
+  {% if ctx.importance_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Economic detail</p>
     {{ drow("World importance", ctx.importance_detail.importance_str, highlight=ctx.importance_detail.importance > 3) }}
     {{ drow("Labour factor", ctx.importance_detail.labour_factor|string) }}
     {% if ctx.importance_detail.infrastructure_factor is not none %}
@@ -553,11 +558,18 @@
     {{ drow("GWP base value", ctx.importance_detail.gwp_base|string) }}
     {{ drow("GWP per capita", "Cr%s" % "{:,}".format(ctx.importance_detail.gwp_per_capita)) }}
     {{ drow("Total GWP", "MCr%s" % "{:,.2f}".format(ctx.importance_detail.gwp_total_mcr)) }}
+    {% endif %}
+    {% if ctx.importance_detail.inequality_rating is not none %}
+    {{ drow("Inequality rating", ctx.importance_detail.inequality_rating|string) }}
+    {% endif %}
+    {% if ctx.importance_detail.development_score is not none %}
     {{ drow("Development score", "%.2f" % ctx.importance_detail.development_score) }}
+    {% endif %}
+    {% if ctx.importance_detail.world_trade_number is not none %}
+    {{ drow("World trade number", ctx.importance_detail.world_trade_number|string) }}
     {% endif %}
     {% if ctx.importance_detail.economics_profile is not none %}
     {{ drow("Economics profile", ctx.importance_detail.economics_profile, highlight=true) }}
-    {% endif %}
     {% endif %}
   </div>
   {% endif %}
