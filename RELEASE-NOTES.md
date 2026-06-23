@@ -1,8 +1,34 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–137
-**Tests:** 2731
+**Sessions:** 88–138
+**Tests:** 2843
+
+---
+
+## Extended Travel Zone — Issue #103 (Session 138)
+
+WBH §10 probabilistic travel zone determination, extending the basic CRB Amber/Red assignment with stellar flags, physical conditions, cultural characteristics, and military readiness.
+
+**Rolls:** Two independent 2D rolls (Red ≥12, then Amber ≥12); Red takes priority. Starport X always Red. Green is default.
+
+**Red Zone DMs:** Magnetar +10, Pulsar +8, Protostar +6, Seismic stress ≥200 +2, Xenophilia 1–2 +6−xenophilia, Militancy ≥12 +militancy−8, Factional uprisings +2, Ongoing war +4.
+
+**Amber Zone DMs:** Primordial +2, Atmosphere 11–12 or ≥15 +2, Temp >373K +2, Pressure >50 bar +2, Seismic stress ≥100 +2, Government 0 +4 / =7 +2, Law level =0 +2 / >20 gov+law−16, Xenophilia 0–5 +6−xenophilia, Militancy ≥9 +militancy−8, Factional uprisings +2, Ongoing war +4.
+
+New functions: `assign_travel_zone_extended()` (stochastic), `attach_travel_zone_extended()` (integrates with full world detail). No schema changes. 33 new tests. CI fix: `TYPE_CHECKING` block extended with forward-reference imports for pyright type checking.
+
+---
+
+## Help Menu & About Dialog — Issue #159 (Session 138)
+
+Desktop (gen-ui) and web (FastAPI/browser) implementations of application credits.
+
+**gen-ui:** New Help menu with About action. `_show_about()` opens non-resizable 520px QDialog (rich HTML) displaying app version, GitHub repo link, WBH credits (Geir Lanesskog, Isabella Treccani-Chinelli, Sandrine Thirache + illustrators), CRB credits (Matthew Sprange, Gareth Hanrahan + illustrators), Traveller Inner Circle list, MIT License + Mongoose Publishing disclaimer.
+
+**world_card.html:** Fixed-position semi-transparent About button (bottom-right). Clicks open HTML `<dialog>` modal with credits content styled via existing CSS variables (dark-mode aware).
+
+15 new UI tests (9 menu, 6 HTML content).
 
 ---
 

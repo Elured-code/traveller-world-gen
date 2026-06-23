@@ -1,6 +1,6 @@
 # Traveller World Generator — v1.4.0 Release Notes
 
-**2679 tests pass. Pylint 10.00/10.**
+**2843 tests pass. Pylint 10.00/10.**
 
 ---
 

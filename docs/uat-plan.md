@@ -1,7 +1,7 @@
 # gen-ui User Acceptance Test Plan
 
 **Application:** `gen-ui/app.py` — PySide6 desktop UI for the Traveller World & System Generator  
-**Last updated:** 2026-06-17 (Session 131)  
+**Last updated:** 2026-06-23 (Session 138)  
 **Test type:** Manual (no automated runner)
 
 ---
@@ -235,3 +235,72 @@ re-run outcome alongside the original.
 | UAT-102 | Economics profile row present and bold | Social detail + system detail enabled; inhabited world | Generate | "Economics profile" row shows a 5-character string like "765+2" in bold; EF part has sign | |
 | UAT-103 | Economics profile encodes correct values | Social detail + system detail enabled; any inhabited world | Generate; note RF, LF, IF, EF from other rows | First char = RF in eHex, second = LF in eHex, third = IF in eHex (or '0' if absent), remainder = signed EF | |
 | UAT-104 | Negative resource units shown in danger style | Social detail + system detail enabled; generate until EF is negative (backwater world, Starport X, pop 3, TL 4, Moribund/Insular culture) | Generate | "Resource units" value displayed in red/danger colour | |
+
+---
+
+## 16. Starport detail (WBH §8, issue #101, Session 137)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-105 | Starport detail card present when "Social detail" checked | "System detail" + "Social detail" checked; inhabited world with starport A–E | Generate | Mainworld card shows a "Starport" inner card below the Military card | |
+| UAT-106 | Starport detail card absent when "Social detail" unchecked | "System detail" checked; "Social detail" unchecked | Generate inhabited world | No "Starport" inner card in world card | |
+| UAT-107 | Starport class displayed | Social detail enabled; any inhabited world | Generate; observe Starport card | "Class" row shows the single-letter starport code (e.g. "A") | |
+| UAT-108 | Highport indicator correct | Social detail enabled; world with 'H' in bases | Generate; observe Starport card | "Highport" row shows "Yes"; worlds without 'H' in bases show "No" | |
+| UAT-109 | Expected weekly traffic shown | Social detail enabled; inhabited world | Generate; observe Starport card | "Expected weekly traffic" row shows a positive integer | |
+| UAT-110 | Docking capacity shown | Social detail enabled; inhabited world | Generate; observe Starport card | "Docking capacity" row shows a tonnage value (positive integer) | |
+| UAT-111 | Shipyard capacity present for Class A/B | Social detail enabled; world with starport A or B | Generate; observe Starport card | "Shipyard capacity" row shows a positive integer | |
+| UAT-112 | Shipyard capacity absent for Class C and below | Social detail enabled; world with starport C, D, or E | Generate; observe Starport card | "Shipyard capacity" row shows "—" or is absent | |
+| UAT-113 | Starport profile string shown | Social detail enabled; inhabited world | Generate; observe Starport card | "Profile" row shows a string in WBH format (e.g. `A-HY:DY:+3`) | |
+| UAT-114 | Tech level floor enforced for Class A starport | Social detail enabled; generate worlds with Class A starport | Note TL on multiple Class A worlds | Tech level is always ≥ 9 for Class A starport worlds | |
+| UAT-115 | Tech level floor enforced for Class B starport | Social detail enabled; generate worlds with Class B starport | Note TL on multiple Class B worlds | Tech level is always ≥ 8 for Class B starport worlds | |
+
+---
+
+## 17. Military detail (WBH §9, issue #102, Session 138)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-116 | Military detail card present when "Social detail" checked | "System detail" + "Social detail" checked; inhabited world (population ≥ 1) | Generate | Mainworld card shows a "Military" inner card | |
+| UAT-117 | Military detail card absent when "Social detail" unchecked | "System detail" checked; "Social detail" unchecked | Generate | No "Military" card in world card | |
+| UAT-118 | Military profile string displayed and highlighted | Social detail enabled; inhabited world | Generate; observe Military card | "Profile" row shows a string in EMAWF-SNM:X.XX% format, displayed as a highlighted badge | |
+| UAT-119 | State of readiness row shown | Social detail enabled; inhabited world | Generate; observe Military card | "State of readiness" row shows one of: Complacent peace / Low threat level / Normal readiness / Heightened tensions… / War or internal insurgency / Total war: full mobilisation | |
+| UAT-120 | Military budget % displayed | Social detail enabled; inhabited world | Generate; observe Military card | "Effective budget %" row shows a decimal percentage | |
+| UAT-121 | Military budget MCr displayed | Social detail enabled; inhabited world | Generate; observe Military card | "Military budget" row shows a MCr value | |
+| UAT-122 | Enforcement branch always present | Social detail enabled; any inhabited world | Generate; observe Military card | Enforcement branch row always shows an effect value (never "—") | |
+| UAT-123 | Absent branches show "—" | Social detail enabled; any inhabited world | Generate; observe Military card | Branches that do not exist (e.g. Navy on low-TL worlds) show "—" for their effect | |
+| UAT-124 | Navy absent for TL < 8 | Social detail enabled; generate a world with TL 7 or lower | Generate; observe Military card Navy row | Navy branch shows "—" (does not exist below TL 8) | |
+| UAT-125 | Military budget reflects state of readiness | Social detail enabled; generate multiple worlds until one is "Total war: full mobilisation" | Compare budget % between a Complacent peace and Total war world | Total war budget % is significantly higher than Complacent peace | |
+| UAT-126 | Military detail absent for uninhabited worlds | Social detail enabled; generate until a population-0 world appears | Observe Mainworld tab | No "Military" card displayed | |
+
+---
+
+## 18. Extended travel zone (WBH §10, issue #103, Session 138)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-127 | Travel zone row visible on world card | Any world generated | Observe world card header or society card | "Travel zone" row or badge shows "Green", "Amber", or "Red" | |
+| UAT-128 | Starport X always Red zone | Social detail enabled; generate until a world with starport X appears | Observe travel zone | Travel zone is "Red" for all starport X worlds | |
+| UAT-129 | Extended zone may differ from CRB zone | Social detail enabled; generate many worlds using seed sweep | Compare travel zone output with and without social detail | Some worlds change zone (Green → Amber or Amber → Red) when social detail is applied, due to WBH §10 DMs | |
+| UAT-130 | Highly militaristic world likely Amber or Red | Social detail enabled; generate worlds with very high Militancy (≥ 12) | Generate 10+ worlds with high militancy; observe travel zones | Most or all show Amber or Red zone, consistent with high Militancy DMs in §10 table | |
+| UAT-131 | Xenophobic world likely Amber or Red | Social detail enabled; generate worlds with Xenophilia 1–2 | Generate worlds; observe travel zone | High proportion of Amber or Red zones; extreme xenophobia is a Red DM | |
+
+---
+
+## 19. Help menu and About dialog (issue #159, Session 138)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-132 | Help menu present in menu bar | App running | Observe menu bar | "Help" menu visible to the right of "View" | |
+| UAT-133 | Help menu contains About action | App running | Click "Help" menu | Single entry "About" visible | |
+| UAT-134 | About dialog opens | App running | Click Help → About | Modal dialog opens titled "About Traveller World & System Generator" | |
+| UAT-135 | About dialog shows app version | About dialog open | Observe dialog text | Current version string (e.g. `1.5.35`) visible in dialog | |
+| UAT-136 | About dialog shows WBH credits | About dialog open | Observe dialog text | Authors Geir Lanesskog and Isabella Treccani-Chinelli credited; "World Builders' Handbook" named | |
+| UAT-137 | About dialog shows Traveller Inner Circle | About dialog open | Observe dialog text | "Traveller Inner Circle" heading and list of names visible | |
+| UAT-138 | About dialog shows MIT License notice | About dialog open | Observe dialog text | "MIT License" text visible with a clickable hyperlink | |
+| UAT-139 | About dialog shows Mongoose Publishing disclaimer | About dialog open | Observe dialog text | Disclaimer text mentions Mongoose Publishing and Far Future Enterprises | |
+| UAT-140 | About dialog shows repository link | About dialog open | Observe dialog text | GitHub URL (`github.com/Elured-code/traveller-world-gen`) shown as a clickable hyperlink | |
+| UAT-141 | About dialog dismissed with OK | About dialog open | Click OK | Dialog closes; main window remains open and unchanged | |
+| UAT-142 | About button present on world card (API/browser) | World card HTML rendered (via API or file save) | Open world card HTML in a browser | Semi-transparent "About" button visible at bottom-right of the page | |
+| UAT-143 | World card About modal opens in browser | World card open in browser | Click About button | Native `<dialog>` modal opens with credits content | |
+| UAT-144 | World card About modal dismissed with OK | World card About modal open | Click OK button inside modal | Modal closes; page remains as-is | |
+| UAT-145 | World card About modal respects dark mode | World card viewed in browser with OS dark mode active | Click About button | Modal background and text use dark-mode CSS variables, matching page theme | |
