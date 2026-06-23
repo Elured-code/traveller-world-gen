@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IISS Class II/III Survey — {{ designation }}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;}
+:root{
+  --bg:#d8cdb0;--surface:#f5f0e4;
+  --txt:#1a1510;--lbl:#5a4d38;
+  --bdr:#1a1510;--bdr-lt:#9a9080;
+  --sec-bg:#d4c8a4;--col-bg:#c4b888;
+  --hdr-bg:#2a2018;--hdr-txt:#f5f0e4;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#141210;--surface:#1d1b17;
+  --txt:#e0d8c0;--lbl:#9a8e76;
+  --bdr:rgba(255,255,255,0.25);--bdr-lt:rgba(255,255,255,0.12);
+  --sec-bg:#2a2820;--col-bg:#252318;
+  --hdr-bg:#0e0c0a;--hdr-txt:#e0d8c0;
+}}
+[data-theme=dark]{
+  --bg:#141210;--surface:#1d1b17;
+  --txt:#e0d8c0;--lbl:#9a8e76;
+  --bdr:rgba(255,255,255,0.25);--bdr-lt:rgba(255,255,255,0.12);
+  --sec-bg:#2a2820;--col-bg:#252318;
+  --hdr-bg:#0e0c0a;--hdr-txt:#e0d8c0;
+}
+[data-theme=light]{
+  --bg:#d8cdb0;--surface:#f5f0e4;
+  --txt:#1a1510;--lbl:#5a4d38;
+  --bdr:#1a1510;--bdr-lt:#9a9080;
+  --sec-bg:#d4c8a4;--col-bg:#c4b888;
+  --hdr-bg:#2a2018;--hdr-txt:#f5f0e4;
+}
+
+body{
+  font-family:"Times New Roman",Times,serif;
+  font-size:10pt;
+  background:var(--bg);
+  margin:1rem;
+  color:var(--txt);
+}
+.form-wrap{
+  border:2px solid var(--bdr);
+  width:100%;max-width:960px;
+  margin:0 auto;
+  background:var(--surface);
+}
+.form-title{
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--hdr-bg);color:var(--hdr-txt);
+  padding:5px 10px;
+  font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+  font-size:11.5pt;font-weight:bold;
+  letter-spacing:0.08em;text-transform:uppercase;
+  border-bottom:2px solid var(--bdr);
+}
+table.fb{width:100%;border-collapse:collapse;font-size:9pt;}
+table.fb td,table.fb th{
+  border:1px solid var(--bdr-lt);
+  padding:3px 5px;vertical-align:top;
+}
+.lbl{
+  font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+  font-weight:700;font-size:7.5pt;
+  text-transform:uppercase;letter-spacing:0.05em;
+  color:var(--lbl);white-space:nowrap;
+}
+.val{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-size:9.5pt;
+  color:var(--txt);
+}
+.sec{
+  background:var(--sec-bg);
+  font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+  font-weight:bold;font-size:8pt;
+  text-transform:uppercase;letter-spacing:0.06em;
+  color:var(--txt);
+  border-top:1.5px solid var(--bdr) !important;
+}
+.sh th{
+  font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+  background:var(--col-bg);
+  font-size:7.5pt;font-weight:bold;
+  text-transform:uppercase;text-align:center;
+  color:var(--txt);padding:2px 3px;
+  border-top:1.5px solid var(--bdr);
+}
+td.sd{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-weight:bold;font-size:9.5pt;
+  color:var(--txt);
+}
+td.sv{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-size:9pt;
+  text-align:right;white-space:nowrap;
+  color:var(--txt);
+}
+td.sv-wrap{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-size:9pt;
+  text-align:left;white-space:normal;word-break:break-word;
+  color:var(--txt);
+}
+.notes-cell{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-size:9pt;
+  height:120px;white-space:pre-line;
+  padding:5px 8px;color:var(--txt);
+  vertical-align:top;
+}
+.comments-cell{
+  height:120px;padding:5px 8px;
+  vertical-align:top;
+}
+</style>
+</head>
+<body>
+<div class="form-wrap">
+  <div class="form-title">
+    <span>IISS Class II/III Survey</span>
+    <span>Form 0421D-II.III</span>
+  </div>
+  <table class="fb">
+    <colgroup>
+      <col style="width:5%">  <!-- Component / Primary (½) -->
+      <col style="width:5%">  <!-- Component / Primary (½) -->
+      <col style="width:5%">  <!-- Class / Object (½) -->
+      <col style="width:5%">  <!-- Mass / Object (½) -->
+      <col style="width:5%">  <!-- Temp / Orbit# -->
+      <col style="width:7%">  <!-- Diameter / AU -->
+      <col style="width:8%">  <!-- Luminosity / Ecc -->
+      <col style="width:5%">  <!-- Orbit# / Period (½) -->
+      <col style="width:4%">  <!-- AU / Period (½) -->
+      <col style="width:4%">  <!-- Ecc / SAH/UWP (½) -->
+      <col style="width:5%">  <!-- Period / SAH/UWP (½) -->
+      <col style="width:4%">  <!-- MAO / Sub -->
+      <col>                   <!-- HZCO / Notes — absorbs leftover -->
+    </colgroup>
+
+    <!-- Row 1: Sector / Location / Initial Survey / Last Updated -->
+    <tr>
+      <td colspan="2"><span class="lbl">Sector</span></td>
+      <td colspan="4"><span class="lbl">Location</span></td>
+      <td colspan="3"><span class="lbl">Initial Survey</span></td>
+      <td colspan="4"><span class="lbl">Last Updated</span></td>
+    </tr>
+
+    <!-- Row 2: IISS Designation / System Age -->
+    <tr>
+      <td colspan="7"><span class="lbl">IISS Designation</span>&nbsp;&nbsp;<span class="val">{{ designation }}</span></td>
+      <td></td>
+      <td colspan="5"><span class="lbl">System Age (Gyr):</span>&nbsp;<span class="val">{{ age_gyr }}</span></td>
+    </tr>
+
+    <!-- Row 3: Objects counts + Class III Status -->
+    <tr>
+      <td class="lbl">Objects</td>
+      <td colspan="2"><span class="lbl">Stellar:</span>&nbsp;<span class="val">{{ stellar_count }}</span></td>
+      <td colspan="2"><span class="lbl">Gas Giants:</span>&nbsp;<span class="val">{{ gg_count }}</span></td>
+      <td colspan="2"><span class="lbl">Belts:</span>&nbsp;<span class="val">{{ belt_count }}</span></td>
+      <td colspan="2"><span class="lbl">Terrestrials:</span>&nbsp;<span class="val">{{ terrestrial_count }}</span></td>
+      <td colspan="4"><span class="lbl">Class III Status?</span>&nbsp;<span class="val">{{ class_iii_status if class_iii_status else "No" }}</span></td>
+    </tr>
+
+    <!-- Stars: section header -->
+    <tr class="sec">
+      <td colspan="13">Stars</td>
+    </tr>
+
+    <!-- Stars: column headers -->
+    <tr class="sh">
+      <th colspan="2">Component</th>
+      <th>Class</th>
+      <th>Mass</th>
+      <th>Temp</th>
+      <th>Diameter</th>
+      <th>Luminosity</th>
+      <th>Orbit#</th>
+      <th>AU</th>
+      <th>Ecc</th>
+      <th>Period</th>
+      <th>MAO</th>
+      <th>HZCO</th>
+    </tr>
+
+    {% for s in star_rows %}
+    <tr>
+      <td colspan="2" class="sd">{{ s.component }}{{ s.footnote }}</td>
+      <td class="sv">{{ s.star_class }}</td>
+      <td class="sv">{{ s.mass }}</td>
+      <td class="sv">{{ s.temp }}</td>
+      <td class="sv">{{ s.diameter }}</td>
+      <td class="sv">{{ s.luminosity }}</td>
+      <td class="sv">{{ s.orbit }}</td>
+      <td class="sv">{{ s.au }}</td>
+      <td class="sv">{{ s.ecc }}</td>
+      <td class="sv">{{ s.period }}</td>
+      <td class="sv">{{ s.mao }}</td>
+      <td class="sv">{{ s.hzco }}</td>
+    </tr>
+    {% endfor %}
+
+    <!-- Notes (between Stars and Objects) -->
+    <tr class="sec">
+      <td colspan="13">Notes</td>
+    </tr>
+    <tr>
+      <td colspan="13" class="notes-cell">{{ notes }}</td>
+    </tr>
+
+    <!-- Orbit Objects section -->
+    <tr class="sec">
+      <td colspan="13">Objects</td>
+    </tr>
+
+    <tr class="sh">
+      <th colspan="2">Primary</th>
+      <th colspan="2">Object</th>
+      <th>Orbit#</th>
+      <th>AU</th>
+      <th>Ecc</th>
+      <th colspan="2">Period</th>
+      <th colspan="2">SAH/UWP</th>
+      <th>Sub</th>
+      <th>Notes</th>
+    </tr>
+
+    {% for o in orbit_rows %}
+    <tr>
+      <td colspan="2" class="sd">{{ o.primary }}</td>
+      <td colspan="2" class="sv">{{ o.object_type }}</td>
+      <td class="sv">{{ o.orbit_num }}</td>
+      <td class="sv">{{ o.au }}</td>
+      <td class="sv">{{ o.ecc }}</td>
+      <td colspan="2" class="sv">{{ o.period }}</td>
+      <td colspan="2" class="sv">{{ o.sah_uwp }}</td>
+      <td class="sv">{{ o.sub }}</td>
+      <td class="sv-wrap">{{ o.notes }}</td>
+    </tr>
+    {% endfor %}
+
+    {% if not orbit_rows %}
+    <tr>
+      <td colspan="13" style="height:2.5em;"></td>
+    </tr>
+    {% endif %}
+
+    <!-- Comments -->
+    <tr class="sec">
+      <td colspan="13">Comments</td>
+    </tr>
+    <tr>
+      <td colspan="13" class="comments-cell"></td>
+    </tr>
+
+  </table>
+</div>
+</body>
+</html>

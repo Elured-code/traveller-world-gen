@@ -65,7 +65,9 @@ from PySide6.QtWidgets import (  # noqa: E402
 from traveller_gen.system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
 
 
-from traveller_gen.traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
+from traveller_gen.traveller_map_fetch import (  # noqa: E402
+    AmbiguousWorldError, generate_system_from_map,
+)
 from traveller_gen.traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
 from traveller_gen.traveller_world_gen import (  # noqa: E402
     World,
@@ -80,10 +82,14 @@ from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  
 from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 
 try:
-    import _version as _genui_ver  # noqa: E402
+    from traveller_gen import _version as _genui_ver  # type: ignore[import]  # noqa: E402
     _DISPLAY_VERSION = _genui_ver.__version__
 except ImportError:
-    _DISPLAY_VERSION = APP_VERSION
+    try:
+        import _version as _genui_ver  # type: ignore[import]  # noqa: E402
+        _DISPLAY_VERSION = _genui_ver.__version__
+    except ImportError:
+        _DISPLAY_VERSION = APP_VERSION
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -906,16 +912,20 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 )
                 cx: str = getattr(world, "cx", "")
                 if cx:
-                    from traveller_world_culture_detail import generate_culture_detail_from_cx  # pylint: disable=import-outside-toplevel
-                    world.culture_detail = generate_culture_detail_from_cx(  # type: ignore[attr-defined]
-                        cx=cx,
-                        population=world.population,  # type: ignore[attr-defined]
-                        importance=getattr(world, "importance", 0),
-                        government=world.government,  # type: ignore[attr-defined]
-                        law_level=world.law_level,  # type: ignore[attr-defined]
-                        pcr=pcr,
-                        starport=world.starport,  # type: ignore[attr-defined]
-                        tech_level=world.tech_level,  # type: ignore[attr-defined]
+                    from traveller_world_culture_detail import (  # pylint: disable=import-outside-toplevel
+                        generate_culture_detail_from_cx,
+                    )
+                    world.culture_detail = (  # type: ignore[attr-defined]
+                        generate_culture_detail_from_cx(
+                            cx=cx,
+                            population=world.population,  # type: ignore[attr-defined]
+                            importance=getattr(world, "importance", 0),
+                            government=world.government,  # type: ignore[attr-defined]
+                            law_level=world.law_level,  # type: ignore[attr-defined]
+                            pcr=pcr,
+                            starport=world.starport,  # type: ignore[attr-defined]
+                            tech_level=world.tech_level,  # type: ignore[attr-defined]
+                        )
                     )
                 else:
                     from traveller_world_culture_detail import generate_culture_detail  # pylint: disable=import-outside-toplevel
@@ -1020,11 +1030,14 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             if self._survey_combo is not None
             else "Class 0/I Survey"
         )
-        mw = self._current_system.mainworld  # type: ignore[attr-defined]
+        system = self._current_system  # type: ignore[attr-defined]
+        mw = system.mainworld
         name = mw.name if mw else "System"
-        html = self._themed_html(
-            self._current_system.to_survey_form_html()  # type: ignore[attr-defined]
-        )
+        if form_type == "Class II/III Survey":
+            html_raw = system.to_survey_form_html_class2()
+        else:
+            html_raw = system.to_survey_form_html()
+        html = self._themed_html(html_raw)
         win = SurveyFormWindow(f"{form_type} — {name}", html)
         self._survey_windows.append(win)
         win.show()
@@ -1357,6 +1370,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         survey_combo = QComboBox()
         survey_combo.addItem("Class 0/I Survey")
+        survey_combo.addItem("Class II/III Survey")
         self._survey_combo = survey_combo
         layout.addWidget(survey_combo)
 

@@ -478,6 +478,115 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             notes="\n".join(notes_lines),
         )
 
+    def to_survey_form_html_class2(self) -> str:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        """Return a self-contained IISS Class II/III Survey form HTML page."""
+        footnote_syms = "¹²³⁴⁵⁶⁷⁸⁹"
+
+        mw = self.mainworld
+        designation = mw.name if mw else "Unknown"
+        age_gyr = f"{self.stellar_system.age_gyr:.2f}"
+        stellar_count = len(self.stellar_system.stars)
+
+        footnote_idx = 0
+        notes_lines: list[str] = []
+        star_rows = []
+
+        for star in self.stellar_system.stars:
+            period_yr = star.orbit_period_yr
+            is_primary = star.orbit_number == 0.0
+
+            if is_primary or period_yr is None:
+                period_str = "—"
+            else:
+                period_str = f"{period_yr:.3f}y"
+
+            footnote = ""
+            if (not is_primary
+                    and period_yr is not None
+                    and period_yr < 1.0
+                    and footnote_idx < len(footnote_syms)):
+                footnote = footnote_syms[footnote_idx]
+                footnote_idx += 1
+                notes_lines.append(
+                    f"{footnote} {period_yr * 365.25:.3f} standard days"
+                )
+
+            ecc_v  = star.orbit_eccentricity
+            mao_v  = self.system_orbits.star_mao.get(star.designation)
+            hzco_v = self.system_orbits.star_hzco.get(star.designation)
+
+            star_rows.append({
+                "component": star.designation,
+                "footnote": footnote,
+                "star_class": star.classification(),
+                "mass": f"{star.mass:.3f}",
+                "temp": f"{star.temperature:,}" if star.temperature > 0 else "—",
+                "diameter": f"{star.diameter:.3f}",
+                "luminosity": f"{star.luminosity:.4g}",
+                "orbit": "0" if is_primary else f"{star.orbit_number:.2f}",
+                "au": "—" if is_primary else f"{star.orbit_au:.3f}",
+                "ecc": "—" if ecc_v == 0.0 else f"{ecc_v:.2f}",
+                "period": period_str,
+                "mao": f"{mao_v:.2f}" if mao_v is not None else "—",
+                "hzco": f"{hzco_v:.2f}" if hzco_v is not None else "—",
+            })
+
+        orbit_rows = []
+        for o in self.system_orbits.orbits:
+            if o.world_type == "empty":
+                continue
+            detail = getattr(o, "detail", None)
+
+            if o.world_type == "gas_giant":
+                object_type = "GG"
+                sah_uwp = o.gg_sah or (detail.profile if detail else "")
+            elif o.world_type == "belt":
+                object_type = "Belt"
+                sah_uwp = o.canonical_profile or (detail.profile if detail else "")
+            else:
+                object_type = "Terrestrial"
+                sah_uwp = o.canonical_profile or (detail.profile if detail else "")
+
+            note_parts = [o.temperature_zone.title()]
+            if o.notes:
+                note_parts.append(o.notes)
+            if o.world_type == "gas_giant" and o.gg_mass_earth is not None:
+                note_parts.append(f"{o.gg_mass_earth:.0f} M⊕")
+            if detail is not None and detail.moons:
+                moon_parts = []
+                for moon in detail.moons:
+                    if moon.is_ring:
+                        moon_parts.append(f"R{moon.ring_count:02d}")
+                    else:
+                        moon_parts.append(f"Size {moon.size_str}")
+                note_parts.append(", ".join(moon_parts))
+
+            period_yr = o.orbit_period_yr
+            orbit_rows.append({
+                "primary": o.star_designation,
+                "object_type": object_type,
+                "orbit_num": f"{o.orbit_number:.2f}",
+                "au": f"{o.orbit_au:.3f}",
+                "ecc": f"{o.eccentricity:.2f}" if o.eccentricity > 0.0 else "—",
+                "period": f"{period_yr:.3f}y" if period_yr is not None else "—",
+                "sah_uwp": sah_uwp,
+                "sub": str(len(detail.moons)) if detail is not None else "",
+                "notes": " · ".join(note_parts),
+            })
+
+        return render("survey_class2iii.html",
+            designation=designation,
+            age_gyr=age_gyr,
+            stellar_count=stellar_count,
+            gg_count=self.system_orbits.gas_giant_count,
+            belt_count=self.system_orbits.belt_count,
+            terrestrial_count=self.system_orbits.terrestrial_count,
+            class_iii_status="",
+            star_rows=star_rows,
+            orbit_rows=orbit_rows,
+            notes="\n".join(notes_lines),
+        )
+
 
 def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements
     name: str,
@@ -1046,7 +1155,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
         want_detail = args.detail
 
     # pylint: disable=import-outside-toplevel
-    from system_pipeline import PipelineOptions, run_detail_pipeline
+    from .system_pipeline import PipelineOptions, run_detail_pipeline
 
     for i in range(args.count):
         seed_val: Optional[int] = args.seed if i == 0 else None

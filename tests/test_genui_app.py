@@ -657,6 +657,11 @@ class TestProceduralSystemGeneration:
         assert combo.count() >= 1
         assert "0/I" in combo.itemText(0)
 
+    def test_survey_combo_has_class2iii_item(self, system_app_win):
+        combo = system_app_win._survey_combo
+        assert combo.count() >= 2
+        assert "II/III" in combo.itemText(1)
+
     def test_result_contains_tab_widget(self, system_app_win):
         assert system_app_win.findChild(QTabWidget) is not None
 
@@ -880,6 +885,21 @@ class TestHeaderButtons:
         system_app_win._on_survey_clicked()
         html = system_app_win._survey_windows[-1]._view.last_html
         assert 'data-theme="dark"' in html
+
+    def test_survey_class2iii_html_has_form_number(self, sample_system):
+        html = sample_system.to_survey_form_html_class2()
+        assert "0421D-II.III" in html
+
+    def test_survey_class2iii_html_has_orbit_section(self, sample_system):
+        html = sample_system.to_survey_form_html_class2()
+        assert "SAH/UWP" in html
+
+    def test_survey_class2iii_window_opens(self, system_app_win):
+        system_app_win._survey_combo.setCurrentIndex(1)
+        system_app_win._on_survey_clicked()
+        win = system_app_win._survey_windows[-1]
+        assert isinstance(win, SurveyFormWindow)
+        assert "II/III" in win.windowTitle()
 
     def test_map_click_appends_window(self, system_app_win):
         system_app_win._on_map_clicked()
