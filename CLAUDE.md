@@ -1,7 +1,7 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-06-16 (Session 126)  
-**Branch:** `v1.5.0` · **Main:** `main`  
+**Last updated:** 2026-06-23 (Session 135)  
+**Branch:** `test/packaging-generation-tools` · **Main:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
 This file is a router. Read `context/common.md` first on every session, then
@@ -32,6 +32,7 @@ read only the context files listed below for the specific task at hand.
 | `traveller_map_fetch.py` | [`context/map-fetch.md`](context/map-fetch.md) + [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `azure-api/function_app.py` or `azure-api/shared/helpers.py` | [`context/api-layer.md`](context/api-layer.md) |
 | `fastapi/app.py` or `fastapi/helpers.py` | [`context/api-layer.md`](context/api-layer.md) |
+| Adding a new root-level Python module, or any azure-api sync issue | [`context/azure-sync.md`](context/azure-sync.md) |
 | `system_pipeline.py` | [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `system_map.py` | [`context/system-map.md`](context/system-map.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `gen-ui/app.py` | [`context/gen-ui.md`](context/gen-ui.md) + [`context/data-structures.md`](context/data-structures.md) |
@@ -44,7 +45,7 @@ read only the context files listed below for the specific task at hand.
 ## Always-needed facts (no file read required)
 
 - **Pylint:** `.venv/bin/pylint <file>` — target **10.00/10 per file**
-- **Tests:** `.venv/bin/pytest tests/ -q` — **2122 tests**, all must pass
+- **Tests:** `.venv/bin/pytest tests/ -q` — **2613 tests**, all must pass
 - **RNG:** Injectable `random.Random` instance; each generation module has a
   module-level `_rng` sentinel (initially `random` the module). Public
   entry-point functions accept `rng: Optional[random.Random] = None`; when
@@ -76,7 +77,7 @@ After any session in which code, APIs, tests, or documented behaviour change:
 | Deferred feature implemented | Remove row from `context/deferred-features.md` |
 | New deferred feature identified | Add row to `context/deferred-features.md` |
 | Module API or public function changed | The matching module context file |
-| New module created | New `context/<name>.md` + add row to routing table above |
+| New module created | New `context/<name>.md` + add row to routing table above + add to `context/azure-sync.md` file list |
 | Government detail tables or DMs changed | `context/government-detail.md` |
 | Pipeline entry point added or changed | `context/generation-pipeline.md` |
 | Gen-UI widget or interaction changed | `context/gen-ui.md` |

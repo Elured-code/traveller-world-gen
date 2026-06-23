@@ -113,21 +113,21 @@ import random
 _rng: random.Random = random  # type: ignore[assignment]
 from typing import TYPE_CHECKING, NamedTuple, Optional
 
-from traveller_orbit_gen import OrbitSlot, SystemOrbits
-from traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
-from traveller_world_gen import (
+from .traveller_orbit_gen import OrbitSlot, SystemOrbits
+from .traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
+from .traveller_world_gen import (
     assign_trade_codes,
     generate_atmosphere,
     generate_nhz_atmosphere,
     generate_hydrographics,
     to_hex,
 )
-from traveller_moon_gen import generate_moons, moons_str, Moon, place_moon_orbit
-from traveller_belt_physical import generate_belt_physical, BeltPhysical
-from world_codes import gg_diameter_from_sah
+from .traveller_moon_gen import generate_moons, moons_str, Moon, place_moon_orbit
+from .traveller_belt_physical import generate_belt_physical, BeltPhysical
+from .world_codes import gg_diameter_from_sah
 
 if TYPE_CHECKING:
-    from traveller_world_physical import WorldPhysical
+    from .traveller_world_physical import WorldPhysical
 
 
 # ---------------------------------------------------------------------------
@@ -854,7 +854,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
                  "is_independent_government", "native_sophont", "classification",
                  "population_detail", "government_detail", "law_detail",
-                 "tech_detail", "name")
+                 "tech_detail", "culture_detail", "name")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -878,6 +878,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.law_detail: Optional[object] = None
         # traveller_world_tech_detail.TechDetail — set by attach_tech_detail()
         self.tech_detail: Optional[object] = None
+        # traveller_world_culture_detail.CultureDetail — set by attach_culture_detail()
+        self.culture_detail: Optional[object] = None
         self.name: str = ""  # set by attach_body_names()
         self.physical: BeltPhysical | WorldPhysical | None = None
         self.biomass_rating: Optional[int] = None
@@ -970,6 +972,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["law_detail"] = self.law_detail.to_dict()  # type: ignore[attr-defined]
         if self.tech_detail is not None:
             d["tech_detail"] = self.tech_detail.to_dict()  # type: ignore[attr-defined]
+        if self.culture_detail is not None:
+            d["culture_detail"] = self.culture_detail.to_dict()  # type: ignore[attr-defined]
         return d
 
     @classmethod
@@ -991,7 +995,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             if "inner_au" in phys_d:
                 obj.physical = BeltPhysical.from_dict(phys_d)
             else:
-                from traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
+                from .traveller_world_physical import WorldPhysical  # pylint: disable=import-outside-toplevel
                 obj.physical = WorldPhysical.from_dict(phys_d)
         obj.name = str(d.get("name", ""))
         obj.classification = d.get("classification") or None
@@ -1004,17 +1008,20 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         if d.get("habitability_rating") is not None:
             obj.habitability_rating = int(d["habitability_rating"])
         if d.get("population_detail") is not None:
-            from traveller_world_population_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_population_detail import PopulationDetail as _PD  # pylint: disable=import-outside-toplevel
             obj.population_detail = _PD.from_dict(d["population_detail"])
         if d.get("government_detail") is not None:
-            from traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
             obj.government_detail = _GD.from_dict(d["government_detail"])
         if d.get("law_detail") is not None:
-            from traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
             obj.law_detail = _LD.from_dict(d["law_detail"])
         if d.get("tech_detail") is not None:
-            from traveller_world_tech_detail import TechDetail as _TD  # pylint: disable=import-outside-toplevel
+            from .traveller_world_tech_detail import TechDetail as _TD  # pylint: disable=import-outside-toplevel
             obj.tech_detail = _TD.from_dict(d["tech_detail"])
+        if d.get("culture_detail") is not None:
+            from .traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
+            obj.culture_detail = _CD.from_dict(d["culture_detail"])
         return obj
 
 
@@ -1960,7 +1967,7 @@ def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-man
         )
 
     # Apply biological DMs to resource rating (deterministic — no new dice roll).
-    from traveller_world_physical import (  # pylint: disable=import-outside-toplevel
+    from .traveller_world_physical import (  # pylint: disable=import-outside-toplevel
         WorldPhysical as _WP,
         apply_biological_resource_dms,
     )
@@ -2198,7 +2205,7 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
 
 if __name__ == "__main__":
     import argparse
-    from traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel,ungrouped-imports
+    from .traveller_system_gen import generate_full_system  # pylint: disable=import-outside-toplevel,ungrouped-imports
 
     parser = argparse.ArgumentParser(
         description="Generate a complete system with SAH/UWP for all worlds."

@@ -121,9 +121,9 @@ Info "Upgrading pip..."
 & $VenvPython -m pip install --quiet --upgrade pip
 if ($LASTEXITCODE -ne 0) { Fail "Failed to upgrade pip." }
 
-Info "Installing backend dependencies (azure-functions, jsonschema)..."
-& $VenvPython -m pip install --quiet -r (Join-Path $ScriptDir 'requirements.txt')
-if ($LASTEXITCODE -ne 0) { Fail "Failed to install backend dependencies." }
+Info "Installing traveller-gen package (generation modules + CLI entry points)..."
+& $VenvPython -m pip install --quiet -e $ScriptDir
+if ($LASTEXITCODE -ne 0) { Fail "Failed to install traveller-gen package." }
 
 Info "Installing PySide6 (desktop GUI library) - this may take a few minutes..."
 & $VenvPython -m pip install --quiet -r (Join-Path $ScriptDir 'gen-ui\requirements.txt')
@@ -219,7 +219,7 @@ rem Examples:
 rem   run-world
 rem   run-world --name "New Terra" --count 3
 rem   run-world --name Zhodane --seed 42 --json
-"%~dp0.venv\Scripts\python.exe" "%~dp0traveller_world_gen.py" %*
+"%~dp0.venv\Scripts\traveller-world.exe" %*
 '@
 $worldBat | Set-Content (Join-Path $ScriptDir 'run-world.bat') -Encoding ASCII
 
@@ -241,7 +241,7 @@ rem
 rem Examples:
 rem   run-mapfetch --sector "Spinward Marches" --name Regina
 rem   run-mapfetch --sector "Spinward Marches" --hex 1910 --detail
-"%~dp0.venv\Scripts\python.exe" "%~dp0traveller_map_fetch.py" %*
+"%~dp0.venv\Scripts\traveller-mapfetch.exe" %*
 '@
 $mapBat | Set-Content (Join-Path $ScriptDir 'run-mapfetch.bat') -Encoding ASCII
 

@@ -1,7 +1,7 @@
 # gen-ui User Acceptance Test Plan
 
 **Application:** `gen-ui/app.py` — PySide6 desktop UI for the Traveller World & System Generator  
-**Last updated:** 2026-06-15 (Session 123)  
+**Last updated:** 2026-06-17 (Session 131)  
 **Test type:** Manual (no automated runner)
 
 ---
@@ -206,3 +206,32 @@ re-run outcome alongside the original.
 | UAT-080 | Switching back to Procedural restores procedural controls | TravellerMap source selected | Click "Procedural" radio | Name and seed fields visible; TM-specific fields hidden | |
 | UAT-081 | Seed shown after generation matches seed used | Procedural source; seed field empty | Click "Generate" | Seed field shows the integer seed that was used; generating again with that value produces the same world (see UAT-005) | |
 | UAT-082 | Re-generating without changing options produces different world | Procedural source; "System detail" unchecked | Generate; note UWP; click "Generate" again without entering a seed | New seed auto-assigned; world UWP differs from previous result | |
+
+---
+
+## 15. Social detail and cultural profile
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-083 | "Social detail" checkbox present in Options dialog | App running | Open Options | "Social detail" checkbox visible | |
+| UAT-084 | Culture section absent when "Social detail" unchecked | "System detail" checked; "Social detail" unchecked | Generate with default options; observe Mainworld tab | World card has no "Culture detail" section | |
+| UAT-085 | Culture section present when "Social detail" checked | "System detail" and "Social detail" both checked; world is inhabited (Population > 0) | Generate; observe Mainworld tab | World card shows "Culture detail" header, "Cultural profile" row (e.g. `7567-8432`), and rows for all 8 traits (Diversity, Xenophilia, Uniqueness, Symbology, Cohesion, Progressiveness, Expansionism, Militancy) each with a value and label | |
+| UAT-086 | Cultural profile string is DXUS-CPEM format | Social detail enabled; inhabited mainworld generated | Observe "Cultural profile" row in world card | Profile is exactly 9 characters: four eHex digits, a hyphen, four eHex digits (e.g. `85C9-A7B8`) | |
+| UAT-087 | All eight trait values are at least 1 | Social detail enabled; inhabited mainworld generated | Observe the 8 trait rows in the Culture section | Each numeric value shown is ≥ 1 | |
+| UAT-088 | Inhabited secondary worlds also receive culture detail | "Social detail" checked; system has an inhabited secondary world | Generate system; observe secondary world card | Secondary world card also shows a "Culture detail" section with 8 traits and profile | |
+| UAT-089 | World importance row present when "Social detail" checked | "System detail" and "Social detail" both checked; world is inhabited | Generate; scroll to bottom of world card | "World importance" row visible at the bottom of the "Culture detail" section showing a signed integer (e.g. `+2`, `0`, `−1`) | |
+| UAT-090 | World importance row absent when "Social detail" unchecked | "System detail" checked; "Social detail" unchecked | Generate; inspect world card | No "World importance" row visible anywhere on the card | |
+| UAT-091 | World importance > +3 displayed in bold | Social detail enabled; generate worlds until one has importance > +3 (try Starport A/B, Pop 9+, TL 10+, In or Ri trade codes) | Observe "World importance" row | Value text is visibly bolder than adjacent rows (font-weight 700 vs 500) | |
+| UAT-092 | World importance JSON includes all 8 DM components | Social detail enabled; inhabited mainworld generated | Inspect raw JSON (expand "Raw JSON" section in world card or call `/api/system?social_detail=true`) | `importance_detail` object present with keys: `importance`, `starport_dm`, `population_dm`, `tech_dm`, `agricultural_dm`, `industrial_dm`, `rich_dm`, `base_dm`, `waystation_dm` | |
+| UAT-093 | Labour factor row visible on social card | Social detail enabled; inhabited world with pop ≥ 2 | Generate; check culture detail section | "Labour factor" row present showing population code − 1 (e.g. pop 7 → labour factor 6) | |
+| UAT-094 | Labour factor is 0 for pop 0 or 1 | Social detail enabled; world with pop 0 or 1 | Generate; inspect JSON | `labour_factor` is 0; or `importance_detail` absent for pop 0 | |
+| UAT-095 | Infrastructure factor row present for viable worlds | Social detail enabled; inhabited world with positive importance likely (Starport A/B, pop 7+, TL 10+) | Generate; check culture detail section | "Infrastructure factor" row shows an integer ≥ 0 | |
+| UAT-096 | Infrastructure factor shows "—" for backwater worlds | Social detail enabled; generate a very backwater world (Starport X, pop 3, TL 4) | Generate; check culture detail section | "Infrastructure factor" row shows "—" | |
+| UAT-097 | Resource factor visible on both physical and social card sections | Social detail and system detail both enabled; inhabited world with size_detail | Generate | "Resource factor" row appears once in physical section and once in culture/social section | |
+| UAT-098 | Efficiency factor row present on social card | Social detail enabled; inhabited world | Generate | "Efficiency factor" row shows a non-zero integer between −5 and +5 | |
+| UAT-099 | Resource units row present on social card | Social detail + system detail enabled; inhabited world | Generate | "Resource units" row shows an integer; negative value shown in red when EF is negative | |
+| UAT-100 | GWP per capita and total GWP rows present | Social detail + system detail enabled; inhabited world | Generate | "GWP per capita" row shows Cr-prefixed comma-formatted integer; "Total GWP" shows MCr value | |
+| UAT-101 | Development score row present | Social detail + system detail enabled; inhabited world | Generate | "Development score" row shows a decimal value (e.g. "12.50") | |
+| UAT-102 | Economics profile row present and bold | Social detail + system detail enabled; inhabited world | Generate | "Economics profile" row shows a 5-character string like "765+2" in bold; EF part has sign | |
+| UAT-103 | Economics profile encodes correct values | Social detail + system detail enabled; any inhabited world | Generate; note RF, LF, IF, EF from other rows | First char = RF in eHex, second = LF in eHex, third = IF in eHex (or '0' if absent), remainder = signed EF | |
+| UAT-104 | Negative resource units shown in danger style | Social detail + system detail enabled; generate until EF is negative (backwater world, Starport X, pop 3, TL 4, Moribund/Insular culture) | Generate | "Resource units" value displayed in red/danger colour | |

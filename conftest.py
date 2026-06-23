@@ -3,9 +3,9 @@ conftest.py
 ===========
 pytest configuration for the traveller-world-gen project.
 
-Adds the project root to sys.path so that test files in the tests/
-subdirectory can import traveller_world_gen and shared.helpers without
-needing any special setup.  pytest discovers this file automatically.
+Generation modules are installed as the ``traveller_gen`` package (pip install -e .)
+so no sys.path manipulation is needed for them.  azure-api/ and fastapi/ are still
+added so that test files can import function_app, shared.helpers, and the fastapi app.
 """
 import random
 import sys
@@ -13,19 +13,17 @@ import os
 
 import pytest
 
-# Insert the project root, azure-api/, and fastapi/ into sys.path so that
-# test files in the tests/ subdirectory can import all layers without setup:
+# Insert azure-api/ and fastapi/ into sys.path so that test files can import
+# all API layers without special setup:
 #
-#   from traveller_world_gen import generate_world   # project root
-#   from function_app import generate_world_card     # azure-api/
-#   from shared.helpers import ok, error             # azure-api/shared/
-#   from app import app                              # fastapi/
-#   from helpers import ok, error                    # fastapi/ (flat module)
+#   from function_app import ...          # azure-api/
+#   from shared.helpers import ok, error  # azure-api/shared/
+#   from app import app                   # fastapi/ (flat module)
+#   from helpers import ok, error         # fastapi/ (flat module)
 #
-# Note: fastapi/ uses a flat helpers.py (not shared/) to avoid the
-# "from shared.helpers import" naming conflict with azure-api/shared/.
+# Generation modules (traveller_gen.*) are importable without any path hack
+# because they are installed via ``pip install -e .``.
 _root = os.path.dirname(__file__)
-sys.path.insert(0, _root)
 sys.path.insert(0, os.path.join(_root, "azure-api"))
 sys.path.insert(0, os.path.join(_root, "fastapi"))
 
@@ -42,14 +40,19 @@ def reset_module_rngs():
     order-dependent test failures.
     """
     # pylint: disable=import-outside-toplevel
-    import traveller_hydro_detail
-    import traveller_belt_physical
-    import traveller_world_physical
-    import traveller_world_gen
-    import traveller_stellar_gen
-    import traveller_orbit_gen
-    import traveller_moon_gen
-    import traveller_world_detail
+    from traveller_gen import traveller_hydro_detail
+    from traveller_gen import traveller_belt_physical
+    from traveller_gen import traveller_world_physical
+    from traveller_gen import traveller_world_gen
+    from traveller_gen import traveller_stellar_gen
+    from traveller_gen import traveller_orbit_gen
+    from traveller_gen import traveller_moon_gen
+    from traveller_gen import traveller_world_detail
+    from traveller_gen import traveller_world_population_detail
+    from traveller_gen import traveller_world_government_detail
+    from traveller_gen import traveller_world_law_detail
+    from traveller_gen import traveller_world_tech_detail
+    from traveller_gen import traveller_world_culture_detail
     # pylint: enable=import-outside-toplevel
 
     _modules = [
@@ -61,6 +64,11 @@ def reset_module_rngs():
         traveller_orbit_gen,
         traveller_moon_gen,
         traveller_world_detail,
+        traveller_world_population_detail,
+        traveller_world_government_detail,
+        traveller_world_law_detail,
+        traveller_world_tech_detail,
+        traveller_world_culture_detail,
     ]
 
     for mod in _modules:

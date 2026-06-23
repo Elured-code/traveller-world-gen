@@ -64,8 +64,8 @@ from helpers import (  # noqa: E402  (fastapi/helpers.py)
     ERR_NOT_FOUND, ERR_UPSTREAM,
     error, max_batch_size, ok, parse_count, parse_name, parse_seed,
 )
-from traveller_world_gen import generate_world as _gen_world  # noqa: E402
-from traveller_system_gen import generate_full_system as _gen_system  # noqa: E402
+from traveller_gen.traveller_world_gen import generate_world as _gen_world  # noqa: E402
+from traveller_gen.traveller_system_gen import generate_full_system as _gen_system  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Module-level fixtures

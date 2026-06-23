@@ -125,9 +125,9 @@ VENV_PYTHON="$VENV_DIR/bin/python3"
 info "Upgrading pip..."
 "$VENV_PYTHON" -m pip install --quiet --upgrade pip
 
-info "Installing backend dependencies (azure-functions, jsonschema)..."
-"$VENV_PYTHON" -m pip install --quiet -r "$SCRIPT_DIR/requirements.txt" \
-    || fail "Failed to install backend dependencies."
+info "Installing traveller-gen package (generation modules + CLI entry points)..."
+"$VENV_PYTHON" -m pip install --quiet -e "$SCRIPT_DIR" \
+    || fail "Failed to install traveller-gen package."
 
 info "Installing PySide6 and PySide6-Addons (desktop GUI library) — this may take a few minutes..."
 "$VENV_PYTHON" -m pip install --quiet -r "$SCRIPT_DIR/gen-ui/requirements.txt" \
@@ -224,7 +224,7 @@ cat > "$SCRIPT_DIR/run-world.sh" << 'LAUNCHER'
 #   bash run-world.sh --name Zhodane --seed 42 --json
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
-exec "$SCRIPT_DIR/.venv/bin/python3" "$SCRIPT_DIR/traveller_world_gen.py" "$@"
+exec "$SCRIPT_DIR/.venv/bin/traveller-world" "$@"
 LAUNCHER
 chmod +x "$SCRIPT_DIR/run-world.sh"
 
@@ -248,7 +248,7 @@ cat > "$SCRIPT_DIR/run-mapfetch.sh" << 'LAUNCHER'
 #   bash run-mapfetch.sh --sector "Spinward Marches" --hex 1910 --detail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
-exec "$SCRIPT_DIR/.venv/bin/python3" "$SCRIPT_DIR/traveller_map_fetch.py" "$@"
+exec "$SCRIPT_DIR/.venv/bin/traveller-mapfetch" "$@"
 LAUNCHER
 chmod +x "$SCRIPT_DIR/run-mapfetch.sh"
 

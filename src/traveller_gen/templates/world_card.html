@@ -176,11 +176,13 @@
 </style>
 </head>
 <body>
-{% macro drow(label, value, danger=false) %}
+{% macro drow(label, value, danger=false, highlight=false) %}
 <div class="detail-row">
   <span class="row-label">{{ label }}</span>
   {% if danger %}
   <span style="font-size:13px;font-weight:500;text-align:right;color:var(--color-text-danger,#c0392b)">{{ value }}</span>
+  {% elif highlight %}
+  <span style="font-size:13px;font-weight:700;text-align:right">{{ value }}</span>
   {% else %}
   <span style="font-size:13px;font-weight:500;text-align:right">{{ value }}</span>
   {% endif %}
@@ -284,6 +286,9 @@
     {{ drow("Escape velocity", "%.2f km/s"|format(p.escape_velocity)) }}
     {% if p.resource_rating is not none %}
     {{ drow("Resource rating", p.resource_rating|string) }}
+    {% endif %}
+    {% if p.resource_factor is not none %}
+    {{ drow("Resource factor", p.resource_factor|string) }}
     {% endif %}
     {{ drow("Axial tilt", p.axial_tilt|string ~ "°") }}
     {{ drow("Day length", "%.1f h"|format(p.day_length)) }}
@@ -508,6 +513,52 @@
     {{ drow("Space transport TL", ctx.tech_detail.tl_space|string) }}
     {{ drow("Personal military TL", ctx.tech_detail.tl_military_personal|string) }}
     {{ drow("Heavy military TL", ctx.tech_detail.tl_military_heavy|string) }}
+    {{ drow("Novelty TL", ctx.tech_detail.tl_novelty|string) }}
+  </div>
+  {% endif %}
+
+  {% if ctx.culture_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Culture detail</p>
+    {{ drow("Cultural profile", ctx.culture_detail.cultural_profile) }}
+    {% if ctx.culture_detail.cultural_extension %}
+    {{ drow("Cultural Extension (T5)", ctx.culture_detail.cultural_extension) }}
+    {% endif %}
+    {{ drow("Diversity", ctx.culture_detail.diversity|string + " — " + ctx.culture_detail.diversity_label) }}
+    {{ drow("Xenophilia", ctx.culture_detail.xenophilia|string + " — " + ctx.culture_detail.xenophilia_label) }}
+    {{ drow("Uniqueness", ctx.culture_detail.uniqueness|string + " — " + ctx.culture_detail.uniqueness_label) }}
+    {{ drow("Symbology", ctx.culture_detail.symbology|string + " — " + ctx.culture_detail.symbology_label) }}
+    {{ drow("Cohesion", ctx.culture_detail.cohesion|string + " — " + ctx.culture_detail.cohesion_label) }}
+    {{ drow("Progressiveness", ctx.culture_detail.progressiveness|string + " — " + ctx.culture_detail.progressiveness_label) }}
+    {{ drow("Expansionism", ctx.culture_detail.expansionism|string + " — " + ctx.culture_detail.expansionism_label) }}
+    {{ drow("Militancy", ctx.culture_detail.militancy|string + " — " + ctx.culture_detail.militancy_label) }}
+    {% if ctx.importance_detail is not none %}
+    {{ drow("World importance", ctx.importance_detail.importance_str, highlight=ctx.importance_detail.importance > 3) }}
+    {{ drow("Labour factor", ctx.importance_detail.labour_factor|string) }}
+    {% if ctx.importance_detail.infrastructure_factor is not none %}
+    {{ drow("Infrastructure factor", ctx.importance_detail.infrastructure_factor|string) }}
+    {% else %}
+    {{ drow("Infrastructure factor", "—") }}
+    {% endif %}
+    {% if ctx.resource_factor is not none %}
+    {{ drow("Resource factor", ctx.resource_factor|string) }}
+    {% endif %}
+    {% if ctx.importance_detail.efficiency_factor is not none %}
+    {{ drow("Efficiency factor", ctx.importance_detail.efficiency_factor|string) }}
+    {% endif %}
+    {% if ctx.importance_detail.resource_units is not none %}
+    {{ drow("Resource units", ctx.importance_detail.resource_units|string, danger=ctx.importance_detail.resource_units < 0) }}
+    {% endif %}
+    {% if ctx.importance_detail.gwp_per_capita is not none %}
+    {{ drow("GWP base value", ctx.importance_detail.gwp_base|string) }}
+    {{ drow("GWP per capita", "Cr%s" % "{:,}".format(ctx.importance_detail.gwp_per_capita)) }}
+    {{ drow("Total GWP", "MCr%s" % "{:,.2f}".format(ctx.importance_detail.gwp_total_mcr)) }}
+    {{ drow("Development score", "%.2f" % ctx.importance_detail.development_score) }}
+    {% endif %}
+    {% if ctx.importance_detail.economics_profile is not none %}
+    {{ drow("Economics profile", ctx.importance_detail.economics_profile, highlight=true) }}
+    {% endif %}
+    {% endif %}
   </div>
   {% endif %}
 

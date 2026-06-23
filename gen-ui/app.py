@@ -33,9 +33,6 @@ import random
 import secrets
 import sys
 
-# Allow importing from the project root when run directly from any directory.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from PySide6.QtCore import Qt, QSettings, QThread, Signal  # noqa: E402
 from PySide6.QtGui import (  # noqa: E402
     QAction, QFontDatabase, QKeySequence, QShortcut,
@@ -65,22 +62,22 @@ from PySide6.QtWidgets import (  # noqa: E402
     QWidget,
 )
 
-from system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
+from traveller_gen.system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
 
 
-from traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
-from traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
-from traveller_world_gen import (  # noqa: E402
+from traveller_gen.traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
+from traveller_gen.traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
+from traveller_gen.traveller_world_gen import (  # noqa: E402
     World,
     generate_atmosphere_detail,
     generate_gas_mix,
     generate_unusual_subtype,
     generate_world,
 )
-from tables import ZONE_CSS_CLASS  # noqa: E402
-from traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
-from system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
-from world_codes import APP_VERSION  # noqa: E402
+from traveller_gen.tables import ZONE_CSS_CLASS  # noqa: E402
+from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
+from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
+from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 
 try:
     import _version as _genui_ver  # noqa: E402
@@ -907,6 +904,27 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     world.government, world.law_level,  # type: ignore[attr-defined]
                     world.starport, pcr=pcr,  # type: ignore[attr-defined]
                 )
+                cx: str = getattr(world, "cx", "")
+                if cx:
+                    from traveller_world_culture_detail import generate_culture_detail_from_cx  # pylint: disable=import-outside-toplevel
+                    world.culture_detail = generate_culture_detail_from_cx(  # type: ignore[attr-defined]
+                        cx=cx,
+                        population=world.population,  # type: ignore[attr-defined]
+                        importance=getattr(world, "importance", 0),
+                        government=world.government,  # type: ignore[attr-defined]
+                        law_level=world.law_level,  # type: ignore[attr-defined]
+                        pcr=pcr,
+                        starport=world.starport,  # type: ignore[attr-defined]
+                        tech_level=world.tech_level,  # type: ignore[attr-defined]
+                    )
+                else:
+                    from traveller_world_culture_detail import generate_culture_detail  # pylint: disable=import-outside-toplevel
+                    world.culture_detail = generate_culture_detail(  # type: ignore[attr-defined]
+                        world.population, world.government,  # type: ignore[attr-defined]
+                        world.law_level, pcr=pcr,  # type: ignore[attr-defined]
+                        starport=world.starport,  # type: ignore[attr-defined]
+                        tech_level=world.tech_level,  # type: ignore[attr-defined]
+                    )
         self._act_save.setEnabled(True)
         self._show_summary(world)
 

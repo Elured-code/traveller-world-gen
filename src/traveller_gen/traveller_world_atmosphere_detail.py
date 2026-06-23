@@ -48,7 +48,7 @@ from typing import Optional, TYPE_CHECKING
 _rng: random.Random = random  # type: ignore[assignment]
 
 if TYPE_CHECKING:
-    from traveller_world_physical import WorldPhysical
+    from .traveller_world_physical import WorldPhysical
 
 
 # ---------------------------------------------------------------------------

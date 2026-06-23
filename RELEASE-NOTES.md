@@ -1,8 +1,215 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–126
-**Tests:** 2124
+**Sessions:** 88–135
+**Tests:** 2629
+
+---
+
+## T5 Cultural Extension (Cx) Forward Conversion — Issue #141 (Session 135)
+
+T5 Cx HASS string is now computed for every inhabited world and displayed in the
+world card Culture section. The forward conversion (rolled DXUS traits → HASS) applies
+WBH p.254 clamping rules and is exposed via a new `_compute_cx()` helper:
+
+- H (Heterogeneity) ← Diversity clamped to [max(1, Pop−5), Pop+5]
+- A (Acceptance) ← Xenophilia clamped to [max(1, Imp+Pop−5), Imp+Pop+5]
+- S (Strangeness) ← round(Uniqueness × 2/3)
+- S2 (Symbols) ← Symbology clamped to [max(1, TL−5), TL+5]
+
+`generate_culture_detail()` gains an `importance: int = 0` parameter; both standard
+and Cx-derived cultures compute Cx. `CultureDetail` gains a `cultural_extension: str`
+field (serializable). World card displays "Cultural Extension (T5)" row when non-empty.
+**Schema change:** `culture_detail.cultural_extension` property added (string, 4 eHex chars).
+Patch version bump: 1.5.32 → 1.5.33.
+
+## App Insights Request Timestamp Precision — Issue #153 (Session 135)
+
+The `_ai_post_request()` telemetry handler in `fastapi/app.py` previously hardcoded
+`.000Z` milliseconds, resulting in all requests within the same wall-clock second
+receiving identical timestamps. Fixed to use microsecond precision:
+`datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"`.
+This preserves request order in burst scenarios (e.g., parallel UI requests).
+
+## Closed Issues (Session 135)
+
+**#154** (Novelty TL placeholder) and **#145** (Tidal lock braking fix) were already
+implemented in prior sessions. No code changes; issues closed as completed.
+
+---
+
+## Package Migration — src/traveller_gen/ (Session 134)
+
+**Issues #155 and #156.** All 22 generation modules moved from the project root
+to an installable `src/traveller_gen/` Python package. `pyproject.toml` added
+with `setuptools.build_meta`; `pip install -e .` replaces all `sys.path` hacks
+for local development.
+
+**CLI entry points registered** in `pyproject.toml`:
+
+- `traveller-world` → `traveller_gen.traveller_world_gen:main`
+- `traveller-mapfetch` → `traveller_gen.traveller_map_fetch:main`
+
+**Azure deployment simplified.** `scripts/prepare_azure.sh` and the CI workflow
+now run `pip install --target azure-api/ --no-deps .` instead of a file-by-file
+`cp` list. This eliminates the `azure-sync` maintenance step — adding a new module
+to the package no longer requires touching either script.
+
+**Import paths changed.**
+
+- Within the package: all imports converted to relative (`from . import X`,
+  `from .module import Y`), including function-body lazy imports.
+- External callers: `from traveller_gen.traveller_X import Y`
+  (`azure-api/function_app.py`, `fastapi/app.py`, `gen-ui/app.py`).
+- Tests: `from traveller_gen.traveller_X import Y`; patch targets updated to
+  `"traveller_gen.traveller_X.something"`.
+
+**`conftest.py` rewritten** — removed `sys.path.insert(0, _root)`; generation
+modules are now importable as a package without path manipulation.
+
+**`scripts/compute_version.sh`** updated to write to
+`src/traveller_gen/_version.py` (was project root `_version.py`).
+
+**`pyrightconfig.json`** drops `"."` from `extraPaths` — editable install
+provides the resolution path.
+
+**Test count:** 2613 (unchanged — pure refactor, no new tests).
+
+---
+
+## Economic Characteristics (Session 133)
+
+**Full WBH economic profile per world** (issue #100). `WorldImportance` gains
+nine new fields computed by `attach_importance_detail()`:
+
+- **Labour Factor** — `population − 1`, clamped ≥ 0; zero for uninhabited worlds
+  and worlds of population 1.
+- **Infrastructure Factor** — importance + population DMs; `None` for worlds with
+  no infrastructure (below a threshold).
+- **Efficiency Factor** — die-roll based (−5 to +5); pop 0 is fixed at −5; pops
+  1–6 roll 2D6−7 + DMs; pops 7+ roll 2D3−4 + DMs. DMs from government type, law
+  level, PCR, cultural progressiveness, and cultural expansionism. A result of 0
+  is treated internally as +1 per WBH convention.
+- **Resource Units** — RF × LF × IF × EF; any zero factor is treated as 1; only
+  EF can yield a negative total.
+- **GWP Base Value** — IF_adj + min(RF_adj, IF_adj); both adjusted to ≥ 1 for
+  inhabited worlds, giving a maximum of 2 × IF.
+- **GWP Per Capita / Total GWP** — base value scaled by TL, starport, government,
+  and trade-code multipliers; positive EF multiplies, negative EF divides by
+  (1 − EF). Total in MCr = per-capita × 10^population / 1,000,000.
+- **Development Score** — (GWP_pc / 1000) × (1 − IR/100); Inequality Rating
+  defaults to 0 until implemented (issue deferred).
+- **Economics Profile** — compact string e.g. `"765+2"`: RF/LF/IF as eHex
+  digits + EF as a signed integer.
+
+**Resource Factor on WorldPhysical** — new `resource_factor` field on
+`WorldPhysical` (and `World.to_dict()`): resource_rating adjusted by TL/trade
+DMs (TL 9–12 → +1, 13–15 → +2, 16+ → +3; Ag −1, In +2, As −1, Ni −1, Ri +1),
+clamped to [0, 12]. Computed by `attach_resource_factor()` in
+`system_pipeline.py` after `apply_mainworld_social()`.
+
+**Schema update.** `traveller_world_schema.json` updated with all new
+`importance_detail` properties and the top-level `resource_factor` property.
+
+**World card.** New rows in the culture detail section of `world_card.html`:
+Labour Factor, Infrastructure Factor, Resource Factor, Efficiency Factor,
+Resource Units (danger-highlighted when negative), GWP Base Value, GWP Per
+Capita (formatted with comma separator), Total GWP (MCr), Development Score,
+Economics Profile (highlighted).
+
+**Deferred.** Tariff rates (WBH p.181) tracked in issue #157. Inequality Rating
+base roll unconfirmed — deferred until source text is available.
+
+**Test count:** 68 new tests; 2613 total (was 2545); pylint 10.00/10.
+
+---
+
+## World Importance Social Characteristic (Session 132)
+
+**Deterministic world importance score per CRB.** New module
+`traveller_world_importance.py` implements the world importance score as a
+deterministic sum of eight modifiers (no dice): starport (A/B=+1, D/E/X=−1),
+population (≤6=−1, ≥9=+1), tech level (≤8=−1, 9=0, 10–15=+1, ≥16=+2), and
+presence of Ag/In/Ri trade codes (+1 each), two or more non-Corsair bases
+(+1), and X-Boat waystation "W" base code (+1). The final signed score
+(range −3 to +6) is displayed in the world card's culture detail section
+as a single row; values > +3 are rendered bold. The component DMs are
+available in JSON output for applications that need the breakdown.
+
+**Template macro extension.** The `drow` macro in `world_card.html` gained a
+`highlight` parameter to render text bold (font-weight:700) without color
+change; this is used for importance values > +3 as a visual indicator of
+high importance. The macro previously supported only `danger` (red) styling.
+
+**Test coverage.** New module `tests/test_importance_detail.py` with 48 tests
+covers all DM conditions, boundary cases, serialization, and the Unicode minus
+sign (U+2212) in formatted output. Importance display tests added to
+`tests/test_function_app.py` (6 tests in `TestSocialDetailOption`) and
+`tests/test_genui_app.py` (5 tests in `TestSocialDetailGeneration`). UAT plan
+extended with test cases UAT-089 through UAT-092.
+
+**Bug fix.** The `azure-api/templates/world_card.html` template was out of sync
+with the root version (missing both the `highlight` parameter and importance row).
+This caused test failures in the full suite when `test_culture_detail.py` ran
+first and triggered the azure-api module path. Fixed by syncing the azure-api
+copy; both paths now produce consistent HTML. The issue highlights the value of
+module import path ordering (conftest.py: fastapi/ > azure-api/ > root) for
+dependency management, but templates must remain synchronized.
+
+**Version bump.** `APP_VERSION` incremented from 1.5.30 to 1.5.31 (patch bump
+for new JSON schema field).
+
+**Test count:** 59 new tests; 2545 total (was 2478); pylint 10.00/10.
+
+---
+
+## Social Detail Test Coverage (Session 131)
+
+**Test additions for social detail API + UI.** FastAPI endpoints and gen-ui
+app now have comprehensive test coverage for the social detail feature
+(implemented in Sessions 127–130). New `TestSocialDetailOption` class in
+`tests/test_function_app.py` (12 tests) covers `parse_social_detail()` helper
+and system/world card endpoints with the `social_detail` flag — verifies
+culture_detail is present when flag is True, absent when False, profile format
+compliance, and trait value floor (all ≥ 1). World card HTML includes/excludes
+the Culture section based on the flag. New `TestSocialDetailGeneration` class
+in `tests/test_genui_app.py` (6 tests) with `social_system_app_win` fixture
+covers gen-ui path: culture_detail None/present with the option, profile format,
+trait floors, and HTML presence/absence. UAT plan updated with §15 "Social
+detail and cultural profile" (6 test cases) covering checkbox, culture
+absent/present, profile format, trait floors, and secondary worlds.
+
+**Test count:** 18 new tests; 2478 total (was 2460); pylint 10.00/10.
+
+---
+
+## T5 Cultural Extension Conversion (Session 130)
+
+**Cx to cultural traits mapping.** When reading a mainworld from TravellerMap,
+the T5 Cultural Extension (Cx) field is now available as 4 eHex characters (HASS:
+Heterogeneity, Acceptance, Strangeness, Symbols). `generate_culture_detail_from_cx()`
+converts these to the first four cultural traits (Diversity, Xenophilia,
+Uniqueness, Symbology) with WBH-specified clamping rules based on population,
+importance, and tech level. The remaining four traits (Cohesion, Progressiveness,
+Expansionism, Militancy) are rolled with dice + DMs using the derived Diversity
+and Xenophilia values to respect interplay constraints.
+
+**Implementation details.** `MapWorldData` adds `cx: str` and `importance: int`
+fields extracted from TravellerMap's `"Cx"` and `"Ix"` API fields. In
+`generate_system_from_map()`, after mainworld reconstruction, `world.cx` and
+`world.importance` are stamped as dynamic attributes. `attach_culture_detail()`
+checks for the `cx` attribute and routes to the Cx conversion path when present;
+otherwise uses standard generation. Secondary worlds never receive Cx attributes
+(only available from TravellerMap mainworld). Backward compatibility: all missing
+fields in `CultureDetail.from_dict()` default to 1 for old saved data.
+
+**Schema change.** `CultureDetail.to_dict()` now emits 16 trait fields (8 values
++ 8 labels) plus `cultural_profile` — all new since v1.5.0 (Session 127–129
+implemented the 8 traits). This requires a schema bump; version → **v1.5.28**.
+
+**Tests:** 30 new tests covering `_parse_cx_string()`, `generate_culture_detail_from_cx()`
+(all four derived mappings + rolled traits), and `attach_culture_detail()` routing.
+2460 tests pass; pylint 10.00/10.
 
 ---
 

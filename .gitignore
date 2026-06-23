@@ -25,21 +25,14 @@ local.settings.json
 .python_packages/
 .funcignore
 
-# Generator modules copied into azure-api/ by the CI deploy workflow
-# (scripts/prepare_azure.sh for local dev).  Not committed to avoid duplication.
+# Generator package installed into azure-api/ by scripts/prepare_azure.sh via
+# `pip install --target`.  Not committed — these are deployment artefacts.
 azure-api/fastapi/
-azure-api/templates/
-azure-api/html_render.py
-azure-api/system_map.py
-azure-api/system_pipeline.py
-azure-api/tables.py
-azure-api/traveller_*.py
-azure-api/world_codes.py
-azure-api/traveller_world_schema.json
-azure-api/_version.py
+azure-api/traveller_gen/
+azure-api/traveller_gen-*.dist-info/
 
 # Auto-generated version file — run scripts/compute_version.sh to create
-_version.py
+src/traveller_gen/_version.py
 
 # ── Editors ─────────────────────────────────────────────────────────────────
 
@@ -69,7 +62,7 @@ run-mapfetch.bat
 
 # ── Generated outputs ───────────────────────────────────────────────────────
 # The examples/ directory contains generated HTML cards for illustration.
-# Regenerate with: python traveller_world_gen.py --name <name> --html
+# Regenerate with: traveller-world --name <name> --html
 examples/*.html
 
 # ── Scratch / working notes ─────────────────────────────────────────────────

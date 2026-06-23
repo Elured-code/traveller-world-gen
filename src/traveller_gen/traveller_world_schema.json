@@ -681,6 +681,11 @@
               "minimum": 2,
               "maximum": 12,
               "description": "Terrestrial resource rating (WBH p.131): 2D-7 + Size + density DM, clamped to [2, 12]. Biological DMs (biomass, biodiversity, compatibility) are applied deterministically by attach_detail(). Present whenever generate_world_physical() has been called for a Size 1+ world."
+            },
+            "resource_factor": {
+              "type": "integer",
+              "minimum": 2,
+              "description": "Terrestrial resource factor (WBH p.131): resource_rating after depletion DM for Industrial/Agricultural worlds (subtract 1D-1, min 2) and TL8+ bonus (+1 per belt or gas giant in the system). Set by attach_detail()."
             }
           }
         },
@@ -812,6 +817,7 @@
         "tl_energy", "tl_electronics", "tl_manufacturing", "tl_medical", "tl_environmental",
         "tl_land", "tl_sea", "tl_air", "tl_space",
         "tl_military_personal", "tl_military_heavy",
+        "tl_novelty",
         "technology_profile"
       ],
       "additionalProperties": false,
@@ -829,7 +835,209 @@
         "tl_space":             { "type": "integer", "minimum": 0, "description": "Space transportation sub-TL." },
         "tl_military_personal": { "type": "integer", "minimum": 0, "description": "Personal military equipment sub-TL. 0 when law level = 0." },
         "tl_military_heavy":    { "type": "integer", "minimum": 0, "description": "Heavy military equipment sub-TL." },
-        "technology_profile":   { "type": "string", "description": "WBH technology profile string in format H-L-QQQQQ-TTTT-MM (all eHex digits). Example: 'C-8-BBA98-9870-A8'." }
+        "tl_novelty":           { "type": "integer", "minimum": 0, "description": "Novelty TL (issue #154). Placeholder: equals tl_high_common until the WBH §5 per-nation procedure is implemented." },
+        "technology_profile":   { "type": "string", "description": "WBH technology profile string in format H-L-QQQQQ-TTTT-MM-N (all eHex digits). Example: 'C-8-BBA98-9870-A8-C'. The trailing -N segment is the Novelty TL (placeholder)." }
+      }
+    },
+    "culture_detail": {
+      "type": "object",
+      "description": "WBH Social Characteristics culture profile. Present only when culture detail generation has been explicitly requested. Includes 8 cultural traits (Diversity, Xenophilia, Uniqueness, Symbology, Cohesion, Progressiveness, Expansionism, Militancy) with labels and a compressed DXUS-CPEM profile string.",
+      "required": ["diversity", "diversity_label", "xenophilia", "xenophilia_label", "uniqueness", "uniqueness_label", "symbology", "symbology_label", "cohesion", "cohesion_label", "progressiveness", "progressiveness_label", "expansionism", "expansionism_label", "militancy", "militancy_label", "cultural_profile", "cultural_extension"],
+      "additionalProperties": false,
+      "properties": {
+        "diversity": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Diversity trait value (1–35). Indicates cultural monolithic vs. balkanised range."
+        },
+        "diversity_label": {
+          "type": "string",
+          "enum": ["Monolithic", "Homogeneous", "Diverse", "Multicultural", "Balkanised"],
+          "description": "Human-readable diversity label based on trait value."
+        },
+        "xenophilia": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Xenophilia trait value (1–35). Indicates openness to aliens (xenophobia to welcoming)."
+        },
+        "xenophilia_label": {
+          "type": "string",
+          "enum": ["Xenophobic", "Moderate", "Welcoming"],
+          "description": "Human-readable xenophilia label based on trait value."
+        },
+        "uniqueness": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Uniqueness trait value (1–35). Indicates cultural distinctiveness."
+        },
+        "uniqueness_label": {
+          "type": "string",
+          "enum": ["Indistinct", "Typical", "Distinct", "Exotic"],
+          "description": "Human-readable uniqueness label based on trait value."
+        },
+        "symbology": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Symbology trait value (1–35). Indicates extent of abstract symbolic meaning in culture."
+        },
+        "symbology_label": {
+          "type": "string",
+          "enum": ["Mundane", "Moderate", "Prominent", "Pervasive"],
+          "description": "Human-readable symbology label based on trait value."
+        },
+        "cohesion": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Cohesion trait value (1–35). Indicates individualism vs. collectivism."
+        },
+        "cohesion_label": {
+          "type": "string",
+          "enum": ["Individualistic", "Moderate", "Communal", "Collectivist"],
+          "description": "Human-readable cohesion label based on trait value."
+        },
+        "progressiveness": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Progressiveness trait value (1–35). Indicates cultural decay vs. innovation."
+        },
+        "progressiveness_label": {
+          "type": "string",
+          "enum": ["Moribund", "Conservative", "Moderate", "Progressive", "Innovative"],
+          "description": "Human-readable progressiveness label based on trait value."
+        },
+        "expansionism": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Expansionism trait value (1–35). Indicates cultural insularity vs. imperialist expansion."
+        },
+        "expansionism_label": {
+          "type": "string",
+          "enum": ["Insular", "Moderate", "Expansive", "Imperialist"],
+          "description": "Human-readable expansionism label based on trait value."
+        },
+        "militancy": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Militancy trait value (1–35). Indicates cultural peacefulness vs. militarism."
+        },
+        "militancy_label": {
+          "type": "string",
+          "enum": ["Peaceful", "Moderate", "Aggressive", "Militaristic"],
+          "description": "Human-readable militancy label based on trait value."
+        },
+        "cultural_profile": {
+          "type": "string",
+          "pattern": "^[0-9A-Z]{4}-[0-9A-Z]{4}$",
+          "description": "Compressed cultural profile string in DXUS-CPEM format (9 chars: 4 eHex, hyphen, 4 eHex). D=Diversity, X=Xenophilia, U=Uniqueness, S=Symbology, C=Cohesion, P=Progressiveness, E=Expansionism, M=Militancy. Example: '7567-8432'."
+        },
+        "cultural_extension": {
+          "type": "string",
+          "pattern": "^[0-9A-Z]{4}$",
+          "description": "T5 Cultural Extension (Cx) string in HASS eHex format (4 chars). H=Heterogeneity (Diversity), A=Acceptance (Xenophilia), S=Strangeness (Uniqueness × 2/3), S2=Symbols (Symbology). Computed from cultural traits per WBH p.254. Example: '7567'."
+        }
+      }
+    },
+    "importance_detail": {
+      "type": "object",
+      "description": "CRB world importance score. Deterministic sum of modifiers from starport, population, tech level, trade codes, and base presence. Present only when social detail generation has been explicitly requested.",
+      "required": ["importance", "starport_dm", "population_dm", "tech_dm", "agricultural_dm", "industrial_dm", "rich_dm", "base_dm", "waystation_dm", "labour_factor"],
+      "additionalProperties": false,
+      "properties": {
+        "importance": {
+          "type": "integer",
+          "description": "Total world importance score (typically −3 to +6)."
+        },
+        "starport_dm": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "+1 for starport A or B; −1 for D, E, or X; 0 otherwise."
+        },
+        "population_dm": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 1,
+          "description": "−1 for population 0–6; +1 for population 9+; 0 for 7–8."
+        },
+        "tech_dm": {
+          "type": "integer",
+          "minimum": -1,
+          "maximum": 2,
+          "description": "−1 for TL 0–8; 0 for TL 9; +1 for TL A–F (10–15); +2 for TL G+ (16+)."
+        },
+        "agricultural_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if the Agricultural (Ag) trade code is present."
+        },
+        "industrial_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if the Industrial (In) trade code is present."
+        },
+        "rich_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if the Rich (Ri) trade code is present."
+        },
+        "base_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if two or more non-Corsair bases are present."
+        },
+        "waystation_dm": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "+1 if an X-Boat waystation (base code W) is present."
+        },
+        "labour_factor": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Population code − 1, minimum 0. Represents the fraction of the population that directly contributes to wealth creation (WBH). 0 when population code is 0 or 1."
+        },
+        "infrastructure_factor": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Importance + population DMs (1D for pop 4–6; 2D for pop 7+). Absent when population is 0 or when the raw value is negative (no infrastructure). Present only when non-negative."
+        },
+        "efficiency_factor": {
+          "type": "integer",
+          "minimum": -5,
+          "maximum": 5,
+          "description": "World efficiency factor (WBH p.131). Range -5 to +5; 0 is always treated as +1 (so the value is never 0). Absent until attach_importance_detail() runs. Government, law level, PCR, progressiveness, and expansionism all contribute DMs."
+        },
+        "resource_units": {
+          "type": "integer",
+          "description": "System resource units (WBH p.131): RF × LF × IF × EF. Any zero-valued factor is treated as 1. Only efficiency factor can be negative, making RU negative. Absent until attach_importance_detail() runs."
+        },
+        "gwp_base": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "GWP base value (WBH p.132): IF_adj + min(RF_adj, IF_adj). Each factor treated as at least 1. Range 2 to 2×IF."
+        },
+        "gwp_per_capita": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Gross World Product per capita in Cr. Computed from base value, TL, starport, government, and trade code modifiers, scaled by efficiency factor."
+        },
+        "gwp_total_mcr": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Total Gross World Product in MCr (Megacredits): GWP per capita × 10^population_code. May be fractional for small populations."
+        },
+        "development_score": {
+          "type": "number",
+          "description": "IISS development score (WBH p.132): (GWP per capita / 1000) × (1 − Inequality Rating / 100). When inequality_rating is not yet computed, treats IR as 0."
+        },
+        "economics_profile": {
+          "type": "string",
+          "description": "Compact economics profile string (WBH Social Characteristics): RF LF IF EF where RF, LF, IF are single eHex characters and EF is a signed integer. Example: '765+2'. IF is '0' when infrastructure is absent."
+        }
       }
     }
   },

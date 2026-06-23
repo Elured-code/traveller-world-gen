@@ -1,7 +1,7 @@
 """Tests for traveller_hydro_detail.py — hydrographic detail (Phases 1 and 2)."""
 
 import pytest
-from traveller_hydro_detail import (
+from traveller_gen.traveller_hydro_detail import (
     HydrographicDetail,
     generate_hydrographic_detail,
     _HYDRO_PCT_RANGE,
@@ -61,7 +61,7 @@ def test_size_gt9_hydro10_always_100():
 
 def test_size_9_hydro10_not_forced_100(monkeypatch):
     """Size exactly 9 with Hydro 10 should use the random range, not always 100."""
-    monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: lo)
+    monkeypatch.setattr("traveller_gen.traveller_hydro_detail.random.randint", lambda lo, hi: lo)
     result = generate_hydrographic_detail(hydrographics=10, size=9)
     assert result is not None
     assert result.surface_liquid_pct == 96
@@ -86,25 +86,25 @@ def test_pct_within_range_100_samples(hydro, size):
         )
 
 def test_hydro0_pct_min(monkeypatch):
-    monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: lo)
+    monkeypatch.setattr("traveller_gen.traveller_hydro_detail.random.randint", lambda lo, hi: lo)
     r = generate_hydrographic_detail(0, 5)
     assert r is not None
     assert r.surface_liquid_pct == 0
 
 def test_hydro0_pct_max(monkeypatch):
-    monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: hi)
+    monkeypatch.setattr("traveller_gen.traveller_hydro_detail.random.randint", lambda lo, hi: hi)
     r = generate_hydrographic_detail(0, 5)
     assert r is not None
     assert r.surface_liquid_pct == 5
 
 def test_hydro5_pct_midrange(monkeypatch):
-    monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: (lo + hi) // 2)
+    monkeypatch.setattr("traveller_gen.traveller_hydro_detail.random.randint", lambda lo, hi: (lo + hi) // 2)
     r = generate_hydrographic_detail(5, 5)
     assert r is not None
     assert r.surface_liquid_pct == 50  # (46+55)//2
 
 def test_hydro10_size1_uses_range(monkeypatch):
-    monkeypatch.setattr("traveller_hydro_detail.random.randint", lambda lo, hi: hi)
+    monkeypatch.setattr("traveller_gen.traveller_hydro_detail.random.randint", lambda lo, hi: hi)
     r = generate_hydrographic_detail(10, 1)
     assert r is not None
     assert r.surface_liquid_pct == 100
@@ -129,8 +129,8 @@ def test_to_dict_keys_only():
 # ---------------------------------------------------------------------------
 
 def test_world_to_dict_includes_detail_nested():
-    from traveller_world_gen import generate_world
-    from traveller_hydro_detail import generate_hydrographic_detail as ghd
+    from traveller_gen.traveller_world_gen import generate_world
+    from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail as ghd
     import random
     random.seed(42)
     world = generate_world()
@@ -146,7 +146,7 @@ def test_world_to_dict_includes_detail_nested():
         assert low <= pct <= high
 
 def test_world_to_dict_no_detail_when_absent():
-    from traveller_world_gen import generate_world
+    from traveller_gen.traveller_world_gen import generate_world
     import random
     random.seed(1)
     world = generate_world()
@@ -161,7 +161,7 @@ def test_world_to_dict_no_detail_when_absent():
 # ---------------------------------------------------------------------------
 
 def test_exports():
-    import traveller_hydro_detail as m
+    from traveller_gen import traveller_hydro_detail as m
     assert hasattr(m, "HydrographicDetail")
     assert hasattr(m, "generate_hydrographic_detail")
 

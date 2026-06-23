@@ -47,36 +47,40 @@ HTML display card.
 ```
 traveller-world-gen/
 │
-│  Generation modules
-├── traveller_stellar_gen.py        # WBH stellar generation (pp.14-29)
-├── traveller_orbit_gen.py          # WBH orbit placement (pp.36-51)
-├── traveller_system_gen.py         # Integration: full system + mainworld
-├── traveller_world_gen.py          # CRB mainworld generation (pp.248-261)
-├── traveller_world_detail.py       # Secondary world SAH/social + satellite detail
-├── traveller_world_physical.py     # WBH physical world detail (density, gravity, tidal lock, etc.)
-├── traveller_belt_physical.py      # WBH belt physical detail (span, composition, bulk, rating)
-├── traveller_hydro_detail.py       # WBH hydrographic detail (surface liquid percentages)
-├── traveller_moon_gen.py           # Significant moon sizing and profiles
-├── traveller_map_fetch.py          # TravellerMap integration: fetch UWP + stellar, reconstruct system
-│
-│  Shared data
-├── world_codes.py                  # StrEnum/IntEnum types: StarportCode, TradeCode, TravelZone, etc.
-├── tables.py                       # Centralised display-layer lookup tables (single source of truth)
-│
-│  Visualisation
-├── system_map.py                   # SVG star system maps: arc zones, orbit tables, log-AU scale
-├── render_system_json.py           # Standalone HTML renderer for system JSON files
-│
-│  HTML rendering
-├── html_render.py                  # Jinja2 rendering environment for to_html() output
-├── templates/
-│   ├── world_card.html             # Single-world display card
-│   ├── world_list.html             # Multi-world list (--html with multiple worlds)
-│   ├── system_card.html            # Full system card
-│   └── system_detail.html          # System card with secondary world detail
-│
-│  Schema
-├── traveller_world_schema.json     # JSON Schema (draft 2020-12) for World.to_dict()
+│  Package (pip-installable)
+├── pyproject.toml                  # Package metadata + CLI entry points
+├── src/traveller_gen/              # All generation modules live here
+│   │
+│   │  Generation modules
+│   ├── traveller_stellar_gen.py        # WBH stellar generation (pp.14-29)
+│   ├── traveller_orbit_gen.py          # WBH orbit placement (pp.36-51)
+│   ├── traveller_system_gen.py         # Integration: full system + mainworld
+│   ├── traveller_world_gen.py          # CRB mainworld generation (pp.248-261)
+│   ├── traveller_world_detail.py       # Secondary world SAH/social + satellite detail
+│   ├── traveller_world_physical.py     # WBH physical world detail (density, gravity, tidal lock, etc.)
+│   ├── traveller_belt_physical.py      # WBH belt physical detail (span, composition, bulk, rating)
+│   ├── traveller_hydro_detail.py       # WBH hydrographic detail (surface liquid percentages)
+│   ├── traveller_moon_gen.py           # Significant moon sizing and profiles
+│   ├── traveller_map_fetch.py          # TravellerMap integration: fetch UWP + stellar, reconstruct system
+│   │
+│   │  Shared data
+│   ├── world_codes.py                  # StrEnum/IntEnum types: StarportCode, TradeCode, TravelZone, etc.
+│   ├── tables.py                       # Centralised display-layer lookup tables (single source of truth)
+│   │
+│   │  Visualisation
+│   ├── system_map.py                   # SVG star system maps: arc zones, orbit tables, log-AU scale
+│   ├── render_system_json.py           # Standalone HTML renderer for system JSON files
+│   │
+│   │  HTML rendering
+│   ├── html_render.py                  # Jinja2 rendering environment for to_html() output
+│   ├── templates/
+│   │   ├── world_card.html             # Single-world display card
+│   │   ├── world_list.html             # Multi-world list (--html with multiple worlds)
+│   │   ├── system_card.html            # Full system card
+│   │   └── system_detail.html          # System card with secondary world detail
+│   │
+│   │  Schema
+│   └── traveller_world_schema.json     # JSON Schema (draft 2020-12) for World.to_dict()
 │
 │  Azure Functions API
 ├── azure-api/                      # Azure Functions deployment root
@@ -105,14 +109,14 @@ traveller-world-gen/
 │
 │  Tests
 ├── tests/
-│   ├── test_traveller_world_gen.py # Unit tests — mainworld generation (807 tests)
-│   ├── test_function_app.py        # Unit tests — API endpoints (117 tests)
-│   ├── test_world_physical.py      # Unit tests — world physical detail (122 tests)
-│   ├── test_belt_physical.py       # Unit tests — belt physical detail (49 tests)
-│   ├── test_hydro_detail.py        # Unit tests — hydrographic detail (29 tests)
-│   ├── test_moon_gen.py            # Unit tests — moon sizing and orbit placement (30 tests)
-│   └── test_orbit_gen.py           # Unit tests — orbit generation (14 tests)
-├── conftest.py                     # pytest path configuration
+│   ├── test_traveller_world_gen.py # Unit tests — mainworld generation
+│   ├── test_function_app.py        # Unit tests — API endpoints
+│   ├── test_world_physical.py      # Unit tests — world physical detail
+│   ├── test_belt_physical.py       # Unit tests — belt physical detail
+│   ├── test_hydro_detail.py        # Unit tests — hydrographic detail
+│   ├── test_moon_gen.py            # Unit tests — moon sizing and orbit placement
+│   └── test_orbit_gen.py           # Unit tests — orbit generation
+├── conftest.py                     # pytest configuration
 ├── pytest.ini                      # pytest settings
 ├── pyrightconfig.json              # Pyright type-checker configuration
 ├── .pylintrc                       # Pylint configuration
@@ -142,7 +146,6 @@ traveller-world-gen/
 ### Prerequisites
 
 - Python 3.11+
-- No third-party packages required for the core generation modules
 
 > **macOS (python.org installer only):** If you see `certificate verify failed`
 > when using TravellerMap lookups, run the one-time certificate installer that
@@ -212,11 +215,6 @@ work without activating the virtual environment.
 
 #### Manual installation (if you prefer step-by-step)
 
-The core generation modules use only the Python standard library — no third-party
-packages are required to run the CLI scripts or import the modules in your own code.
-Additional dependencies are only needed for the desktop UI, the test suite, or the
-Azure Functions API server.
-
 **1. Create a virtual environment** (recommended for all use cases)
 
 ```bash
@@ -229,13 +227,13 @@ python -m venv .venv
 .venv\Scripts\activate
 ```
 
-**2. Install dependencies for your use case**
+**2. Install the package and dependencies for your use case**
 
 | Use case | Install command | Notes |
 |---|---|---|
-| CLI scripts only | _(nothing)_ | Pure stdlib — no install needed |
-| Desktop UI | `pip install "PySide6>=6.4.0"` | Bundles Qt — no system packages required |
-| Test suite | `pip install pytest jsonschema httpx2 hypothesis` | `jsonschema` for schema tests; `httpx2` for FastAPI TestClient; `hypothesis` for property-based tests |
+| CLI + Python API | `pip install -e .` | Installs `traveller-world` and `traveller-mapfetch` CLI commands |
+| Desktop UI | `pip install -e . && pip install -r gen-ui/requirements.txt` | PySide6 bundles Qt — no system packages required |
+| Test suite | `pip install -e . -r requirements-dev.txt` | Adds pytest, pylint, pyright, httpx2 |
 | Azure Functions API | `pip install -r azure-api/requirements.txt` | Also requires [Azure Functions Core Tools v4](https://learn.microsoft.com/en-us/azure/azure-functions/functions-run-local) |
 | FastAPI server | `pip install -r fastapi/requirements.txt` | Includes uvicorn; no extra tooling needed |
 
@@ -277,73 +275,73 @@ Sector is always required — many world names exist in multiple sectors.
 
 ```bash
 # Fetch canonical UWP + stellar data from travellermap.com (sector always required)
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches"
+traveller-mapfetch --name Regina --sector "Spinward Marches"
 
 # With seed and all secondary world detail
-python traveller_map_fetch.py --name Mora --sector "Spinward Marches" --seed 42 --detail
+traveller-mapfetch --name Mora --sector "Spinward Marches" --seed 42 --detail
 
 # By hex position within a sector
-python traveller_map_fetch.py --sector "Spinward Marches" --hex 1910 --seed 7
+traveller-mapfetch --sector "Spinward Marches" --hex 1910 --seed 7
 
 # Text summary (default)
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --format text
+traveller-mapfetch --name Regina --sector "Spinward Marches" --format text
 
 # JSON output
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --json
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --format json
+traveller-mapfetch --name Regina --sector "Spinward Marches" --json
+traveller-mapfetch --name Regina --sector "Spinward Marches" --format json
 
 # Self-contained HTML card
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --html > regina.html
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --format html > regina.html
+traveller-mapfetch --name Regina --sector "Spinward Marches" --html > regina.html
+traveller-mapfetch --name Regina --sector "Spinward Marches" --format html > regina.html
 ```
 
 ### Generate a complete star system
 
 ```bash
 # Full system — stellar data, orbits, and mainworld (random, text summary)
-python traveller_system_gen.py
+python -m traveller_gen.traveller_system_gen
 
 # Named system with a fixed seed
-python traveller_system_gen.py --name Ardenne --seed 1000
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000
 
 # Include all secondary world and moon profiles
-python traveller_system_gen.py --name Ardenne --seed 1000 --detail
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --detail
 
 # Generate multiple systems (defaults to text output, one block per system)
-python traveller_system_gen.py --count 3 --seed 1000
+python -m traveller_gen.traveller_system_gen --count 3 --seed 1000
 
 # JSON output
-python traveller_system_gen.py --name Ardenne --seed 1000 --json
-python traveller_system_gen.py --name Ardenne --seed 1000 --format json
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --json
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --format json
 
 # Text output (explicit; same as default)
-python traveller_system_gen.py --name Ardenne --seed 1000 --format text
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --format text
 
 # Self-contained HTML card
-python traveller_system_gen.py --name Ardenne --seed 1000 --html > ardenne.html
-python traveller_system_gen.py --name Ardenne --seed 1000 --format html > ardenne.html
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --html > ardenne.html
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --format html > ardenne.html
 
 # HTML card with all secondary world and moon profiles
-python traveller_system_gen.py --name Ardenne --seed 1000 --detail --html > ardenne.html
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --detail --html > ardenne.html
 ```
 
 ### Generate a mainworld only
 
 ```bash
 # One random world (human-readable summary)
-python traveller_world_gen.py
+traveller-world
 
 # Named world with a fixed seed
-python traveller_world_gen.py --name Cogri --seed 42
+traveller-world --name Cogri --seed 42
 
 # JSON output
-python traveller_world_gen.py --name Cogri --seed 42 --json
+traveller-world --name Cogri --seed 42 --json
 
 # Self-contained HTML card
-python traveller_world_gen.py --name Cogri --seed 42 --html > cogri.html
+traveller-world --name Cogri --seed 42 --html > cogri.html
 
 # Generate a subsector's worth (5 worlds)
-python traveller_world_gen.py --count 5
+traveller-world --count 5
 ```
 
 ### Generate an SVG system map
@@ -352,19 +350,19 @@ Draw a star system as a visual orbit diagram with arc zones (one per star) and a
 
 ```bash
 # Procedurally generated system (random seed, dark background)
-python system_map.py --name Ardenne --out /tmp/ardenne_map.svg
+python -m traveller_gen.system_map --name Ardenne --out /tmp/ardenne_map.svg
 
 # With a fixed seed for reproducibility
-python system_map.py --name Ardenne --seed 1000 --out /tmp/ardenne_map.svg
+python -m traveller_gen.system_map --name Ardenne --seed 1000 --out /tmp/ardenne_map.svg
 
 # With white background (light theme) instead of dark
-python system_map.py --name Ardenne --seed 1000 --white-bg --out /tmp/ardenne_light.svg
+python -m traveller_gen.system_map --name Ardenne --seed 1000 --white-bg --out /tmp/ardenne_light.svg
 
 # For multi-star systems, increase canvas width so tables have room
-python system_map.py --name Trinary --seed 5555 --width 2400 --out /tmp/trinary_map.svg
+python -m traveller_gen.system_map --name Trinary --seed 5555 --width 2400 --out /tmp/trinary_map.svg
 
 # Default: random seed, name "Unnamed", output to /tmp/traveller_system_map.svg, dark background
-python system_map.py
+python -m traveller_gen.system_map
 ```
 
 The SVG shows:
@@ -431,7 +429,7 @@ Open the SVG in any web browser or image viewer. The map includes all orbital da
 ### Full system generation
 
 ```python
-from traveller_system_gen import generate_full_system
+from traveller_gen.traveller_system_gen import generate_full_system
 
 system = generate_full_system(name="Ardenne", seed=1000)
 print(system.summary())           # full text: stars + orbits + mainworld
@@ -443,8 +441,8 @@ print(system.mainworld_orbit.orbit_number)  # e.g. 3.0
 ### System from an existing mainworld
 
 ```python
-from traveller_world_gen import World
-from traveller_system_gen import generate_system_from_world
+from traveller_gen.traveller_world_gen import World
+from traveller_gen.traveller_system_gen import generate_system_from_world
 
 # Reconstruct a World from a previously generated (or API-returned) JSON dict
 world = World.from_dict(world_dict)    # tolerates nested or flat code forms
@@ -461,7 +459,7 @@ print(system.mainworld_orbit.canonical_profile)  # canonical UWP stamped on orbi
 ### System from TravellerMap canonical data
 
 ```python
-from traveller_map_fetch import generate_system_from_map
+from traveller_gen.traveller_map_fetch import generate_system_from_map
 
 # By name — sector is always required
 system = generate_system_from_map(name="Regina", sector="Spinward Marches", seed=42)
@@ -482,7 +480,7 @@ system = generate_system_from_map(sector="Spinward Marches", hex_pos="1910")
 ### Mainworld only
 
 ```python
-from traveller_world_gen import generate_world
+from traveller_gen.traveller_world_gen import generate_world
 
 # Generate a random world
 world = generate_world(name="Mora")
@@ -727,7 +725,7 @@ The test suite runs with pytest and requires no live Azure runtime — the
 `azure-functions` SDK is stubbed automatically if not installed.
 
 ```bash
-pip install pytest jsonschema
+pip install -e . -r requirements-dev.txt
 pytest tests/ -v
 ```
 

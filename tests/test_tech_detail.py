@@ -23,15 +23,15 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from traveller_system_gen import generate_full_system
-from traveller_world_detail import attach_detail
-from traveller_world_tech_detail import (
+from traveller_gen.traveller_system_gen import generate_full_system
+from traveller_gen.traveller_world_detail import attach_detail
+from traveller_gen.traveller_world_tech_detail import (
     TechDetail,
     generate_tech_detail,
     attach_tech_detail,
 )
 
-_PROFILE_RE = re.compile(r"^[0-9A-Z]-[0-9A-Z]-[0-9A-Z]{5}-[0-9A-Z]{4}-[0-9A-Z]{2}$")
+_PROFILE_RE = re.compile(r"^[0-9A-Z]-[0-9A-Z]-[0-9A-Z]{5}-[0-9A-Z]{4}-[0-9A-Z]{2}-[0-9A-Z]$")
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -927,6 +927,7 @@ class TestRoundTrip:
         assert td.tl_space == td2.tl_space
         assert td.tl_military_personal == td2.tl_military_personal
         assert td.tl_military_heavy == td2.tl_military_heavy
+        assert td.tl_novelty == td2.tl_novelty
         assert td.technology_profile == td2.technology_profile
 
     def test_from_dict_missing_keys_defaults(self):
@@ -934,6 +935,60 @@ class TestRoundTrip:
         td = TechDetail.from_dict({})
         assert td.tl_high_common == 0
         assert td.technology_profile == ""
+
+    def test_round_trip_includes_novelty(self):
+        """tl_novelty survives a to_dict/from_dict round-trip."""
+        td = _gen(tl=12, rng=random.Random(5))
+        td2 = TechDetail.from_dict(td.to_dict())
+        assert td.tl_novelty == td2.tl_novelty
+
+    def test_from_dict_missing_novelty_defaults_to_zero(self):
+        """Old saved data without tl_novelty key loads with tl_novelty=0."""
+        d = _gen(rng=random.Random(7)).to_dict()
+        del d["tl_novelty"]
+        td = TechDetail.from_dict(d)
+        assert td.tl_novelty == 0
+
+
+# ---------------------------------------------------------------------------
+# Novelty TL (issue #154 placeholder)
+# ---------------------------------------------------------------------------
+
+class TestNoveltyTL:
+    """Tests for tl_novelty placeholder behaviour."""
+
+    def test_novelty_equals_high_common(self):
+        """Placeholder: tl_novelty equals tl_high_common."""
+        td = _gen(tl=10, rng=random.Random(1))
+        assert td.tl_novelty == td.tl_high_common
+
+    def test_novelty_equals_high_common_various_tls(self):
+        for tl in (0, 5, 10, 15):
+            td = _gen(tl=tl, rng=random.Random(tl))
+            assert td.tl_novelty == td.tl_high_common
+
+    def test_novelty_non_negative(self):
+        td = _gen(tl=0, rng=random.Random(42))
+        assert td.tl_novelty >= 0
+
+    def test_novelty_in_to_dict(self):
+        td = _gen(tl=8, rng=random.Random(8))
+        assert "tl_novelty" in td.to_dict()
+
+    def test_profile_ends_with_novelty_ehex(self):
+        """Profile suffix -N encodes tl_novelty as a single eHex digit."""
+        td = _gen(tl=10, rng=random.Random(3))
+        # Profile format H-L-QQQQQ-TTTT-MM-N → 6 dash-separated segments
+        parts = td.technology_profile.split("-")
+        assert len(parts) == 6
+        assert len(parts[5]) == 1
+
+    def test_profile_novelty_char_matches_field(self):
+        """The final eHex character in the profile encodes tl_novelty."""
+        _EHEX = "0123456789ABCDEFGHIJ"
+        td = _gen(tl=12, rng=random.Random(9))
+        novelty_char = td.technology_profile.split("-")[5]
+        assert _EHEX.index(novelty_char) == td.tl_novelty
 
 
 # ---------------------------------------------------------------------------

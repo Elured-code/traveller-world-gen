@@ -63,9 +63,9 @@ import random
 _rng: random.Random = random  # type: ignore[assignment]
 from dataclasses import dataclass, field
 from typing import List, Optional, TYPE_CHECKING
-from traveller_orbit_gen import roll_eccentricity, roll_inclination
+from .traveller_orbit_gen import roll_eccentricity, roll_inclination
 if TYPE_CHECKING:
-    from traveller_world_detail import WorldDetail
+    from .traveller_world_detail import WorldDetail
 
 
 # ---------------------------------------------------------------------------
@@ -290,7 +290,7 @@ class Moon:  # pylint: disable=too-many-instance-attributes
             moon.orbit_inclination  = float(d.get("orbit_inclination", 0.0))
         moon.name = str(d.get("name", ""))
         if d.get("detail"):
-            from traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
+            from .traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
             moon.detail = WorldDetail.from_dict(d["detail"])
         return moon
 

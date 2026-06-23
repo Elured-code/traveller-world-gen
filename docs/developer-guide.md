@@ -48,68 +48,76 @@ Generation is procedural and dice-driven, using Python's `random` module. Every 
 
 ## 2. Repository layout
 
+All generation modules live in a pip-installable package at `src/traveller_gen/`.
+Install with `pip install -e .` for editable local development. `scripts/prepare_azure.sh` bundles it into `azure-api/` via `pip install --target` for deployment.
+
 ```
 traveller-world-gen/
-├── traveller_stellar_gen.py          # Stars: type, mass, luminosity, multiples, age
-├── traveller_orbit_gen.py            # Orbit placement: MAO, HZCO, spread, world slots
-├── traveller_system_gen.py           # Integration: stellar + orbits + mainworld; select_mainworld()
-├── traveller_world_gen.py            # Mainworld: all 13 CRB steps, UWP, trade codes
-├── traveller_world_physical.py       # WBH pp.74-77,103: diameter, density, gravity, axial tilt, day length
-├── traveller_belt_physical.py        # WBH: asteroid belt physical characteristics
-├── traveller_world_atmosphere_detail.py  # Extended atmosphere detail (WBH pp.78-93)
-├── traveller_hydro_detail.py         # Hydrographic detail: ocean types, ice caps, depth
-├── traveller_world_detail.py         # Secondary worlds and satellites: SAH + social
-├── traveller_moon_gen.py             # Moon quantity, sizing, orbit placement, and SAH/social detail
-├── traveller_world_population_detail.py  # WBH §5: population sub-characteristics
-├── traveller_world_government_detail.py  # WBH §5: government type, factions, law variants
-├── traveller_world_law_detail.py         # WBH §5: law level sub-characteristics
-├── traveller_world_tech_detail.py        # WBH §5: tech level breakdown (13 sub-TLs)
-├── system_pipeline.py                # Shared post-generation orchestration (run_detail_pipeline)
-├── traveller_map_fetch.py            # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
-├── traveller_world_schema.json       # JSON Schema (draft 2020-12) for World.to_dict()
-├── render_system_json.py             # Standalone: renders a TravellerSystem JSON file to self-contained HTML
-├── system_map.py                     # SVG star system map: per-star arc zones, log-AU radial scale, orbit table
-├── tables.py                         # Lookup tables and constants shared across generation modules
-├── world_codes.py                    # APP_VERSION, eHex encoding, and world code utilities
-├── html_render.py                    # Shared HTML rendering helpers
+├── pyproject.toml                    # Package metadata, entry points, dependencies
+├── src/traveller_gen/
+│   ├── traveller_stellar_gen.py          # Stars: type, mass, luminosity, multiples, age
+│   ├── traveller_orbit_gen.py            # Orbit placement: MAO, HZCO, spread, world slots
+│   ├── traveller_system_gen.py           # Integration: stellar + orbits + mainworld; select_mainworld()
+│   ├── traveller_world_gen.py            # Mainworld: all 13 CRB steps, UWP, trade codes
+│   ├── traveller_world_physical.py       # WBH pp.74-77,103: diameter, density, gravity, axial tilt, day length
+│   ├── traveller_belt_physical.py        # WBH: asteroid belt physical characteristics
+│   ├── traveller_world_atmosphere_detail.py  # Extended atmosphere detail (WBH pp.78-93)
+│   ├── traveller_hydro_detail.py         # Hydrographic detail: ocean types, ice caps, depth
+│   ├── traveller_world_detail.py         # Secondary worlds and satellites: SAH + social
+│   ├── traveller_moon_gen.py             # Moon quantity, sizing, orbit placement, and SAH/social detail
+│   ├── traveller_world_population_detail.py  # WBH §5: population sub-characteristics
+│   ├── traveller_world_government_detail.py  # WBH §5: government type, factions, law variants
+│   ├── traveller_world_law_detail.py         # WBH §5: law level sub-characteristics
+│   ├── traveller_world_tech_detail.py        # WBH §5: tech level breakdown (13 sub-TLs)
+│   ├── system_pipeline.py                # Shared post-generation orchestration (run_detail_pipeline)
+│   ├── traveller_map_fetch.py            # TravellerMap integration: fetch, parse UWP + stellar, reconstruct system
+│   ├── traveller_world_schema.json       # JSON Schema (draft 2020-12) for World.to_dict()
+│   ├── render_system_json.py             # Standalone: renders a TravellerSystem JSON file to self-contained HTML
+│   ├── system_map.py                     # SVG star system map: per-star arc zones, log-AU radial scale, orbit table
+│   ├── tables.py                         # Lookup tables and constants shared across generation modules
+│   ├── world_codes.py                    # APP_VERSION, eHex encoding, and world code utilities
+│   ├── html_render.py                    # Shared HTML rendering helpers
+│   └── templates/                        # Jinja2 HTML templates for to_html() output
 │
+├── azure-api/
+│   ├── function_app.py                   # Azure Functions HTTP endpoints
+│   ├── shared/helpers.py                 # Request parsing, response builders for Azure Functions
+│   └── requirements.txt                  # Azure + Jinja2 + jsonschema dependencies
+│                                         # (traveller-gen bundled by scripts/prepare_azure.sh)
 ├── fastapi/
-│   ├── app.py                        # FastAPI HTTP server (primary local/cloud API)
-│   ├── helpers.py                    # Request parsing, response builders for FastAPI
-│   ├── requirements.txt              # FastAPI dependencies
-│   └── static/                       # Static assets served by FastAPI
-├── templates/                        # Jinja2 HTML templates for FastAPI responses
-│
-├── function_app.py                   # Azure Functions HTTP endpoints (alternative deployment)
-├── shared/
-│   └── helpers.py                    # Request parsing, response builders for Azure Functions
+│   ├── app.py                            # FastAPI HTTP server (primary local/cloud API)
+│   ├── helpers.py                        # Request parsing, response builders for FastAPI
+│   └── requirements.txt                  # FastAPI dependencies
 │
 ├── gen-ui/
-│   ├── app.py                        # PySide6 (Qt6) desktop UI
-│   ├── README.md                     # Setup, usage, and keyboard shortcut reference
-│   └── requirements.txt              # Dependency list (PySide6>=6.4.0; bundled Qt, no system libs required)
+│   ├── app.py                            # PySide6 (Qt6) desktop UI
+│   ├── README.md                         # Setup, usage, and keyboard shortcut reference
+│   └── requirements.txt                  # PySide6>=6.4.0; bundled Qt, no system libs required
 │
 ├── tests/
-│   ├── test_traveller_world_gen.py   # Mainworld generation
-│   ├── test_function_app.py          # Azure Functions API layer
-│   ├── test_fastapi_app.py           # FastAPI layer
-│   ├── test_orbit_gen.py             # Orbit placement
-│   ├── test_world_physical.py        # World physical detail
-│   ├── test_belt_physical.py         # Belt physical detail
-│   ├── test_moon_gen.py              # Moon generation
-│   ├── test_hydro_detail.py          # Hydrographic detail
-│   ├── test_biomass.py               # Biomass and biocomplexity
-│   ├── test_habitability.py          # Habitability rating
-│   ├── test_tech_detail.py           # Tech detail sub-TLs
-│   ├── test_system_pipeline.py       # run_detail_pipeline() integration
-│   ├── test_system_roundtrip.py      # JSON serialisation round-trips
-│   └── test_hypothesis.py            # Property-based tests (Hypothesis)
+│   ├── test_traveller_world_gen.py       # Mainworld generation
+│   ├── test_function_app.py              # Azure Functions API layer
+│   ├── test_fastapi_app.py               # FastAPI layer
+│   ├── test_orbit_gen.py                 # Orbit placement
+│   ├── test_world_physical.py            # World physical detail
+│   ├── test_belt_physical.py             # Belt physical detail
+│   ├── test_moon_gen.py                  # Moon generation
+│   ├── test_hydro_detail.py              # Hydrographic detail
+│   ├── test_biomass.py                   # Biomass and biocomplexity
+│   ├── test_habitability.py              # Habitability rating
+│   ├── test_tech_detail.py               # Tech detail sub-TLs
+│   ├── test_system_pipeline.py           # run_detail_pipeline() integration
+│   ├── test_system_roundtrip.py          # JSON serialisation round-trips
+│   └── test_hypothesis.py               # Property-based tests (Hypothesis)
 │
-├── conftest.py                       # pytest path setup and Azure Functions stub
-├── LICENSE                           # MIT Licence + Traveller IP notice
-├── README.md                         # End-user documentation
+├── conftest.py                           # pytest configuration and Azure Functions stub
+├── scripts/
+│   ├── compute_version.sh               # Generates src/traveller_gen/_version.py
+│   └── prepare_azure.sh                 # Bundles package into azure-api/ for deployment
+├── LICENSE                               # MIT Licence + Traveller IP notice
+├── README.md                             # End-user documentation
 └── docs/
-    └── developer-guide.md            # This file
+    └── developer-guide.md               # This file
 ```
 
 ---
@@ -862,21 +870,21 @@ is preserved in all output paths — `canonical_profile` takes display priority 
 
 ```bash
 # By name + sector
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches"
+traveller-mapfetch --name Regina --sector "Spinward Marches"
 
 # By hex position (bypasses name search)
-python traveller_map_fetch.py --sector "Spinward Marches" --hex 1910
+traveller-mapfetch --sector "Spinward Marches" --hex 1910
 
 # With seed and all secondary world detail
-python traveller_map_fetch.py --name Mora --sector "Spinward Marches" --seed 42 --detail
+traveller-mapfetch --name Mora --sector "Spinward Marches" --seed 42 --detail
 
 # Output formats
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --html > regina.html
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --format json
-python traveller_map_fetch.py --name Regina --sector "Spinward Marches" --format text
+traveller-mapfetch --name Regina --sector "Spinward Marches" --html > regina.html
+traveller-mapfetch --name Regina --sector "Spinward Marches" --format json
+traveller-mapfetch --name Regina --sector "Spinward Marches" --format text
 
 # Uninhabited worlds are handled correctly
-python traveller_map_fetch.py --name Tavonni --sector "Spinward Marches" --detail
+traveller-mapfetch --name Tavonni --sector "Spinward Marches" --detail
 ```
 
 ---
@@ -923,16 +931,16 @@ PALETTE_LIGHT  # white background (--white-bg flag)
 
 ```bash
 # Random system, dark background, written to /tmp/traveller_system_map.svg
-python system_map.py
+python -m traveller_gen.system_map
 
 # Named system with seed, white background, custom output path
-python system_map.py --name Ardenne --seed 1000 --white-bg --out ardenne.svg
+python -m traveller_gen.system_map --name Ardenne --seed 1000 --white-bg --out ardenne.svg
 
 # Wider canvas for multi-star systems
-python system_map.py --seed 42 --width 2400
+python -m traveller_gen.system_map --seed 42 --width 2400
 
 # Open in default viewer after writing (macOS/Linux)
-python system_map.py --name Mora --seed 7
+python -m traveller_gen.system_map --name Mora --seed 7
 ```
 
 ---
@@ -1124,7 +1132,7 @@ The following WBH features are explicitly noted as not yet implemented. Page ref
 All generation is reproducible if the same seed is provided to `generate_full_system()`.
 
 ```python
-from traveller_system_gen import generate_full_system
+from traveller_gen.traveller_system_gen import generate_full_system
 
 system = generate_full_system(name="Ardenne", seed=1000)
 # Calling with seed=1000 again always produces the same result.
@@ -1136,7 +1144,7 @@ If calling generation modules individually (e.g., `generate_stellar_data()` dire
 
 ```python
 import random
-from traveller_stellar_gen import generate_stellar_data
+from traveller_gen.traveller_stellar_gen import generate_stellar_data
 
 rng = random.Random(42)
 stellar = generate_stellar_data(rng=rng)
@@ -1180,43 +1188,53 @@ Different world types use different profile formats. The format is stored in `Wo
 
 ## 10. Running and testing
 
+### Setup
+
+```bash
+# Create virtual environment and install package + dev tools
+python3 -m venv .venv
+source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -e .
+pip install -r requirements-dev.txt
+```
+
 ### Generating systems locally
 
 ```bash
 # Full system (stellar + orbits + mainworld) — text summary
-python traveller_system_gen.py --name Ardenne --seed 1000
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000
 
 # With all secondary world and satellite profiles
-python traveller_system_gen.py --name Ardenne --seed 1000 --detail
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --detail
 
 # JSON output with all profiles
-python traveller_system_gen.py --name Ardenne --seed 1000 --detail --json
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --detail --json
 
 # Self-contained HTML card (implies --detail)
-python traveller_system_gen.py --name Ardenne --seed 1000 --html > ardenne.html
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --html > ardenne.html
 
 # Explicit format flag
-python traveller_system_gen.py --name Ardenne --seed 1000 --format html > ardenne.html
-python traveller_system_gen.py --name Ardenne --seed 1000 --format json
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --format html > ardenne.html
+python -m traveller_gen.traveller_system_gen --name Ardenne --seed 1000 --format json
 
-# Mainworld only
-python traveller_world_gen.py --name Cogri --seed 42 --json
+# Mainworld only (registered CLI entry point)
+traveller-world --name Cogri --seed 42 --json
 
-# Moon generation detail (legacy entry point)
-python traveller_world_detail.py --name Varanthos --seed 6056
+# TravellerMap fetch (registered CLI entry point)
+traveller-mapfetch --name Regina --sector "Spinward Marches" --seed 42
 
 # Render system JSON to a standalone HTML document
-python render_system_json.py examples/system_seed42.json
-python render_system_json.py my_system.json my_system.html
+python -m traveller_gen.render_system_json examples/system_seed42.json
+python -m traveller_gen.render_system_json my_system.json my_system.html
 
 # SVG star system map (dark background by default)
-python system_map.py --name Ardenne --seed 1000 --out ardenne.svg
+python -m traveller_gen.system_map --name Ardenne --seed 1000 --out ardenne.svg
 
 # White background (for printing / light-theme display)
-python system_map.py --name Ardenne --seed 1000 --white-bg --out ardenne-light.svg
+python -m traveller_gen.system_map --name Ardenne --seed 1000 --white-bg --out ardenne-light.svg
 
 # Wider canvas for multi-star systems
-python system_map.py --seed 42 --width 2400 --out multi-star.svg
+python -m traveller_gen.system_map --seed 42 --width 2400 --out multi-star.svg
 ```
 
 ### Running the tests
@@ -1258,7 +1276,7 @@ func start   # requires Azure Functions Core Tools v4
 All generation modules target **10.00/10 per file** with Pylint. Check a single file:
 
 ```bash
-.venv/bin/pylint traveller_stellar_gen.py
+.venv/bin/pylint src/traveller_gen/traveller_stellar_gen.py
 ```
 
 Multi-file runs will show R0801 (duplicate-code) due to shared HTML boilerplate in `traveller_system_gen.py` and `traveller_world_gen.py`. This is expected — the code is intentionally kept separate (different data structures) and the per-file target is what matters.
@@ -1280,18 +1298,9 @@ Common inline suppression comments used in this codebase (with `# pylint: disabl
 ### Static type checking (Pyright / Pylance)
 
 `pyrightconfig.json` in the project root configures Pyright (and the Pylance VS Code
-extension) to treat the project root as an extra import path:
-
-```json
-{
-  "pythonVersion": "3.11",
-  "extraPaths": ["."]
-}
-```
-
-This mirrors what `conftest.py` does at pytest runtime via `sys.path.insert(0, ...)`,
-ensuring that `from traveller_belt_physical import ...` resolves in both the IDE and
-under static analysis.
+extension). After `pip install -e .`, the `traveller_gen` package is installed in editable
+mode and Pyright resolves all `from traveller_gen.*` imports automatically via the
+`.pth` file in `.venv/lib/`.
 
 Type checking mode is `"basic"` (set in `.vscode/settings.json`). Test files target Pyright-clean output. Run a check with:
 

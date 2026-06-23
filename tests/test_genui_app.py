@@ -104,7 +104,7 @@ def app_win(qtbot, fake_settings, no_webengine):
 @pytest.fixture(scope="session")
 def sample_system():
     """Session-scoped TravellerSystem used by map/survey window tests."""
-    from traveller_system_gen import generate_full_system  # noqa: PLC0415
+    from traveller_gen.traveller_system_gen import generate_full_system  # noqa: PLC0415
     return generate_full_system("Testworld", seed=42)
 
 
@@ -112,6 +112,18 @@ def sample_system():
 def system_app_win(app_win):
     """AppWindow that has already run a full-system generation with seed 1."""
     app_win._opt_full_system = True
+    app_win._seed_entry.setText("1")
+    app_win._generate_btn.click()
+    yield app_win
+    for w in list(app_win._survey_windows) + list(app_win._map_windows):
+        w.close()
+
+
+@pytest.fixture
+def social_system_app_win(app_win):
+    """AppWindow with full system + social detail enabled, seed 1."""
+    app_win._opt_full_system = True
+    app_win._opt_social_detail = True
     app_win._seed_entry.setText("1")
     app_win._generate_btn.click()
     yield app_win
@@ -742,13 +754,13 @@ class TestSystemMapWindow:
         assert win.windowTitle().startswith("System Map")
 
     def test_map_window_initial_palette_is_dark(self, qtbot, no_webengine, sample_system):
-        from system_map import PALETTE_DARK  # noqa: PLC0415
+        from traveller_gen.system_map import PALETTE_DARK  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         assert win._palette is PALETTE_DARK
 
     def test_theme_toggle_switches_to_light_palette(self, qtbot, no_webengine, sample_system):
-        from system_map import PALETTE_LIGHT  # noqa: PLC0415
+        from traveller_gen.system_map import PALETTE_LIGHT  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_theme()
@@ -761,7 +773,7 @@ class TestSystemMapWindow:
         assert win._theme_btn.text() == "Dark Theme"
 
     def test_theme_double_toggle_returns_to_dark(self, qtbot, no_webengine, sample_system):
-        from system_map import PALETTE_DARK  # noqa: PLC0415
+        from traveller_gen.system_map import PALETTE_DARK  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_theme()
@@ -889,3 +901,63 @@ class TestHeaderButtons:
     def test_map_click_is_noop_without_system(self, app_win):
         app_win._on_map_clicked()
         assert len(app_win._map_windows) == 0
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 14. Social detail and cultural profile
+# ════════════════════════════════════════════════════════════════════════════
+
+import re as _re  # noqa: E402
+
+
+class TestSocialDetailGeneration:
+    """Verify culture_detail is generated (or absent) based on _opt_social_detail."""
+
+    def test_culture_detail_none_without_social_detail(self, system_app_win):
+        assert system_app_win._current_world.culture_detail is None
+
+    def test_culture_detail_present_with_social_detail(self, social_system_app_win):
+        assert social_system_app_win._current_world.culture_detail is not None
+
+    def test_cultural_profile_format(self, social_system_app_win):
+        profile = social_system_app_win._current_world.culture_detail.cultural_profile
+        assert _re.fullmatch(r"[0-9A-Z]{4}-[0-9A-Z]{4}", profile)
+
+    def test_all_trait_values_at_least_one(self, social_system_app_win):
+        cd = social_system_app_win._current_world.culture_detail
+        for attr in ("diversity", "xenophilia", "uniqueness", "symbology",
+                     "cohesion", "progressiveness", "expansionism", "militancy"):
+            assert getattr(cd, attr) >= 1, f"{attr} < 1"
+
+    def test_culture_section_in_mainworld_html(self, social_system_app_win):
+        html = social_system_app_win._current_world.to_html()
+        assert "Culture detail" in html
+
+    def test_culture_section_absent_without_social_detail(self, system_app_win):
+        html = system_app_win._current_world.to_html()
+        assert "Culture detail" not in html
+
+    # -- importance_detail --
+
+    def test_importance_detail_none_without_social_detail(self, system_app_win):
+        assert system_app_win._current_world.importance_detail is None
+
+    def test_importance_detail_present_with_social_detail(self, social_system_app_win):
+        assert social_system_app_win._current_world.importance_detail is not None
+
+    def test_importance_equals_sum_of_dms(self, social_system_app_win):
+        imp = social_system_app_win._current_world.importance_detail
+        expected = (
+            imp.starport_dm + imp.population_dm + imp.tech_dm
+            + imp.agricultural_dm + imp.industrial_dm + imp.rich_dm
+            + imp.base_dm + imp.waystation_dm
+        )
+        assert imp.importance == expected
+
+    def test_importance_row_in_mainworld_html(self, social_system_app_win):
+        html = social_system_app_win._current_world.to_html()
+        assert "World importance" in html
+
+    def test_importance_row_absent_without_social_detail(self, system_app_win):
+        html = system_app_win._current_world.to_html()
+        assert "World importance" not in html

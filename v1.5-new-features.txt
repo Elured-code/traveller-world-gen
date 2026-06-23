@@ -506,9 +506,57 @@ the generation controls, matching the options already available in the app. When
 ticked, the generator rolls eccentricity and inclination as described in the World
 Builder's Handbook. Both settings are remembered between sessions.
 
+WORLD ECONOMIC PROFILE
+----------------------
+Each inhabited mainworld now displays a full economic breakdown in the world card:
+
+- Labour Factor — the size of the available workforce (population code minus one).
+- Infrastructure Factor — the level of supporting infrastructure, based on world
+  importance and population.
+- Efficiency Factor — a die-rolled measure of economic efficiency (range −5 to +5).
+  Affected by government type, law level, cultural progressiveness, and expansionism.
+- Resource Units — the combined economic productivity index (RF × LF × IF × EF).
+- GWP Base Value — foundation for gross world product, combining infrastructure
+  and resource factors.
+- GWP Per Capita — gross world product per person, in Credits.
+- Total GWP — total planetary gross world product, in MCr (millions of Credits).
+- Development Score — a normalised economic development index.
+- Economics Profile — compact one-line summary such as "765+2" showing resource,
+  labour, and infrastructure factors in eHex notation followed by the signed
+  efficiency factor.
+
+WORLD IMPORTANCE SCORE
+----------------------
+Each inhabited mainworld now shows its World Importance score in the culture detail
+section of the world card. The score is a signed integer (typically −3 to +6)
+calculated from starport quality, population, tech level, and the presence of
+Agricultural, Industrial, and Rich trade codes, two or more military/naval bases,
+and X-Boat waystation facilities. Values above +3 are displayed in bold as a visual
+indicator of high importance. The score is fully deterministic — the same world
+always produces the same importance value.
+
+WORLD CARD — T5 CULTURAL EXTENSION (Cx)
+----------------------------------------
+The world card culture detail section now displays the T5 Cultural Extension (Cx)
+code alongside the WBH cultural profile. The Cx is a four-character code (in eHex:
+0–9 and A–F) that encodes the four core cultural traits (Diversity, Xenophilia,
+Uniqueness, Symbology) in a format compatible with T5 and TravellerMap. For
+example, a world might show "Cultural Extension (T5): 7567".
+
+- When reading a world from TravellerMap, the Cx value is automatically converted
+  to cultural traits using the standard T5 mapping rules.
+- When generating a world procedurally, the Cx is computed from the rolled traits
+  and displayed for reference.
+- All inhabited worlds receive a Cx value; uninhabited worlds display "0000".
+
 
 BUG FIXES
 ---------
+- Fixed: When connected to Azure Application Insights, request telemetry
+  timestamps were hardcoded with zero milliseconds (.000Z), making all requests
+  within the same second indistinguishable in the `requests` table. This prevented
+  waterfall/sequence correlation of parallel requests. Timestamps now capture
+  microsecond precision and preserve request ordering.
 - Fixed: Gas-atmosphere worlds (Gas-Helium and Gas-Hydrogen environments produced
   by the non-habitable-zone atmosphere tables) could previously appear as inhabited
   secondary worlds. These worlds have no solid surface and cannot support colonists

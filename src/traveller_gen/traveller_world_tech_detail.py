@@ -10,9 +10,10 @@ Implements:
     Environmental
   - Transportation sub-TLs: Land, Sea, Air, Space
   - Military sub-TLs: Personal, Heavy
-  - Technology profile string in WBH format H-L-QQQQQ-TTTT-MM
+  - Technology profile string in WBH format H-L-QQQQQ-TTTT-MM-N
 
-Novelty TL is deferred to issue #TBD (WBH §5 procedure not yet transcribed).
+Novelty TL (issue #154): placeholder only — set to tl_high_common.
+  The full WBH §5 per-nation Novelty procedure has not yet been transcribed.
 
 Licence
 -------
@@ -35,7 +36,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from traveller_system_gen import TravellerSystem
+    from .traveller_system_gen import TravellerSystem
 
 _rng: random.Random = random  # type: ignore[assignment]
 
@@ -136,8 +137,10 @@ class TechDetail:  # pylint: disable=too-many-instance-attributes
     # Military sub-TLs
     tl_military_personal:  int
     tl_military_heavy:     int
+    # Novelty TL (issue #154: placeholder = tl_high_common until WBH §5 procedure transcribed)
+    tl_novelty:            int
     # Profile
-    technology_profile:    str   # "H-L-QQQQQ-TTTT-MM"
+    technology_profile:    str   # "H-L-QQQQQ-TTTT-MM-N"
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-compatible dict."""
@@ -155,6 +158,7 @@ class TechDetail:  # pylint: disable=too-many-instance-attributes
             "tl_space":             self.tl_space,
             "tl_military_personal": self.tl_military_personal,
             "tl_military_heavy":    self.tl_military_heavy,
+            "tl_novelty":           self.tl_novelty,
             "technology_profile":   self.technology_profile,
         }
 
@@ -175,6 +179,7 @@ class TechDetail:  # pylint: disable=too-many-instance-attributes
             tl_space=int(d.get("tl_space", 0)),
             tl_military_personal=int(d.get("tl_military_personal", 0)),
             tl_military_heavy=int(d.get("tl_military_heavy", 0)),
+            tl_novelty=int(d.get("tl_novelty", 0)),
             technology_profile=str(d.get("technology_profile", "")),
         )
 
@@ -417,14 +422,21 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     tl_military_heavy = _sub_tl(0, tl_manufacturing, heavy_dm, base=tl_manufacturing)
 
     # ------------------------------------------------------------------
-    # Technology profile: H-L-QQQQQ-TTTT-MM
+    # Novelty TL (issue #154) — placeholder: max local TL.
+    # Replace with the actual WBH §5 per-nation procedure when transcribed.
+    # ------------------------------------------------------------------
+    tl_novelty = tl_high
+
+    # ------------------------------------------------------------------
+    # Technology profile: H-L-QQQQQ-TTTT-MM-N
     # ------------------------------------------------------------------
     technology_profile = (
         f"{_ehex(tl_high)}-{_ehex(tl_low)}-"
         f"{_ehex(tl_energy)}{_ehex(tl_electronics)}{_ehex(tl_manufacturing)}"
         f"{_ehex(tl_medical)}{_ehex(tl_environmental)}-"
         f"{_ehex(tl_land)}{_ehex(tl_sea)}{_ehex(tl_air)}{_ehex(tl_space)}-"
-        f"{_ehex(tl_military_personal)}{_ehex(tl_military_heavy)}"
+        f"{_ehex(tl_military_personal)}{_ehex(tl_military_heavy)}-"
+        f"{_ehex(tl_novelty)}"
     )
 
     return TechDetail(
@@ -441,6 +453,7 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
         tl_space=tl_space,
         tl_military_personal=tl_military_personal,
         tl_military_heavy=tl_military_heavy,
+        tl_novelty=tl_novelty,
         technology_profile=technology_profile,
     )
 

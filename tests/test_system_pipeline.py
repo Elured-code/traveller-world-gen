@@ -3,8 +3,8 @@ import random
 
 import pytest
 
-from system_pipeline import PipelineOptions, run_detail_pipeline
-from traveller_system_gen import generate_full_system
+from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline
+from traveller_gen.traveller_system_gen import generate_full_system
 
 
 def _system(seed=42, **kwargs):
