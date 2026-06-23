@@ -18,6 +18,13 @@ from PyInstaller.utils.hooks import collect_data_files
 # Unset on all other platforms → None → native arch.
 _target_arch = os.environ.get("TARGET_ARCH") or None
 
+# Platform icon — committed to gen-ui/icons/
+_icon = (
+    "gen-ui/icons/icon.icns" if sys.platform == "darwin"
+    else "gen-ui/icons/icon.ico" if sys.platform == "win32"
+    else "gen-ui/icons/icon.png"
+)
+
 # ---------------------------------------------------------------------------
 # QtWebEngine support
 # ---------------------------------------------------------------------------
@@ -116,6 +123,7 @@ exe = EXE(
     target_arch=_target_arch,
     codesign_identity=None,
     entitlements_file=None,
+    icon=_icon,
 )
 
 coll = COLLECT(
@@ -131,7 +139,7 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name="TravellerWorldGen.app",
-    icon=None,
+    icon="gen-ui/icons/icon.icns",
     bundle_identifier="com.elured.traveller-world-gen",
-    version="1.4.0",
+    version="1.5.37",
 )

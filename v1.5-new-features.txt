@@ -551,8 +551,29 @@ example, a world might show "Cultural Extension (T5): 7567".
 - All inhabited worlds receive a Cx value; uninhabited worlds display "0000".
 
 
+APP ICON AND FAVICON
+--------------------
+The gen-ui desktop application now shows an icon on the macOS Dock, the Windows
+taskbar, and the Linux window manager titlebar. The FastAPI web pages (system
+generator and mainworld-only pages) also show a planet icon in the browser tab.
+
+The icon shows a stylised planet with a glowing atmosphere and an orbital ring,
+on a dark space background.
+
+SURVEY FORM — CLASS II/III OPTION NOW AVAILABLE
+------------------------------------------------
+The Survey Form dropdown in the FastAPI web UI now offers both form types:
+"Class 0/I Survey" and "Class II/III Survey". Previously only the Class 0/I
+form was selectable (the Class II/III option was missing from the dropdown),
+even though the API had always returned both forms.
+
 BUG FIXES
 ---------
+- Fixed: TravellerMap canonical worlds (fetched from TravellerMap.com) had
+  their population, government, law level, starport, tech level, and trade codes
+  overwritten by procedural dice rolls when the full detail pipeline ran. The
+  canonical UWP is now preserved exactly as returned by TravellerMap.
+
 - Fixed: When connected to Azure Application Insights, request telemetry
   timestamps were hardcoded with zero milliseconds (.000Z), making all requests
   within the same second indistinguishable in the `requests` table. This prevented

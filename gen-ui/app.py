@@ -1321,8 +1321,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         if self._generate_btn is not None:
             self._generate_btn.setEnabled(True)
         if self._pending_full_system:
+            rng = (
+                random.Random(self._pending_seed)
+                if self._pending_rng is None and self._pending_seed is not None
+                else self._pending_rng
+            )
             self._finish_system_generation(
-                system, self._pending_attach_detail, rng=self._pending_rng,
+                system, self._pending_attach_detail, rng=rng,
             )
         else:
             world = system.mainworld  # type: ignore[attr-defined]

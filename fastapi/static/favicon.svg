@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="pg" cx="42%" cy="36%" r="60%">
+      <stop offset="0%"   stop-color="#6ab8e8"/>
+      <stop offset="40%"  stop-color="#2060b0"/>
+      <stop offset="100%" stop-color="#091c42"/>
+    </radialGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="64" height="64" rx="12" fill="#0b1524"/>
+  <!-- Stars -->
+  <circle cx="10" cy="10" r="1.2" fill="#fff" opacity="0.8"/>
+  <circle cx="54" cy="12" r="0.9" fill="#fff" opacity="0.7"/>
+  <circle cx="8"  cy="54" r="0.8" fill="#fff" opacity="0.6"/>
+  <circle cx="56" cy="55" r="1"   fill="#fff" opacity="0.7"/>
+  <circle cx="50" cy="6"  r="0.6" fill="#fff" opacity="0.5"/>
+  <!-- Orbital ring – back arc (drawn behind planet) -->
+  <path d="M 10 38 A 22 6 0 0 0 54 38" fill="none" stroke="#c0ccdc" stroke-width="2.2" opacity="0.4"/>
+  <!-- Planet -->
+  <circle cx="32" cy="32" r="18" fill="url(#pg)"/>
+  <!-- Atmosphere rim -->
+  <circle cx="32" cy="32" r="18" fill="none" stroke="#4a90d8" stroke-width="2" opacity="0.35"/>
+  <!-- Orbital ring – front arc (drawn in front of planet) -->
+  <path d="M 10 38 A 22 6 0 0 1 54 38" fill="none" stroke="#d8e0ec" stroke-width="2.2" opacity="0.85"/>
+</svg>

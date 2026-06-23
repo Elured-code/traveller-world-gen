@@ -107,6 +107,8 @@ re-run outcome alongside the original.
 | UAT-037 | Generate without name or hex shows error | TravellerMap source; sector entered; name and hex fields empty | Click "Generate" | Error message "Enter a world name or hex for TravellerMap lookup." | |
 | UAT-038 | Ambiguous world name shows disambiguation dialog | TravellerMap source; internet available | Enter a sector and a name matching multiple worlds | Disambiguation dialog appears listing candidate worlds; selecting one proceeds to generation | |
 | UAT-039 | TravellerMap result shows canonical UWP in orbit table | TravellerMap source; "System detail" checked; internet available | Fetch a known world | Mainworld orbit slot shows the canonical UWP from TravellerMap, not a procedurally generated one | |
+| UAT-100 | Aegir (Solomani Rim 1339) UWP preserved after full pipeline | TravellerMap source; "System detail" + "Social detail" both checked; internet available | Enter sector "Solomani Rim", name "Aegir"; click "Generate" | World card shows UWP **A76A885-D** exactly; starport A, pop 8, gov 8, law 5, TL 13 — none overwritten by procedural dice | |
+| UAT-101 | Aegir UWP deterministic across multiple seeds | TravellerMap source; "System detail" checked; internet available | Fetch Aegir; note UWP; change seed; fetch again | UWP **A76A885-D** displayed identically on every fetch regardless of seed | |
 
 ---
 

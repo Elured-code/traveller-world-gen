@@ -1,7 +1,7 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-06-23 (Session 138)  
-**Branch:** `test/packaging-generation-tools` · **Main:** `main`  
+**Last updated:** 2026-06-23 (Session 139)  
+**Branch:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
 This file is a router. Read `context/common.md` first on every session, then

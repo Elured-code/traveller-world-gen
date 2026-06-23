@@ -273,9 +273,12 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
             _attach_physical(system, rng, options.runaway_greenhouse)
 
     if system.mainworld is not None:
-        apply_mainworld_social(
-            system.mainworld, rng=rng, settlement_type=options.settlement_type,
-        )
+        mw_orbit = system.mainworld_orbit
+        _is_canonical = mw_orbit is not None and bool(mw_orbit.canonical_profile)
+        if not _is_canonical:
+            apply_mainworld_social(
+                system.mainworld, rng=rng, settlement_type=options.settlement_type,
+            )
         if options.want_detail:
             attach_resource_factor(system, rng=rng)
 

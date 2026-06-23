@@ -1,8 +1,33 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–138
-**Tests:** 2843
+**Sessions:** 88–139
+**Tests:** 2871
+
+---
+
+## TravellerMap Canonical UWP Preservation — Issue #160 (Session 139)
+
+**Bug:** `run_detail_pipeline()` called `apply_mainworld_social()` unconditionally, rolling fresh dice that overwrote canonical social UWP digits (population, government, law level, starport, tech level, trade codes) for TravellerMap fetched worlds.
+
+**Fix:** `run_detail_pipeline()` now checks `mw_orbit.canonical_profile` before calling `apply_mainworld_social()`. This field is set to the canonical UWP string in `traveller_map_fetch.reconstruct_world()` when building from TravellerMap data; procedurally generated worlds leave it empty so the guard has no effect on the normal path.
+
+**Root cause of test failures:** `conftest.py` inserts `azure-api/` at the front of `sys.path` so Azure/FastAPI test modules can import without a package install. Since `azure-api/traveller_gen/` is a complete copy of the package, pytest was importing `system_pipeline` from there (which lacked the fix) rather than from `src/`. Fixed by applying the same guard to `azure-api/traveller_gen/system_pipeline.py`.
+
+**gen-ui RNG fix:** `_on_worker_result()` now constructs `random.Random(seed)` when `_pending_rng is None` (TravellerMap path), preventing the full detail pipeline from running with un-seeded global random.
+
+28 new regression tests in `tests/test_map_fetch_canonical.py` (Aegir, Solomani Rim 1339, UWP A76A885-D).
+
+## Class II/III Survey Form Dropdown — Issue #164 (Session 139)
+
+`fastapi/static/system.html` was missing the `Class II/III Survey` `<option>` in the survey type `<select>` element. The `showTabs()` calls also only passed `class0i` HTML, never `class2iii`. Both fixed; the dropdown now offers both survey form types.
+
+## App Icon & Favicon — Issue #158 (Session 139)
+
+- New `fastapi/static/favicon.svg` — planet with orbital ring on dark space background.
+- `<link rel="icon">` added to `system.html` and `index.html`.
+- New `gen-ui/icons/icon.icns` / `icon.ico` / `icon.png` generated from the SVG via `scripts/make_icons.py` (uses `rsvg-convert`).
+- `traveller_gen_ui.spec`: `icon=_icon` added to `EXE` block; `icon="gen-ui/icons/icon.icns"` set in `BUNDLE` block; `version` corrected from stale `"1.4.0"` to current value.
 
 ---
 
