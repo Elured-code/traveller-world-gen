@@ -535,9 +535,28 @@ and X-Boat waystation facilities. Values above +3 are displayed in bold as a vis
 indicator of high importance. The score is fully deterministic — the same world
 always produces the same importance value.
 
+WORLD CARD — T5 CULTURAL EXTENSION (Cx)
+----------------------------------------
+The world card culture detail section now displays the T5 Cultural Extension (Cx)
+code alongside the WBH cultural profile. The Cx is a four-character code (in eHex:
+0–9 and A–F) that encodes the four core cultural traits (Diversity, Xenophilia,
+Uniqueness, Symbology) in a format compatible with T5 and TravellerMap. For
+example, a world might show "Cultural Extension (T5): 7567".
+
+- When reading a world from TravellerMap, the Cx value is automatically converted
+  to cultural traits using the standard T5 mapping rules.
+- When generating a world procedurally, the Cx is computed from the rolled traits
+  and displayed for reference.
+- All inhabited worlds receive a Cx value; uninhabited worlds display "0000".
+
 
 BUG FIXES
 ---------
+- Fixed: When connected to Azure Application Insights, request telemetry
+  timestamps were hardcoded with zero milliseconds (.000Z), making all requests
+  within the same second indistinguishable in the `requests` table. This prevented
+  waterfall/sequence correlation of parallel requests. Timestamps now capture
+  microsecond precision and preserve request ordering.
 - Fixed: Gas-atmosphere worlds (Gas-Helium and Gas-Hydrogen environments produced
   by the non-habitable-zone atmosphere tables) could previously appear as inhabited
   secondary worlds. These worlds have no solid surface and cannot support colonists

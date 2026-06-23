@@ -1,8 +1,40 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–134
-**Tests:** 2613
+**Sessions:** 88–135
+**Tests:** 2629
+
+---
+
+## T5 Cultural Extension (Cx) Forward Conversion — Issue #141 (Session 135)
+
+T5 Cx HASS string is now computed for every inhabited world and displayed in the
+world card Culture section. The forward conversion (rolled DXUS traits → HASS) applies
+WBH p.254 clamping rules and is exposed via a new `_compute_cx()` helper:
+
+- H (Heterogeneity) ← Diversity clamped to [max(1, Pop−5), Pop+5]
+- A (Acceptance) ← Xenophilia clamped to [max(1, Imp+Pop−5), Imp+Pop+5]
+- S (Strangeness) ← round(Uniqueness × 2/3)
+- S2 (Symbols) ← Symbology clamped to [max(1, TL−5), TL+5]
+
+`generate_culture_detail()` gains an `importance: int = 0` parameter; both standard
+and Cx-derived cultures compute Cx. `CultureDetail` gains a `cultural_extension: str`
+field (serializable). World card displays "Cultural Extension (T5)" row when non-empty.
+**Schema change:** `culture_detail.cultural_extension` property added (string, 4 eHex chars).
+Patch version bump: 1.5.32 → 1.5.33.
+
+## App Insights Request Timestamp Precision — Issue #153 (Session 135)
+
+The `_ai_post_request()` telemetry handler in `fastapi/app.py` previously hardcoded
+`.000Z` milliseconds, resulting in all requests within the same wall-clock second
+receiving identical timestamps. Fixed to use microsecond precision:
+`datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"`.
+This preserves request order in burst scenarios (e.g., parallel UI requests).
+
+## Closed Issues (Session 135)
+
+**#154** (Novelty TL placeholder) and **#145** (Tidal lock braking fix) were already
+implemented in prior sessions. No code changes; issues closed as completed.
 
 ---
 
