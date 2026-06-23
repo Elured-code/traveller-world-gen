@@ -454,6 +454,31 @@
   </div>
   {% endif %}
 
+  {% if ctx.military_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Military detail</p>
+    {{ drow("Military profile", ctx.military_detail.military_profile, highlight=true) }}
+    {{ drow("State of readiness", ctx.military_detail.state_of_readiness) }}
+    {{ drow("Military budget", "{:.2f}".format(ctx.military_detail.military_budget_pct) ~ "% of GWP") }}
+    {{ drow("Budget (MCr)", "{:,.0f}".format(ctx.military_detail.military_budget_total_mcr)) }}
+    {% set bmap = [
+        ("Enforcement",    ctx.military_detail.enforcement),
+        ("Militia",        ctx.military_detail.militia),
+        ("Army",           ctx.military_detail.army),
+        ("Wet Navy",       ctx.military_detail.wet_navy),
+        ("Air Force",      ctx.military_detail.air_force),
+        ("System Defence", ctx.military_detail.system_defence),
+        ("Navy",           ctx.military_detail.navy),
+        ("Marines",        ctx.military_detail.marines),
+    ] %}
+    {% for label, branch in bmap %}
+    {% if branch.exists %}
+    {{ drow(label, "Effect " ~ branch.effect|string) }}
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if ctx.pop_detail is not none %}
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Population detail</p>

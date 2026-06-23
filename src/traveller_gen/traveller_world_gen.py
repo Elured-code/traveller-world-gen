@@ -1569,6 +1569,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                                     # WBH §8 starport detail: traffic, docking, shipyard.
                                     # Set by attach_starport_detail() (Session 137, issue #101).
                                     # None by default; only set when "Social detail" enabled.
+    military_detail:   Optional["MilitaryDetail"]   = field(default=None, init=False)
+                                    # WBH §9 military characteristics: branches, budget, profile.
+                                    # Set by attach_military_detail() (Session 138, issue #102).
+                                    # None by default; only set when "Social detail" enabled.
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1694,6 +1698,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.importance_detail is not None else {}),
             **({"starport_detail": self.starport_detail.to_dict()}
                if self.starport_detail is not None else {}),
+            **({"military_detail": self.military_detail.to_dict()}
+               if self.military_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1892,6 +1898,9 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("importance_detail") is not None:
             from .traveller_world_importance import WorldImportance as _WI  # pylint: disable=import-outside-toplevel
             world.importance_detail = _WI.from_dict(d["importance_detail"])
+        if d.get("military_detail") is not None:
+            from .traveller_world_military_detail import MilitaryDetail as _MD  # pylint: disable=import-outside-toplevel
+            world.military_detail = _MD.from_dict(d["military_detail"])
 
         return world
 
@@ -2199,6 +2208,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "culture_detail": world.culture_detail,
         "importance_detail": world.importance_detail,
         "starport_detail": world.starport_detail,
+        "military_detail": world.military_detail,
         "resource_factor": (
             getattr(world.size_detail, "resource_factor", None)
             if world.size_detail is not None else None

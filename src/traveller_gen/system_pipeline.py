@@ -34,6 +34,7 @@ from .traveller_world_tech_detail import attach_tech_detail
 from .traveller_world_culture_detail import attach_culture_detail
 from .traveller_world_importance import attach_importance_detail
 from .traveller_world_starport_detail import attach_starport_detail
+from .traveller_world_military_detail import attach_military_detail
 from .traveller_system_gen import select_mainworld, attach_body_names
 
 
@@ -295,3 +296,4 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
         attach_culture_detail(system, rng=rng)
         attach_importance_detail(system, rng=rng)
         attach_starport_detail(system, rng=rng)
+        attach_military_detail(system, rng=rng)
