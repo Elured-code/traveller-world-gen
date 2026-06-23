@@ -240,6 +240,9 @@ STARPORT_QUALITY = {
 # Tech Level DMs from various characteristics (p.258-259)
 # Starport DMs
 STARPORT_TL_DM = {"A": 6, "B": 4, "C": 2, "D": 1, "E": 1, "X": -4}
+# Minimum UWP TL enforced by starport class (WBH §3 p.193).
+# Class A (stellar shipyards) requires TL 9+; Class B requires TL 8+.
+STARPORT_MIN_TL = {"A": 9, "B": 8}
 
 # Size DMs for TL
 SIZE_TL_DM = {0: 2, 1: 2, 2: 1, 3: 1, 4: 1}   # codes ≥5 give +0
@@ -2415,7 +2418,8 @@ def generate_tech_level(  # pylint: disable=too-many-arguments,too-many-position
     # Government DMs (some governments accelerate or suppress technology)
     dm += GOVERNMENT_TL_DM.get(government, 0)
 
-    return max(0, roll(1, dm))
+    result = max(0, roll(1, dm))
+    return max(result, STARPORT_MIN_TL.get(starport, 0))
 
 
 # ---------------------------------------------------------------------------

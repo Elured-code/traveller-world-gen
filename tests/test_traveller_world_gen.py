@@ -1732,6 +1732,30 @@ class TestGenerateTechLevel:
             result = generate_tech_level("X", 5, 6, 5, 0, 13)
             assert result >= 0
 
+    def test_class_a_floor_enforced(self):
+        # Class A minimum TL is 9 regardless of dice.
+        # With roll=1: 1 + 6(A) + 0+0+0+1+1 = 9, so floor is not triggered here.
+        # Force a very low roll via starport X penalty then re-test with A.
+        # Simulate floor: use pop 0 (DM+0), gov 13 (DM-2), size 5, atm 6, hydro 5.
+        # Roll 1: 1 + 6(A) + 0 + 0 + 0 + 0 + (-2) = 5 → floor kicks in → 9
+        with fixed_roll(1):
+            result = generate_tech_level("A", 5, 6, 5, 0, 13)
+            assert result == 9
+
+    def test_class_b_floor_enforced(self):
+        # Class B minimum TL is 8 regardless of dice.
+        # Roll 1: 1 + 4(B) + 0 + 0 + 0 + 0 + (-2) = 3 → floor kicks in → 8
+        with fixed_roll(1):
+            result = generate_tech_level("B", 5, 6, 5, 0, 13)
+            assert result == 8
+
+    def test_class_a_floor_not_triggered_when_roll_is_high(self):
+        # When the natural result exceeds the floor, the roll wins.
+        # Roll 3: 3 + 6(A) + 0 + 0 + 0 + 1 + 1 = 11 → no floor needed
+        with fixed_roll(3):
+            result = generate_tech_level("A", 5, 6, 5, 5, 5)
+            assert result == 11
+
 
 # ===========================================================================
 # TestAssignTradeCodes
