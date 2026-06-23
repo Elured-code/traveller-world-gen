@@ -10,10 +10,12 @@ factor is also deterministic (Population code − 1, min 0).  Infrastructure
 factor adds dice: importance + 1D (pop 4–6) or +2D (pop 7+), with a floor of
 None (no infrastructure) when the result would be < 0 or population is 0.
 
-Implements (Session 132–133, issues #155):
+Implements (Sessions 132–133, 135, issues #155, #100):
   - WorldImportance dataclass with 8 DM components + labour + infrastructure
   - generate_importance_detail() — importance and labour deterministic;
     infrastructure rolls 0–2 dice depending on population
+  - compute_inequality_rating() — 2D roll + government/law/PCR/IF DMs
+  - compute_world_trade_number() — deterministic from population, TL, starport
   - attach_importance_detail() — applies to mainworld only
 
 Licence
@@ -33,7 +35,7 @@ The human author reviewed, directed, and is responsible for the code.
 # pylint: disable=wrong-import-position,import-error,locally-disabled,suppressed-message
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -76,6 +78,8 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
     gwp_total_mcr:         Optional[float] # total GWP in MCr; None before attach
     development_score:     Optional[float]  # (GWP_pc/1000)×(1−IR/100); None before attach
     economics_profile:     Optional[str]   # e.g. "765+2" — RF/LF/IF eHex + EF signed
+    inequality_rating:     Optional[int]   = field(default=None)  # 0–100; 50=neutral; dice roll
+    world_trade_number:    Optional[int]   = field(default=None)  # eHex int; deterministic
 
     @property
     def importance_str(self) -> str:
@@ -116,6 +120,10 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
             d["development_score"] = self.development_score
         if self.economics_profile is not None:
             d["economics_profile"] = self.economics_profile
+        if self.inequality_rating is not None:
+            d["inequality_rating"] = self.inequality_rating
+        if self.world_trade_number is not None:
+            d["world_trade_number"] = self.world_trade_number
         return d
 
     @classmethod
@@ -161,6 +169,14 @@ class WorldImportance:  # pylint: disable=too-many-instance-attributes
                 if d.get("development_score") is not None else None
             ),
             economics_profile=d.get("economics_profile"),
+            inequality_rating=(
+                int(d["inequality_rating"])
+                if d.get("inequality_rating") is not None else None
+            ),
+            world_trade_number=(
+                int(d["world_trade_number"])
+                if d.get("world_trade_number") is not None else None
+            ),
         )
 
 
@@ -466,6 +482,105 @@ def compute_development_score(gwp_per_capita: int, inequality_rating: int = 0) -
 
 
 # ---------------------------------------------------------------------------
+# Inequality rating
+# ---------------------------------------------------------------------------
+
+_IR_GOV_PLUS10  = frozenset({6, 11, 15})      # gov 6, B, F
+_IR_GOV_PLUS5   = frozenset({0, 1, 3, 9, 12}) # gov 0, 1, 3, 9, C
+_IR_GOV_MINUS5  = frozenset({4, 8})            # gov 4, 8
+_IR_GOV_MINUS10 = frozenset({2})               # gov 2
+
+
+def compute_inequality_rating(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    efficiency_factor: int,
+    government: int,
+    law_level: int,
+    pcr: int,
+    infrastructure_factor: Optional[int],
+    rng: Optional[random.Random] = None,
+) -> int:
+    """Compute the world inequality rating (WBH Social Characteristics).
+
+    Inequality Rating = 50 − (EF × 5) + (2D−7) × 2 + DMs
+    Result clamped to [0, 100].  50 = perfectly equal baseline.
+    Higher values → more unequal distribution of wealth.
+    """
+    r = rng if rng is not None else _rng
+    roll = (r.randint(1, 6) + r.randint(1, 6) - 7) * 2
+
+    dm = 0
+    if government in _IR_GOV_PLUS10:
+        dm += 10
+    elif government in _IR_GOV_PLUS5:
+        dm += 5
+    elif government in _IR_GOV_MINUS5:
+        dm -= 5
+    elif government in _IR_GOV_MINUS10:
+        dm -= 10
+
+    if law_level >= 9:
+        dm += law_level - 8
+
+    dm += pcr
+
+    if infrastructure_factor is not None:
+        dm -= infrastructure_factor
+
+    return max(0, min(100, 50 - efficiency_factor * 5 + roll + dm))
+
+
+# ---------------------------------------------------------------------------
+# World Trade Number
+# ---------------------------------------------------------------------------
+
+# Base WTN TL DM thresholds
+def _wtn_tl_dm(tech_level: int) -> int:
+    if tech_level <= 1:
+        return -1
+    if tech_level <= 4:
+        return 0
+    if tech_level <= 8:
+        return 1
+    if tech_level <= 14:
+        return 2
+    return 3
+
+
+def _wtn_row(base_wtn: int) -> int:
+    """Return the 0-based row index into _WTN_PORT_TABLE for a given base WTN."""
+    bands = (1, 3, 5, 7, 9, 11, 13)
+    for idx, ceiling in enumerate(bands):
+        if base_wtn <= ceiling:
+            return idx
+    return 7
+
+
+# WTN starport modifier table indexed by [row][starport_class].
+# Rows correspond to base WTN bands: 0-1, 2-3, 4-5, 6-7, 8-9, 10-11, 12-13, 14+.
+_WTN_PORT_TABLE: list[dict[str, int]] = [
+    {"A": 3, "B": 2, "C": 2, "D":  1, "E":  1, "X":   0},  # 0–1
+    {"A": 2, "B": 2, "C": 1, "D":  1, "E":  0, "X":  -5},  # 2–3
+    {"A": 2, "B": 1, "C": 1, "D":  0, "E":  0, "X":  -5},  # 4–5
+    {"A": 1, "B": 1, "C": 0, "D":  0, "E": -1, "X":  -6},  # 6–7
+    {"A": 1, "B": 0, "C": 0, "D": -1, "E": -2, "X":  -7},  # 8–9
+    {"A": 0, "B": 0, "C":-1, "D": -2, "E": -3, "X":  -8},  # 10–11
+    {"A": 0, "B":-1, "C":-2, "D": -3, "E": -4, "X":  -9},  # 12–13
+    {"A": 0, "B":-2, "C":-3, "D": -4, "E": -5, "X": -10},  # 14+
+]
+
+
+def compute_world_trade_number(population: int, tech_level: int, starport: str) -> int:
+    """Compute the World Trade Number (WBH Social Characteristics).
+
+    WTN = Population code + TL DM + Starport DM, minimum 0.
+    Stored as a plain integer; callers display it as eHex.
+    """
+    base = population + _wtn_tl_dm(tech_level)
+    port_dm = _WTN_PORT_TABLE[_wtn_row(base)].get(starport, 0)
+    return max(0, base + port_dm)
+
+
+# ---------------------------------------------------------------------------
 # Economics profile string
 # ---------------------------------------------------------------------------
 
@@ -561,13 +676,27 @@ def attach_importance_detail(  # pylint: disable=too-many-locals
     wi.gwp_per_capita = gwp_pc   # type: ignore[attr-defined]
     wi.gwp_total_mcr  = gwp_mcr  # type: ignore[attr-defined]
 
-    ir = int(getattr(world, "inequality_rating", 0) or 0)
-    wi.development_score = compute_development_score(  # type: ignore[attr-defined]
-        gwp_pc, inequality_rating=ir,
-    )
     wi.economics_profile = compute_economics_profile(  # type: ignore[attr-defined]
         resource_factor=resource_factor,
         labour_factor=wi.labour_factor,
         infrastructure_factor=wi.infrastructure_factor,
         efficiency_factor=ef,
+    )
+
+    ir = compute_inequality_rating(
+        efficiency_factor=ef,
+        government=world.government,
+        law_level=world.law_level,
+        pcr=pcr,
+        infrastructure_factor=wi.infrastructure_factor,
+        rng=rng,
+    )
+    wi.inequality_rating = ir  # type: ignore[attr-defined]
+    wi.development_score = compute_development_score(  # type: ignore[attr-defined]
+        gwp_pc, inequality_rating=ir,
+    )
+    wi.world_trade_number = compute_world_trade_number(  # type: ignore[attr-defined]
+        population=world.population,
+        tech_level=world.tech_level,
+        starport=world.starport,
     )

@@ -62,6 +62,8 @@ if TYPE_CHECKING:
     from .traveller_world_tech_detail import TechDetail
     from .traveller_world_culture_detail import CultureDetail
     from .traveller_world_importance import WorldImportance
+    from .traveller_world_starport_detail import StarportDetail
+    from .traveller_world_military_detail import MilitaryDetail
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +242,9 @@ STARPORT_QUALITY = {
 # Tech Level DMs from various characteristics (p.258-259)
 # Starport DMs
 STARPORT_TL_DM = {"A": 6, "B": 4, "C": 2, "D": 1, "E": 1, "X": -4}
+# Minimum UWP TL enforced by starport class (WBH §3 p.193).
+# Class A (stellar shipyards) requires TL 9+; Class B requires TL 8+.
+STARPORT_MIN_TL = {"A": 9, "B": 8}
 
 # Size DMs for TL
 SIZE_TL_DM = {0: 2, 1: 2, 2: 1, 3: 1, 4: 1}   # codes ≥5 give +0
@@ -1562,6 +1567,14 @@ class World:  # pylint: disable=too-many-instance-attributes
                                     # CRB world importance score (deterministic, no dice).
                                     # Set by attach_importance_detail() (Session 132, issue #155).
                                     # None by default; only set when "Social detail" enabled.
+    starport_detail:   Optional["StarportDetail"]    = field(default=None, init=False)
+                                    # WBH §8 starport detail: traffic, docking, shipyard.
+                                    # Set by attach_starport_detail() (Session 137, issue #101).
+                                    # None by default; only set when "Social detail" enabled.
+    military_detail:   Optional["MilitaryDetail"]   = field(default=None, init=False)
+                                    # WBH §9 military characteristics: branches, budget, profile.
+                                    # Set by attach_military_detail() (Session 138, issue #102).
+                                    # None by default; only set when "Social detail" enabled.
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1685,6 +1698,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.culture_detail is not None else {}),
             **({"importance_detail": self.importance_detail.to_dict()}
                if self.importance_detail is not None else {}),
+            **({"starport_detail": self.starport_detail.to_dict()}
+               if self.starport_detail is not None else {}),
+            **({"military_detail": self.military_detail.to_dict()}
+               if self.military_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1877,9 +1894,15 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("culture_detail") is not None:
             from .traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
             world.culture_detail = _CD.from_dict(d["culture_detail"])
+        if d.get("starport_detail") is not None:
+            from .traveller_world_starport_detail import StarportDetail as _SD  # pylint: disable=import-outside-toplevel
+            world.starport_detail = _SD.from_dict(d["starport_detail"])
         if d.get("importance_detail") is not None:
             from .traveller_world_importance import WorldImportance as _WI  # pylint: disable=import-outside-toplevel
             world.importance_detail = _WI.from_dict(d["importance_detail"])
+        if d.get("military_detail") is not None:
+            from .traveller_world_military_detail import MilitaryDetail as _MD  # pylint: disable=import-outside-toplevel
+            world.military_detail = _MD.from_dict(d["military_detail"])
 
         return world
 
@@ -2117,7 +2140,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "tl_era": world._tl_era(world.tech_level),  # pylint: disable=protected-access
         "tl_era_css": world._tl_era_css(world.tech_level),  # pylint: disable=protected-access
         "starport_label": STARPORT_QUALITY_LABEL.get(world.starport, "?"),
-        "starport_detail": STARPORT_FACILITY_DETAIL.get(world.starport, ""),
+        "starport_facility": STARPORT_FACILITY_DETAIL.get(world.starport, ""),
         "size_hex": to_hex(world.size),
         "size_km": size_km,
         "size_gravity": size_gravity,
@@ -2186,6 +2209,8 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "tech_detail": world.tech_detail,
         "culture_detail": world.culture_detail,
         "importance_detail": world.importance_detail,
+        "starport_detail": world.starport_detail,
+        "military_detail": world.military_detail,
         "resource_factor": (
             getattr(world.size_detail, "resource_factor", None)
             if world.size_detail is not None else None
@@ -2405,7 +2430,8 @@ def generate_tech_level(  # pylint: disable=too-many-arguments,too-many-position
     # Government DMs (some governments accelerate or suppress technology)
     dm += GOVERNMENT_TL_DM.get(government, 0)
 
-    return max(0, roll(1, dm))
+    result = max(0, roll(1, dm))
+    return max(result, STARPORT_MIN_TL.get(starport, 0))
 
 
 # ---------------------------------------------------------------------------
@@ -2707,6 +2733,194 @@ def assign_travel_zone(atmosphere: int, government: int,
         or law_level >= 9
     )
     return "Amber" if amber else "Green"
+
+
+# ---------------------------------------------------------------------------
+# WBH §10 extended travel zone (probabilistic, requires social detail)
+# ---------------------------------------------------------------------------
+
+def _amber_zone_dm(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches
+    atmosphere: int,
+    government: int,
+    law_level: int,
+    primordial: bool,
+    mean_temp_k: Optional[int],
+    pressure_bar: Optional[float],
+    seismic_stress: Optional[int],
+    xenophilia: Optional[int],
+    militancy: Optional[int],
+    factional_uprisings: bool,
+    ongoing_war: bool,
+) -> int:
+    dm = 0
+    if primordial:
+        dm += 2
+    if atmosphere in (11, 12) or atmosphere >= 15:  # B, C, F+
+        dm += 2
+    if mean_temp_k is not None and mean_temp_k > 373:
+        dm += 2
+    if pressure_bar is not None and pressure_bar > 50.0:
+        dm += 2
+    if seismic_stress is not None and seismic_stress >= 100:
+        dm += 2
+    if government == 0:
+        dm += 4
+    elif government == 7:
+        dm += 2
+    if law_level == 0:
+        dm += 2
+    if government + law_level > 20:
+        dm += government + law_level - 16
+    if xenophilia is not None and xenophilia <= 5:
+        dm += 6 - xenophilia
+    if militancy is not None and militancy >= 9:
+        dm += militancy - 8
+    if factional_uprisings:
+        dm += 2
+    if ongoing_war:
+        dm += 4
+    return dm
+
+
+def _red_zone_dm(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    magnetar: bool,
+    pulsar: bool,
+    protostar: bool,
+    seismic_stress: Optional[int],
+    xenophilia: Optional[int],
+    militancy: Optional[int],
+    factional_uprisings: bool,
+    ongoing_war: bool,
+) -> int:
+    dm = 0
+    if magnetar:
+        dm += 10
+    if pulsar:
+        dm += 8
+    if protostar:
+        dm += 6
+    if seismic_stress is not None and seismic_stress >= 200:
+        dm += 2
+    if xenophilia is not None and 1 <= xenophilia <= 2:
+        dm += 6 - xenophilia
+    if militancy is not None and militancy >= 12:
+        dm += militancy - 8
+    if factional_uprisings:
+        dm += 2
+    if ongoing_war:
+        dm += 4
+    return dm
+
+
+def assign_travel_zone_extended(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    atmosphere: int,
+    government: int,
+    law_level: int,
+    starport: str,
+    *,
+    primordial: bool = False,
+    magnetar: bool = False,
+    pulsar: bool = False,
+    protostar: bool = False,
+    mean_temp_k: Optional[int] = None,
+    pressure_bar: Optional[float] = None,
+    seismic_stress: Optional[int] = None,
+    xenophilia: Optional[int] = None,
+    militancy: Optional[int] = None,
+    factional_uprisings: bool = False,
+    ongoing_war: bool = False,
+    rng: Optional[random.Random] = None,
+) -> str:
+    """WBH §10 probabilistic travel zone — replaces assign_travel_zone() when
+    full social detail is available.
+
+    Rolls 2D+DMs ≥ 12 independently for Red then Amber; Red takes priority.
+    Starport X is always Red regardless of rolls.
+    """
+    if starport == "X":
+        return "Red"
+
+    _r = rng if rng is not None else _rng
+
+    red_dm = _red_zone_dm(
+        magnetar=magnetar, pulsar=pulsar, protostar=protostar,
+        seismic_stress=seismic_stress, xenophilia=xenophilia,
+        militancy=militancy, factional_uprisings=factional_uprisings,
+        ongoing_war=ongoing_war,
+    )
+    if _r.randint(1, 6) + _r.randint(1, 6) + red_dm >= 12:
+        return "Red"
+
+    amber_dm = _amber_zone_dm(
+        atmosphere, government, law_level,
+        primordial=primordial, mean_temp_k=mean_temp_k,
+        pressure_bar=pressure_bar, seismic_stress=seismic_stress,
+        xenophilia=xenophilia, militancy=militancy,
+        factional_uprisings=factional_uprisings, ongoing_war=ongoing_war,
+    )
+    if _r.randint(1, 6) + _r.randint(1, 6) + amber_dm >= 12:
+        return "Amber"
+
+    return "Green"
+
+
+def attach_travel_zone_extended(  # pylint: disable=too-many-locals
+        system, rng: Optional[random.Random] = None) -> None:
+    """Overwrite mainworld travel_zone using WBH §10 extended criteria.
+
+    No-op when mainworld is None.  Requires social detail to be attached
+    for the cultural/military inputs; gracefully skips those DMs when absent.
+    """
+    mw = system.mainworld
+    if mw is None:
+        return
+
+    # Stellar flags from primary star special_notes
+    stars = system.stellar_system.stars if system.stellar_system else []
+    notes_all = " ".join(s.special_notes for s in stars if s.special_notes)
+    primordial = "Primordial" in notes_all
+    protostar  = "Protostar"  in notes_all
+    magnetar   = "Magnetar"   in notes_all
+    pulsar     = "Pulsar"     in notes_all
+
+    # Physical detail
+    mean_temp_k: Optional[int] = None
+    seismic_stress: Optional[int] = None
+    if mw.size_detail is not None and not isinstance(mw.size_detail, BeltPhysical):
+        mean_temp_k    = mw.size_detail.advanced_mean_temperature_k
+        seismic_stress = mw.size_detail.total_seismic_stress
+
+    pressure_bar: Optional[float] = None
+    if mw.atmosphere_detail is not None:
+        pressure_bar = getattr(mw.atmosphere_detail, "pressure_bar", None)
+
+    # Cultural detail
+    xenophilia: Optional[int] = None
+    militancy:  Optional[int] = None
+    if mw.culture_detail is not None:
+        xenophilia = mw.culture_detail.xenophilia
+        militancy  = mw.culture_detail.militancy
+
+    # Military readiness → factional uprisings / ongoing war
+    factional_uprisings = False
+    ongoing_war         = False
+    if mw.military_detail is not None:
+        sor = mw.military_detail.state_of_readiness
+        factional_uprisings = sor in (
+            "Heightened tensions, threat of war",
+            "War or internal insurgency",
+            "Total war: full mobilisation",
+        )
+        ongoing_war = sor in ("War or internal insurgency", "Total war: full mobilisation")
+
+    mw.travel_zone = assign_travel_zone_extended(
+        mw.atmosphere, mw.government, mw.law_level, mw.starport,
+        primordial=primordial, magnetar=magnetar, pulsar=pulsar, protostar=protostar,
+        mean_temp_k=mean_temp_k, pressure_bar=pressure_bar,
+        seismic_stress=seismic_stress, xenophilia=xenophilia, militancy=militancy,
+        factional_uprisings=factional_uprisings, ongoing_war=ongoing_war,
+        rng=rng,
+    )
 
 
 # ---------------------------------------------------------------------------

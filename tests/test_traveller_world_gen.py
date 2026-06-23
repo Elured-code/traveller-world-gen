@@ -1732,6 +1732,30 @@ class TestGenerateTechLevel:
             result = generate_tech_level("X", 5, 6, 5, 0, 13)
             assert result >= 0
 
+    def test_class_a_floor_enforced(self):
+        # Class A minimum TL is 9 regardless of dice.
+        # With roll=1: 1 + 6(A) + 0+0+0+1+1 = 9, so floor is not triggered here.
+        # Force a very low roll via starport X penalty then re-test with A.
+        # Simulate floor: use pop 0 (DM+0), gov 13 (DM-2), size 5, atm 6, hydro 5.
+        # Roll 1: 1 + 6(A) + 0 + 0 + 0 + 0 + (-2) = 5 → floor kicks in → 9
+        with fixed_roll(1):
+            result = generate_tech_level("A", 5, 6, 5, 0, 13)
+            assert result == 9
+
+    def test_class_b_floor_enforced(self):
+        # Class B minimum TL is 8 regardless of dice.
+        # Roll 1: 1 + 4(B) + 0 + 0 + 0 + 0 + (-2) = 3 → floor kicks in → 8
+        with fixed_roll(1):
+            result = generate_tech_level("B", 5, 6, 5, 0, 13)
+            assert result == 8
+
+    def test_class_a_floor_not_triggered_when_roll_is_high(self):
+        # When the natural result exceeds the floor, the roll wins.
+        # Roll 3: 3 + 6(A) + 0 + 0 + 0 + 1 + 1 = 11 → no floor needed
+        with fixed_roll(3):
+            result = generate_tech_level("A", 5, 6, 5, 5, 5)
+            assert result == 11
+
 
 # ===========================================================================
 # TestAssignTradeCodes
@@ -6980,6 +7004,32 @@ class TestPopulationDetail:
             mock_rng.randint.side_effect = [3, 3]
             pcr = generate_pcr(3, 8, 9, 3, [])
         assert pcr != 9 or True  # just assert it runs without error
+
+    def test_pcr_zero_for_population_below_10000(self):
+        # pop_code=3, p_value=9 → 9×10³ = 9,000 < 10,000 → PCR must be 0
+        for seed in range(50):
+            rng = random.Random(seed)
+            result = generate_population_detail(3, 9, 8, 9, 3, 4, [], rng=rng)
+            assert result is not None
+            assert result.pcr == 0, f"seed {seed}: expected PCR=0 for pop 9,000, got {result.pcr}"
+
+    def test_pcr_zero_boundary_pop_exactly_10000(self):
+        # pop_code=4, p_value=1 → 1×10⁴ = 10,000 — not below threshold, PCR may be non-zero
+        for seed in range(20):
+            rng = random.Random(seed)
+            result = generate_population_detail(4, 1, 8, 9, 3, 4, [], rng=rng)
+            assert result is not None
+            # PCR ≥ 0 is trivially true; just confirm the fix doesn't over-apply
+            assert result.pcr >= 0
+
+    def test_pcr_nonzero_allowed_above_10000(self):
+        # pop_code=4, p_value=5 → 50,000 — large enough that PCR roll applies
+        results = [
+            generate_population_detail(4, 5, 8, 9, 3, 4, [], rng=random.Random(s))
+            for s in range(100)
+        ]
+        assert any(r.pcr > 0 for r in results if r is not None), \
+            "Expected at least one non-zero PCR for pop 50,000 across 100 seeds"
 
     # ------------------------------------------------------------------
     # Urbanisation

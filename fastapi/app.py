@@ -97,6 +97,7 @@ import os
 import random
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 import urllib.error
 import urllib.request
@@ -138,7 +139,7 @@ try:
     from traveller_gen import _version as _ver  # type: ignore[import]
     _APP_VERSION = _ver.__version__
 except ImportError:
-    _APP_VERSION = "0.0.0+dev"
+    _APP_VERSION = "1.5.36"
 
 # FastAPI light-mode background matches the page (#f4f0e4), not pure white.
 _PALETTE_LIGHT = dataclasses.replace(PALETTE_LIGHT, bg="#f4f0e4")
@@ -272,6 +273,7 @@ _AI_UAMI_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID", "")
 _AI_TOKEN: str = ""
 _AI_TOKEN_EXPIRES: float = 0.0
 _AI_TOKEN_LOCK = threading.Lock()
+_AI_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ai-tel")
 
 
 def _get_mi_token() -> str:
@@ -300,9 +302,18 @@ def _get_mi_token() -> str:
             return ""
 
 
+def _ai_duration_str(duration_ms: float) -> str:
+    """Format milliseconds as an App Insights TimeSpan string (hh:mm:ss.fffffff)."""
+    total_s = int(duration_ms // 1000)
+    hours, rem = divmod(total_s, 3600)
+    mins, secs = divmod(rem, 60)
+    ms = int(duration_ms % 1000)
+    return f"{hours:02d}:{mins:02d}:{secs:02d}.{ms:03d}0000"
+
+
 def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> None:
     """Post one RequestData telemetry item; called from a thread pool."""
-    if status == 429:
+    if status == 429 or not _AI_INGEST:
         return
     envelope = json.dumps([{
         "name": f"Microsoft.ApplicationInsights.{_AI_IKEY}.Request",
@@ -315,10 +326,7 @@ def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> No
                 "ver": 2,
                 "id": str(uuid.uuid4()),
                 "name": name,
-                "duration": (
-                    f"00:00:{int(duration_ms // 1000):02d}"
-                    f".{int(duration_ms % 1000):03d}0000"
-                ),
+                "duration": _ai_duration_str(duration_ms),
                 "responseCode": str(status),
                 "success": status < 400,
                 "url": url,
@@ -332,11 +340,18 @@ def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> No
     req = urllib.request.Request(
         _AI_INGEST, data=envelope, headers=headers, method="POST",
     )
+    evict_token = False
     try:
         with urllib.request.urlopen(req, timeout=5):
             pass
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            evict_token = True
     except (urllib.error.URLError, OSError):
         pass
+    if evict_token:
+        global _AI_TOKEN  # pylint: disable=global-statement
+        _AI_TOKEN = ""
 
 
 class _AppInsightsMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods
@@ -346,13 +361,16 @@ class _AppInsightsMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-pub
         if not _AI_IKEY:
             return await call_next(request)
         start = time.monotonic()
-        response = await call_next(request)
-        duration_ms = (time.monotonic() - start) * 1000
-        name = f"{request.method} {request.url.path}"
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(
-            None, _ai_post_request, name, str(request.url), duration_ms, response.status_code
-        )
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+        finally:
+            duration_ms = (time.monotonic() - start) * 1000
+            name = f"{request.method} {request.url.path}"
+            asyncio.get_running_loop().run_in_executor(
+                _AI_EXECUTOR, _ai_post_request, name, str(request.url), duration_ms, status
+            )
         return response
 
 
@@ -858,6 +876,7 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
                 "sys_html": sys_html,
                 "mw_html": mw.to_html(),
                 "survey_class0i_html": system.to_survey_form_html(),
+                "survey_class2iii_html": system.to_survey_form_html_class2(),
             })
         return HTMLResponse(content=sys_html, status_code=200)
     if fmt == "text":
@@ -1428,6 +1447,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
                 "sys_html": sys_html,
                 "mw_html": mw.to_html(),
                 "survey_class0i_html": system.to_survey_form_html(),
+                "survey_class2iii_html": system.to_survey_form_html_class2(),
             })
         return HTMLResponse(content=sys_html, status_code=200)
     if fmt == "text":

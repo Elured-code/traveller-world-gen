@@ -65,7 +65,9 @@ from PySide6.QtWidgets import (  # noqa: E402
 from traveller_gen.system_map import build_svg, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
 
 
-from traveller_gen.traveller_map_fetch import AmbiguousWorldError, generate_system_from_map  # noqa: E402
+from traveller_gen.traveller_map_fetch import (  # noqa: E402
+    AmbiguousWorldError, generate_system_from_map,
+)
 from traveller_gen.traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
 from traveller_gen.traveller_world_gen import (  # noqa: E402
     World,
@@ -79,11 +81,7 @@ from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail  #
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
 from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 
-try:
-    import _version as _genui_ver  # noqa: E402
-    _DISPLAY_VERSION = _genui_ver.__version__
-except ImportError:
-    _DISPLAY_VERSION = APP_VERSION
+_DISPLAY_VERSION = APP_VERSION
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -906,16 +904,20 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 )
                 cx: str = getattr(world, "cx", "")
                 if cx:
-                    from traveller_world_culture_detail import generate_culture_detail_from_cx  # pylint: disable=import-outside-toplevel
-                    world.culture_detail = generate_culture_detail_from_cx(  # type: ignore[attr-defined]
-                        cx=cx,
-                        population=world.population,  # type: ignore[attr-defined]
-                        importance=getattr(world, "importance", 0),
-                        government=world.government,  # type: ignore[attr-defined]
-                        law_level=world.law_level,  # type: ignore[attr-defined]
-                        pcr=pcr,
-                        starport=world.starport,  # type: ignore[attr-defined]
-                        tech_level=world.tech_level,  # type: ignore[attr-defined]
+                    from traveller_world_culture_detail import (  # pylint: disable=import-outside-toplevel
+                        generate_culture_detail_from_cx,
+                    )
+                    world.culture_detail = (  # type: ignore[attr-defined]
+                        generate_culture_detail_from_cx(
+                            cx=cx,
+                            population=world.population,  # type: ignore[attr-defined]
+                            importance=getattr(world, "importance", 0),
+                            government=world.government,  # type: ignore[attr-defined]
+                            law_level=world.law_level,  # type: ignore[attr-defined]
+                            pcr=pcr,
+                            starport=world.starport,  # type: ignore[attr-defined]
+                            tech_level=world.tech_level,  # type: ignore[attr-defined]
+                        )
                     )
                 else:
                     from traveller_world_culture_detail import generate_culture_detail  # pylint: disable=import-outside-toplevel
@@ -1020,11 +1022,14 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             if self._survey_combo is not None
             else "Class 0/I Survey"
         )
-        mw = self._current_system.mainworld  # type: ignore[attr-defined]
+        system = self._current_system  # type: ignore[attr-defined]
+        mw = system.mainworld
         name = mw.name if mw else "System"
-        html = self._themed_html(
-            self._current_system.to_survey_form_html()  # type: ignore[attr-defined]
-        )
+        if form_type == "Class II/III Survey":
+            html_raw = system.to_survey_form_html_class2()
+        else:
+            html_raw = system.to_survey_form_html()
+        html = self._themed_html(html_raw)
         win = SurveyFormWindow(f"{form_type} — {name}", html)
         self._survey_windows.append(win)
         win.show()
@@ -1051,6 +1056,71 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._act_dark_mode.setChecked(self._dark_mode)
         self._act_dark_mode.triggered.connect(self._on_toggle_dark_mode)
         view_menu.addAction(self._act_dark_mode)
+
+        help_menu = self.menuBar().addMenu("&Help")
+        self._act_about = QAction("About", self)
+        self._act_about.triggered.connect(self._show_about)
+        help_menu.addAction(self._act_about)
+
+    def _show_about(self) -> None:
+        """Display the About dialog with app info, credits, and license."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("About Traveller World & System Generator")
+        dlg.setFixedWidth(520)
+        dlg.setSizeGripEnabled(False)
+
+        label = QLabel()
+        label.setWordWrap(True)
+        label.setOpenExternalLinks(True)
+        label.setTextFormat(Qt.TextFormat.RichText)
+        label.setText(
+            "<h3>Traveller World &amp; System Generator</h3>"
+            "<p>A tool for generating star systems, worlds, and survey forms for the "
+            "<em>Traveller</em> science-fiction role-playing game, using the rules from the "
+            "<em>World Builders' Handbook</em> (Mongoose Publishing).</p>"
+            f"<p><b>Version:</b> {_DISPLAY_VERSION}</p>"
+            "<p><b>Source code:</b> "
+            "<a href='https://github.com/Elured-code/traveller-world-gen'>"
+            "github.com/Elured-code/traveller-world-gen</a></p>"
+            "<hr>"
+            "<p><b>Classic Traveller</b><br>Marc Miller</p>"
+            "<p><b>World Builders' Handbook</b> (Mongoose Traveller)<br>"
+            "<i>Author:</i> Geir Lanesskog<br>"
+            "<i>Developer:</i> Isabella Treccani-Chinelli<br>"
+            "<i>Layout &amp; Graphic Design:</i> Sandrine Thirache<br>"
+            "<i>Illustrations:</i> Shane Watson, Quentin Soubrouillard, Gary Trow, "
+            "Lucas Bonatto Guerrini, Sergio Villa, Mark Graham<br>"
+            "<i>Proofing:</i> Charlotte Law</p>"
+            "<p><b>Mongoose Traveller Core Rulebook</b><br>"
+            "<i>Developer:</i> Matthew Sprange<br>"
+            "<i>Original Core Mechanics:</i> Gareth Hanrahan<br>"
+            "<i>Layout:</i> Katrina Hepburn, Sandrine Thirache<br>"
+            "<i>Illustrations:</i> Xavier Bernard, Sergio Villa, Anderson Maia, "
+            "Mark Graham, Nikita Vasylchuk, Douglas Deri, Ian Stead, Ankit Yadav, "
+            "Cassie Gregory, Alessandro Rocco<br>"
+            "<i>Proofing:</i> Charlotte Law</p>"
+            "<p><b>Traveller Inner Circle</b><br>"
+            "Andrew James, Alan Welty, Colin Dunn, M. J. Dougherty, Rob Eaglestone, "
+            "Sam Wissa, Joshua Bell, Maksim Smelchak, Geir Lanesskog, "
+            "Christopher Griffen</p>"
+            "<hr>"
+            "<p><b>License:</b> MIT License — "
+            "<a href='https://opensource.org/licenses/MIT'>opensource.org/licenses/MIT</a></p>"
+            "<p><small><i>Traveller</i> is a registered trademark of Far Future Enterprises. "
+            "<em>World Builders' Handbook</em> is published by Mongoose Publishing. "
+            "This software is an unofficial fan tool and is not affiliated with, endorsed by, "
+            "or connected to Mongoose Publishing or Far Future Enterprises. All Traveller game "
+            "rules, settings, and concepts remain the intellectual property of their respective "
+            "rights holders.</small></p>"
+        )
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok)
+        buttons.accepted.connect(dlg.accept)
+
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(label)
+        layout.addWidget(buttons)
+        dlg.exec()
 
     def _on_open_json(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -1357,6 +1427,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         survey_combo = QComboBox()
         survey_combo.addItem("Class 0/I Survey")
+        survey_combo.addItem("Class II/III Survey")
         self._survey_combo = survey_combo
         layout.addWidget(survey_combo)
 

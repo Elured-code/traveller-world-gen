@@ -1,8 +1,115 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–135
-**Tests:** 2629
+**Sessions:** 88–138
+**Tests:** 2843
+
+---
+
+## Extended Travel Zone — Issue #103 (Session 138)
+
+WBH §10 probabilistic travel zone determination, extending the basic CRB Amber/Red assignment with stellar flags, physical conditions, cultural characteristics, and military readiness.
+
+**Rolls:** Two independent 2D rolls (Red ≥12, then Amber ≥12); Red takes priority. Starport X always Red. Green is default.
+
+**Red Zone DMs:** Magnetar +10, Pulsar +8, Protostar +6, Seismic stress ≥200 +2, Xenophilia 1–2 +6−xenophilia, Militancy ≥12 +militancy−8, Factional uprisings +2, Ongoing war +4.
+
+**Amber Zone DMs:** Primordial +2, Atmosphere 11–12 or ≥15 +2, Temp >373K +2, Pressure >50 bar +2, Seismic stress ≥100 +2, Government 0 +4 / =7 +2, Law level =0 +2 / >20 gov+law−16, Xenophilia 0–5 +6−xenophilia, Militancy ≥9 +militancy−8, Factional uprisings +2, Ongoing war +4.
+
+New functions: `assign_travel_zone_extended()` (stochastic), `attach_travel_zone_extended()` (integrates with full world detail). No schema changes. 33 new tests. CI fix: `TYPE_CHECKING` block extended with forward-reference imports for pyright type checking.
+
+---
+
+## Help Menu & About Dialog — Issue #159 (Session 138)
+
+Desktop (gen-ui) and web (FastAPI/browser) implementations of application credits.
+
+**gen-ui:** New Help menu with About action. `_show_about()` opens non-resizable 520px QDialog (rich HTML) displaying app version, GitHub repo link, WBH credits (Geir Lanesskog, Isabella Treccani-Chinelli, Sandrine Thirache + illustrators), CRB credits (Matthew Sprange, Gareth Hanrahan + illustrators), Traveller Inner Circle list, MIT License + Mongoose Publishing disclaimer.
+
+**world_card.html:** Fixed-position semi-transparent About button (bottom-right). Clicks open HTML `<dialog>` modal with credits content styled via existing CSS variables (dark-mode aware).
+
+15 new UI tests (9 menu, 6 HTML content).
+
+---
+
+## Starport Detail — Issue #101 (Session 137)
+
+Detailed starport characteristics for the mainworld, implementing WBH §8
+(Starport Traffic and Port Capacity).
+
+**Traffic:** `traffic_importance = importance + 1` when WTN ≥ 10 (A+). Maps
+deterministically to an expected weekly ship arrival count via the WBH Traffic
+table (0 ships for unexplored worlds up to 2,000 for major trade hubs).
+
+**Docking Capacities:** Highport capacity computed for classes A–D when
+`"H" in world.bases` using class-specific base + formula; downport is either
+1D×10% of highport (when present) or standalone formula (when absent); Class X
+returns 0. Largest pad is class-based: A/B=2,000 t, C=1,000 t, D/E=400 t.
+
+**Shipyard Build Capacity:** Classes A/B/C only. Formula: `(EF + IF + 1D + DMs)
+× TWP / divisor`. TL DMs (−4 / 0 / +2 / +4), trade DMs (Industrial +2,
+Non-Industrial −2). Class A/B floors enforce minimum viable yards (A: 9,500 t,
+B: 4,200 t). Class C returns None when result ≤ 0 (no functional yard). Annual
+output: Class C = 10× capacity; A/B = capacity ÷ importance or capacity ×
+(1 − importance) for low-importance worlds.
+
+**Starport Profile:** `C-HX:DX:±#` format (e.g. `A-HY:DY:+4`).
+
+New module: `traveller_world_starport_detail.py`. `World.starport_detail` field
+added. Displayed at top of the Social card in `world_card.html`. Schema updated.
+52 new tests. Secondary world spaceports deferred to v2.0 (issue #160).
+
+**Also:** Fixed duplicate `starport_detail` context key in `world_card_context()`
+— old facility-description string renamed to `starport_facility`.
+
+---
+
+## Inequality Rating & World Trade Number — Issue #100 (Session 136)
+
+Two new economic indicators implemented for inhabited mainworlds.
+
+**Inequality Rating:** `compute_inequality_rating()` rolls a 2D base scaled by
+efficiency factor and applies government, law level, PCR, and infrastructure
+DMs. Range 0–100; 50 = perfectly equal baseline. Higher values indicate more
+skewed wealth distribution.
+
+| Condition | DM |
+|-----------|-----|
+| Government 6, B (11), F (15) | +10 |
+| Government 0, 1, 3, 9, C (12) | +5 |
+| Government 4, 8 | −5 |
+| Government 2 | −10 |
+| Law Level ≥ 9 | +(Law Level − 8) |
+| PCR | +PCR |
+| Infrastructure Factor | −Infrastructure Factor |
+
+One 2D roll per world during `attach_importance_detail()`. New field:
+`WorldImportance.inequality_rating` (Optional[int]). **Schema change:**
+`importance_detail.inequality_rating` property added (integer, 0–100).
+
+**World Trade Number:** `compute_world_trade_number()` is deterministic.
+Base WTN = population code + TL DM. Starport modifier from an 8×6 lookup table
+(base WTN bands: 0–1, 2–3, 4–5, 6–7, 8–9, 10–11, 12–13, 14+; starport classes
+A, B, C, D, E, X); clamped min 0. Stored as integer; displayed as eHex.
+New field: `WorldImportance.world_trade_number` (Optional[int]).
+
+**Development Score** now uses the actual inequality rating, so the formula is
+correct end-to-end: `development_score = (gwp_pc / 1000) × (1 − ir / 100)`.
+
+**UI Layout Split:** The world card Culture Detail section has been split into
+two separate cards:
+- **Culture Detail:** cultural profile (DXUS-CPEM), T5 Cultural Extension (Cx),
+  and all 8 cultural trait rows (Diversity through Militancy).
+- **Economic Detail:** world importance score, labour factor, infrastructure
+  factor, resource factor, efficiency factor, resource units, GWP base/per-capita/
+  total, inequality rating, development score, world trade number, and economics
+  profile.
+
+This separation clarifies the structure: culture traits and economics are
+orthogonal concepts even though both are part of social characteristics.
+
+**Test coverage:** 26 new tests added (`TestInequalityRating` and
+`TestWorldTradeNumber` classes). Version bump: 1.5.33 → 1.5.34.
 
 ---
 

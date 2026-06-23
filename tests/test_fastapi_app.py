@@ -1239,3 +1239,255 @@ class TestRateLimit:
         body = json.loads(resp.body)
         assert resp.status_code == 429
         assert body["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+
+
+class TestAiDurationStr:
+    """Unit tests for _ai_duration_str — App Insights TimeSpan formatting (issue #148)."""
+
+    def test_sub_60_seconds(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(45_250.0) == "00:00:45.250" + "0000"
+
+    def test_exactly_60_seconds_rolls_to_minutes(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(60_000.0) == "00:01:00.000" + "0000"
+
+    def test_65_seconds_no_longer_overflows(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(65_000.0) == "00:01:05.000" + "0000"
+
+    def test_multi_minute_with_hours(self):
+        from app import _ai_duration_str
+        # 3661 s = 1 h 1 min 1 s
+        assert _ai_duration_str(3_661_000.0) == "01:01:01.000" + "0000"
+
+    def test_milliseconds_preserved(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(1_500.7) == "00:00:01.500" + "0000"
+
+    def test_zero_duration(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(0.0) == "00:00:00.000" + "0000"
+
+
+class TestAiExecutor:
+    """Verify the dedicated telemetry thread pool (issue #151)."""
+
+    def test_ai_executor_is_bounded_thread_pool(self):
+        """_AI_EXECUTOR must be a ThreadPoolExecutor, not None (the default pool)."""
+        from concurrent.futures import ThreadPoolExecutor as TPE
+        import app as fastapi_app
+        assert isinstance(fastapi_app._AI_EXECUTOR, TPE)
+
+    def test_ai_executor_max_workers(self):
+        """Dedicated executor is capped at 4 workers to bound telemetry thread use."""
+        import app as fastapi_app
+        assert fastapi_app._AI_EXECUTOR._max_workers == 4
+
+    def test_dispatch_uses_dedicated_executor(self):
+        """dispatch() passes _AI_EXECUTOR to run_in_executor, not None."""
+        import app as fastapi_app
+        from app import _AppInsightsMiddleware
+        from starlette.responses import Response
+        orig_ikey = fastapi_app._AI_IKEY
+        try:
+            fastapi_app._AI_IKEY = "test-ikey"
+            middleware = _AppInsightsMiddleware(app=fastapi_app.app)
+            scope = {
+                "type": "http", "method": "GET", "path": "/api/world",
+                "query_string": b"", "headers": [(b"host", b"localhost")],
+            }
+            req = Request(scope)
+
+            async def ok_call_next(_req):
+                return Response(status_code=200)
+
+            executor_used = {}
+
+            original_run = asyncio.get_event_loop().run_in_executor
+
+            def capturing_run_in_executor(executor, fn, *args):
+                executor_used["executor"] = executor
+                return original_run(executor, fn, *args)
+
+            with patch.object(
+                asyncio.get_event_loop(), "run_in_executor",
+                side_effect=capturing_run_in_executor,
+            ):
+                with patch("app._ai_post_request"):
+                    asyncio.get_event_loop().run_until_complete(
+                        middleware.dispatch(req, ok_call_next)
+                    )
+
+            assert executor_used.get("executor") is fastapi_app._AI_EXECUTOR, \
+                "dispatch() must pass _AI_EXECUTOR, not None, to run_in_executor"
+        finally:
+            fastapi_app._AI_IKEY = orig_ikey
+
+
+class TestAppInsightsMiddleware:
+    """Verify _ai_post_request guard against empty _AI_INGEST (issue #146)."""
+
+    def test_empty_ingest_url_returns_immediately(self):
+        """When _AI_INGEST is empty, _ai_post_request must not raise ValueError."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        original = fastapi_app._AI_INGEST
+        try:
+            fastapi_app._AI_INGEST = ""
+            # Must return cleanly — no ValueError from urllib.request.Request("")
+            _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+        finally:
+            fastapi_app._AI_INGEST = original
+
+    def test_status_429_returns_immediately(self):
+        """429 status still exits before constructing the request."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        original = fastapi_app._AI_INGEST
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            with patch("app.urllib.request.Request") as mock_req:
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 429)
+                mock_req.assert_not_called()
+        finally:
+            fastapi_app._AI_INGEST = original
+
+    def test_valid_ingest_url_attempts_request(self):
+        """When _AI_INGEST is set, the HTTP POST is attempted."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        original = fastapi_app._AI_INGEST
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            with patch("app.urllib.request.urlopen", side_effect=OSError):
+                # Should not raise — OSError is caught internally
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+        finally:
+            fastapi_app._AI_INGEST = original
+
+    def test_401_from_ingest_evicts_token(self):
+        """HTTP 401 from the ingest endpoint clears the cached MI token."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        orig_ingest = fastapi_app._AI_INGEST
+        orig_token = fastapi_app._AI_TOKEN
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            fastapi_app._AI_TOKEN = "stale-bearer-token"
+            err = urllib.error.HTTPError(
+                url="https://dc.services.visualstudio.com/v2/track",
+                code=401, msg="Unauthorized", hdrs=None, fp=None,
+            )
+            with patch("app.urllib.request.urlopen", side_effect=err):
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+            assert fastapi_app._AI_TOKEN == "", \
+                "Token should be cleared after 401 from ingest endpoint"
+        finally:
+            fastapi_app._AI_INGEST = orig_ingest
+            fastapi_app._AI_TOKEN = orig_token
+
+    def test_non_401_http_error_does_not_evict_token(self):
+        """HTTP 500 from the ingest endpoint does not clear the cached MI token."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        orig_ingest = fastapi_app._AI_INGEST
+        orig_token = fastapi_app._AI_TOKEN
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            fastapi_app._AI_TOKEN = "valid-bearer-token"
+            err = urllib.error.HTTPError(
+                url="https://dc.services.visualstudio.com/v2/track",
+                code=500, msg="Internal Server Error", hdrs=None, fp=None,
+            )
+            with patch("app.urllib.request.urlopen", side_effect=err):
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+            assert fastapi_app._AI_TOKEN == "valid-bearer-token", \
+                "Token should not be cleared for non-401 HTTP errors"
+        finally:
+            fastapi_app._AI_INGEST = orig_ingest
+            fastapi_app._AI_TOKEN = orig_token
+
+    def test_network_error_does_not_evict_token(self):
+        """A plain network failure (URLError) does not clear the cached MI token."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        orig_ingest = fastapi_app._AI_INGEST
+        orig_token = fastapi_app._AI_TOKEN
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            fastapi_app._AI_TOKEN = "valid-bearer-token"
+            with patch("app.urllib.request.urlopen",
+                       side_effect=urllib.error.URLError("network unreachable")):
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+            assert fastapi_app._AI_TOKEN == "valid-bearer-token", \
+                "Token should not be cleared for generic network failures"
+        finally:
+            fastapi_app._AI_INGEST = orig_ingest
+            fastapi_app._AI_TOKEN = orig_token
+
+    def test_dispatch_fires_telemetry_when_call_next_raises(self):
+        """Telemetry is recorded with status 500 even when call_next raises (issue #150)."""
+        import app as fastapi_app
+        from app import _AppInsightsMiddleware
+        orig_ikey = fastapi_app._AI_IKEY
+        try:
+            fastapi_app._AI_IKEY = "test-ikey"
+            middleware = _AppInsightsMiddleware(app=fastapi_app.app)
+            scope = {
+                "type": "http", "method": "GET", "path": "/api/world",
+                "query_string": b"", "headers": [(b"host", b"localhost")],
+            }
+            req = Request(scope)
+
+            async def raising_call_next(_req):
+                raise RuntimeError("simulated streaming failure")
+
+            recorded = {}
+
+            def fake_post(name, url, duration_ms, status):
+                recorded["status"] = status
+
+            with patch("app._ai_post_request", side_effect=fake_post):
+                with pytest.raises(RuntimeError, match="simulated streaming failure"):
+                    asyncio.get_event_loop().run_until_complete(
+                        middleware.dispatch(req, raising_call_next)
+                    )
+
+            assert recorded.get("status") == 500, \
+                "Expected status 500 recorded when call_next raises"
+        finally:
+            fastapi_app._AI_IKEY = orig_ikey
+
+    def test_dispatch_fires_telemetry_with_actual_status_on_success(self):
+        """Telemetry records the real response status code on a successful call."""
+        import app as fastapi_app
+        from app import _AppInsightsMiddleware
+        from starlette.responses import Response
+        orig_ikey = fastapi_app._AI_IKEY
+        try:
+            fastapi_app._AI_IKEY = "test-ikey"
+            middleware = _AppInsightsMiddleware(app=fastapi_app.app)
+            scope = {
+                "type": "http", "method": "GET", "path": "/api/world",
+                "query_string": b"", "headers": [(b"host", b"localhost")],
+            }
+            req = Request(scope)
+
+            async def ok_call_next(_req):
+                return Response(status_code=404)
+
+            recorded = {}
+
+            def fake_post(name, url, duration_ms, status):
+                recorded["status"] = status
+
+            with patch("app._ai_post_request", side_effect=fake_post):
+                asyncio.get_event_loop().run_until_complete(
+                    middleware.dispatch(req, ok_call_next)
+                )
+
+            assert recorded.get("status") == 404, \
+                "Expected actual response status 404 to be recorded"
+        finally:
+            fastapi_app._AI_IKEY = orig_ikey

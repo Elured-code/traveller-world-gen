@@ -27,7 +27,52 @@ Then read the full diff of every modified **source** file (`.py`, `.html`,
 
 ---
 
-## Step 2 — Identify which docs need updating
+## Step 2 — Bump the patch version
+
+This skill runs after sessions that modify source code, so the PATCH digit must
+be incremented on every run.
+
+**2a. Read the current version.**
+
+```bash
+grep 'APP_VERSION' src/traveller_gen/world_codes.py
+```
+
+`APP_VERSION = "X.Y.Z"` is the single manually-maintained source of truth.
+
+**2b. Increment the PATCH digit.**
+
+`1.5.33` → `1.5.34`, `1.5.34` → `1.5.35`, etc.  
+Do not change MAJOR or MINOR — those track the branch version and milestone.
+
+**2c. Edit `world_codes.py`.**
+
+Update the single `APP_VERSION = "X.Y.Z"` line with the new version string.
+Also update the fallback string in `fastapi/app.py` to match:
+
+```python
+_APP_VERSION = "X.Y.Z"   # fallback when _version.py is absent (local dev)
+```
+
+Search for `_APP_VERSION = ` in `fastapi/app.py` to find the fallback line
+(it is inside an `except ImportError` block, a few lines below the `try`).
+
+**2d. Commit the version bump — separately from the docs commit:**
+
+```bash
+git add src/traveller_gen/world_codes.py fastapi/app.py
+git commit -m "chore: bump version to vX.Y.Z"
+```
+
+**Build number note:** The build number (the `+build.N` suffix in the full
+version string) is assigned automatically by `scripts/compute_version.sh`
+using the GitHub Actions `run_number`. It is written to
+`src/traveller_gen/_version.py` during CI and does **not** require any manual
+update. Local dev builds show `+build.<git-commit-count>` as a stand-in.
+
+---
+
+## Step 3 — Identify which docs need updating
 
 Use this routing table (mirrors the CLAUDE.md routing table):
 
@@ -60,7 +105,7 @@ Always update regardless of what changed:
 
 ---
 
-## Step 3 — Update the explained docs
+## Step 4 — Update the explained docs
 
 For each `docs/*_explained.md` that needs updating:
 
@@ -76,7 +121,7 @@ For each `docs/*_explained.md` that needs updating:
 
 ---
 
-## Step 4 — Update v1.4-new-features.txt
+## Step 5 — Update v1.4-new-features.txt
 
 This file is the user-facing "what's new" list for non-technical readers. It
 lives in the project root alongside `v1.3-new-features.txt`.
@@ -104,7 +149,7 @@ lives in the project root alongside `v1.3-new-features.txt`.
 
 ---
 
-## Step 5 — Check and update traveller_world_schema.json
+## Step 6 — Check and update traveller_world_schema.json
 
 Read `traveller_world_schema.json` and compare it against the current source
 code. Update it if any of the following changed:
@@ -124,16 +169,10 @@ output. Only properties emitted by `to_dict()` / `to_json()` belong in the schem
 When `traveller_world_schema.json` is modified, a maintenance release is
 required (schema changes are a contract change for API consumers).
 
-**5a. Determine the new version.**
+The version was already bumped in Step 2. Use that version (call it `vX.Y.Z`)
+for all release artefacts below.
 
-Read the current `APP_VERSION` from `world_codes.py` (line ~81). Increment the
-**patch** digit: `1.4.0` → `1.4.1`, `1.4.1` → `1.4.2`, etc.
-
-**5b. Bump `APP_VERSION` in `world_codes.py`.**
-
-Edit the single `APP_VERSION = "X.Y.Z"` line with the new version string.
-
-**5c. Create `docs/release-vX.Y.Z.md`.**
+**6a. Create `docs/release-vX.Y.Z.md`.**
 
 Copy the structure from the previous maintenance release file (e.g.
 `docs/release-v1.4.0.md`) and write a short release note listing:
@@ -141,33 +180,32 @@ Copy the structure from the previous maintenance release file (e.g.
 - The test count (from `pytest tests/ -q`)
 - A "Schema changes" table in the same format used in `docs/release-v1.4.0.md`
 
-**5d. Commit the version bump as a separate commit** (this is the only case
-where `/update-docs` commits source code):
+**6b. Commit the schema + release note as a separate commit:**
 
 ```bash
-git add world_codes.py traveller_world_schema.json docs/release-vX.Y.Z.md
-git commit -m "chore: bump version to vX.Y.Z — schema update"
+git add traveller_world_schema.json docs/release-vX.Y.Z.md
+git commit -m "chore: schema update for vX.Y.Z"
 ```
 
-**5e. Tag and publish the release:**
+**6c. Tag and publish the release:**
 
 ```bash
 git tag vX.Y.Z
-git push origin v1.4.0       # push the branch
-git push origin vX.Y.Z       # push the tag
+git push origin <current-branch>
+git push origin vX.Y.Z
 gh release create vX.Y.Z \
     --title "vX.Y.Z — Schema update" \
     --notes "$(cat docs/release-vX.Y.Z.md)" \
     --repo Elured-code/traveller-world-gen
 ```
 
-After completing steps 5a–5e, continue with Step 6 (the docs commit will
+After completing steps 6a–6c, continue with Step 7 (the docs commit will
 include the updated `docs/release-vX.Y.Z.md` if it was not already staged).
-If the schema did **not** change, skip 5a–5e entirely.
+If the schema did **not** change, skip 6a–6c entirely.
 
 ---
 
-## Step 6 — Update RELEASE-NOTES.md and docs/release-v1.4.0.md
+## Step 7 — Update RELEASE-NOTES.md and docs/release-v1.4.0.md
 
 `RELEASE-NOTES.md` is the AI-context release log (detailed, technical).
 `docs/release-v1.4.0.md` is the human-facing release document.
@@ -183,7 +221,7 @@ For each change:
 
 ---
 
-## Step 7 — Update context files
+## Step 8 — Update context files
 
 For each context file that needs updating:
 
@@ -194,16 +232,17 @@ For each context file that needs updating:
 
 ---
 
-## Step 8 — Commit
+## Step 9 — Commit
 
-Stage only documentation and context files — never source code:
+Stage only documentation and context files — never source code (source was
+committed separately in Step 2 and, if applicable, Step 6):
 
 ```bash
 git add CLAUDE.md RELEASE-NOTES.md v1.4-new-features.txt
 git add context/*.md
 git add docs/*.md
 git add .claude/commands/*.md        # if the command file itself was updated
-git add traveller_world_schema.json  # if the schema was updated in Step 5
+git add traveller_world_schema.json  # if the schema was updated in Step 6
 ```
 
 Commit message format:
@@ -213,4 +252,4 @@ docs: update explained guides, context, and new-features for session N
 
 If multiple sessions are covered: `sessions N–M`.
 
-Run `git push origin v1.4.0` after committing.
+Run `git push origin <current-branch>` after committing.
