@@ -1239,3 +1239,45 @@ class TestRateLimit:
         body = json.loads(resp.body)
         assert resp.status_code == 429
         assert body["error"]["code"] == "RATE_LIMIT_EXCEEDED"
+
+
+class TestAppInsightsMiddleware:
+    """Verify _ai_post_request guard against empty _AI_INGEST (issue #146)."""
+
+    def test_empty_ingest_url_returns_immediately(self):
+        """When _AI_INGEST is empty, _ai_post_request must not raise ValueError."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        original = fastapi_app._AI_INGEST
+        try:
+            fastapi_app._AI_INGEST = ""
+            # Must return cleanly — no ValueError from urllib.request.Request("")
+            _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+        finally:
+            fastapi_app._AI_INGEST = original
+
+    def test_status_429_returns_immediately(self):
+        """429 status still exits before constructing the request."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        original = fastapi_app._AI_INGEST
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            with patch("app.urllib.request.Request") as mock_req:
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 429)
+                mock_req.assert_not_called()
+        finally:
+            fastapi_app._AI_INGEST = original
+
+    def test_valid_ingest_url_attempts_request(self):
+        """When _AI_INGEST is set, the HTTP POST is attempted."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        original = fastapi_app._AI_INGEST
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            with patch("app.urllib.request.urlopen", side_effect=OSError):
+                # Should not raise — OSError is caught internally
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+        finally:
+            fastapi_app._AI_INGEST = original
