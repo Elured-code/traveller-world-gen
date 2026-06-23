@@ -300,6 +300,15 @@ def _get_mi_token() -> str:
             return ""
 
 
+def _ai_duration_str(duration_ms: float) -> str:
+    """Format milliseconds as an App Insights TimeSpan string (hh:mm:ss.fffffff)."""
+    total_s = int(duration_ms // 1000)
+    hours, rem = divmod(total_s, 3600)
+    mins, secs = divmod(rem, 60)
+    ms = int(duration_ms % 1000)
+    return f"{hours:02d}:{mins:02d}:{secs:02d}.{ms:03d}0000"
+
+
 def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> None:
     """Post one RequestData telemetry item; called from a thread pool."""
     if status == 429 or not _AI_INGEST:
@@ -315,10 +324,7 @@ def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> No
                 "ver": 2,
                 "id": str(uuid.uuid4()),
                 "name": name,
-                "duration": (
-                    f"00:00:{int(duration_ms // 1000):02d}"
-                    f".{int(duration_ms % 1000):03d}0000"
-                ),
+                "duration": _ai_duration_str(duration_ms),
                 "responseCode": str(status),
                 "success": status < 400,
                 "url": url,

@@ -1241,6 +1241,35 @@ class TestRateLimit:
         assert body["error"]["code"] == "RATE_LIMIT_EXCEEDED"
 
 
+class TestAiDurationStr:
+    """Unit tests for _ai_duration_str — App Insights TimeSpan formatting (issue #148)."""
+
+    def test_sub_60_seconds(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(45_250.0) == "00:00:45.250" + "0000"
+
+    def test_exactly_60_seconds_rolls_to_minutes(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(60_000.0) == "00:01:00.000" + "0000"
+
+    def test_65_seconds_no_longer_overflows(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(65_000.0) == "00:01:05.000" + "0000"
+
+    def test_multi_minute_with_hours(self):
+        from app import _ai_duration_str
+        # 3661 s = 1 h 1 min 1 s
+        assert _ai_duration_str(3_661_000.0) == "01:01:01.000" + "0000"
+
+    def test_milliseconds_preserved(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(1_500.7) == "00:00:01.500" + "0000"
+
+    def test_zero_duration(self):
+        from app import _ai_duration_str
+        assert _ai_duration_str(0.0) == "00:00:00.000" + "0000"
+
+
 class TestAppInsightsMiddleware:
     """Verify _ai_post_request guard against empty _AI_INGEST (issue #146)."""
 
