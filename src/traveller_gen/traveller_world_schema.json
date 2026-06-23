@@ -1037,6 +1037,72 @@
         "economics_profile": {
           "type": "string",
           "description": "Compact economics profile string (WBH Social Characteristics): RF LF IF EF where RF, LF, IF are single eHex characters and EF is a signed integer. Example: '765+2'. IF is '0' when infrastructure is absent."
+        },
+        "inequality_rating": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Inequality Rating (WBH §7): 50 = baseline. Roll 2D−7 × 2 with DMs from government, law level, PCR, and infrastructure factor. Range clamped to [0, 100]. Absent until attach_importance_detail() runs."
+        },
+        "world_trade_number": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "World Trade Number (WBH §7): population code + TL DM, further modified by a starport class table lookup. Minimum 0. Absent until attach_importance_detail() runs."
+        }
+      }
+    },
+    "starport_detail": {
+      "type": "object",
+      "description": "WBH §8 starport detail: traffic rating, docking capacities, and shipyard build capacity. Present only when social detail generation has been explicitly requested.",
+      "required": ["traffic_importance", "expected_weekly", "has_highport", "downport_capacity", "downport_largest_pad", "starport_profile"],
+      "additionalProperties": false,
+      "properties": {
+        "traffic_importance": {
+          "type": "integer",
+          "description": "World importance adjusted for WTN A+ trade hub boost (+1 when WTN ≥ 10). Used to determine the expected weekly ship traffic row."
+        },
+        "expected_weekly": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Expected weekly ship arrivals; deterministic lookup from traffic_importance. Range: 0 (unexplored) to 2,000 (exceptional hub)."
+        },
+        "has_highport": {
+          "type": "boolean",
+          "description": "True when 'H' is present in the world's bases list (highport presence rolled during base generation)."
+        },
+        "highport_capacity": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Highport total docking capacity in tonnes, rounded to nearest 100. Absent when no highport or class E/X."
+        },
+        "downport_capacity": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Downport total docking capacity in tonnes, rounded to nearest 100. Zero for class X."
+        },
+        "downport_largest_pad": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Largest landing pad size in tonnes. Class A/B: 2,000; C: 1,000; D/E: 400; X: 0."
+        },
+        "shipyard_capacity": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Shipyard build capacity in tonnes, rounded to nearest 100. Absent for class D/E/X and for class C yards where the formula yields a non-positive result."
+        },
+        "shipyard_largest_bay": {
+          "type": "integer",
+          "minimum": 100,
+          "description": "Largest single shipyard bay in tonnes: 10% of shipyard_capacity, rounded to nearest 100. Present only when shipyard_capacity is present."
+        },
+        "shipyard_annual_output": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Annual shipyard output in tonnes/year. Class C: 10× capacity. Class A/B: capacity ÷ importance (imp ≥ 1) or capacity × (1 − importance) (imp ≤ 0). Present only when shipyard_capacity is present."
+        },
+        "starport_profile": {
+          "type": "string",
+          "description": "WBH starport profile string: 'C-HX:DX:±#' where C=class, H=highport Y/N, D=downport Y/N, ±#=traffic importance. Example: 'A-HY:DY:+3'."
         }
       }
     }

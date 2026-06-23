@@ -1562,6 +1562,10 @@ class World:  # pylint: disable=too-many-instance-attributes
                                     # CRB world importance score (deterministic, no dice).
                                     # Set by attach_importance_detail() (Session 132, issue #155).
                                     # None by default; only set when "Social detail" enabled.
+    starport_detail:   Optional["StarportDetail"]    = field(default=None, init=False)
+                                    # WBH §8 starport detail: traffic, docking, shipyard.
+                                    # Set by attach_starport_detail() (Session 137, issue #101).
+                                    # None by default; only set when "Social detail" enabled.
 
     # ------------------------------------------------------------------
     # UWP string (e.g. "CA6A643-9")
@@ -1685,6 +1689,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.culture_detail is not None else {}),
             **({"importance_detail": self.importance_detail.to_dict()}
                if self.importance_detail is not None else {}),
+            **({"starport_detail": self.starport_detail.to_dict()}
+               if self.starport_detail is not None else {}),
         }
 
     def to_json(self, indent: Optional[int] = 2) -> str:
@@ -1877,6 +1883,9 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("culture_detail") is not None:
             from .traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
             world.culture_detail = _CD.from_dict(d["culture_detail"])
+        if d.get("starport_detail") is not None:
+            from .traveller_world_starport_detail import StarportDetail as _SD  # pylint: disable=import-outside-toplevel
+            world.starport_detail = _SD.from_dict(d["starport_detail"])
         if d.get("importance_detail") is not None:
             from .traveller_world_importance import WorldImportance as _WI  # pylint: disable=import-outside-toplevel
             world.importance_detail = _WI.from_dict(d["importance_detail"])
@@ -2117,7 +2126,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "tl_era": world._tl_era(world.tech_level),  # pylint: disable=protected-access
         "tl_era_css": world._tl_era_css(world.tech_level),  # pylint: disable=protected-access
         "starport_label": STARPORT_QUALITY_LABEL.get(world.starport, "?"),
-        "starport_detail": STARPORT_FACILITY_DETAIL.get(world.starport, ""),
+        "starport_facility": STARPORT_FACILITY_DETAIL.get(world.starport, ""),
         "size_hex": to_hex(world.size),
         "size_km": size_km,
         "size_gravity": size_gravity,
@@ -2186,6 +2195,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
         "tech_detail": world.tech_detail,
         "culture_detail": world.culture_detail,
         "importance_detail": world.importance_detail,
+        "starport_detail": world.starport_detail,
         "resource_factor": (
             getattr(world.size_detail, "resource_factor", None)
             if world.size_detail is not None else None

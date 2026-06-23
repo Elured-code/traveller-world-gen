@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-06-23 (Session 136)  
+**Last updated:** 2026-06-23 (Session 137)  
 **Branch:** `test/packaging-generation-tools` · **Main:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -25,6 +25,7 @@ read only the context files listed below for the specific task at hand.
 | `traveller_system_gen.py`, `traveller_world_gen.py`, `traveller_world_physical.py`, or `traveller_hydro_detail.py` | [`context/system-world.md`](context/system-world.md) + [`context/data-structures.md`](context/data-structures.md) + [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `traveller_world_atmosphere_detail.py` | [`context/atmosphere-detail.md`](context/atmosphere-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_world_detail.py`, `traveller_moon_gen.py`, or `traveller_belt_physical.py` | [`context/detail-moon.md`](context/detail-moon.md) + [`context/data-structures.md`](context/data-structures.md) |
+| `traveller_world_starport_detail.py` | [`context/starport-detail.md`](context/starport-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_world_population_detail.py` | [`context/social-detail.md`](context/social-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_world_government_detail.py` | [`context/government-detail.md`](context/government-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_world_law_detail.py` | [`context/social-detail.md`](context/social-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
@@ -45,7 +46,7 @@ read only the context files listed below for the specific task at hand.
 ## Always-needed facts (no file read required)
 
 - **Pylint:** `.venv/bin/pylint <file>` — target **10.00/10 per file**
-- **Tests:** `.venv/bin/pytest tests/ -q` — **2613 tests**, all must pass
+- **Tests:** `.venv/bin/pytest tests/ -q` — **2731 tests**, all must pass
 - **RNG:** Injectable `random.Random` instance; each generation module has a
   module-level `_rng` sentinel (initially `random` the module). Public
   entry-point functions accept `rng: Optional[random.Random] = None`; when
@@ -84,6 +85,7 @@ After any session in which code, APIs, tests, or documented behaviour change:
 | SVG map generation changed | `context/system-map.md` |
 | TravellerMap fetch behaviour changed | `context/map-fetch.md` |
 | Pylint suppression pattern added | `context/common.md` |
+| Starport detail tables or formulas changed | `context/starport-detail.md` |
 
 4. Update `RELEASE-NOTES.md` with a summary of new features, bug fixes, and test
    count changes. Add a new version section when shipping to `main`; append to the

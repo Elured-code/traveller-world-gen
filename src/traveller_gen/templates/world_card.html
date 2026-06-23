@@ -200,7 +200,7 @@
     <div class="stat">
       <p class="stat-label">Starport</p>
       <p class="stat-value">{{ ctx.world.starport }} — {{ ctx.starport_label }}</p>
-      <p class="stat-sub">{{ ctx.starport_detail }}</p>
+      <p class="stat-sub">{{ ctx.starport_facility }}</p>
     </div>
     <div class="stat">
       <p class="stat-label">Size</p>
@@ -430,6 +430,26 @@
     {% endif %}
     {% if ctx.lifeform_profile is not none %}
     {{ drow("Lifeform profile", ctx.lifeform_profile) }}
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if ctx.starport_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Starport detail</p>
+    {{ drow("Starport profile", ctx.starport_detail.starport_profile, highlight=true) }}
+    {{ drow("Expected weekly traffic", ctx.starport_detail.expected_weekly|string ~ " ships") }}
+    {% if ctx.starport_detail.highport_capacity is not none %}
+    {{ drow("Highport capacity", "{:,}".format(ctx.starport_detail.highport_capacity) ~ " t") }}
+    {% endif %}
+    {{ drow("Downport capacity", "{:,}".format(ctx.starport_detail.downport_capacity) ~ " t") }}
+    {% if ctx.starport_detail.downport_largest_pad > 0 %}
+    {{ drow("Largest landing pad", "{:,}".format(ctx.starport_detail.downport_largest_pad) ~ " t") }}
+    {% endif %}
+    {% if ctx.starport_detail.shipyard_capacity is not none %}
+    {{ drow("Shipyard capacity", "{:,}".format(ctx.starport_detail.shipyard_capacity) ~ " t") }}
+    {{ drow("Largest bay", "{:,}".format(ctx.starport_detail.shipyard_largest_bay) ~ " t") }}
+    {{ drow("Annual output", "{:,}".format(ctx.starport_detail.shipyard_annual_output) ~ " t/yr") }}
     {% endif %}
   </div>
   {% endif %}

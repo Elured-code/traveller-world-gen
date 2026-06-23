@@ -1,8 +1,40 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–136
-**Tests:** 2679
+**Sessions:** 88–137
+**Tests:** 2731
+
+---
+
+## Starport Detail — Issue #101 (Session 137)
+
+Detailed starport characteristics for the mainworld, implementing WBH §8
+(Starport Traffic and Port Capacity).
+
+**Traffic:** `traffic_importance = importance + 1` when WTN ≥ 10 (A+). Maps
+deterministically to an expected weekly ship arrival count via the WBH Traffic
+table (0 ships for unexplored worlds up to 2,000 for major trade hubs).
+
+**Docking Capacities:** Highport capacity computed for classes A–D when
+`"H" in world.bases` using class-specific base + formula; downport is either
+1D×10% of highport (when present) or standalone formula (when absent); Class X
+returns 0. Largest pad is class-based: A/B=2,000 t, C=1,000 t, D/E=400 t.
+
+**Shipyard Build Capacity:** Classes A/B/C only. Formula: `(EF + IF + 1D + DMs)
+× TWP / divisor`. TL DMs (−4 / 0 / +2 / +4), trade DMs (Industrial +2,
+Non-Industrial −2). Class A/B floors enforce minimum viable yards (A: 9,500 t,
+B: 4,200 t). Class C returns None when result ≤ 0 (no functional yard). Annual
+output: Class C = 10× capacity; A/B = capacity ÷ importance or capacity ×
+(1 − importance) for low-importance worlds.
+
+**Starport Profile:** `C-HX:DX:±#` format (e.g. `A-HY:DY:+4`).
+
+New module: `traveller_world_starport_detail.py`. `World.starport_detail` field
+added. Displayed at top of the Social card in `world_card.html`. Schema updated.
+52 new tests. Secondary world spaceports deferred to v2.0 (issue #160).
+
+**Also:** Fixed duplicate `starport_detail` context key in `world_card_context()`
+— old facility-description string renamed to `starport_facility`.
 
 ---
 
