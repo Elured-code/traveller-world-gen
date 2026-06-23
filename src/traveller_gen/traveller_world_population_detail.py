@@ -516,7 +516,10 @@ def generate_population_detail(  # pylint: disable=too-many-arguments,too-many-p
 
     total_pop = _total_world_population(pop_code, p_value)
 
-    pcr = generate_pcr(pop_code, size, tl, government, trade_codes, is_tidal_lock, atm)
+    if total_pop < 10_000:
+        pcr = 0
+    else:
+        pcr = generate_pcr(pop_code, size, tl, government, trade_codes, is_tidal_lock, atm)
     pcr_label = _PCR_LABELS[pcr]
 
     urb_pct = generate_urbanisation_pct(
