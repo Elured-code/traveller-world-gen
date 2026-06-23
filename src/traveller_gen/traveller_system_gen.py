@@ -1046,7 +1046,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
         want_detail = args.detail
 
     # pylint: disable=import-outside-toplevel
-    from system_pipeline import PipelineOptions, run_detail_pipeline
+    from .system_pipeline import PipelineOptions, run_detail_pipeline
 
     for i in range(args.count):
         seed_val: Optional[int] = args.seed if i == 0 else None
