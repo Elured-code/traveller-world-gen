@@ -1370,3 +1370,69 @@ class TestAppInsightsMiddleware:
         finally:
             fastapi_app._AI_INGEST = orig_ingest
             fastapi_app._AI_TOKEN = orig_token
+
+    def test_dispatch_fires_telemetry_when_call_next_raises(self):
+        """Telemetry is recorded with status 500 even when call_next raises (issue #150)."""
+        import app as fastapi_app
+        from app import _AppInsightsMiddleware
+        orig_ikey = fastapi_app._AI_IKEY
+        try:
+            fastapi_app._AI_IKEY = "test-ikey"
+            middleware = _AppInsightsMiddleware(app=fastapi_app.app)
+            scope = {
+                "type": "http", "method": "GET", "path": "/api/world",
+                "query_string": b"", "headers": [(b"host", b"localhost")],
+            }
+            req = Request(scope)
+
+            async def raising_call_next(_req):
+                raise RuntimeError("simulated streaming failure")
+
+            recorded = {}
+
+            def fake_post(name, url, duration_ms, status):
+                recorded["status"] = status
+
+            with patch("app._ai_post_request", side_effect=fake_post):
+                with pytest.raises(RuntimeError, match="simulated streaming failure"):
+                    asyncio.get_event_loop().run_until_complete(
+                        middleware.dispatch(req, raising_call_next)
+                    )
+
+            assert recorded.get("status") == 500, \
+                "Expected status 500 recorded when call_next raises"
+        finally:
+            fastapi_app._AI_IKEY = orig_ikey
+
+    def test_dispatch_fires_telemetry_with_actual_status_on_success(self):
+        """Telemetry records the real response status code on a successful call."""
+        import app as fastapi_app
+        from app import _AppInsightsMiddleware
+        from starlette.responses import Response
+        orig_ikey = fastapi_app._AI_IKEY
+        try:
+            fastapi_app._AI_IKEY = "test-ikey"
+            middleware = _AppInsightsMiddleware(app=fastapi_app.app)
+            scope = {
+                "type": "http", "method": "GET", "path": "/api/world",
+                "query_string": b"", "headers": [(b"host", b"localhost")],
+            }
+            req = Request(scope)
+
+            async def ok_call_next(_req):
+                return Response(status_code=404)
+
+            recorded = {}
+
+            def fake_post(name, url, duration_ms, status):
+                recorded["status"] = status
+
+            with patch("app._ai_post_request", side_effect=fake_post):
+                asyncio.get_event_loop().run_until_complete(
+                    middleware.dispatch(req, ok_call_next)
+                )
+
+            assert recorded.get("status") == 404, \
+                "Expected actual response status 404 to be recorded"
+        finally:
+            fastapi_app._AI_IKEY = orig_ikey

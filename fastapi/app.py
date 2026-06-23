@@ -359,13 +359,16 @@ class _AppInsightsMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-pub
         if not _AI_IKEY:
             return await call_next(request)
         start = time.monotonic()
-        response = await call_next(request)
-        duration_ms = (time.monotonic() - start) * 1000
-        name = f"{request.method} {request.url.path}"
-        loop = asyncio.get_event_loop()
-        loop.run_in_executor(
-            None, _ai_post_request, name, str(request.url), duration_ms, response.status_code
-        )
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+        finally:
+            duration_ms = (time.monotonic() - start) * 1000
+            name = f"{request.method} {request.url.path}"
+            asyncio.get_running_loop().run_in_executor(
+                None, _ai_post_request, name, str(request.url), duration_ms, status
+            )
         return response
 
 
