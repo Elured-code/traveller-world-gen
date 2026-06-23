@@ -720,3 +720,167 @@ class TestEfficiencyFactor:
         assert wi.gwp_per_capita is None
         assert "efficiency_factor" not in wi.to_dict()
         assert "gwp_per_capita" not in wi.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# Inequality rating
+# ---------------------------------------------------------------------------
+
+class TestInequalityRating:
+
+    def _ir(self, ef, gov, law, pcr, infra, seed=1):
+        import random as _r
+        from traveller_gen.traveller_world_importance import compute_inequality_rating
+        return compute_inequality_rating(ef, gov, law, pcr, infra, rng=_r.Random(seed))
+
+    def test_neutral_inputs_near_50(self):
+        # gov 7 (no DM), law 5, pcr 0, IF 0, EF 1 → base = 50-5=45; dice centred on 0
+        results = [self._ir(1, 7, 5, 0, 0, seed=s) for s in range(50)]
+        assert all(0 <= v <= 100 for v in results)
+        mean = sum(results) / len(results)
+        assert 30 <= mean <= 60  # centred near 45
+
+    def test_gov_plus10_group(self):
+        # gov 6, B(11), F(15) → DM +10; all else neutral (EF=1, law=0, pcr=0, IF=0)
+        for gov in (6, 11, 15):
+            v_high = self._ir(1, gov, 0, 0, 0, seed=42)
+            v_neut = self._ir(1, 7,   0, 0, 0, seed=42)
+            assert v_high >= v_neut
+
+    def test_gov_plus5_group(self):
+        for gov in (0, 1, 3, 9, 12):
+            v = self._ir(1, gov, 0, 0, 0, seed=42)
+            n = self._ir(1, 7,   0, 0, 0, seed=42)
+            assert v >= n
+
+    def test_gov_minus5_group(self):
+        for gov in (4, 8):
+            v = self._ir(1, gov, 0, 0, 0, seed=42)
+            n = self._ir(1, 7,   0, 0, 0, seed=42)
+            assert v <= n
+
+    def test_gov_minus10(self):
+        v = self._ir(1, 2, 0, 0, 0, seed=42)
+        n = self._ir(1, 7, 0, 0, 0, seed=42)
+        assert v <= n
+
+    def test_law_level_dm_at_boundary(self):
+        # LL 8 → no DM; LL 9 → +1; LL 15 → +7
+        v8  = self._ir(1, 7, 8,  0, 0, seed=7)
+        v9  = self._ir(1, 7, 9,  0, 0, seed=7)
+        v15 = self._ir(1, 7, 15, 0, 0, seed=7)
+        assert v9  == v8  + 1
+        assert v15 == v8  + 7
+
+    def test_pcr_dm(self):
+        v0 = self._ir(1, 7, 0, 0, None, seed=5)
+        v5 = self._ir(1, 7, 0, 5, None, seed=5)
+        assert v5 == v0 + 5
+
+    def test_infrastructure_dm_reduces_inequality(self):
+        v0 = self._ir(1, 7, 0, 0, 0,  seed=3)
+        v6 = self._ir(1, 7, 0, 0, 6,  seed=3)
+        assert v6 == v0 - 6
+
+    def test_infrastructure_none_treated_as_zero(self):
+        v_none = self._ir(1, 7, 0, 0, None, seed=9)
+        v_zero = self._ir(1, 7, 0, 0, 0,    seed=9)
+        assert v_none == v_zero
+
+    def test_high_ef_lowers_inequality(self):
+        # EF 5 → base term 50-25=25; EF -5 → 50+25=75
+        v_pos = self._ir( 5, 7, 0, 0, 0, seed=11)
+        v_neg = self._ir(-5, 7, 0, 0, 0, seed=11)
+        assert v_pos < v_neg
+
+    def test_clamp_floor(self):
+        # Very high EF + gov with -10 DM (gov 2) can drive below 0
+        # EF=5 → base=25; gov 2 → -10; IF=20 → -20; total can go negative with bad dice
+        import random as _r
+        from traveller_gen.traveller_world_importance import compute_inequality_rating
+        for seed in range(200):
+            v = compute_inequality_rating(5, 2, 0, 0, 20, rng=_r.Random(seed))
+            assert v >= 0
+
+    def test_clamp_ceiling(self):
+        # EF=-5 → base=75; gov 6 → +10; law 15 → +7; pcr 9 → +9; IF=0
+        import random as _r
+        from traveller_gen.traveller_world_importance import compute_inequality_rating
+        for seed in range(200):
+            v = compute_inequality_rating(-5, 6, 15, 9, 0, rng=_r.Random(seed))
+            assert v <= 100
+
+
+# ---------------------------------------------------------------------------
+# World Trade Number
+# ---------------------------------------------------------------------------
+
+class TestWorldTradeNumber:
+
+    def _wtn(self, pop, tl, port):
+        from traveller_gen.traveller_world_importance import compute_world_trade_number
+        return compute_world_trade_number(pop, tl, port)
+
+    # TL DM boundaries
+    def test_tl_dm_tl0(self):
+        base_tl0 = self._wtn(5, 0, "C")
+        base_tl2 = self._wtn(5, 2, "C")
+        assert base_tl0 == base_tl2 - 1
+
+    def test_tl_dm_tl1_vs_tl2(self):
+        assert self._wtn(5, 1, "C") == self._wtn(5, 2, "C") - 1
+
+    def test_tl_dm_tl4_vs_tl5(self):
+        # pop=0 keeps base WTN in row 0 for both TLs (avoids row-crossing artefact)
+        assert self._wtn(0, 4, "C") == self._wtn(0, 5, "C") - 1
+
+    def test_tl_dm_tl8_vs_tl9(self):
+        assert self._wtn(5, 8, "C") == self._wtn(5, 9, "C") - 1
+
+    def test_tl_dm_tl14_vs_tl15(self):
+        assert self._wtn(5, 14, "C") == self._wtn(5, 15, "C") - 1
+
+    # Starport modifier — row 0 (base 0-1), each class
+    def test_port_modifier_row0_class_a(self):
+        # pop 1, tl 5 (DM+1) → base = 2 → row 1; use pop 0, tl 4 → base=0-1 → row 0
+        assert self._wtn(0, 4, "A") == max(0, 0 + 3)   # base=-1+3=2 ... wait
+        # pop=0+tl_dm(4)=0 → base=0; row 0; A → +3 → 3
+        assert self._wtn(0, 4, "A") == 3
+
+    def test_port_modifier_row0_class_x(self):
+        # pop=0, tl=4 → base=0; row 0; X → +0 → 0
+        assert self._wtn(0, 4, "X") == 0
+
+    def test_port_modifier_class_x_penalty_large(self):
+        # pop=5, tl=5(+1) → base=6; row 3; X → -6 → clamped to 0
+        assert self._wtn(5, 5, "X") == 0
+
+    def test_port_modifier_row7_class_b(self):
+        # pop=9, tl=9(+2) → base=11; row 5; B → 0 → 11
+        assert self._wtn(9, 9, "B") == 11
+
+    # Row boundary checks — ensure row is selected correctly
+    def test_wtn_row_boundary_2(self):
+        # base 1 → row 0; base 2 → row 1 (A mod differs: +3 vs +2)
+        # pop=1, tl=4(0) → base=1; pop=2, tl=4 → base=2
+        assert self._wtn(1, 4, "A") == 1 + 3
+        assert self._wtn(2, 4, "A") == 2 + 2
+
+    def test_wtn_row_boundary_4(self):
+        assert self._wtn(3, 4, "A") == 3 + 2   # base 3 → row 1 → A +2
+        assert self._wtn(4, 4, "A") == 4 + 2   # base 4 → row 2 → A +2
+
+    def test_wtn_row_boundary_8(self):
+        # base 7 → row 3 → D: 0; base 8 → row 4 → D: -1
+        assert self._wtn(7, 4, "D") == 7 + 0
+        assert self._wtn(8, 4, "D") == 8 - 1
+
+    def test_min_clamp(self):
+        # very high base WTN + Class X penalty → can't go below 0
+        assert self._wtn(3, 5, "X") == 0   # base=4, row2, X=-5 → -1 → 0
+
+    def test_unknown_starport_defaults_zero_dm(self):
+        # Secondary spaceport codes (F, G, H, Y) not in WTN table → DM 0
+        v = self._wtn(5, 9, "F")
+        base = 5 + 2  # tl=9 → DM+2
+        assert v == base
