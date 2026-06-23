@@ -51,7 +51,7 @@ Update the single `APP_VERSION = "X.Y.Z"` line with the new version string.
 Also update the fallback string in `fastapi/app.py` to match:
 
 ```python
-_APP_VERSION = "X.Y.Z+dev"   # fallback when _version.py is absent (local dev)
+_APP_VERSION = "X.Y.Z"   # fallback when _version.py is absent (local dev)
 ```
 
 Search for `_APP_VERSION = ` in `fastapi/app.py` to find the fallback line
