@@ -1270,6 +1270,61 @@ class TestAiDurationStr:
         assert _ai_duration_str(0.0) == "00:00:00.000" + "0000"
 
 
+class TestAiExecutor:
+    """Verify the dedicated telemetry thread pool (issue #151)."""
+
+    def test_ai_executor_is_bounded_thread_pool(self):
+        """_AI_EXECUTOR must be a ThreadPoolExecutor, not None (the default pool)."""
+        from concurrent.futures import ThreadPoolExecutor as TPE
+        import app as fastapi_app
+        assert isinstance(fastapi_app._AI_EXECUTOR, TPE)
+
+    def test_ai_executor_max_workers(self):
+        """Dedicated executor is capped at 4 workers to bound telemetry thread use."""
+        import app as fastapi_app
+        assert fastapi_app._AI_EXECUTOR._max_workers == 4
+
+    def test_dispatch_uses_dedicated_executor(self):
+        """dispatch() passes _AI_EXECUTOR to run_in_executor, not None."""
+        import app as fastapi_app
+        from app import _AppInsightsMiddleware
+        from starlette.responses import Response
+        orig_ikey = fastapi_app._AI_IKEY
+        try:
+            fastapi_app._AI_IKEY = "test-ikey"
+            middleware = _AppInsightsMiddleware(app=fastapi_app.app)
+            scope = {
+                "type": "http", "method": "GET", "path": "/api/world",
+                "query_string": b"", "headers": [(b"host", b"localhost")],
+            }
+            req = Request(scope)
+
+            async def ok_call_next(_req):
+                return Response(status_code=200)
+
+            executor_used = {}
+
+            original_run = asyncio.get_event_loop().run_in_executor
+
+            def capturing_run_in_executor(executor, fn, *args):
+                executor_used["executor"] = executor
+                return original_run(executor, fn, *args)
+
+            with patch.object(
+                asyncio.get_event_loop(), "run_in_executor",
+                side_effect=capturing_run_in_executor,
+            ):
+                with patch("app._ai_post_request"):
+                    asyncio.get_event_loop().run_until_complete(
+                        middleware.dispatch(req, ok_call_next)
+                    )
+
+            assert executor_used.get("executor") is fastapi_app._AI_EXECUTOR, \
+                "dispatch() must pass _AI_EXECUTOR, not None, to run_in_executor"
+        finally:
+            fastapi_app._AI_IKEY = orig_ikey
+
+
 class TestAppInsightsMiddleware:
     """Verify _ai_post_request guard against empty _AI_INGEST (issue #146)."""
 

@@ -97,6 +97,7 @@ import os
 import random
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 import urllib.error
 import urllib.request
@@ -272,6 +273,7 @@ _AI_UAMI_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID", "")
 _AI_TOKEN: str = ""
 _AI_TOKEN_EXPIRES: float = 0.0
 _AI_TOKEN_LOCK = threading.Lock()
+_AI_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="ai-tel")
 
 
 def _get_mi_token() -> str:
@@ -367,7 +369,7 @@ class _AppInsightsMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-pub
             duration_ms = (time.monotonic() - start) * 1000
             name = f"{request.method} {request.url.path}"
             asyncio.get_running_loop().run_in_executor(
-                None, _ai_post_request, name, str(request.url), duration_ms, status
+                _AI_EXECUTOR, _ai_post_request, name, str(request.url), duration_ms, status
             )
         return response
 
