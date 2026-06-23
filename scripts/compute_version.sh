@@ -3,9 +3,9 @@
 #
 # Version scheme:
 #   Major.Minor — from branch name (v1.5.x → 1.5), fallback to VERSION file
-#   Patch       — APP_VERSION fallback in world_codes.py (manually maintained;
-#                 incremented each session by the update-docs skill)
-#   Build       — $1 argument (GitHub run_number in CI); "local" when absent
+#   Patch       — extracted from APP_VERSION fallback in world_codes.py
+#                 (single source of truth for the manually-maintained version)
+#   Build       — $1 argument (github.run_number in CI); local commit count otherwise
 #
 # Usage (local):   bash scripts/compute_version.sh
 # Usage (CI):      bash scripts/compute_version.sh ${{ github.run_number }}
@@ -26,10 +26,14 @@ else
     MAJOR=0; MINOR=0
 fi
 
-# ── Patch: APP_VERSION fallback in world_codes.py ────────────────────────────
-PATCH=$(grep -E 'APP_VERSION = "[0-9]+\.[0-9]+\.[0-9]+"' \
-    "$REPO_ROOT/src/traveller_gen/world_codes.py" | \
-    sed -E 's/.*"[0-9]+\.[0-9]+\.([0-9]+)".*/\1/')
+# ── Patch: read from world_codes.py (single source of truth) ─────────────────
+# Extracts the patch digit from the APP_VERSION fallback line, e.g. "1.5.33" → 33
+WORLD_CODES="$REPO_ROOT/src/traveller_gen/world_codes.py"
+PATCH=$(python3 -c "
+import re, sys
+m = re.search(r'APP_VERSION\s*=\s*\"[0-9]+\.[0-9]+\.([0-9]+)\"', open(sys.argv[1]).read())
+print(m.group(1) if m else '0')
+" "$WORLD_CODES")
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 # CI passes github.run_number; locally fall back to total git commit count.
