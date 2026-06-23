@@ -9,8 +9,8 @@
 #   --reload      Auto-reload on source changes (development only)
 #
 # Examples:
-#   bash run-fastapi.sh
-#   bash run-fastapi.sh --host 0.0.0.0 --port 8080
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+#   bash scripts/run_fastapi.sh
+#   bash scripts/run_fastapi.sh --host 0.0.0.0 --port 8080
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR/fastapi"
 exec "$SCRIPT_DIR/.venv/bin/uvicorn" app:app --host 127.0.0.1 --port 8000 "$@"

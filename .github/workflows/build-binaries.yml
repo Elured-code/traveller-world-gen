@@ -69,9 +69,11 @@ jobs:
       # Install both requirements files: gen-ui/requirements.txt for PySide6,
       # requirements.txt for Jinja2 (imported via html_render.py → app.py).
       - name: Install dependencies
-        run: python -m pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
+        run: |
+          python -m pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
+          pip install --no-deps .
 
-      # The spec uses pathex=["."] and datas=[("templates", "templates")]
+      # The spec uses pathex=["."] and datas=[("src/traveller_gen/templates", "templates")]
       # relative to the project root, so this must run from the repo root.
       - name: Build with PyInstaller
         env:
@@ -147,6 +149,7 @@ jobs:
         run: |
           python3.11 -m pip install --upgrade pip
           python3.11 -m pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
+          python3.11 -m pip install --no-deps .
 
       - name: Build with PyInstaller
         run: python3.11 -m PyInstaller traveller_gen_ui.spec

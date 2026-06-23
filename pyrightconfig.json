@@ -1,6 +1,6 @@
 {
   "pythonVersion": "3.11",
-  "extraPaths": ["azure-api", "fastapi"],
+  "extraPaths": ["azure-api", "fastapi", "src"],
   "typeCheckingMode": "basic",
   "exclude": [".venv", "tests", "conftest.py", "gen-ui", "scripts", "**/node_modules", "**/__pycache__", "**/.*"]
 }

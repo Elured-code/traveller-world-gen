@@ -46,7 +46,7 @@ a = Analysis(
     pathex=["."],
     binaries=_webengine_binaries,
     datas=[
-        ("templates", "templates"),
+        ("src/traveller_gen/templates", "templates"),
         *_webengine_datas,
     ],
     hiddenimports=[
