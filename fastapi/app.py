@@ -332,11 +332,18 @@ def _ai_post_request(name: str, url: str, duration_ms: float, status: int) -> No
     req = urllib.request.Request(
         _AI_INGEST, data=envelope, headers=headers, method="POST",
     )
+    evict_token = False
     try:
         with urllib.request.urlopen(req, timeout=5):
             pass
+    except urllib.error.HTTPError as exc:
+        if exc.code == 401:
+            evict_token = True
     except (urllib.error.URLError, OSError):
         pass
+    if evict_token:
+        global _AI_TOKEN  # pylint: disable=global-statement
+        _AI_TOKEN = ""
 
 
 class _AppInsightsMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-public-methods

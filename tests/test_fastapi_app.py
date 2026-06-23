@@ -1281,3 +1281,63 @@ class TestAppInsightsMiddleware:
                 _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
         finally:
             fastapi_app._AI_INGEST = original
+
+    def test_401_from_ingest_evicts_token(self):
+        """HTTP 401 from the ingest endpoint clears the cached MI token."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        orig_ingest = fastapi_app._AI_INGEST
+        orig_token = fastapi_app._AI_TOKEN
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            fastapi_app._AI_TOKEN = "stale-bearer-token"
+            err = urllib.error.HTTPError(
+                url="https://dc.services.visualstudio.com/v2/track",
+                code=401, msg="Unauthorized", hdrs=None, fp=None,
+            )
+            with patch("app.urllib.request.urlopen", side_effect=err):
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+            assert fastapi_app._AI_TOKEN == "", \
+                "Token should be cleared after 401 from ingest endpoint"
+        finally:
+            fastapi_app._AI_INGEST = orig_ingest
+            fastapi_app._AI_TOKEN = orig_token
+
+    def test_non_401_http_error_does_not_evict_token(self):
+        """HTTP 500 from the ingest endpoint does not clear the cached MI token."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        orig_ingest = fastapi_app._AI_INGEST
+        orig_token = fastapi_app._AI_TOKEN
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            fastapi_app._AI_TOKEN = "valid-bearer-token"
+            err = urllib.error.HTTPError(
+                url="https://dc.services.visualstudio.com/v2/track",
+                code=500, msg="Internal Server Error", hdrs=None, fp=None,
+            )
+            with patch("app.urllib.request.urlopen", side_effect=err):
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+            assert fastapi_app._AI_TOKEN == "valid-bearer-token", \
+                "Token should not be cleared for non-401 HTTP errors"
+        finally:
+            fastapi_app._AI_INGEST = orig_ingest
+            fastapi_app._AI_TOKEN = orig_token
+
+    def test_network_error_does_not_evict_token(self):
+        """A plain network failure (URLError) does not clear the cached MI token."""
+        import app as fastapi_app
+        from app import _ai_post_request
+        orig_ingest = fastapi_app._AI_INGEST
+        orig_token = fastapi_app._AI_TOKEN
+        try:
+            fastapi_app._AI_INGEST = "https://dc.services.visualstudio.com/v2/track"
+            fastapi_app._AI_TOKEN = "valid-bearer-token"
+            with patch("app.urllib.request.urlopen",
+                       side_effect=urllib.error.URLError("network unreachable")):
+                _ai_post_request("GET /api/world", "http://localhost/api/world", 10.0, 200)
+            assert fastapi_app._AI_TOKEN == "valid-bearer-token", \
+                "Token should not be cleared for generic network failures"
+        finally:
+            fastapi_app._AI_INGEST = orig_ingest
+            fastapi_app._AI_TOKEN = orig_token
