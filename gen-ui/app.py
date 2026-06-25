@@ -1027,6 +1027,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         name = mw.name if mw else "System"
         if form_type == "Class II/III Survey":
             html_raw = system.to_survey_form_html_class2()
+        elif form_type == "Class IV Survey":
+            html_raw = system.to_survey_form_html_class4()
         else:
             html_raw = system.to_survey_form_html()
         html = self._themed_html(html_raw)
@@ -1433,6 +1435,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         survey_combo = QComboBox()
         survey_combo.addItem("Class 0/I Survey")
         survey_combo.addItem("Class II/III Survey")
+        survey_combo.addItem("Class IV Survey")
         self._survey_combo = survey_combo
         layout.addWidget(survey_combo)
 

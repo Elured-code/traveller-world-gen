@@ -448,6 +448,7 @@
   <select id="s-survey-type" title="Survey form type" style="background:var(--input-bg);border:1px solid var(--border);border-radius:3px;color:var(--text);padding:0.1rem 0.35rem;font-size:0.72rem;cursor:pointer;">
     <option value="class0i">Class 0/I Survey</option>
     <option value="class2iii">Class II/III Survey</option>
+    <option value="class4">Class IV Survey</option>
   </select>
 </div>
 
@@ -1067,6 +1068,7 @@
               Object.assign(
                 data.survey_class0i_html ? { class0i: data.survey_class0i_html } : {},
                 data.survey_class2iii_html ? { class2iii: data.survey_class2iii_html } : {},
+                data.survey_class4_html ? { class4: data.survey_class4_html } : {},
               ));
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
@@ -1146,6 +1148,7 @@
               Object.assign(
                 data.survey_class0i_html ? { class0i: data.survey_class0i_html } : {},
                 data.survey_class2iii_html ? { class2iii: data.survey_class2iii_html } : {},
+                data.survey_class4_html ? { class4: data.survey_class4_html } : {},
               ));
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;

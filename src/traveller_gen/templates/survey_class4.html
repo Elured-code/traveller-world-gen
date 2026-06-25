@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IISS Class IV Survey — {{ world_name }}</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;}
+:root{
+  --bg:#d8cdb0;--surface:#f5f0e4;
+  --txt:#1a1510;--lbl:#5a4d38;
+  --bdr:#1a1510;--bdr-lt:#9a9080;
+  --sec-bg:#d4c8a4;--col-bg:#c4b888;
+  --hdr-bg:#2a2018;--hdr-txt:#f5f0e4;
+}
+@media(prefers-color-scheme:dark){:root{
+  --bg:#141210;--surface:#1d1b17;
+  --txt:#e0d8c0;--lbl:#9a8e76;
+  --bdr:rgba(255,255,255,0.25);--bdr-lt:rgba(255,255,255,0.12);
+  --sec-bg:#2a2820;--col-bg:#252318;
+  --hdr-bg:#0e0c0a;--hdr-txt:#e0d8c0;
+}}
+[data-theme=dark]{
+  --bg:#141210;--surface:#1d1b17;
+  --txt:#e0d8c0;--lbl:#9a8e76;
+  --bdr:rgba(255,255,255,0.25);--bdr-lt:rgba(255,255,255,0.12);
+  --sec-bg:#2a2820;--col-bg:#252318;
+  --hdr-bg:#0e0c0a;--hdr-txt:#e0d8c0;
+}
+[data-theme=light]{
+  --bg:#d8cdb0;--surface:#f5f0e4;
+  --txt:#1a1510;--lbl:#5a4d38;
+  --bdr:#1a1510;--bdr-lt:#9a9080;
+  --sec-bg:#d4c8a4;--col-bg:#c4b888;
+  --hdr-bg:#2a2018;--hdr-txt:#f5f0e4;
+}
+
+body{
+  font-family:"Times New Roman",Times,serif;
+  font-size:10pt;
+  background:var(--bg);
+  margin:1rem;
+  color:var(--txt);
+}
+.form-wrap{
+  border:2px solid var(--bdr);
+  width:100%;max-width:960px;
+  margin:0 auto;
+  background:var(--surface);
+}
+.form-title{
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--hdr-bg);color:var(--hdr-txt);
+  padding:5px 10px;
+  font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+  font-size:11.5pt;font-weight:bold;
+  letter-spacing:0.08em;text-transform:uppercase;
+  border-bottom:2px solid var(--bdr);
+}
+table.fb{width:100%;border-collapse:collapse;font-size:9pt;}
+table.fb td,table.fb th{
+  border:1px solid var(--bdr-lt);
+  padding:3px 5px;vertical-align:top;
+}
+.lbl{
+  font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+  font-weight:700;font-size:7.5pt;
+  text-transform:uppercase;letter-spacing:0.05em;
+  color:var(--lbl);white-space:nowrap;
+}
+.val{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-size:9.5pt;
+  color:var(--txt);
+}
+.sec{
+  background:var(--sec-bg);
+  font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+  font-weight:bold;font-size:8pt;
+  text-transform:uppercase;letter-spacing:0.06em;
+  color:var(--txt);
+  border-top:1.5px solid var(--bdr) !important;
+}
+.sh th{
+  font-family:-apple-system,"Segoe UI",Arial,sans-serif;
+  background:var(--col-bg);
+  font-size:7.5pt;font-weight:bold;
+  text-transform:uppercase;text-align:center;
+  color:var(--txt);padding:2px 3px;
+  border-top:1.5px solid var(--bdr);
+}
+td.sd{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-weight:bold;font-size:9.5pt;
+  color:var(--txt);
+}
+td.sv{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-size:9pt;
+  text-align:right;white-space:nowrap;
+  color:var(--txt);
+}
+td.sv-wrap{
+  font-family:"Courier New",Courier,monospace;
+  font-style:italic;font-size:9pt;
+  text-align:left;white-space:normal;word-break:break-word;
+  color:var(--txt);
+}
+.comments-cell{
+  height:80px;padding:5px 8px;
+  vertical-align:top;
+}
+</style>
+</head>
+<body>
+<div class="form-wrap">
+  <div class="form-title">
+    <span>IISS Class IV Survey</span>
+    <span>Form 0407F-IV Part C</span>
+  </div>
+  <table class="fb">
+    <colgroup>
+      <col style="width:13%">
+      <col style="width:13%">
+      <col style="width:13%">
+      <col style="width:13%">
+      <col style="width:12%">
+      <col style="width:12%">
+      <col style="width:12%">
+      <col>
+    </colgroup>
+
+    <!-- Header rows -->
+    <tr>
+      <td colspan="3"><span class="lbl">IISS Designation</span>&nbsp;&nbsp;<span class="val">{{ world_name }}</span></td>
+      <td colspan="2"><span class="lbl">UWP</span>&nbsp;&nbsp;<span class="val">{{ uwp }}</span></td>
+      <td colspan="3"><span class="lbl">Travel Zone</span>&nbsp;&nbsp;<span class="val">{{ travel_zone }}</span></td>
+    </tr>
+    <tr>
+      <td colspan="4"><span class="lbl">Sector / Location</span>&nbsp;&nbsp;<span class="val">{{ sector_location }}</span></td>
+      <td colspan="2"><span class="lbl">System Age (Gyr)</span>&nbsp;&nbsp;<span class="val">{{ system_age }}</span></td>
+      <td colspan="2"><span class="lbl">Primary</span>&nbsp;&nbsp;<span class="val">{{ primary_star }}</span></td>
+    </tr>
+
+    <!-- ============================================================ POPULATION -->
+    <tr class="sec"><td colspan="8">Population</td></tr>
+    {% if pop %}
+    <tr>
+      <td><span class="lbl">Total Population</span><br><span class="val">{{ pop.total_pop }}</span></td>
+      <td><span class="lbl">P-Value</span><br><span class="val">{{ pop.p_value }}</span></td>
+      <td><span class="lbl">PCR</span><br><span class="val">{{ pop.pcr }} {{ pop.pcr_label }}</span></td>
+      <td><span class="lbl">Urbanisation</span><br><span class="val">{{ pop.urbanisation_pct }}%</span></td>
+      <td><span class="lbl">Major Cities</span><br><span class="val">{{ pop.major_city_count }}</span></td>
+      <td><span class="lbl">Capital / Port</span><br><span class="val">{{ pop.capital_port }}</span></td>
+      <td colspan="2"><span class="lbl">Population Profile</span><br><span class="val">{{ pop.population_profile }}</span></td>
+    </tr>
+    {% if pop.cities %}
+    <tr class="sh"><th>City #</th><th colspan="5">Population</th><th colspan="2">Codes</th></tr>
+    {% for c in pop.cities %}
+    <tr>
+      <td class="sv">{{ loop.index }}</td>
+      <td colspan="5" class="sv">{{ c.population }}</td>
+      <td colspan="2" class="sv">{{ c.codes }}</td>
+    </tr>
+    {% endfor %}
+    {% endif %}
+    {% else %}
+    <tr><td colspan="8" class="sv">— no population detail —</td></tr>
+    {% endif %}
+
+    <!-- ============================================================ GOVERNMENT -->
+    <tr class="sec"><td colspan="8">Government</td></tr>
+    {% if gov %}
+    <tr>
+      <td colspan="2"><span class="lbl">Type</span><br><span class="val">{{ gov.gov_code }} {{ gov.gov_name }}</span></td>
+      <td><span class="lbl">Centralisation</span><br><span class="val">{{ gov.centralisation }}</span></td>
+      <td><span class="lbl">Authority</span><br><span class="val">{{ gov.authority }}</span></td>
+      <td colspan="2"><span class="lbl">Structure</span><br><span class="val">{{ gov.structure }}</span></td>
+      <td colspan="2"><span class="lbl">Government Profile</span><br><span class="val">{{ gov.government_profile }}</span></td>
+    </tr>
+    {% if gov.factions %}
+    <tr class="sh"><th>Faction</th><th colspan="3">Type</th><th colspan="2">Strength</th><th colspan="2">Relationship</th></tr>
+    {% for f in gov.factions %}
+    <tr>
+      <td class="sd">{{ f.numeral }}</td>
+      <td colspan="3" class="sv-wrap">{{ f.government_name }}</td>
+      <td colspan="2" class="sv">{{ f.strength_code }} {{ f.strength_label }}</td>
+      <td colspan="2" class="sv">{{ f.relationship_code }} {{ f.relationship_label }}</td>
+    </tr>
+    {% endfor %}
+    {% endif %}
+    {% else %}
+    <tr><td colspan="8" class="sv">— no government detail —</td></tr>
+    {% endif %}
+
+    <!-- ============================================================ LAW LEVEL -->
+    <tr class="sec"><td colspan="8">Law Level</td></tr>
+    {% if law %}
+    <tr>
+      <td><span class="lbl">Overall</span><br><span class="val">{{ law.overall }}</span></td>
+      <td><span class="lbl">Primary System</span><br><span class="val">{{ law.primary_system }} {{ law.primary_label }}</span></td>
+      <td><span class="lbl">Secondary System</span><br><span class="val">{{ law.secondary_system }}</span></td>
+      <td><span class="lbl">Uniformity</span><br><span class="val">{{ law.uniformity }} {{ law.uniformity_label }}</span></td>
+      <td><span class="lbl">Presumption</span><br><span class="val">{{ law.presumption }}</span></td>
+      <td><span class="lbl">Death Penalty</span><br><span class="val">{{ law.death_penalty }}</span></td>
+      <td colspan="2"><span class="lbl">Justice Profile</span><br><span class="val">{{ law.justice_profile }}</span></td>
+    </tr>
+    <tr>
+      <td><span class="lbl">Weapons</span><br><span class="val">{{ law.law_weapons }}</span></td>
+      <td><span class="lbl">Economic</span><br><span class="val">{{ law.law_economic }}</span></td>
+      <td><span class="lbl">Criminal</span><br><span class="val">{{ law.law_criminal }}</span></td>
+      <td><span class="lbl">Private</span><br><span class="val">{{ law.law_private }}</span></td>
+      <td><span class="lbl">Personal Rights</span><br><span class="val">{{ law.law_personal_rights }}</span></td>
+      <td colspan="3"><span class="lbl">Law Profile</span><br><span class="val">{{ law.law_profile }}</span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="sv">— no law detail —</td></tr>
+    {% endif %}
+
+    <!-- ============================================================ TECHNOLOGY -->
+    <tr class="sec"><td colspan="8">Technology</td></tr>
+    {% if tech %}
+    <tr>
+      <td><span class="lbl">TL High</span><br><span class="val">{{ tech.tl_high }}</span></td>
+      <td><span class="lbl">TL Low</span><br><span class="val">{{ tech.tl_low }}</span></td>
+      <td><span class="lbl">Energy</span><br><span class="val">{{ tech.tl_energy }}</span></td>
+      <td><span class="lbl">Electronics</span><br><span class="val">{{ tech.tl_electronics }}</span></td>
+      <td><span class="lbl">Manufacturing</span><br><span class="val">{{ tech.tl_manufacturing }}</span></td>
+      <td><span class="lbl">Medical</span><br><span class="val">{{ tech.tl_medical }}</span></td>
+      <td><span class="lbl">Environmental</span><br><span class="val">{{ tech.tl_environmental }}</span></td>
+      <td><span class="lbl">Novelty</span><br><span class="val">{{ tech.tl_novelty }}</span></td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="lbl">Technology Profile</span><br><span class="val">{{ tech.technology_profile }}</span></td>
+      <td><span class="lbl">Land</span><br><span class="val">{{ tech.tl_land }}</span></td>
+      <td><span class="lbl">Sea</span><br><span class="val">{{ tech.tl_sea }}</span></td>
+      <td><span class="lbl">Air</span><br><span class="val">{{ tech.tl_air }}</span></td>
+      <td><span class="lbl">Space</span><br><span class="val">{{ tech.tl_space }}</span></td>
+      <td><span class="lbl">Personal Mil.</span><br><span class="val">{{ tech.tl_military_personal }}</span></td>
+      <td><span class="lbl">Heavy Mil.</span><br><span class="val">{{ tech.tl_military_heavy }}</span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="sv">— no technology detail —</td></tr>
+    {% endif %}
+
+    <!-- ============================================================ CULTURE -->
+    <tr class="sec"><td colspan="8">Culture</td></tr>
+    {% if cult %}
+    <tr>
+      <td><span class="lbl">Diversity</span><br><span class="val">{{ cult.diversity }} {{ cult.diversity_label }}</span></td>
+      <td><span class="lbl">Xenophilia</span><br><span class="val">{{ cult.xenophilia }} {{ cult.xenophilia_label }}</span></td>
+      <td><span class="lbl">Uniqueness</span><br><span class="val">{{ cult.uniqueness }} {{ cult.uniqueness_label }}</span></td>
+      <td><span class="lbl">Symbology</span><br><span class="val">{{ cult.symbology }} {{ cult.symbology_label }}</span></td>
+      <td><span class="lbl">Cohesion</span><br><span class="val">{{ cult.cohesion }} {{ cult.cohesion_label }}</span></td>
+      <td><span class="lbl">Progressiveness</span><br><span class="val">{{ cult.progressiveness }} {{ cult.progressiveness_label }}</span></td>
+      <td><span class="lbl">Expansionism</span><br><span class="val">{{ cult.expansionism }} {{ cult.expansionism_label }}</span></td>
+      <td><span class="lbl">Militancy</span><br><span class="val">{{ cult.militancy }} {{ cult.militancy_label }}</span></td>
+    </tr>
+    <tr>
+      <td colspan="4"><span class="lbl">Cultural Profile (DXUS-CPEM)</span><br><span class="val">{{ cult.cultural_profile }}</span></td>
+      <td colspan="4"><span class="lbl">Cultural Extension (T5 HASS)</span><br><span class="val">{{ cult.cultural_extension }}</span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="sv">— no culture detail —</td></tr>
+    {% endif %}
+
+    <!-- ============================================================ ECONOMICS -->
+    <tr class="sec"><td colspan="8">Economics</td></tr>
+    {% if imp %}
+    <tr>
+      <td><span class="lbl">Trade Codes</span><br><span class="val">{{ imp.trade_codes }}</span></td>
+      <td><span class="lbl">Importance {Ix}</span><br><span class="val">{{ imp.importance }}</span></td>
+      <td><span class="lbl">Resources (RF)</span><br><span class="val">{{ imp.resource_factor if imp.resource_factor is not none else "—" }}</span></td>
+      <td><span class="lbl">Labour (LF)</span><br><span class="val">{{ imp.labour_factor }}</span></td>
+      <td><span class="lbl">Infrastructure (IF)</span><br><span class="val">{{ imp.infrastructure_factor if imp.infrastructure_factor is not none else "—" }}</span></td>
+      <td><span class="lbl">Efficiency (EF)</span><br><span class="val">{{ imp.efficiency_factor if imp.efficiency_factor is not none else "—" }}</span></td>
+      <td><span class="lbl">RU</span><br><span class="val">{{ imp.resource_units if imp.resource_units is not none else "—" }}</span></td>
+      <td><span class="lbl">Economics Profile</span><br><span class="val">{{ imp.economics_profile or "—" }}</span></td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="lbl">GWP / Capita (Cr)</span><br><span class="val">{{ imp.gwp_per_capita if imp.gwp_per_capita is not none else "—" }}</span></td>
+      <td colspan="2"><span class="lbl">GWP Total (MCr)</span><br><span class="val">{{ imp.gwp_total_mcr or "—" }}</span></td>
+      <td colspan="2"><span class="lbl">World Trade Number</span><br><span class="val">{{ imp.world_trade_number if imp.world_trade_number is not none else "—" }}</span></td>
+      <td><span class="lbl">Inequality Rating</span><br><span class="val">{{ imp.inequality_rating if imp.inequality_rating is not none else "—" }}</span></td>
+      <td><span class="lbl">Development Score</span><br><span class="val">{{ imp.development_score or "—" }}</span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="sv">— no importance/economics detail —</td></tr>
+    {% endif %}
+
+    <!-- ============================================================ STARPORT -->
+    <tr class="sec"><td colspan="8">Starport</td></tr>
+    {% if sp %}
+    <tr>
+      <td><span class="lbl">Class</span><br><span class="val">{{ sp.starport_class }}</span></td>
+      <td><span class="lbl">Highport</span><br><span class="val">{{ sp.has_highport }}</span></td>
+      <td><span class="lbl">Weekly Traffic</span><br><span class="val">{{ sp.expected_weekly }}</span></td>
+      <td><span class="lbl">Docking (t)</span><br><span class="val">{{ sp.docking_capacity }}</span></td>
+      <td><span class="lbl">Shipyard (t)</span><br><span class="val">{{ sp.shipyard_capacity or "—" }}</span></td>
+      <td><span class="lbl">Annual Output (t)</span><br><span class="val">{{ sp.shipyard_annual_output or "—" }}</span></td>
+      <td colspan="2"><span class="lbl">Starport Profile</span><br><span class="val">{{ sp.starport_profile }}</span></td>
+    </tr>
+    <tr>
+      <td><span class="lbl">Navy Base</span><br><span class="val">{{ sp.base_navy }}</span></td>
+      <td><span class="lbl">Scout Base</span><br><span class="val">{{ sp.base_scout }}</span></td>
+      <td><span class="lbl">Military Base</span><br><span class="val">{{ sp.base_military }}</span></td>
+      <td><span class="lbl">Way Station</span><br><span class="val">{{ sp.base_waystation }}</span></td>
+      <td colspan="4"><span class="lbl">Other Bases</span><br><span class="val">{{ sp.base_other or "—" }}</span></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="8" class="sv">— no starport detail —</td></tr>
+    {% endif %}
+
+    <!-- ============================================================ MILITARY -->
+    <tr class="sec"><td colspan="8">Military</td></tr>
+    {% if mil %}
+    <tr>
+      <td colspan="2"><span class="lbl">Budget % GWP</span><br><span class="val">{{ mil.budget_pct }}</span></td>
+      <td colspan="2"><span class="lbl">State of Readiness</span><br><span class="val">{{ mil.readiness }}</span></td>
+      <td colspan="4"><span class="lbl">Military Profile</span><br><span class="val">{{ mil.military_profile }}</span></td>
+    </tr>
+    <tr class="sh">
+      <th>Branch</th><th>Exists</th><th colspan="6">Effect</th>
+    </tr>
+    {% for b in mil.branches %}
+    <tr>
+      <td class="sd">{{ b.name }}</td>
+      <td class="sv">{{ "Y" if b.exists else "N" }}</td>
+      <td colspan="6" class="sv">{{ b.effect if b.exists else "—" }}</td>
+    </tr>
+    {% endfor %}
+    {% else %}
+    <tr><td colspan="8" class="sv">— no military detail —</td></tr>
+    {% endif %}
+
+    <!-- Comments -->
+    <tr class="sec"><td colspan="8">Comments</td></tr>
+    <tr><td colspan="8" class="comments-cell"></td></tr>
+
+  </table>
+</div>
+</body>
+</html>
