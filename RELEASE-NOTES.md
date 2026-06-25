@@ -1,10 +1,31 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–139
-**Tests:** 2871
+**Sessions:** 88–140
+**Tests:** 2922
 
 ---
+
+## IISS Class IV Survey Form — Issue #161 (Session 140)
+
+`TravellerSystem.to_survey_form_html_class4()` renders a self-contained IISS Form
+0407F-IV Part C HTML page covering all social detail sections.
+
+**Sections:** Population (profile, urbanisation, PCR), Government (type, profile,
+factions, centralisation), Law Level (profile, presumption, death penalty, justice
+profile), Technology (profile, TL High/Low/Space/Personal), Culture (8 traits in
+4-per-row layout), Economics (importance, RF/LF/IF/EF, RU, GWP/Capita, GWP Total,
+WTN), Starport (profile, base indicators, docking capacity, weekly traffic), Military
+(profile, budget %, branches in paired rows).
+
+Shows stub text (`— no X detail —`) for any section whose detail is not attached.
+GWP Total uses `is not none` guard to correctly display zero-GWP worlds.
+
+**Wired into:** FastAPI endpoints (`survey_class4_html` key), `system.html` survey
+type dropdown, gen-ui `_on_survey_clicked()`.
+
+42 new tests in `tests/test_survey_class4.py`; 9 canonical world count/bases tests
+added to `tests/test_map_fetch_canonical.py`. No JSON schema changes.
 
 ## TravellerMap Canonical UWP Preservation — Issue #160 (Session 139)
 

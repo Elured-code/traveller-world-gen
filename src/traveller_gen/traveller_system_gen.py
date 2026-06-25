@@ -587,6 +587,267 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             notes="\n".join(notes_lines),
         )
 
+    def to_survey_form_html_class4(self) -> str:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        """Return a self-contained IISS Class IV Survey form HTML page."""
+        gov_names = {
+            0: "None", 1: "Company/Corporation", 2: "Participating Democracy",
+            3: "Self-Perpetuating Oligarchy", 4: "Representative Democracy",
+            5: "Feudal Technocracy", 6: "Captive Government", 7: "Balkanisation",
+            8: "Civil Service Bureaucracy", 9: "Impersonal Bureaucracy",
+            10: "Charismatic Dictatorship", 11: "Non-Charismatic Dictatorship",
+            12: "Charismatic Oligarchy", 13: "Religious Dictatorship",
+            14: "Religious Autocracy", 15: "Totalitarian Oligarchy",
+        }
+
+        mw = self.mainworld
+        world_name = mw.name if mw else "Unknown"
+        uwp = mw.uwp() if mw else "???????-?"
+        travel_zone = (mw.travel_zone or "Green") if mw else "Green"
+        sector_location = "—"
+        system_age = f"{self.stellar_system.primary.age_gyr:.2f}"
+        primary = self.stellar_system.primary
+        primary_star = f"{primary.designation} {primary.classification()}"
+
+        trade_codes = " ".join(mw.trade_codes) if mw else ""
+
+        # Population context
+        pop_ctx = None
+        if mw and mw.population_detail is not None:
+            pd = mw.population_detail
+            capital_port = ""
+            for city in pd.cities:
+                if "Cw" in (city.codes or []):
+                    capital_port = f"(city #{pd.cities.index(city)+1})"
+                    break
+            if not capital_port:
+                capital_port = mw.starport
+
+            cities_ctx = [
+                {
+                    "population": f"{c.population:,}",
+                    "codes": " ".join(c.codes) if c.codes else "",
+                }
+                for c in pd.cities[:10]
+            ]
+            pop_ctx = {
+                "total_pop": f"{pd.total_population:,}",
+                "p_value": pd.p_value,
+                "pcr": pd.pcr,
+                "pcr_label": pd.pcr_label,
+                "urbanisation_pct": pd.urbanisation_pct,
+                "major_city_count": pd.major_city_count,
+                "capital_port": capital_port,
+                "population_profile": pd.population_profile,
+                "cities": cities_ctx,
+            }
+
+        # Government context
+        gov_ctx = None
+        if mw and mw.government_detail is not None:
+            gd = mw.government_detail
+            gov_code = mw.government
+            gov_name = gov_names.get(gov_code, f"Type {gov_code}")
+            structure = gd.structure or (
+                f"{gd.structure_leg}/{gd.structure_exec}/{gd.structure_jud}"
+                if gd.authority == "Balanced" else ""
+            )
+            gov_ctx = {
+                "gov_code": gov_code,
+                "gov_name": gov_name,
+                "centralisation": gd.centralisation,
+                "authority": gd.authority,
+                "structure": structure,
+                "government_profile": gd.government_profile,
+                "factions": [
+                    {
+                        "numeral": f.numeral,
+                        "government_name": f.government_name,
+                        "strength_code": f.strength_code,
+                        "strength_label": f.strength_label,
+                        "relationship_code": f.relationship_code,
+                        "relationship_label": f.relationship_label,
+                    }
+                    for f in gd.factions
+                ],
+            }
+
+        # Law context
+        law_ctx = None
+        if mw and mw.law_detail is not None:
+            ld = mw.law_detail
+            law_ctx = {
+                "overall": mw.law_level,
+                "primary_system": ld.judicial_primary,
+                "primary_label": ld.judicial_primary_label,
+                "secondary_system": (
+                    f"{ld.judicial_secondary} {ld.judicial_secondary_label}"
+                    if ld.judicial_secondary != ld.judicial_primary else "—"
+                ),
+                "uniformity": ld.law_uniformity,
+                "uniformity_label": ld.law_uniformity_label,
+                "presumption": "Yes" if ld.presumption_of_innocence else "No",
+                "death_penalty": "Yes" if ld.death_penalty else "No",
+                "justice_profile": ld.justice_profile,
+                "law_weapons": ld.law_weapons,
+                "law_economic": ld.law_economic,
+                "law_criminal": ld.law_criminal,
+                "law_private": ld.law_private,
+                "law_personal_rights": ld.law_personal_rights,
+                "law_profile": ld.law_profile,
+            }
+
+        # Technology context
+        tech_ctx = None
+        if mw and mw.tech_detail is not None:
+            td = mw.tech_detail
+            tech_ctx = {
+                "tl_high": td.tl_high_common,
+                "tl_low": td.tl_low_common,
+                "tl_energy": td.tl_energy,
+                "tl_electronics": td.tl_electronics,
+                "tl_manufacturing": td.tl_manufacturing,
+                "tl_medical": td.tl_medical,
+                "tl_environmental": td.tl_environmental,
+                "tl_land": td.tl_land,
+                "tl_sea": td.tl_sea,
+                "tl_air": td.tl_air,
+                "tl_space": td.tl_space,
+                "tl_military_personal": td.tl_military_personal,
+                "tl_military_heavy": td.tl_military_heavy,
+                "tl_novelty": td.tl_novelty,
+                "technology_profile": td.technology_profile,
+            }
+
+        # Culture context
+        cult_ctx = None
+        if mw and mw.culture_detail is not None:
+            cd = mw.culture_detail
+            cult_ctx = {
+                "diversity": cd.diversity,
+                "diversity_label": cd.diversity_label,
+                "xenophilia": cd.xenophilia,
+                "xenophilia_label": cd.xenophilia_label,
+                "uniqueness": cd.uniqueness,
+                "uniqueness_label": cd.uniqueness_label,
+                "symbology": cd.symbology,
+                "symbology_label": cd.symbology_label,
+                "cohesion": cd.cohesion,
+                "cohesion_label": cd.cohesion_label,
+                "progressiveness": cd.progressiveness,
+                "progressiveness_label": cd.progressiveness_label,
+                "expansionism": cd.expansionism,
+                "expansionism_label": cd.expansionism_label,
+                "militancy": cd.militancy,
+                "militancy_label": cd.militancy_label,
+                "cultural_profile": cd.cultural_profile,
+                "cultural_extension": cd.cultural_extension,
+            }
+
+        # Economics/Importance context
+        imp_ctx = None
+        if mw and mw.importance_detail is not None:
+            imp = mw.importance_detail
+            resource_factor = (
+                mw.size_detail.resource_factor
+                if mw.size_detail is not None else None
+            )
+            gwp_total_fmt = (
+                f"{imp.gwp_total_mcr:,.0f}" if imp.gwp_total_mcr is not None else None
+            )
+            dev_fmt = (
+                f"{imp.development_score:.2f}"
+                if imp.development_score is not None else None
+            )
+            imp_ctx = {
+                "trade_codes": trade_codes,
+                "importance": imp.importance_str,
+                "resource_factor": resource_factor,
+                "labour_factor": imp.labour_factor,
+                "infrastructure_factor": imp.infrastructure_factor,
+                "efficiency_factor": imp.efficiency_factor,
+                "resource_units": imp.resource_units,
+                "economics_profile": imp.economics_profile,
+                "gwp_per_capita": imp.gwp_per_capita,
+                "gwp_total_mcr": gwp_total_fmt,
+                "world_trade_number": imp.world_trade_number,
+                "inequality_rating": imp.inequality_rating,
+                "development_score": dev_fmt,
+            }
+
+        # Starport context
+        sp_ctx = None
+        if mw and mw.starport_detail is not None:
+            sp = mw.starport_detail
+            bases = mw.bases or []
+            known = {"N", "S", "M", "W"}
+            other_bases = " ".join(b for b in bases if b not in known)
+            sp_ctx = {
+                "starport_class": mw.starport,
+                "has_highport": "Yes" if sp.has_highport else "No",
+                "expected_weekly": sp.expected_weekly,
+                "docking_capacity": (
+                    f"{sp.downport_capacity:,}"
+                    + (f" + {sp.highport_capacity:,} HP" if sp.highport_capacity else "")
+                ),
+                "shipyard_capacity": (
+                    f"{sp.shipyard_capacity:,}" if sp.shipyard_capacity else None
+                ),
+                "shipyard_annual_output": (
+                    f"{sp.shipyard_annual_output:,}" if sp.shipyard_annual_output else None
+                ),
+                "starport_profile": sp.starport_profile,
+                "base_navy": "Y" if "N" in bases else "",
+                "base_scout": "Y" if "S" in bases else "",
+                "base_military": "Y" if "M" in bases else "",
+                "base_waystation": "Y" if "W" in bases else "",
+                "base_other": other_bases,
+            }
+
+        # Military context
+        mil_ctx = None
+        if mw and mw.military_detail is not None:
+            md = mw.military_detail
+            branch_list = [
+                {"name": name, "exists": br.exists, "effect": br.effect}
+                for name, br in [
+                    ("Enforcement",    md.enforcement),
+                    ("Militia",        md.militia),
+                    ("Army",           md.army),
+                    ("Wet Navy",       md.wet_navy),
+                    ("Air Force",      md.air_force),
+                    ("System Defence", md.system_defence),
+                    ("Navy",           md.navy),
+                    ("Marines",        md.marines),
+                ]
+            ]
+            branch_pairs = [
+                branch_list[i:i + 2] for i in range(0, len(branch_list), 2)
+            ]
+            mil_ctx = {
+                "budget_pct": f"{md.military_budget_pct:.1f}%",
+                "readiness": md.state_of_readiness,
+                "military_profile": md.military_profile,
+                "branches": branch_list,
+                "branch_pairs": branch_pairs,
+            }
+
+        return render("survey_class4.html",
+            world_name=world_name,
+            uwp=uwp,
+            travel_zone=travel_zone,
+            sector_location=sector_location,
+            system_age=system_age,
+            primary_star=primary_star,
+            pop=pop_ctx,
+            gov=gov_ctx,
+            law=law_ctx,
+            tech=tech_ctx,
+            cult=cult_ctx,
+            imp=imp_ctx,
+            sp=sp_ctx,
+            mil=mil_ctx,
+        )
+
 
 def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-statements
     name: str,

@@ -877,6 +877,7 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
                 "mw_html": mw.to_html(),
                 "survey_class0i_html": system.to_survey_form_html(),
                 "survey_class2iii_html": system.to_survey_form_html_class2(),
+                "survey_class4_html": system.to_survey_form_html_class4(),
             })
         return HTMLResponse(content=sys_html, status_code=200)
     if fmt == "text":
@@ -1448,6 +1449,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
                 "mw_html": mw.to_html(),
                 "survey_class0i_html": system.to_survey_form_html(),
                 "survey_class2iii_html": system.to_survey_form_html_class2(),
+                "survey_class4_html": system.to_survey_form_html_class4(),
             })
         return HTMLResponse(content=sys_html, status_code=200)
     if fmt == "text":

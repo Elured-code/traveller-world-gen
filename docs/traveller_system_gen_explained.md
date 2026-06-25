@@ -105,6 +105,8 @@ seed that produced it.
 | `.to_json()` | `TravellerSystem` | JSON string of the full system |
 | `.to_html()` | `TravellerSystem` | HTML system card (Jinja2 template) |
 | `.to_survey_form_html()` | `TravellerSystem` | Self-contained IISS Class 0/I Survey form HTML page (Session 123) |
+| `.to_survey_form_html_class2()` | `TravellerSystem` | Self-contained IISS Class II/III Survey form HTML page (Session 139) |
+| `.to_survey_form_html_class4()` | `TravellerSystem` | Self-contained IISS Class IV Survey form HTML page — social detail (Session 140) |
 | `.summary()` | `TravellerSystem` | Human-readable multi-line text |
 | `.from_dict(d)` | `TravellerSystem` | Reconstructs the full system from a saved dict |
 | `generate_full_system(...)` | module | Procedural entry point — returns physical-only mainworld |
@@ -232,6 +234,39 @@ deterministic (no dice) and idempotent.
 
 `orbit.detail.name` and `moon.detail.name` are also set to mirror the parent
 slot/moon name, so `WorldDetail` objects carry their own name for JSON output.
+
+---
+
+## `to_survey_form_html_class4()` — IISS Class IV Survey form (Session 140)
+
+`TravellerSystem.to_survey_form_html_class4()` renders the `survey_class4.html`
+Jinja2 template and returns a self-contained HTML page (IISS Form 0407F-IV Part C).
+It covers all eight social detail sections, each degrading gracefully to stub text
+when the corresponding detail object is not attached.
+
+**Sections and their source objects:**
+
+| Section | Source on `World` |
+|---------|-----------------|
+| Population | `population_detail` |
+| Government | `government_detail` |
+| Law Level | `law_detail` |
+| Technology | `tech_detail` |
+| Culture | `culture_detail` |
+| Economics / Importance | `importance_detail` + `size_detail.resource_factor` |
+| Starport | `starport_detail` |
+| Military | `military_detail` |
+
+**Notable implementation details:**
+- `gov_names` is a local snake_case dict (pylint C0103 requires local variable names;
+  module-level constants would need `ALL_CAPS` with at least two chars).
+- `sector_location = "—"` — `TravellerSystem` has no `sector` or `location` fields.
+- GWP Total uses `{{ imp.gwp_total_mcr if imp.gwp_total_mcr is not none else "—" }}`
+  instead of `{{ value or "—" }}` — Jinja2's `or` treats the formatted string `"0"`
+  as truthy but a numeric `0` as falsy, which caused blank display for zero-GWP worlds.
+- Military branches are rendered in pairs (`branch_pairs`) for a 4-column layout.
+
+Called by the same callers as the other survey form methods (FastAPI, gen-ui).
 
 ---
 
