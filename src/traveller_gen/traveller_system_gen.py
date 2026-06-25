@@ -749,7 +749,8 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             imp = mw.importance_detail
             resource_factor = (
                 mw.size_detail.resource_factor
-                if mw.size_detail is not None else None
+                if mw.size_detail is not None and not isinstance(mw.size_detail, BeltPhysical)
+                else None
             )
             gwp_total_fmt = (
                 f"{imp.gwp_total_mcr:,.0f}" if imp.gwp_total_mcr is not None else None
