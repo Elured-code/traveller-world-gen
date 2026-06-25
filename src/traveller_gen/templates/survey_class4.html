@@ -61,17 +61,18 @@ table.fb{width:100%;border-collapse:collapse;font-size:9pt;}
 table.fb td,table.fb th{
   border:1px solid var(--bdr-lt);
   padding:3px 5px;vertical-align:top;
+  overflow-wrap:break-word;word-break:break-word;
 }
 .lbl{
   font-family:-apple-system,"Segoe UI",Arial,sans-serif;
-  font-weight:700;font-size:7.5pt;
-  text-transform:uppercase;letter-spacing:0.05em;
-  color:var(--lbl);white-space:nowrap;
+  font-weight:700;font-size:7pt;
+  text-transform:uppercase;letter-spacing:0.04em;
+  color:var(--lbl);display:block;
 }
 .val{
   font-family:"Courier New",Courier,monospace;
-  font-style:italic;font-size:9.5pt;
-  color:var(--txt);
+  font-style:italic;font-size:9pt;
+  color:var(--txt);display:block;
 }
 .sec{
   background:var(--sec-bg);
@@ -84,26 +85,26 @@ table.fb td,table.fb th{
 .sh th{
   font-family:-apple-system,"Segoe UI",Arial,sans-serif;
   background:var(--col-bg);
-  font-size:7.5pt;font-weight:bold;
+  font-size:7pt;font-weight:bold;
   text-transform:uppercase;text-align:center;
   color:var(--txt);padding:2px 3px;
   border-top:1.5px solid var(--bdr);
 }
 td.sd{
   font-family:"Courier New",Courier,monospace;
-  font-style:italic;font-weight:bold;font-size:9.5pt;
+  font-style:italic;font-weight:bold;font-size:9pt;
   color:var(--txt);
 }
 td.sv{
   font-family:"Courier New",Courier,monospace;
   font-style:italic;font-size:9pt;
-  text-align:right;white-space:nowrap;
+  text-align:right;
   color:var(--txt);
 }
 td.sv-wrap{
   font-family:"Courier New",Courier,monospace;
   font-style:italic;font-size:9pt;
-  text-align:left;white-space:normal;word-break:break-word;
+  text-align:left;
   color:var(--txt);
 }
 .comments-cell{
@@ -132,27 +133,27 @@ td.sv-wrap{
 
     <!-- Header rows -->
     <tr>
-      <td colspan="3"><span class="lbl">IISS Designation</span>&nbsp;&nbsp;<span class="val">{{ world_name }}</span></td>
-      <td colspan="2"><span class="lbl">UWP</span>&nbsp;&nbsp;<span class="val">{{ uwp }}</span></td>
-      <td colspan="3"><span class="lbl">Travel Zone</span>&nbsp;&nbsp;<span class="val">{{ travel_zone }}</span></td>
+      <td colspan="3"><span class="lbl">IISS Designation</span><span class="val">{{ world_name }}</span></td>
+      <td colspan="2"><span class="lbl">UWP</span><span class="val">{{ uwp }}</span></td>
+      <td colspan="3"><span class="lbl">Travel Zone</span><span class="val">{{ travel_zone }}</span></td>
     </tr>
     <tr>
-      <td colspan="4"><span class="lbl">Sector / Location</span>&nbsp;&nbsp;<span class="val">{{ sector_location }}</span></td>
-      <td colspan="2"><span class="lbl">System Age (Gyr)</span>&nbsp;&nbsp;<span class="val">{{ system_age }}</span></td>
-      <td colspan="2"><span class="lbl">Primary</span>&nbsp;&nbsp;<span class="val">{{ primary_star }}</span></td>
+      <td colspan="4"><span class="lbl">Sector / Location</span><span class="val">{{ sector_location }}</span></td>
+      <td colspan="2"><span class="lbl">System Age (Gyr)</span><span class="val">{{ system_age }}</span></td>
+      <td colspan="2"><span class="lbl">Primary</span><span class="val">{{ primary_star }}</span></td>
     </tr>
 
     <!-- ============================================================ POPULATION -->
     <tr class="sec"><td colspan="8">Population</td></tr>
     {% if pop %}
     <tr>
-      <td><span class="lbl">Total Population</span><br><span class="val">{{ pop.total_pop }}</span></td>
-      <td><span class="lbl">P-Value</span><br><span class="val">{{ pop.p_value }}</span></td>
-      <td><span class="lbl">PCR</span><br><span class="val">{{ pop.pcr }} {{ pop.pcr_label }}</span></td>
-      <td><span class="lbl">Urbanisation</span><br><span class="val">{{ pop.urbanisation_pct }}%</span></td>
-      <td><span class="lbl">Major Cities</span><br><span class="val">{{ pop.major_city_count }}</span></td>
-      <td><span class="lbl">Capital / Port</span><br><span class="val">{{ pop.capital_port }}</span></td>
-      <td colspan="2"><span class="lbl">Population Profile</span><br><span class="val">{{ pop.population_profile }}</span></td>
+      <td><span class="lbl">Total Population</span><span class="val">{{ pop.total_pop }}</span></td>
+      <td><span class="lbl">P-Value</span><span class="val">{{ pop.p_value }}</span></td>
+      <td><span class="lbl">PCR</span><span class="val">{{ pop.pcr }} {{ pop.pcr_label }}</span></td>
+      <td><span class="lbl">Urbanisation</span><span class="val">{{ pop.urbanisation_pct }}%</span></td>
+      <td><span class="lbl">Major Cities</span><span class="val">{{ pop.major_city_count }}</span></td>
+      <td><span class="lbl">Capital / Port</span><span class="val">{{ pop.capital_port }}</span></td>
+      <td colspan="2"><span class="lbl">Population Profile</span><span class="val">{{ pop.population_profile }}</span></td>
     </tr>
     {% if pop.cities %}
     <tr class="sh"><th>City #</th><th colspan="5">Population</th><th colspan="2">Codes</th></tr>
@@ -172,11 +173,11 @@ td.sv-wrap{
     <tr class="sec"><td colspan="8">Government</td></tr>
     {% if gov %}
     <tr>
-      <td colspan="2"><span class="lbl">Type</span><br><span class="val">{{ gov.gov_code }} {{ gov.gov_name }}</span></td>
-      <td><span class="lbl">Centralisation</span><br><span class="val">{{ gov.centralisation }}</span></td>
-      <td><span class="lbl">Authority</span><br><span class="val">{{ gov.authority }}</span></td>
-      <td colspan="2"><span class="lbl">Structure</span><br><span class="val">{{ gov.structure }}</span></td>
-      <td colspan="2"><span class="lbl">Government Profile</span><br><span class="val">{{ gov.government_profile }}</span></td>
+      <td colspan="2"><span class="lbl">Type</span><span class="val">{{ gov.gov_code }} {{ gov.gov_name }}</span></td>
+      <td><span class="lbl">Centralisation</span><span class="val">{{ gov.centralisation }}</span></td>
+      <td><span class="lbl">Authority</span><span class="val">{{ gov.authority }}</span></td>
+      <td colspan="2"><span class="lbl">Structure</span><span class="val">{{ gov.structure }}</span></td>
+      <td colspan="2"><span class="lbl">Government Profile</span><span class="val">{{ gov.government_profile }}</span></td>
     </tr>
     {% if gov.factions %}
     <tr class="sh"><th>Faction</th><th colspan="3">Type</th><th colspan="2">Strength</th><th colspan="2">Relationship</th></tr>
@@ -197,21 +198,21 @@ td.sv-wrap{
     <tr class="sec"><td colspan="8">Law Level</td></tr>
     {% if law %}
     <tr>
-      <td><span class="lbl">Overall</span><br><span class="val">{{ law.overall }}</span></td>
-      <td><span class="lbl">Primary System</span><br><span class="val">{{ law.primary_system }} {{ law.primary_label }}</span></td>
-      <td><span class="lbl">Secondary System</span><br><span class="val">{{ law.secondary_system }}</span></td>
-      <td><span class="lbl">Uniformity</span><br><span class="val">{{ law.uniformity }} {{ law.uniformity_label }}</span></td>
-      <td><span class="lbl">Presumption</span><br><span class="val">{{ law.presumption }}</span></td>
-      <td><span class="lbl">Death Penalty</span><br><span class="val">{{ law.death_penalty }}</span></td>
-      <td colspan="2"><span class="lbl">Justice Profile</span><br><span class="val">{{ law.justice_profile }}</span></td>
+      <td><span class="lbl">Overall</span><span class="val">{{ law.overall }}</span></td>
+      <td><span class="lbl">Primary System</span><span class="val">{{ law.primary_system }} {{ law.primary_label }}</span></td>
+      <td><span class="lbl">Secondary System</span><span class="val">{{ law.secondary_system }}</span></td>
+      <td><span class="lbl">Uniformity</span><span class="val">{{ law.uniformity }} {{ law.uniformity_label }}</span></td>
+      <td><span class="lbl">Presumption</span><span class="val">{{ law.presumption }}</span></td>
+      <td><span class="lbl">Death Penalty</span><span class="val">{{ law.death_penalty }}</span></td>
+      <td colspan="2"><span class="lbl">Justice Profile</span><span class="val">{{ law.justice_profile }}</span></td>
     </tr>
     <tr>
-      <td><span class="lbl">Weapons</span><br><span class="val">{{ law.law_weapons }}</span></td>
-      <td><span class="lbl">Economic</span><br><span class="val">{{ law.law_economic }}</span></td>
-      <td><span class="lbl">Criminal</span><br><span class="val">{{ law.law_criminal }}</span></td>
-      <td><span class="lbl">Private</span><br><span class="val">{{ law.law_private }}</span></td>
-      <td><span class="lbl">Personal Rights</span><br><span class="val">{{ law.law_personal_rights }}</span></td>
-      <td colspan="3"><span class="lbl">Law Profile</span><br><span class="val">{{ law.law_profile }}</span></td>
+      <td><span class="lbl">Weapons</span><span class="val">{{ law.law_weapons }}</span></td>
+      <td><span class="lbl">Economic</span><span class="val">{{ law.law_economic }}</span></td>
+      <td><span class="lbl">Criminal</span><span class="val">{{ law.law_criminal }}</span></td>
+      <td><span class="lbl">Private</span><span class="val">{{ law.law_private }}</span></td>
+      <td><span class="lbl">Personal Rights</span><span class="val">{{ law.law_personal_rights }}</span></td>
+      <td colspan="3"><span class="lbl">Law Profile</span><span class="val">{{ law.law_profile }}</span></td>
     </tr>
     {% else %}
     <tr><td colspan="8" class="sv">— no law detail —</td></tr>
@@ -221,23 +222,23 @@ td.sv-wrap{
     <tr class="sec"><td colspan="8">Technology</td></tr>
     {% if tech %}
     <tr>
-      <td><span class="lbl">TL High</span><br><span class="val">{{ tech.tl_high }}</span></td>
-      <td><span class="lbl">TL Low</span><br><span class="val">{{ tech.tl_low }}</span></td>
-      <td><span class="lbl">Energy</span><br><span class="val">{{ tech.tl_energy }}</span></td>
-      <td><span class="lbl">Electronics</span><br><span class="val">{{ tech.tl_electronics }}</span></td>
-      <td><span class="lbl">Manufacturing</span><br><span class="val">{{ tech.tl_manufacturing }}</span></td>
-      <td><span class="lbl">Medical</span><br><span class="val">{{ tech.tl_medical }}</span></td>
-      <td><span class="lbl">Environmental</span><br><span class="val">{{ tech.tl_environmental }}</span></td>
-      <td><span class="lbl">Novelty</span><br><span class="val">{{ tech.tl_novelty }}</span></td>
+      <td><span class="lbl">TL High</span><span class="val">{{ tech.tl_high }}</span></td>
+      <td><span class="lbl">TL Low</span><span class="val">{{ tech.tl_low }}</span></td>
+      <td><span class="lbl">Energy</span><span class="val">{{ tech.tl_energy }}</span></td>
+      <td><span class="lbl">Electronics</span><span class="val">{{ tech.tl_electronics }}</span></td>
+      <td><span class="lbl">Manufacturing</span><span class="val">{{ tech.tl_manufacturing }}</span></td>
+      <td><span class="lbl">Medical</span><span class="val">{{ tech.tl_medical }}</span></td>
+      <td><span class="lbl">Environmental</span><span class="val">{{ tech.tl_environmental }}</span></td>
+      <td><span class="lbl">Novelty</span><span class="val">{{ tech.tl_novelty }}</span></td>
     </tr>
     <tr>
-      <td colspan="2"><span class="lbl">Technology Profile</span><br><span class="val">{{ tech.technology_profile }}</span></td>
-      <td><span class="lbl">Land</span><br><span class="val">{{ tech.tl_land }}</span></td>
-      <td><span class="lbl">Sea</span><br><span class="val">{{ tech.tl_sea }}</span></td>
-      <td><span class="lbl">Air</span><br><span class="val">{{ tech.tl_air }}</span></td>
-      <td><span class="lbl">Space</span><br><span class="val">{{ tech.tl_space }}</span></td>
-      <td><span class="lbl">Personal Mil.</span><br><span class="val">{{ tech.tl_military_personal }}</span></td>
-      <td><span class="lbl">Heavy Mil.</span><br><span class="val">{{ tech.tl_military_heavy }}</span></td>
+      <td colspan="2"><span class="lbl">Technology Profile</span><span class="val">{{ tech.technology_profile }}</span></td>
+      <td><span class="lbl">Land</span><span class="val">{{ tech.tl_land }}</span></td>
+      <td><span class="lbl">Sea</span><span class="val">{{ tech.tl_sea }}</span></td>
+      <td><span class="lbl">Air</span><span class="val">{{ tech.tl_air }}</span></td>
+      <td><span class="lbl">Space</span><span class="val">{{ tech.tl_space }}</span></td>
+      <td><span class="lbl">Personal Mil.</span><span class="val">{{ tech.tl_military_personal }}</span></td>
+      <td><span class="lbl">Heavy Mil.</span><span class="val">{{ tech.tl_military_heavy }}</span></td>
     </tr>
     {% else %}
     <tr><td colspan="8" class="sv">— no technology detail —</td></tr>
@@ -247,18 +248,20 @@ td.sv-wrap{
     <tr class="sec"><td colspan="8">Culture</td></tr>
     {% if cult %}
     <tr>
-      <td><span class="lbl">Diversity</span><br><span class="val">{{ cult.diversity }} {{ cult.diversity_label }}</span></td>
-      <td><span class="lbl">Xenophilia</span><br><span class="val">{{ cult.xenophilia }} {{ cult.xenophilia_label }}</span></td>
-      <td><span class="lbl">Uniqueness</span><br><span class="val">{{ cult.uniqueness }} {{ cult.uniqueness_label }}</span></td>
-      <td><span class="lbl">Symbology</span><br><span class="val">{{ cult.symbology }} {{ cult.symbology_label }}</span></td>
-      <td><span class="lbl">Cohesion</span><br><span class="val">{{ cult.cohesion }} {{ cult.cohesion_label }}</span></td>
-      <td><span class="lbl">Progressiveness</span><br><span class="val">{{ cult.progressiveness }} {{ cult.progressiveness_label }}</span></td>
-      <td><span class="lbl">Expansionism</span><br><span class="val">{{ cult.expansionism }} {{ cult.expansionism_label }}</span></td>
-      <td><span class="lbl">Militancy</span><br><span class="val">{{ cult.militancy }} {{ cult.militancy_label }}</span></td>
+      <td colspan="2"><span class="lbl">Diversity</span><span class="val">{{ cult.diversity }} {{ cult.diversity_label }}</span></td>
+      <td colspan="2"><span class="lbl">Xenophilia</span><span class="val">{{ cult.xenophilia }} {{ cult.xenophilia_label }}</span></td>
+      <td colspan="2"><span class="lbl">Uniqueness</span><span class="val">{{ cult.uniqueness }} {{ cult.uniqueness_label }}</span></td>
+      <td colspan="2"><span class="lbl">Symbology</span><span class="val">{{ cult.symbology }} {{ cult.symbology_label }}</span></td>
     </tr>
     <tr>
-      <td colspan="4"><span class="lbl">Cultural Profile (DXUS-CPEM)</span><br><span class="val">{{ cult.cultural_profile }}</span></td>
-      <td colspan="4"><span class="lbl">Cultural Extension (T5 HASS)</span><br><span class="val">{{ cult.cultural_extension }}</span></td>
+      <td colspan="2"><span class="lbl">Cohesion</span><span class="val">{{ cult.cohesion }} {{ cult.cohesion_label }}</span></td>
+      <td colspan="2"><span class="lbl">Progressiveness</span><span class="val">{{ cult.progressiveness }} {{ cult.progressiveness_label }}</span></td>
+      <td colspan="2"><span class="lbl">Expansionism</span><span class="val">{{ cult.expansionism }} {{ cult.expansionism_label }}</span></td>
+      <td colspan="2"><span class="lbl">Militancy</span><span class="val">{{ cult.militancy }} {{ cult.militancy_label }}</span></td>
+    </tr>
+    <tr>
+      <td colspan="4"><span class="lbl">Cultural Profile (DXUS-CPEM)</span><span class="val">{{ cult.cultural_profile }}</span></td>
+      <td colspan="4"><span class="lbl">Cultural Extension (T5 HASS)</span><span class="val">{{ cult.cultural_extension }}</span></td>
     </tr>
     {% else %}
     <tr><td colspan="8" class="sv">— no culture detail —</td></tr>
@@ -268,21 +271,24 @@ td.sv-wrap{
     <tr class="sec"><td colspan="8">Economics</td></tr>
     {% if imp %}
     <tr>
-      <td><span class="lbl">Trade Codes</span><br><span class="val">{{ imp.trade_codes }}</span></td>
-      <td><span class="lbl">Importance {Ix}</span><br><span class="val">{{ imp.importance }}</span></td>
-      <td><span class="lbl">Resources (RF)</span><br><span class="val">{{ imp.resource_factor if imp.resource_factor is not none else "—" }}</span></td>
-      <td><span class="lbl">Labour (LF)</span><br><span class="val">{{ imp.labour_factor }}</span></td>
-      <td><span class="lbl">Infrastructure (IF)</span><br><span class="val">{{ imp.infrastructure_factor if imp.infrastructure_factor is not none else "—" }}</span></td>
-      <td><span class="lbl">Efficiency (EF)</span><br><span class="val">{{ imp.efficiency_factor if imp.efficiency_factor is not none else "—" }}</span></td>
-      <td><span class="lbl">RU</span><br><span class="val">{{ imp.resource_units if imp.resource_units is not none else "—" }}</span></td>
-      <td><span class="lbl">Economics Profile</span><br><span class="val">{{ imp.economics_profile or "—" }}</span></td>
+      <td colspan="2"><span class="lbl">Trade Codes</span><span class="val">{{ imp.trade_codes }}</span></td>
+      <td><span class="lbl">Importance {Ix}</span><span class="val">{{ imp.importance }}</span></td>
+      <td><span class="lbl">RF</span><span class="val">{{ imp.resource_factor if imp.resource_factor is not none else "—" }}</span></td>
+      <td><span class="lbl">LF</span><span class="val">{{ imp.labour_factor }}</span></td>
+      <td><span class="lbl">IF</span><span class="val">{{ imp.infrastructure_factor if imp.infrastructure_factor is not none else "—" }}</span></td>
+      <td><span class="lbl">EF</span><span class="val">{{ imp.efficiency_factor if imp.efficiency_factor is not none else "—" }}</span></td>
+      <td><span class="lbl">RU</span><span class="val">{{ imp.resource_units if imp.resource_units is not none else "—" }}</span></td>
     </tr>
     <tr>
-      <td colspan="2"><span class="lbl">GWP / Capita (Cr)</span><br><span class="val">{{ imp.gwp_per_capita if imp.gwp_per_capita is not none else "—" }}</span></td>
-      <td colspan="2"><span class="lbl">GWP Total (MCr)</span><br><span class="val">{{ imp.gwp_total_mcr or "—" }}</span></td>
-      <td colspan="2"><span class="lbl">World Trade Number</span><br><span class="val">{{ imp.world_trade_number if imp.world_trade_number is not none else "—" }}</span></td>
-      <td><span class="lbl">Inequality Rating</span><br><span class="val">{{ imp.inequality_rating if imp.inequality_rating is not none else "—" }}</span></td>
-      <td><span class="lbl">Development Score</span><br><span class="val">{{ imp.development_score or "—" }}</span></td>
+      <td colspan="2"><span class="lbl">Economics Profile</span><span class="val">{{ imp.economics_profile or "—" }}</span></td>
+      <td colspan="2"><span class="lbl">GWP/Capita (Cr)</span><span class="val">{{ imp.gwp_per_capita if imp.gwp_per_capita is not none else "—" }}</span></td>
+      <td colspan="2"><span class="lbl">GWP Total (MCr)</span><span class="val">{{ imp.gwp_total_mcr or "—" }}</span></td>
+      <td><span class="lbl">WTN</span><span class="val">{{ imp.world_trade_number if imp.world_trade_number is not none else "—" }}</span></td>
+      <td><span class="lbl">Inequality</span><span class="val">{{ imp.inequality_rating if imp.inequality_rating is not none else "—" }}</span></td>
+    </tr>
+    <tr>
+      <td colspan="2"><span class="lbl">Development Score</span><span class="val">{{ imp.development_score or "—" }}</span></td>
+      <td colspan="6"></td>
     </tr>
     {% else %}
     <tr><td colspan="8" class="sv">— no importance/economics detail —</td></tr>
@@ -292,20 +298,20 @@ td.sv-wrap{
     <tr class="sec"><td colspan="8">Starport</td></tr>
     {% if sp %}
     <tr>
-      <td><span class="lbl">Class</span><br><span class="val">{{ sp.starport_class }}</span></td>
-      <td><span class="lbl">Highport</span><br><span class="val">{{ sp.has_highport }}</span></td>
-      <td><span class="lbl">Weekly Traffic</span><br><span class="val">{{ sp.expected_weekly }}</span></td>
-      <td><span class="lbl">Docking (t)</span><br><span class="val">{{ sp.docking_capacity }}</span></td>
-      <td><span class="lbl">Shipyard (t)</span><br><span class="val">{{ sp.shipyard_capacity or "—" }}</span></td>
-      <td><span class="lbl">Annual Output (t)</span><br><span class="val">{{ sp.shipyard_annual_output or "—" }}</span></td>
-      <td colspan="2"><span class="lbl">Starport Profile</span><br><span class="val">{{ sp.starport_profile }}</span></td>
+      <td><span class="lbl">Class</span><span class="val">{{ sp.starport_class }}</span></td>
+      <td><span class="lbl">Highport</span><span class="val">{{ sp.has_highport }}</span></td>
+      <td><span class="lbl">Weekly Traffic</span><span class="val">{{ sp.expected_weekly }}</span></td>
+      <td colspan="2"><span class="lbl">Docking (t)</span><span class="val">{{ sp.docking_capacity }}</span></td>
+      <td><span class="lbl">Shipyard (t)</span><span class="val">{{ sp.shipyard_capacity or "—" }}</span></td>
+      <td><span class="lbl">Output (t/yr)</span><span class="val">{{ sp.shipyard_annual_output or "—" }}</span></td>
+      <td><span class="lbl">Profile</span><span class="val">{{ sp.starport_profile }}</span></td>
     </tr>
     <tr>
-      <td><span class="lbl">Navy Base</span><br><span class="val">{{ sp.base_navy }}</span></td>
-      <td><span class="lbl">Scout Base</span><br><span class="val">{{ sp.base_scout }}</span></td>
-      <td><span class="lbl">Military Base</span><br><span class="val">{{ sp.base_military }}</span></td>
-      <td><span class="lbl">Way Station</span><br><span class="val">{{ sp.base_waystation }}</span></td>
-      <td colspan="4"><span class="lbl">Other Bases</span><br><span class="val">{{ sp.base_other or "—" }}</span></td>
+      <td><span class="lbl">Navy (N)</span><span class="val">{{ sp.base_navy or "—" }}</span></td>
+      <td><span class="lbl">Scout (S)</span><span class="val">{{ sp.base_scout or "—" }}</span></td>
+      <td><span class="lbl">Military (M)</span><span class="val">{{ sp.base_military or "—" }}</span></td>
+      <td><span class="lbl">Waystation (W)</span><span class="val">{{ sp.base_waystation or "—" }}</span></td>
+      <td colspan="4"><span class="lbl">Other Bases</span><span class="val">{{ sp.base_other or "—" }}</span></td>
     </tr>
     {% else %}
     <tr><td colspan="8" class="sv">— no starport detail —</td></tr>
@@ -315,18 +321,25 @@ td.sv-wrap{
     <tr class="sec"><td colspan="8">Military</td></tr>
     {% if mil %}
     <tr>
-      <td colspan="2"><span class="lbl">Budget % GWP</span><br><span class="val">{{ mil.budget_pct }}</span></td>
-      <td colspan="2"><span class="lbl">State of Readiness</span><br><span class="val">{{ mil.readiness }}</span></td>
-      <td colspan="4"><span class="lbl">Military Profile</span><br><span class="val">{{ mil.military_profile }}</span></td>
+      <td colspan="2"><span class="lbl">Budget % GWP</span><span class="val">{{ mil.budget_pct }}</span></td>
+      <td colspan="3"><span class="lbl">State of Readiness</span><span class="val">{{ mil.readiness }}</span></td>
+      <td colspan="3"><span class="lbl">Military Profile</span><span class="val">{{ mil.military_profile }}</span></td>
     </tr>
     <tr class="sh">
-      <th>Branch</th><th>Exists</th><th colspan="6">Effect</th>
+      <th colspan="2">Branch</th><th>Exists</th><th colspan="2">Effect</th>
+      <th colspan="2">Branch</th><th>Exists / Effect</th>
     </tr>
-    {% for b in mil.branches %}
+    {% for pair in mil.branch_pairs %}
     <tr>
-      <td class="sd">{{ b.name }}</td>
-      <td class="sv">{{ "Y" if b.exists else "N" }}</td>
-      <td colspan="6" class="sv">{{ b.effect if b.exists else "—" }}</td>
+      <td colspan="2" class="sd">{{ pair[0].name }}</td>
+      <td class="sv">{{ "Y" if pair[0].exists else "N" }}</td>
+      <td colspan="2" class="sv">{{ pair[0].effect if pair[0].exists else "—" }}</td>
+      {% if pair|length > 1 %}
+      <td colspan="2" class="sd">{{ pair[1].name }}</td>
+      <td class="sv">{{ ("Y " ~ pair[1].effect) if pair[1].exists else "N" }}</td>
+      {% else %}
+      <td colspan="3"></td>
+      {% endif %}
     </tr>
     {% endfor %}
     {% else %}

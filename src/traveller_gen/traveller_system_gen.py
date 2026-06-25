@@ -807,7 +807,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
         mil_ctx = None
         if mw and mw.military_detail is not None:
             md = mw.military_detail
-            branches = [
+            branch_list = [
                 {"name": name, "exists": br.exists, "effect": br.effect}
                 for name, br in [
                     ("Enforcement",    md.enforcement),
@@ -820,11 +820,15 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                     ("Marines",        md.marines),
                 ]
             ]
+            branch_pairs = [
+                branch_list[i:i + 2] for i in range(0, len(branch_list), 2)
+            ]
             mil_ctx = {
                 "budget_pct": f"{md.military_budget_pct:.1f}%",
                 "readiness": md.state_of_readiness,
                 "military_profile": md.military_profile,
-                "branches": branches,
+                "branches": branch_list,
+                "branch_pairs": branch_pairs,
             }
 
         return render("survey_class4.html",
