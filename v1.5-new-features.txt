@@ -560,6 +560,26 @@ generator and mainworld-only pages) also show a planet icon in the browser tab.
 The icon shows a stylised planet with a glowing atmosphere and an orbital ring,
 on a dark space background.
 
+SURVEY FORM — IISS CLASS IV SURVEY FORM
+----------------------------------------
+The Survey Form dropdown now includes a third option: "Class IV Survey" (IISS
+Form 0407F-IV Part C). This form covers all social detail sections:
+
+- Population: profile, urbanisation, PCR
+- Government: type, factions, centralisation profile
+- Law Level: profile, presumption of innocence, death penalty, justice profile
+- Technology: profile, TL High / TL Low / Space / Personal sub-levels
+- Culture: all eight traits (Diversity through Militancy) in a compact layout
+- Economics: resource / labour / infrastructure / efficiency factors, RU, GWP
+  per capita, GWP total, and World Trade Number
+- Starport: profile, base indicators (Navy, Scout, Military, Waystation),
+  docking capacity, weekly traffic
+- Military: profile, budget as a percentage of GWP, branch listing
+
+Each section shows placeholder text if the corresponding social detail has not
+been generated. The form is available in the FastAPI web UI, the gen-ui desktop
+app, and via the API.
+
 SURVEY FORM — CLASS II/III OPTION NOW AVAILABLE
 ------------------------------------------------
 The Survey Form dropdown in the FastAPI web UI now offers both form types:
