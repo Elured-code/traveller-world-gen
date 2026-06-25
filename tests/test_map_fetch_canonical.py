@@ -189,5 +189,129 @@ class TestAegirWithSocialDetail(unittest.TestCase):
         assert sys.mainworld.importance_detail is not None
 
 
+class TestAegirCountsAndBases(unittest.TestCase):
+    """Gas-giant count, belt count, world count, and bases must all survive the
+    full detail pipeline.
+
+    Regression guard for apply_mainworld_social() overwriting population_multiplier
+    and bases, and for any future pipeline step inadvertently resetting PBG-derived
+    counts or the TravellerMap world total.
+
+    Aegir (Solomani Rim 1339):
+      PBG 502  →  population_multiplier=5, belt_count=0, gas_giant_count=2
+      bases=""  →  world.bases==[]
+      worlds=5  →  system.system_orbits.total_worlds==5
+    """
+
+    def _run(self, seed: int = 42, social: bool = True):
+        from traveller_gen.system_pipeline import run_detail_pipeline, PipelineOptions
+        sys = _fetch_aegir(seed=seed)
+        rng = random.Random(seed)
+        run_detail_pipeline(sys, rng, PipelineOptions(
+            want_detail=True, want_social_detail=social,
+        ))
+        return sys
+
+    # ------------------------------------------------------------------
+    # PBG-derived counts
+    # ------------------------------------------------------------------
+
+    def test_gas_giant_count_after_pipeline(self):
+        assert self._run().mainworld.gas_giant_count == 2, (
+            "gas_giant_count (from PBG G=2) was overwritten by the pipeline"
+        )
+
+    def test_belt_count_after_pipeline(self):
+        assert self._run().mainworld.belt_count == 0, (
+            "belt_count (from PBG B=0) was overwritten by the pipeline"
+        )
+
+    def test_population_multiplier_after_pipeline(self):
+        assert self._run().mainworld.population_multiplier == 5, (
+            "population_multiplier (from PBG P=5) was overwritten by apply_mainworld_social()"
+        )
+
+    def test_total_worlds_after_pipeline(self):
+        sys = self._run()
+        assert sys.system_orbits.total_worlds == 5, (
+            f"total_worlds (from MapWorldData.worlds=5) changed to "
+            f"{sys.system_orbits.total_worlds} during the pipeline"
+        )
+
+    # ------------------------------------------------------------------
+    # Bases
+    # ------------------------------------------------------------------
+
+    def test_bases_empty_after_pipeline(self):
+        mw = self._run().mainworld
+        assert mw.bases == [], (
+            f"bases (canonical empty from TravellerMap) were overwritten "
+            f"by apply_mainworld_social(): got {mw.bases!r}"
+        )
+
+    def test_bases_empty_with_social_detail(self):
+        mw = self._run(social=True).mainworld
+        assert mw.bases == [], (
+            f"bases were overwritten during social detail pipeline: got {mw.bases!r}"
+        )
+
+    def test_bases_preserved_with_actual_bases(self):
+        """World with real base codes must have those codes preserved."""
+        from traveller_gen.traveller_map_fetch import MapWorldData, generate_system_from_map
+        from traveller_gen.system_pipeline import run_detail_pipeline, PipelineOptions
+        data = MapWorldData(
+            name="Mora",
+            sector="Spinward Marches",
+            hex_pos="3124",
+            uwp="AA99AC7-F",
+            bases="N W",
+            remarks="Hi In Ht",
+            zone="",
+            pbg="612",
+            stars_str="F0 V",
+            worlds=9,
+            cx="[A34C]",
+            importance=4,
+        )
+        with mock.patch(
+            "traveller_gen.traveller_map_fetch.fetch_world_data", return_value=data
+        ):
+            sys = generate_system_from_map("Mora", sector="Spinward Marches", seed=99)
+        rng = random.Random(99)
+        run_detail_pipeline(sys, rng, PipelineOptions(want_detail=True, want_social_detail=True))
+        assert sys.mainworld.bases == ["N", "W"], (
+            f"Canonical bases ['N', 'W'] were overwritten: got {sys.mainworld.bases!r}"
+        )
+
+    # ------------------------------------------------------------------
+    # Determinism: counts must be stable across seeds
+    # ------------------------------------------------------------------
+
+    def test_counts_deterministic_across_seeds(self):
+        """PBG-derived counts and bases must be identical for every seed."""
+        from traveller_gen.system_pipeline import run_detail_pipeline, PipelineOptions
+        for seed in (1, 99, 12345, 999999):
+            sys = _fetch_aegir(seed=seed)
+            run_detail_pipeline(sys, random.Random(seed), PipelineOptions(want_detail=True))
+            mw = sys.mainworld
+            assert mw.gas_giant_count == 2, f"seed {seed}: gas_giant_count={mw.gas_giant_count}"
+            assert mw.belt_count == 0,      f"seed {seed}: belt_count={mw.belt_count}"
+            assert mw.population_multiplier == 5, (
+                f"seed {seed}: population_multiplier={mw.population_multiplier}"
+            )
+            assert mw.bases == [],          f"seed {seed}: bases={mw.bases!r}"
+
+    def test_total_worlds_not_changed_by_pipeline(self):
+        """total_worlds must be the same before and after run_detail_pipeline()."""
+        from traveller_gen.system_pipeline import run_detail_pipeline, PipelineOptions
+        sys = _fetch_aegir(seed=42)
+        before = sys.system_orbits.total_worlds
+        run_detail_pipeline(sys, random.Random(42), PipelineOptions(want_detail=True))
+        assert sys.system_orbits.total_worlds == before, (
+            f"total_worlds changed from {before} to {sys.system_orbits.total_worlds} "
+            f"during run_detail_pipeline()"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
