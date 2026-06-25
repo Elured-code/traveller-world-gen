@@ -81,7 +81,11 @@ from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail  #
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
 from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 
-_DISPLAY_VERSION = APP_VERSION
+try:
+    from traveller_gen import _version as _gen_ver  # type: ignore[import]  # noqa: E402
+    _DISPLAY_VERSION = _gen_ver.__version__
+except ImportError:
+    _DISPLAY_VERSION = APP_VERSION
 
 # ---------------------------------------------------------------------------
 # Stylesheet

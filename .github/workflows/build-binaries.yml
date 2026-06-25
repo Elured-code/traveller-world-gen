@@ -73,6 +73,9 @@ jobs:
           python -m pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
           pip install --no-deps .
 
+      - name: Compute version
+        run: bash scripts/compute_version.sh
+
       # The spec uses pathex=["."] and datas=[("src/traveller_gen/templates", "templates")]
       # relative to the project root, so this must run from the repo root.
       - name: Build with PyInstaller
@@ -150,6 +153,9 @@ jobs:
           python3.11 -m pip install --upgrade pip
           python3.11 -m pip install pyinstaller -r gen-ui/requirements.txt -r requirements.txt
           python3.11 -m pip install --no-deps .
+
+      - name: Compute version
+        run: bash scripts/compute_version.sh
 
       - name: Build with PyInstaller
         run: python3.11 -m PyInstaller traveller_gen_ui.spec
