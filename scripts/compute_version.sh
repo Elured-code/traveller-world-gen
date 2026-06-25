@@ -5,10 +5,10 @@
 #   Major.Minor — from branch name (v1.5.x → 1.5), fallback to VERSION file
 #   Patch       — extracted from APP_VERSION fallback in world_codes.py
 #                 (single source of truth for the manually-maintained version)
-#   Build       — short git SHA (first 7 chars of HEAD); always the same for a
-#                 given commit regardless of which workflow runs this script,
-#                 so all built artefacts from the same commit share an identical
-#                 version string.  Falls back to "dev" if git is unavailable.
+#   Build       — total git commit count (git rev-list --count HEAD); always
+#                 the same for a given commit regardless of which workflow runs
+#                 this script, so all artefacts from the same commit share an
+#                 identical version string.  Requires full history (fetch-depth: 0).
 #
 # Usage (local):   bash scripts/compute_version.sh
 # Usage (CI):      bash scripts/compute_version.sh
@@ -39,8 +39,9 @@ print(m.group(1) if m else '0')
 " "$WORLD_CODES")
 
 # ── Build ─────────────────────────────────────────────────────────────────────
-# Short git SHA — identical for every build from the same commit.
-BUILD="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "dev")"
+# Total commit count — same for every workflow that checks out the same commit.
+# Requires fetch-depth: 0 in CI checkout steps.
+BUILD="$(git -C "$REPO_ROOT" rev-list --count HEAD)"
 
 # ── Write _version.py ─────────────────────────────────────────────────────────
 VERSION="${MAJOR}.${MINOR}.${PATCH}"
