@@ -282,7 +282,7 @@ td.sv-wrap{
     <tr>
       <td colspan="2"><span class="lbl">Economics Profile</span><span class="val">{{ imp.economics_profile or "—" }}</span></td>
       <td colspan="2"><span class="lbl">GWP/Capita (Cr)</span><span class="val">{{ imp.gwp_per_capita if imp.gwp_per_capita is not none else "—" }}</span></td>
-      <td colspan="2"><span class="lbl">GWP Total (MCr)</span><span class="val">{{ imp.gwp_total_mcr or "—" }}</span></td>
+      <td colspan="2"><span class="lbl">GWP Total (MCr)</span><span class="val">{{ imp.gwp_total_mcr if imp.gwp_total_mcr is not none else "—" }}</span></td>
       <td><span class="lbl">WTN</span><span class="val">{{ imp.world_trade_number if imp.world_trade_number is not none else "—" }}</span></td>
       <td><span class="lbl">Inequality</span><span class="val">{{ imp.inequality_rating if imp.inequality_rating is not none else "—" }}</span></td>
     </tr>

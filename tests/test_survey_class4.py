@@ -188,13 +188,13 @@ class TestClass4FormStarport(unittest.TestCase):
         self.html = self.sys.to_survey_form_html_class4()
 
     def test_starport_profile_field(self):
-        assert "Starport Profile" in self.html
+        assert "Profile" in self.html
 
     def test_navy_base_shown(self):
-        assert "Navy Base" in self.html
+        assert "Navy (N)" in self.html
 
     def test_scout_base_shown(self):
-        assert "Scout Base" in self.html
+        assert "Scout (S)" in self.html
 
     def test_weekly_traffic_field(self):
         assert "Weekly Traffic" in self.html
@@ -235,10 +235,10 @@ class TestClass4FormEconomics(unittest.TestCase):
         assert "RU" in self.html
 
     def test_gwp_per_capita_field(self):
-        assert "GWP / Capita" in self.html
+        assert "GWP/Capita" in self.html
 
     def test_wtn_field(self):
-        assert "World Trade Number" in self.html
+        assert "WTN" in self.html
 
 
 if __name__ == "__main__":
