@@ -309,7 +309,8 @@
     .empty-state .icon { font-size: 2.5rem; opacity: 0.3; }
 
     /* ── User Guide modal ────────────────────────────── */
-    .guide-dialog { border:none; border-radius:8px; padding:0; width:min(900px,94vw); height:min(720px,88vh); background:var(--surface); color:var(--text); box-shadow:0 12px 48px rgba(0,0,0,0.7); display:flex; flex-direction:column; overflow:hidden; }
+    .guide-dialog { border:none; border-radius:8px; padding:0; width:min(900px,94vw); height:min(720px,88vh); background:var(--surface); color:var(--text); box-shadow:0 12px 48px rgba(0,0,0,0.7); overflow:hidden; }
+    .guide-dialog[open] { display:flex; flex-direction:column; }
     .guide-dialog::backdrop { background:rgba(0,0,0,0.6); }
     .guide-dialog-hdr { display:flex; align-items:center; padding:0.6rem 1rem; border-bottom:1px solid var(--border); background:var(--panel); flex-shrink:0; }
     .guide-dialog-title { font-size:0.8rem; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; flex:1; }
