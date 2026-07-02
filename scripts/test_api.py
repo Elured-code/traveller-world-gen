@@ -165,7 +165,8 @@ class TestSecurityHeaders:
 
     def test_csp_allows_jsdelivr(self):
         csp = self.r.headers["Content-Security-Policy"]
-        assert "cdn.jsdelivr.net" in csp
+        csp_tokens = csp.replace(";", " ").split()
+        assert "https://cdn.jsdelivr.net" in csp_tokens
 
     def test_csp_blocks_frame_ancestors(self):
         csp = self.r.headers["Content-Security-Policy"]
