@@ -1009,7 +1009,7 @@
     if (_lastSurveyHtmls[type]) loadFrame("survey-frame", _lastSurveyHtmls[type]);
     if (_lastGen) loadMap(_lastGen.seed);
     const gf = document.getElementById("guide-frame");
-    if (gf.src) gf.src = "/api/user-guide?theme=" + theme;
+    if (gf.getAttribute("src")) gf.src = "/api/user-guide?theme=" + theme;
   }
 
   // ── User Guide modal ─────────────────────────────────
@@ -1018,7 +1018,7 @@
     const frame  = document.getElementById("guide-frame");
     document.getElementById("help-btn").addEventListener("click", function () {
       const theme = document.documentElement.getAttribute("data-theme") || "dark";
-      if (!frame.src) frame.src = "/api/user-guide?theme=" + theme;
+      if (!frame.getAttribute("src")) frame.src = "/api/user-guide?theme=" + theme;
       dialog.showModal();
     });
     document.getElementById("guide-close").addEventListener("click", function () {
