@@ -9,7 +9,7 @@ tests/
 conftest.py
 gen-ui/
 azure-api/
-docs/
+docs/*
 context/
 *.md
 CLAUDE.md
@@ -17,3 +17,4 @@ pyrightconfig.json
 render_system_json.py
 fastapi/__pycache__/
 fastapi/local.settings.json*
+!docs/Traveller World Generator User Guide.md
