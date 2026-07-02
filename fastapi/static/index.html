@@ -307,6 +307,15 @@
       font-size: 0.85rem;
     }
     .empty-state .icon { font-size: 2.5rem; opacity: 0.3; }
+
+    /* ── User Guide modal ────────────────────────────── */
+    .guide-dialog { border:none; border-radius:8px; padding:0; width:min(900px,94vw); height:min(720px,88vh); background:var(--surface); color:var(--text); box-shadow:0 12px 48px rgba(0,0,0,0.7); display:flex; flex-direction:column; overflow:hidden; }
+    .guide-dialog::backdrop { background:rgba(0,0,0,0.6); }
+    .guide-dialog-hdr { display:flex; align-items:center; padding:0.6rem 1rem; border-bottom:1px solid var(--border); background:var(--panel); flex-shrink:0; }
+    .guide-dialog-title { font-size:0.8rem; font-weight:600; letter-spacing:0.07em; text-transform:uppercase; flex:1; }
+    .guide-dialog-close { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:4px; width:24px; height:24px; cursor:pointer; font-size:0.8rem; display:flex; align-items:center; justify-content:center; transition:border-color 0.15s,color 0.15s; }
+    .guide-dialog-close:hover { border-color:var(--accent); color:var(--text); }
+    .guide-frame { flex:1; border:none; }
   </style>
 </head>
 <body>
@@ -321,9 +330,18 @@
       <div class="dot" id="status-dot"></div>
       <span id="status-text">checking…</span>
     </div>
+    <button class="btn-icon" id="help-btn" title="User guide" aria-label="User guide">?</button>
     <button class="btn-icon" id="theme-toggle" title="Toggle light / dark mode" aria-label="Toggle theme">☀</button>
   </nav>
 </header>
+
+<dialog id="guide-dialog" class="guide-dialog">
+  <div class="guide-dialog-hdr">
+    <span class="guide-dialog-title">User Guide</span>
+    <button class="guide-dialog-close" id="guide-close" aria-label="Close">&#x2715;</button>
+  </div>
+  <iframe class="guide-frame" id="guide-frame" title="User Guide"></iframe>
+</dialog>
 
 <div class="controls">
   <div class="field">
@@ -559,7 +577,26 @@
     localStorage.setItem("traveller-theme", theme);
     document.getElementById("theme-toggle").textContent = theme === "dark" ? "☀" : "☾";
     if (_lastFrameHtml) showFrame(_lastFrameHtml);
+    const gf = document.getElementById("guide-frame");
+    if (gf.src) gf.src = "/api/user-guide?theme=" + theme;
   }
+
+  // ── User Guide modal ─────────────────────────────────
+  (function () {
+    const dialog = document.getElementById("guide-dialog");
+    const frame  = document.getElementById("guide-frame");
+    document.getElementById("help-btn").addEventListener("click", function () {
+      const theme = document.documentElement.getAttribute("data-theme") || "dark";
+      if (!frame.src) frame.src = "/api/user-guide?theme=" + theme;
+      dialog.showModal();
+    });
+    document.getElementById("guide-close").addEventListener("click", function () {
+      dialog.close();
+    });
+    dialog.addEventListener("click", function (e) {
+      if (e.target === dialog) dialog.close();
+    });
+  }());
 
   document.getElementById("theme-toggle").addEventListener("click", function () {
     const cur = document.documentElement.getAttribute("data-theme") || _getTheme();

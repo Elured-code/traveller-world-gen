@@ -90,11 +90,14 @@ The human author reviewed, directed, and is responsible for the code.
 import asyncio
 import dataclasses
 from datetime import datetime, timezone
+import html as _html_mod
 import json
 import logging
 import logging.config
 import os
+import pathlib
 import random
+import re
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -210,6 +213,9 @@ logging.getLogger().setLevel(logging.INFO)
 # ---------------------------------------------------------------------------
 
 _RATE_LIMIT = os.environ.get("RATE_LIMIT_PER_MINUTE", "100/minute")
+_USER_GUIDE_PATH = (
+    pathlib.Path(__file__).parent.parent / "docs" / "Traveller World Generator User Guide.md"
+)
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -400,6 +406,185 @@ async def root() -> RedirectResponse:
 async def get_version() -> JSONResponse:
     """Return the running application version."""
     return JSONResponse({"version": _APP_VERSION})
+
+
+@app.get("/api/user-guide", response_class=HTMLResponse, include_in_schema=False)
+async def user_guide(theme: str = "dark") -> HTMLResponse:
+    """Render the User Guide markdown file as a standalone HTML page."""
+    try:
+        md = _USER_GUIDE_PATH.read_text(encoding="utf-8")
+    except OSError:
+        md = "# User Guide\n\nUser guide not available."
+    return HTMLResponse(content=_md_to_html_guide(md, dark=theme != "light"))
+
+
+# ---------------------------------------------------------------------------
+# Markdown → HTML helper (user guide only)
+# ---------------------------------------------------------------------------
+
+
+def _md_to_html_guide(md: str, dark: bool = True) -> str:  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+    """Convert a Markdown document to a styled standalone HTML page."""
+
+    def _inline(text: str) -> str:
+        text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+        text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+        text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+        text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
+        return text
+
+    def _is_sep(s: str) -> bool:
+        return bool(re.match(r'^\|[\s:|-]+\|$', s.strip()))
+
+    def _row_cells(s: str) -> list:
+        return [_inline(_html_mod.escape(c.strip())) for c in s.split('|')[1:-1]]
+
+    if dark:
+        bg, fg      = "#0c0e14", "#ddd4b0"
+        code_bg     = "#1a1d28"
+        link_col    = "#c87828"
+        border      = "#2c2a20"
+        th_bg       = "#131620"
+    else:
+        bg, fg      = "#f4f0e4", "#1a1510"
+        code_bg     = "#ede8d8"
+        link_col    = "#b56e20"
+        border      = "#c8b890"
+        th_bg       = "#e8e2cc"
+
+    parts: list = []
+    in_code = in_ul = in_ol = in_table = False
+    pending_header: list = []
+    para: list = []
+
+    def flush_para() -> None:
+        if para:
+            parts.append(f'<p>{_inline(" ".join(para))}</p>')
+            para.clear()
+
+    def close_list() -> None:
+        nonlocal in_ul, in_ol
+        if in_ul:
+            parts.append('</ul>')
+            in_ul = False
+        if in_ol:
+            parts.append('</ol>')
+            in_ol = False
+
+    def close_table() -> None:
+        nonlocal in_table
+        if in_table:
+            parts.append('</tbody></table>')
+            in_table = False
+        pending_header.clear()
+
+    for raw in md.split('\n'):
+        line = raw.rstrip()
+
+        if line.startswith('```'):
+            if in_code:
+                parts.append('</code></pre>')
+                in_code = False
+            else:
+                flush_para()
+                close_list()
+                close_table()
+                parts.append('<pre><code>')
+                in_code = True
+            continue
+        if in_code:
+            parts.append(_html_mod.escape(raw))
+            continue
+        if not line:
+            flush_para()
+            close_list()
+            close_table()
+            continue
+        if line.startswith('|'):
+            if _is_sep(line):
+                if pending_header:
+                    ths = ''.join(f'<th>{c}</th>' for c in pending_header)
+                    parts.append(f'<table><thead><tr>{ths}</tr></thead><tbody>')
+                    in_table = True
+                    pending_header.clear()
+            elif in_table:
+                parts.append('<tr>' + ''.join(f'<td>{c}</td>' for c in _row_cells(line)) + '</tr>')
+            else:
+                flush_para()
+                close_list()
+                pending_header[:] = _row_cells(line)
+            continue
+        if in_table or pending_header:
+            close_table()
+        m = re.match(r'^(#{1,6}) (.*)', line)
+        if m:
+            flush_para()
+            close_list()
+            n = len(m.group(1))
+            parts.append(f'<h{n}>{_inline(_html_mod.escape(m.group(2)))}</h{n}>')
+            continue
+        if re.match(r'^---+\s*$', line):
+            flush_para()
+            close_list()
+            parts.append('<hr>')
+            continue
+        m = re.match(r'^[-*] (.*)', line)
+        if m:
+            flush_para()
+            if in_ol:
+                parts.append('</ol>')
+                in_ol = False
+            if not in_ul:
+                parts.append('<ul>')
+                in_ul = True
+            parts.append(f'<li>{_inline(_html_mod.escape(m.group(1)))}</li>')
+            continue
+        m = re.match(r'^\d+\. (.*)', line)
+        if m:
+            flush_para()
+            if in_ul:
+                parts.append('</ul>')
+                in_ul = False
+            if not in_ol:
+                parts.append('<ol>')
+                in_ol = True
+            parts.append(f'<li>{_inline(_html_mod.escape(m.group(1)))}</li>')
+            continue
+        para.append(_html_mod.escape(line))
+
+    flush_para()
+    close_list()
+    close_table()
+    if in_code:
+        parts.append('</code></pre>')
+
+    body = '\n'.join(parts)
+    css = (
+        f'body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;'
+        f'font-size:14px;max-width:860px;margin:0 auto;padding:20px 28px;'
+        f'background:{bg};color:{fg};line-height:1.65}}'
+        f'h1{{font-size:1.5em;border-bottom:2px solid {border};padding-bottom:6px;margin-top:0}}'
+        f'h2{{font-size:1.2em;border-bottom:1px solid {border};'
+        f'padding-bottom:4px;margin-top:1.6em}}'
+        f'h3{{font-size:1.05em;margin-top:1.4em}}'
+        f'pre{{background:{code_bg};padding:12px;border-radius:4px;overflow-x:auto;font-size:12px}}'
+        f'code{{font-family:"SF Mono","Fira Code",Consolas,monospace;'
+        f'background:{code_bg};padding:1px 4px;border-radius:3px}}'
+        f'pre code{{background:none;padding:0}}'
+        f'a{{color:{link_col}}}'
+        f'hr{{border:none;border-top:1px solid {border};margin:20px 0}}'
+        f'ul,ol{{padding-left:1.5em}}li{{margin:4px 0}}'
+        f'table{{border-collapse:collapse;width:100%;margin:12px 0}}'
+        f'th{{background:{th_bg};text-align:left;padding:6px 10px;'
+        f'border:1px solid {border};font-weight:600}}'
+        f'td{{padding:6px 10px;border:1px solid {border};vertical-align:top}}'
+    )
+    return (
+        f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f'<title>User Guide</title><style>{css}</style></head>'
+        f'<body>{body}</body></html>'
+    )
 
 
 # ---------------------------------------------------------------------------
