@@ -193,16 +193,25 @@ def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many
         text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
         return text
 
+    def _is_sep(s: str) -> bool:
+        return bool(re.match(r'^\|[\s:|-]+\|$', s.strip()))
+
+    def _row_cells(s: str) -> list[str]:
+        return [_inline(_html_mod.escape(c.strip())) for c in s.split('|')[1:-1]]
+
     bg       = "#1e1e1e" if dark else "#ffffff"
     fg       = "#e0e0e0" if dark else "#1a1a1a"
     code_bg  = "#2d2d2d" if dark else "#f4f4f4"
     link_col = "#64b5f6" if dark else "#1565c0"
     border   = "#444444" if dark else "#cccccc"
+    th_bg    = "#2d2d2d" if dark else "#f0f0f0"
 
     parts: list[str] = []
     in_code = False
     in_ul   = False
     in_ol   = False
+    in_table = False
+    pending_header: list[str] | None = None
     para:   list[str] = []
 
     def flush_para() -> None:
@@ -219,9 +228,17 @@ def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many
             parts.append('</ol>')
             in_ol = False
 
+    def close_table() -> None:
+        nonlocal in_table, pending_header
+        if in_table:
+            parts.append('</tbody></table>')
+            in_table = False
+        pending_header = None
+
     for raw in md.split('\n'):
         line = raw.rstrip()
 
+        # ── fenced code block ──────────────────────────────────────────
         if line.startswith('```'):
             if in_code:
                 parts.append('</code></pre>')
@@ -229,6 +246,7 @@ def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many
             else:
                 flush_para()
                 close_list()
+                close_table()
                 parts.append('<pre><code>')
                 in_code = True
             continue
@@ -237,11 +255,37 @@ def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many
             parts.append(_html_mod.escape(raw))
             continue
 
+        # ── blank line ─────────────────────────────────────────────────
         if not line:
             flush_para()
             close_list()
+            close_table()
             continue
 
+        # ── table row or separator ─────────────────────────────────────
+        if line.startswith('|'):
+            if _is_sep(line):
+                if pending_header is not None:
+                    cells_html = ''.join(f'<th>{c}</th>' for c in pending_header)
+                    parts.append(
+                        f'<table><thead><tr>{cells_html}</tr></thead><tbody>'
+                    )
+                    in_table = True
+                    pending_header = None
+            elif in_table:
+                row_html = ''.join(f'<td>{c}</td>' for c in _row_cells(line))
+                parts.append(f'<tr>{row_html}</tr>')
+            else:
+                flush_para()
+                close_list()
+                pending_header = _row_cells(line)
+            continue
+
+        # ── non-pipe line: close open table ────────────────────────────
+        if in_table or pending_header is not None:
+            close_table()
+
+        # ── ATX heading ────────────────────────────────────────────────
         m = re.match(r'^(#{1,6}) (.*)', line)
         if m:
             flush_para()
@@ -250,12 +294,14 @@ def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many
             parts.append(f'<h{n}>{_inline(_html_mod.escape(m.group(2)))}</h{n}>')
             continue
 
+        # ── horizontal rule ────────────────────────────────────────────
         if re.match(r'^---+\s*$', line):
             flush_para()
             close_list()
             parts.append('<hr>')
             continue
 
+        # ── unordered list ─────────────────────────────────────────────
         m = re.match(r'^[-*] (.*)', line)
         if m:
             flush_para()
@@ -268,6 +314,7 @@ def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many
             parts.append(f'<li>{_inline(_html_mod.escape(m.group(1)))}</li>')
             continue
 
+        # ── ordered list ───────────────────────────────────────────────
         m = re.match(r'^\d+\. (.*)', line)
         if m:
             flush_para()
@@ -280,10 +327,12 @@ def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many
             parts.append(f'<li>{_inline(_html_mod.escape(m.group(1)))}</li>')
             continue
 
+        # ── paragraph text ─────────────────────────────────────────────
         para.append(_html_mod.escape(line))
 
     flush_para()
     close_list()
+    close_table()
     if in_code:
         parts.append('</code></pre>')
 
@@ -302,6 +351,10 @@ def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many
         f'hr{{border:none;border-top:1px solid {border};margin:20px 0}}'
         f'ul,ol{{padding-left:1.5em}}'
         f'li{{margin:4px 0}}'
+        f'table{{border-collapse:collapse;width:100%;margin:12px 0}}'
+        f'th{{background:{th_bg};text-align:left;padding:6px 10px;'
+        f'border:1px solid {border};font-weight:bold}}'
+        f'td{{padding:6px 10px;border:1px solid {border};vertical-align:top}}'
     )
     return (
         f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
