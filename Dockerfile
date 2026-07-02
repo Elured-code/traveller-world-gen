@@ -15,7 +15,7 @@ RUN pip install --no-cache-dir --no-deps .
 COPY fastapi/ ./fastapi/
 
 # User Guide markdown, served by /api/user-guide
-COPY "docs/Traveller World Generator User Guide.md" ./docs/
+COPY ["docs/Traveller World Generator User Guide.md", "./docs/"]
 
 # helpers.py is flat inside fastapi/ (not a package) — add to PYTHONPATH
 ENV PYTHONPATH=/app/fastapi
