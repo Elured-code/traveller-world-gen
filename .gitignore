@@ -28,6 +28,7 @@ local.settings.json
 # Generator package installed into azure-api/ by scripts/prepare_azure.sh via
 # `pip install --target`.  Not committed — these are deployment artefacts.
 azure-api/bin/
+azure-api/docs/
 azure-api/fastapi/
 azure-api/traveller_gen/
 azure-api/traveller_gen-*.dist-info/

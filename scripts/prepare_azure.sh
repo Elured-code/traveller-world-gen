@@ -29,4 +29,8 @@ echo "Copying fastapi/ ..."
 rm -rf "$DEST/fastapi"
 cp -r "$REPO_ROOT/fastapi" "$DEST/fastapi"
 
+echo "Copying docs/ ..."
+rm -rf "$DEST/docs"
+cp -r "$REPO_ROOT/docs" "$DEST/docs"
+
 echo "Done.  Run: cd azure-api && func start"

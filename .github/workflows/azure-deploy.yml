@@ -62,6 +62,8 @@ jobs:
           pip install --quiet --target azure-api/ --no-deps .
           # Copy fastapi/ separately (it is not part of the Python package)
           cp -r fastapi azure-api/fastapi
+          # Copy docs/ so the /api/user-guide endpoint can read the User Guide markdown
+          cp -r docs azure-api/docs
 
       - name: Install dependencies into package
         run: pip install --target azure-api/.python_packages/lib/site-packages -r azure-api/requirements.txt
