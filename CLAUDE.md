@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-06-25 (Session 140)  
+**Last updated:** 2026-07-02 (Session 141)  
 **Branch:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -37,6 +37,7 @@ read only the context files listed below for the specific task at hand.
 | `system_pipeline.py` | [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `system_map.py` | [`context/system-map.md`](context/system-map.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `gen-ui/app.py` | [`context/gen-ui.md`](context/gen-ui.md) + [`context/data-structures.md`](context/data-structures.md) |
+| Internationalisation (i18n) of gen-ui, web app, or Jinja2 templates | [`context/i18n-plan.md`](context/i18n-plan.md) |
 | Bug investigation or compliance review | Relevant module context file(s) above + [`context/session-history.md`](context/session-history.md) for prior fixes |
 | Implementing a deferred feature | [`context/deferred-features.md`](context/deferred-features.md) + relevant module file(s) above |
 | Any work touching temperature, HZ, or orbital position | Also read [`context/data-structures.md`](context/data-structures.md) (HZ sign convention + Orbit# vs AU table) |

@@ -27,9 +27,12 @@ The human author reviewed, directed, and is responsible for the code.
 
 # pylint: disable=wrong-import-position,no-name-in-module,import-error,too-many-lines
 
+import html as _html_mod
 import json
 import os
+import pathlib
 import random
+import re
 import secrets
 import sys
 
@@ -86,6 +89,9 @@ try:
     _DISPLAY_VERSION = _gen_ver.__version__
 except ImportError:
     _DISPLAY_VERSION = APP_VERSION
+
+_REPO_ROOT = pathlib.Path(__file__).parent.parent
+_USER_GUIDE_PATH = _REPO_ROOT / "docs" / "Traveller World Generator User Guide.md"
 
 # ---------------------------------------------------------------------------
 # Stylesheet
@@ -170,6 +176,137 @@ def _make_vsep() -> QFrame:
     sep.setFrameShape(QFrame.Shape.VLine)
     sep.setFrameShadow(QFrame.Shadow.Sunken)
     return sep
+
+
+# ---------------------------------------------------------------------------
+# Markdown renderer
+# ---------------------------------------------------------------------------
+
+
+def _md_to_html(md: str, dark: bool = False) -> str:  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+    """Convert a subset of Markdown to a styled standalone HTML document."""
+
+    def _inline(text: str) -> str:
+        text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+        text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+        text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+        text = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', r'<a href="\2">\1</a>', text)
+        return text
+
+    bg       = "#1e1e1e" if dark else "#ffffff"
+    fg       = "#e0e0e0" if dark else "#1a1a1a"
+    code_bg  = "#2d2d2d" if dark else "#f4f4f4"
+    link_col = "#64b5f6" if dark else "#1565c0"
+    border   = "#444444" if dark else "#cccccc"
+
+    parts: list[str] = []
+    in_code = False
+    in_ul   = False
+    in_ol   = False
+    para:   list[str] = []
+
+    def flush_para() -> None:
+        if para:
+            parts.append(f'<p>{_inline(" ".join(para))}</p>')
+            para.clear()
+
+    def close_list() -> None:
+        nonlocal in_ul, in_ol
+        if in_ul:
+            parts.append('</ul>')
+            in_ul = False
+        if in_ol:
+            parts.append('</ol>')
+            in_ol = False
+
+    for raw in md.split('\n'):
+        line = raw.rstrip()
+
+        if line.startswith('```'):
+            if in_code:
+                parts.append('</code></pre>')
+                in_code = False
+            else:
+                flush_para()
+                close_list()
+                parts.append('<pre><code>')
+                in_code = True
+            continue
+
+        if in_code:
+            parts.append(_html_mod.escape(raw))
+            continue
+
+        if not line:
+            flush_para()
+            close_list()
+            continue
+
+        m = re.match(r'^(#{1,6}) (.*)', line)
+        if m:
+            flush_para()
+            close_list()
+            n = len(m.group(1))
+            parts.append(f'<h{n}>{_inline(_html_mod.escape(m.group(2)))}</h{n}>')
+            continue
+
+        if re.match(r'^---+\s*$', line):
+            flush_para()
+            close_list()
+            parts.append('<hr>')
+            continue
+
+        m = re.match(r'^[-*] (.*)', line)
+        if m:
+            flush_para()
+            if in_ol:
+                parts.append('</ol>')
+                in_ol = False
+            if not in_ul:
+                parts.append('<ul>')
+                in_ul = True
+            parts.append(f'<li>{_inline(_html_mod.escape(m.group(1)))}</li>')
+            continue
+
+        m = re.match(r'^\d+\. (.*)', line)
+        if m:
+            flush_para()
+            if in_ul:
+                parts.append('</ul>')
+                in_ul = False
+            if not in_ol:
+                parts.append('<ol>')
+                in_ol = True
+            parts.append(f'<li>{_inline(_html_mod.escape(m.group(1)))}</li>')
+            continue
+
+        para.append(_html_mod.escape(line))
+
+    flush_para()
+    close_list()
+    if in_code:
+        parts.append('</code></pre>')
+
+    body = '\n'.join(parts)
+    css = (
+        f'body{{font-family:sans-serif;font-size:14px;max-width:860px;'
+        f'margin:0 auto;padding:20px 32px;background:{bg};color:{fg};line-height:1.6}}'
+        f'h1{{font-size:1.6em;border-bottom:2px solid {border};padding-bottom:6px;margin-top:0}}'
+        f'h2{{font-size:1.3em;border-bottom:1px solid {border};'
+        f'padding-bottom:4px;margin-top:1.6em}}'
+        f'h3{{font-size:1.1em;margin-top:1.4em}}'
+        f'pre{{background:{code_bg};padding:12px;border-radius:4px;overflow-x:auto;font-size:12px}}'
+        f'code{{font-family:monospace;background:{code_bg};padding:1px 4px;border-radius:3px}}'
+        f'pre code{{background:none;padding:0}}'
+        f'a{{color:{link_col}}}'
+        f'hr{{border:none;border-top:1px solid {border};margin:20px 0}}'
+        f'ul,ol{{padding-left:1.5em}}'
+        f'li{{margin:4px 0}}'
+    )
+    return (
+        f'<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">'
+        f'<style>{css}</style></head><body>{body}</body></html>'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +420,22 @@ class SurveyFormWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self._view = QWebEngineView()
         self.setCentralWidget(self._view)
         self._view.setHtml(html)
+
+
+class UserGuideWindow(QMainWindow):  # pylint: disable=too-few-public-methods
+    """Non-modal window that displays the rendered User Guide."""
+
+    def __init__(self, md_path: pathlib.Path, dark: bool = False) -> None:
+        super().__init__()
+        self.setWindowTitle("User Guide — Traveller World Generator")
+        self.resize(900, 720)
+        view = QWebEngineView()
+        self.setCentralWidget(view)
+        try:
+            html = _md_to_html(md_path.read_text(encoding="utf-8"), dark=dark)
+        except OSError as exc:
+            html = f"<p>Could not load user guide: {_html_mod.escape(str(exc))}</p>"
+        view.setHtml(html)
 
 
 # ---------------------------------------------------------------------------
@@ -501,6 +654,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto: bool = False
         self._map_windows: list[object] = []
         self._survey_windows: list[object] = []
+        self._user_guide_windows: list[object] = []
         self._map_btn: QPushButton | None = None
         self._survey_btn: QPushButton | None = None
         self._survey_combo: QComboBox | None = None
@@ -1064,6 +1218,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         view_menu.addAction(self._act_dark_mode)
 
         help_menu = self.menuBar().addMenu("&Help")
+        self._act_user_guide = QAction("User Guide", self)
+        self._act_user_guide.triggered.connect(self._on_user_guide)
+        help_menu.addAction(self._act_user_guide)
+        help_menu.addSeparator()
         self._act_about = QAction("About", self)
         self._act_about.triggered.connect(self._show_about)
         help_menu.addAction(self._act_about)
@@ -1127,6 +1285,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         layout.addWidget(label)
         layout.addWidget(buttons)
         dlg.exec()
+
+    def _on_user_guide(self) -> None:
+        win = UserGuideWindow(_USER_GUIDE_PATH, dark=self._dark_mode)
+        self._user_guide_windows.append(win)
+        win.show()
 
     def _on_open_json(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

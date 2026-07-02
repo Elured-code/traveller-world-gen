@@ -1,8 +1,28 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–140
+**Sessions:** 88–141
 **Tests:** 2922
+
+---
+
+## Gen-UI User Guide (Session 141)
+
+**Help > User Guide** menu item added to the gen-ui desktop app. Selecting it
+opens a non-modal `UserGuideWindow` that renders
+`docs/Traveller World Generator User Guide.md` as styled HTML using the new
+module-level `_md_to_html(md, dark)` helper.
+
+`_md_to_html()` converts ATX headings, fenced code blocks, bold/italic, inline
+code, links, unordered/ordered lists, horizontal rules, and paragraphs to a
+complete `<!DOCTYPE html>` document with inline CSS. Colours are parametrised on
+the `dark` flag so the window opens in the current theme. The window does not
+update dynamically when the theme is toggled.
+
+`AppWindow._user_guide_windows: list[object]` holds references to all open
+windows (same GC-prevention pattern as `_map_windows` / `_survey_windows`).
+
+No schema changes; no new tests; pylint 10.00/10.
 
 ---
 

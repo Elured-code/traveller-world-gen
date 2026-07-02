@@ -587,6 +587,17 @@ The Survey Form dropdown in the FastAPI web UI now offers both form types:
 form was selectable (the Class II/III option was missing from the dropdown),
 even though the API had always returned both forms.
 
+GEN-UI — USER GUIDE
+--------------------
+The desktop app now has a built-in User Guide. Select Help > User Guide from
+the menu bar to open a rendered view of the full user guide in a new window.
+
+- The guide is displayed as formatted HTML — headings, code blocks, bold text,
+  and links are all rendered correctly.
+- The window respects the current dark/light mode setting at the time it is
+  opened.
+- Multiple guide windows can be open at the same time.
+
 BUG FIXES
 ---------
 - Fixed: TravellerMap canonical worlds (fetched from TravellerMap.com) had
