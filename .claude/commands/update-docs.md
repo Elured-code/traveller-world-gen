@@ -27,42 +27,14 @@ Then read the full diff of every modified **source** file (`.py`, `.html`,
 
 ---
 
-## Step 2 — Bump the patch version
+## Step 2 — Version policy
 
-This skill runs after sessions that modify source code, so the PATCH digit must
-be incremented on every run.
-
-**2a. Read the current version.**
-
-```bash
-grep 'APP_VERSION' src/traveller_gen/world_codes.py
-```
-
-`APP_VERSION = "X.Y.Z"` is the single manually-maintained source of truth.
-
-**2b. Increment the PATCH digit.**
-
-`1.5.33` → `1.5.34`, `1.5.34` → `1.5.35`, etc.  
-Do not change MAJOR or MINOR — those track the branch version and milestone.
-
-**2c. Edit `world_codes.py`.**
-
-Update the single `APP_VERSION = "X.Y.Z"` line with the new version string.
-Also update the fallback string in `fastapi/app.py` to match:
-
-```python
-_APP_VERSION = "X.Y.Z"   # fallback when _version.py is absent (local dev)
-```
-
-Search for `_APP_VERSION = ` in `fastapi/app.py` to find the fallback line
-(it is inside an `except ImportError` block, a few lines below the `try`).
-
-**2d. Commit the version bump — separately from the docs commit:**
-
-```bash
-git add src/traveller_gen/world_codes.py fastapi/app.py
-git commit -m "chore: bump version to vX.Y.Z"
-```
+`APP_VERSION` (in `world_codes.py`) is bumped **only** when
+`traveller_world_schema.json` actually changes — a schema change is a contract
+change for API consumers and is what triggers a maintenance release. Sessions
+that don't touch the schema do **not** bump the version, even if source files
+changed. The bump mechanics live in Step 6, conditional on the schema check —
+do not bump the version here.
 
 **Build number note:** The build number (the `+build.N` suffix in the full
 version string) is assigned automatically by `scripts/compute_version.sh`
@@ -164,13 +136,29 @@ code. Update it if any of the following changed:
 **Do not add** fields that are only used internally and never appear in JSON
 output. Only properties emitted by `to_dict()` / `to_json()` belong in the schema.
 
-### If the schema changed — create a maintenance release
+### If the schema changed — bump the version and create a maintenance release
 
 When `traveller_world_schema.json` is modified, a maintenance release is
 required (schema changes are a contract change for API consumers).
 
-The version was already bumped in Step 2. Use that version (call it `vX.Y.Z`)
-for all release artefacts below.
+**6a0. Bump the patch version.**
+
+```bash
+grep 'APP_VERSION' src/traveller_gen/world_codes.py
+```
+
+`APP_VERSION = "X.Y.Z"` is the single manually-maintained source of truth.
+Increment the PATCH digit only (`1.5.33` → `1.5.34`, etc — never MAJOR/MINOR).
+Edit the `APP_VERSION = "X.Y.Z"` line in `world_codes.py`, and the matching
+fallback line in `fastapi/app.py`:
+
+```python
+_APP_VERSION = "X.Y.Z"   # fallback when _version.py is absent (local dev)
+```
+
+Search for `_APP_VERSION = ` in `fastapi/app.py` to find it (inside an
+`except ImportError` block, a few lines below the `try`). Call this new
+version `vX.Y.Z` for the rest of this section.
 
 **6a. Create `docs/release-vX.Y.Z.md`.**
 
@@ -180,10 +168,11 @@ Copy the structure from the previous maintenance release file (e.g.
 - The test count (from `pytest tests/ -q`)
 - A "Schema changes" table in the same format used in `docs/release-v1.4.0.md`
 
-**6b. Commit the schema + release note as a separate commit:**
+**6b. Commit the version bump + schema + release note as a separate commit:**
 
 ```bash
-git add traveller_world_schema.json docs/release-vX.Y.Z.md
+git add src/traveller_gen/world_codes.py fastapi/app.py \
+        traveller_world_schema.json docs/release-vX.Y.Z.md
 git commit -m "chore: schema update for vX.Y.Z"
 ```
 

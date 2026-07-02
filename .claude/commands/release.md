@@ -41,16 +41,20 @@ them first.
 
 ## Step 3 — Run the update-docs workflow
 
-Complete **all steps** in the `/update-docs` skill now:
+Complete **all steps** in the `/update-docs` skill now, plus one addition:
 
 - Understand what changed (Step 1)
-- Bump the patch version in `world_codes.py` and `fastapi/app.py` (Step 2)
+- Bump the patch version in `world_codes.py` and `fastapi/app.py` — `/update-docs`
+  only does this when the schema changed (its Step 6a0); `/release` always cuts a
+  new version, so do this bump now regardless of whether the schema changed.
 - Identify and update affected docs (Steps 3–5)
-- Check and update the JSON schema (Step 6)
+- Check and update the JSON schema (Step 6) — if it changed, follow the full
+  maintenance-release path (6a–6c), which will already include the version bump
+  above in its commit; if it didn't change, fold the version bump into the
+  Step 9 commit instead
 - Update RELEASE-NOTES.md and docs/release-v1.4.0.md (Step 7)
 - Update context files and session-history (Step 8)
-- Commit the version bump and docs separately (Steps 2d and 9)
-- Push the branch
+- Commit (Step 9); push the branch
 
 Record the new `APP_VERSION` (e.g. `1.5.34`) — you will need it for the tag.
 

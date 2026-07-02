@@ -1,8 +1,49 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–141
+**Sessions:** 88–142
 **Tests:** 2922
+
+---
+
+## FastAPI Help Button + User Guide Modal (Session 142)
+
+**Help button on the web app.** Both `index.html` and `system.html` gain a "?"
+button that opens the User Guide (`docs/Traveller World Generator User Guide.md`)
+in a native `<dialog>` modal via a lazy-loaded iframe pointed at a new
+`/api/user-guide?theme=dark|light` endpoint. `_md_to_html_guide()` in
+`fastapi/app.py` converts the Markdown (ATX headings, tables, fenced code,
+bold/italic, inline code, links, lists, HR) to a themed standalone HTML page —
+same converter pattern as gen-ui's Session 141 `_md_to_html()`. Theme toggling
+refreshes the iframe's `src` in place.
+
+**Follow-up fixes (same session):**
+1. CodeQL alert #5 (`py/incomplete-url-substring-sanitization`) — `scripts/test_api.py`'s
+   CSP jsdelivr check replaced a substring `"cdn.jsdelivr.net" in csp` test with
+   exact token membership on the space-split CSP value, asserting the full
+   `https://cdn.jsdelivr.net` scheme+host token.
+2. The guide iframe's lazy-load guard checked `frame.src`, which reflects the
+   document's own URL when the `src` attribute is unset (never falsy) —
+   changed to `frame.getAttribute("src")`, which is `null` when absent.
+3. `azure-api/`'s deploy never copied `docs/`, so `_USER_GUIDE_PATH` (which
+   resolves relative to `__file__`) 404'd there — `.github/workflows/azure-deploy.yml`
+   and `scripts/prepare_azure.sh` now copy `docs/` alongside `fastapi/`.
+4. `X-Frame-Options: DENY` and `frame-ancestors 'none'` blocked the browser
+   from rendering `/api/user-guide` inside the same-origin modal iframe —
+   relaxed to `SAMEORIGIN` / `frame-ancestors 'self'` (cross-origin embedding
+   is still blocked); `frame-src` updated `'none'` → `'self'` to match.
+5. `.guide-dialog { display:flex }` was unconditional, overriding the UA
+   stylesheet's `display:none` for closed `<dialog>` elements — the modal was
+   visible on page load and `showModal()`/`close()` didn't work. Scoped the
+   rule to `dialog[open]` in both `index.html` and `system.html`.
+6. The Docker image (`Dockerfile`) had the same `docs/`-omission bug as Azure
+   (fix #3 above) — `_USER_GUIDE_PATH` resolves to `/app/docs/...` in the
+   container, which didn't exist. Added a `COPY "docs/Traveller World
+   Generator User Guide.md" ./docs/` line. Found via a real TrueNAS/Docker
+   deployment showing "User guide not available."
+
+No schema changes; no new tests (`scripts/test_api.py` assertions updated in
+place for the CSP/X-Frame-Options changes); 2922 tests pass; pylint 10.00/10.
 
 ---
 

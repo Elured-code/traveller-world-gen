@@ -418,6 +418,15 @@ rating, # is the count of Size 1 significant bodies, and s is the count of Size 
 significant bodies. The same string is used in both the HTML system card and the
 plain-text summary output.
 
+FASTAPI WEB APP — HELP BUTTON AND USER GUIDE
+-----------------------------------------------
+- The web app (both the landing page and the System page) now has a "?" Help
+  button that opens the User Guide in a modal window.
+- The guide is rendered from the same Markdown source used by the gen-ui
+  desktop app's Help > User Guide window, so both apps stay in sync.
+- The modal follows the app's current dark/light theme and updates
+  automatically if you toggle the theme while it is open.
+
 BUG FIXES
 ---------
 - Fixed: The mainworld card in the Full System page sometimes displayed as blank on
