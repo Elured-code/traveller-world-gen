@@ -158,7 +158,7 @@ class TestSecurityHeaders:
         assert self.r.headers.get("X-Content-Type-Options") == "nosniff"
 
     def test_x_frame_options(self):
-        assert self.r.headers.get("X-Frame-Options") == "DENY"
+        assert self.r.headers.get("X-Frame-Options") == "SAMEORIGIN"
 
     def test_content_security_policy_present(self):
         assert "Content-Security-Policy" in self.r.headers
@@ -170,7 +170,7 @@ class TestSecurityHeaders:
 
     def test_csp_blocks_frame_ancestors(self):
         csp = self.r.headers["Content-Security-Policy"]
-        assert "frame-ancestors 'none'" in csp
+        assert "frame-ancestors 'self'" in csp
 
 
 # ===========================================================================

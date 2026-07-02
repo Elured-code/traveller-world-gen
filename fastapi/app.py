@@ -239,8 +239,8 @@ _CSP = (
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
     "img-src 'self' blob: data:; "
     "connect-src 'self'; "
-    "frame-src 'none'; "
-    "frame-ancestors 'none'; "
+    "frame-src 'self'; "
+    "frame-ancestors 'self'; "
     "base-uri 'self'; "
     "form-action 'self'; "
     "object-src 'none'"
@@ -253,7 +253,7 @@ class _SecurityHeadersMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few
     async def dispatch(self, request: Request, call_next):  # type: ignore[override]
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"]         = "DENY"
+        response.headers["X-Frame-Options"]         = "SAMEORIGIN"
         response.headers["Content-Security-Policy"] = _CSP
         return response
 
