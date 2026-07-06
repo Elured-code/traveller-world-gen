@@ -40,6 +40,7 @@ Test organisation
 
 import os
 import sys
+from urllib.parse import urlparse
 
 import pytest
 import requests
@@ -166,7 +167,10 @@ class TestSecurityHeaders:
     def test_csp_allows_jsdelivr(self):
         csp = self.r.headers["Content-Security-Policy"]
         csp_tokens = csp.replace(";", " ").split()
-        assert "https://cdn.jsdelivr.net" in csp_tokens
+        assert any(
+            urlparse(tok).scheme == "https" and urlparse(tok).hostname == "cdn.jsdelivr.net"
+            for tok in csp_tokens
+        )
 
     def test_csp_blocks_frame_ancestors(self):
         csp = self.r.headers["Content-Security-Policy"]
