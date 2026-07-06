@@ -136,7 +136,7 @@ pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
       <td class="moon-type">{{ moon.type_str }}</td>
       <td class="mono profile">{{ moon.profile }}</td>
       <td class="codes-cell">{% for tc in moon.codes %}<span class="badge trade">{{ tc }}</span>{% endfor %}</td>
-      <td>{{ moon.range_str }}</td>
+      <td class="zone-{{ moon.temp_zone or o.temp_zone }}">{% if moon.temp_zone %}{{ o.temp_zone }}/{{ moon.temp_zone }}{% else %}{{ moon.range_str }}{% endif %}</td>
       <td class="mono" style="font-size:12px;color:var(--txt2)">{{ moon.biosphere_str }}</td>
       <td></td>
     </tr>

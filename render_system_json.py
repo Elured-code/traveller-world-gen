@@ -169,6 +169,7 @@ def _moon_rows(moons: list[dict]) -> list[dict]:
             "profile":    profile,
             "codes":      codes,
             "range_str":  orb_range.capitalize() if orb_range else "",
+            "temp_zone":  moon.get("temperature_zone", ""),
         })
     return rows
 

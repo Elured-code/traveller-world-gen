@@ -1401,6 +1401,7 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
                     nhz_atmospheres=nhz_atmospheres,
                     independent_government=independent_government,
                 )
+                moon.temperature_zone = parent_orbit.temperature_zone
 
     return result
 
@@ -1476,6 +1477,7 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
                         rng=rng,
                         nhz_atmospheres=nhz,
                     )
+                    moon.temperature_zone = orbit.temperature_zone
             # WorldDetail for the satellite body itself (with its own moons).
             satellite_detail = WorldDetail(
                 sah=sah,
@@ -1509,6 +1511,7 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
                     parent_ecc=orbit.eccentricity,
                 )
                 satellite_moon.detail = satellite_detail
+                satellite_moon.temperature_zone = orbit.temperature_zone
                 orbit.detail = WorldDetail(
                     sah=orbit.gg_sah,
                     population=0,
@@ -1634,6 +1637,7 @@ def reattach_mainworld_orbit(  # pylint: disable=too-many-locals
                 rng=rng,
                 nhz_atmospheres=nhz,
             )
+            moon.temperature_zone = mw_orbit.temperature_zone
     satellite_detail = WorldDetail(
         sah=sah,
         population=mainworld.population,
@@ -1661,6 +1665,7 @@ def reattach_mainworld_orbit(  # pylint: disable=too-many-locals
             parent_ecc=mw_orbit.eccentricity,
         )
         satellite_moon.detail = satellite_detail
+        satellite_moon.temperature_zone = mw_orbit.temperature_zone
         mw_orbit.detail = WorldDetail(
             sah=mw_orbit.gg_sah,
             population=0,

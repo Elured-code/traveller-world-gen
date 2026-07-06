@@ -369,6 +369,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                         "codes": moon_codes,
                         "range_str": (moon.orbit_range.capitalize()
                                       if moon.orbit_range else ""),
+                        "temp_zone": moon.temperature_zone,
                         "biosphere_str": moon_biosphere,
                         "ecc_incl": moon_ecc_incl,
                     })

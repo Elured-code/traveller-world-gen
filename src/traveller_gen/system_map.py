@@ -342,6 +342,136 @@ def _sph(color: str) -> str:
     return f"url(#sph_{color[1:].upper()})"
 
 
+# ---------------------------------------------------------------------------
+# World archetype textures
+# ---------------------------------------------------------------------------
+
+_ARCHETYPE_COLORS: dict[str, tuple[str, str, str]] = {
+    #              highlight    midtone     shadow
+    "garden":  ("#A8ECA8", "#2E7A2E", "#194019"),
+    "ocean":   ("#90C8FF", "#1058B0", "#082040"),
+    "desert":  ("#FFD890", "#B86C28", "#6A3A14"),
+    "barren":  ("#909090", "#484848", "#202020"),
+    "ice":     ("#FFFFFF", "#A8D0F0", "#3878A0"),
+    "volcanic":("#FFA060", "#CC3A10", "#601808"),
+    "hostile": ("#C8D870", "#687818", "#2C3008"),
+    "tundra":  ("#9AB8CC", "#486070", "#243038"),
+}
+
+_GG_STRIPE_COLORS: dict[str, list[str]] = {
+    "S":   ["#A8D8FF", "#D4EEFF", "#7ABCF0", "#C0E4FF"],
+    "M":   ["#D4B896", "#EDD4A8", "#BC9468", "#E4C890"],
+    "L":   ["#E8A060", "#D07838", "#ECCC88", "#BC5C1C"],
+    "ice": ["#8EEEE0", "#3CBCCC", "#B0F0EC", "#2898B0"],
+}
+
+_SPH_OVERLAY_DEF = (
+    '<radialGradient id="sph_overlay" cx="35%" cy="30%" r="65%" fx="35%" fy="30%">'
+    '<stop offset="0%" stop-color="white" stop-opacity="0.55"/>'
+    '<stop offset="40%" stop-color="white" stop-opacity="0.0"/>'
+    '<stop offset="100%" stop-color="black" stop-opacity="0.50"/>'
+    '</radialGradient>'
+)
+
+
+def _world_archetype(  # pylint: disable=too-many-return-statements,too-many-branches
+        detail: object | None, temperature_zone: str) -> str:
+    """Classify a terrestrial world into a visual archetype for gradient selection."""
+    if detail is None:
+        if temperature_zone == "frozen":
+            return "ice"
+        return "volcanic" if temperature_zone == "boiling" else "barren"
+    sah = getattr(detail, "sah", "000")
+    atm = _ehex_val(sah[1]) if len(sah) > 1 else 0
+    hyd = _ehex_val(sah[2]) if len(sah) > 2 else 0
+    if atm >= 13:                                              # D/E/F exotic-corrosive/insidious
+        return "hostile"
+    if temperature_zone == "boiling" or atm in (11, 12):     # B=corrosive, C=insidious
+        return "volcanic"
+    if temperature_zone == "frozen" or (temperature_zone == "cold" and hyd >= 7):
+        return "ice"
+    if hyd >= 9:
+        return "ocean"
+    if temperature_zone == "cold" and 1 <= hyd <= 6:
+        return "tundra"
+    if 4 <= atm <= 9 and hyd >= 4:
+        return "garden"
+    if atm <= 1:
+        return "barren"
+    if hyd <= 2:
+        return "desert"
+    return "garden" if hyd >= 3 else "desert"
+
+
+def _archetype_gradient_defs() -> str:
+    """SVG radialGradient elements for all terrestrial world archetypes."""
+    parts = []
+    for name, (hi, mid, shd) in _ARCHETYPE_COLORS.items():
+        r_m = int(mid[1:3], 16)
+        g_m = int(mid[3:5], 16)
+        b_m = int(mid[5:7], 16)
+        r_h = int(hi[1:3], 16)
+        g_h = int(hi[3:5], 16)
+        b_h = int(hi[5:7], 16)
+        mid_light = (
+            f"#{(r_m + r_h) // 2:02X}"
+            f"{(g_m + g_h) // 2:02X}"
+            f"{(b_m + b_h) // 2:02X}"
+        )
+        parts.append(
+            f'<radialGradient id="terr_{name}" cx="35%" cy="30%" r="65%" fx="35%" fy="30%">'
+            f'<stop offset="0%" stop-color="{hi}"/>'
+            f'<stop offset="30%" stop-color="{mid_light}"/>'
+            f'<stop offset="65%" stop-color="{mid}"/>'
+            f'<stop offset="100%" stop-color="{shd}"/>'
+            f'</radialGradient>'
+        )
+    return "".join(parts)
+
+
+def _archetype_fill(archetype: str) -> str:
+    """SVG fill reference for a terrestrial world archetype gradient."""
+    return f"url(#terr_{archetype})"
+
+
+def _gg_density_g_cm3(gg_sah: str, gg_mass_earth: float | None) -> float | None:
+    """Return density in g/cm³ derived from gg_sah diameter and mass, or None if unknown."""
+    if gg_mass_earth is None:
+        return None
+    diam = _ehex_val(gg_sah[2]) if len(gg_sah) >= 3 else 8
+    if diam == 0:
+        return None
+    diam_earth = diam * 12800.0 / 12742.0   # diameter in Earth-diameter units
+    return (gg_mass_earth / diam_earth ** 3) * 5.515
+
+
+def _gg_is_ice_giant(gg_sah: str, gg_mass_earth: float | None) -> bool:
+    """True when the GG is a small (GS) body dense enough to be an ice giant (>1 g/cm³)."""
+    if len(gg_sah) < 2 or gg_sah[1] != "S":
+        return False
+    density = _gg_density_g_cm3(gg_sah, gg_mass_earth)
+    return density is not None and density > 1.0
+
+
+def _gg_stripe_pattern_defs() -> str:
+    """SVG pattern elements for gas giant horizontal stripe bands (S/M/L/ice categories)."""
+    parts = []
+    row_h = 6
+    for cat, colors in _GG_STRIPE_COLORS.items():
+        tile_h = row_h * len(colors)
+        rows = "".join(
+            f'<rect x="0" y="{i * row_h}" width="400" height="{row_h}" fill="{c}"/>'
+            for i, c in enumerate(colors)
+        )
+        parts.append(
+            f'<pattern id="gg_stripe_{cat}" patternUnits="userSpaceOnUse"'
+            f' x="0" y="0" width="400" height="{tile_h}">'
+            f'{rows}'
+            f'</pattern>'
+        )
+    return "".join(parts)
+
+
 def _gg_ring_px(
     detail: object, sphere_r: float
 ) -> tuple[float, float] | None:
@@ -522,16 +652,16 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     s.append(
         f'<rect x="0" y="0" width="{canvas_w}" height="{canvas_h}" fill="{palette.bg}"/>'
     )
-    sph_cols = (
-        {palette.gg, palette.inh, palette.uninh}
-        | {_star_colour(ss.spectral_type, ss.lum_class) for ss in all_stars}
-    )
+    sph_cols      = {_star_colour(ss.spectral_type, ss.lum_class) for ss in all_stars}
     grad_defs_str = "".join(_sphere_gradient_def(c) for c in sph_cols)
     s.append(
         '<defs>'
         '<filter id="shadow_blur" x="-60%" y="-60%" width="220%" height="220%">'
         '<feGaussianBlur stdDeviation="3"/>'
         '</filter>'
+        + _archetype_gradient_defs()
+        + _gg_stripe_pattern_defs()
+        + _SPH_OVERLAY_DEF
         + grad_defs_str
         + '</defs>'
     )
@@ -891,17 +1021,26 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                         f' stroke="{palette.axis}" stroke-width="1.4"'
                         f' stroke-dasharray="3,3" opacity="0.75"/>'
                     )
+                gg_mass = getattr(o, "gg_mass_earth", None)
+                if _gg_is_ice_giant(gg_sah, gg_mass):
+                    gg_cat = "ice"
+                else:
+                    gg_cat = gg_sah[1] if len(gg_sah) >= 2 else "M"
                 if ring_px is not None:
                     r_rear, r_front = _ring_halves(mx, my, ring_px[0], ring_px[1], persp_y)
                     s.append(f'<path d="{r_rear}" fill="{palette.gg}" opacity="0.40"/>')
                 s.append(
-                    f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rr}" fill="{_sph(palette.gg)}"/>'
+                    f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rr}"'
+                    f' fill="url(#gg_stripe_{gg_cat})"/>'
+                )
+                s.append(
+                    f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{rr}"'
+                    f' fill="url(#sph_overlay)"/>'
                 )
                 if ring_px is not None:
                     s.append(f'<path d="{r_front}" fill="{palette.gg}" opacity="0.65"/>')
             elif wt == "terrestrial":
-                inhabited = detail.inhabited if detail else False
-                fill      = palette.inh if inhabited else palette.uninh
+                archetype = _world_archetype(detail, o.temperature_zone)
                 dot_r     = max(2, int(arc_zone_h * 0.0055))
                 if is_mw:
                     s.append(
@@ -917,7 +1056,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                         f' stroke-dasharray="3,3" opacity="0.75"/>'
                     )
                 s.append(
-                    f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{dot_r}" fill="{_sph(fill)}"/>'
+                    f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{dot_r}"'
+                    f' fill="{_archetype_fill(archetype)}"/>'
                 )
             else:  # empty
                 s.append(
@@ -937,12 +1077,15 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 f'fill="{palette.text}" opacity="0.8">{esc(sys_title)}</text>'
             )
             legend_items = [
-                (palette.gg,        "● GG"),
-                (palette.inh,       "● inh"),
-                (palette.uninh,     "● uninh"),
-                (palette.belt,      "▬ belt"),
-                (palette.mainworld, "◯ MW"),
-                (palette.star_sec,  "★ comp"),
+                (palette.gg,                        "● GG"),
+                (_GG_STRIPE_COLORS["ice"][1],       "● ice GG"),
+                (_ARCHETYPE_COLORS["garden"][1],    "● garden"),
+                (_ARCHETYPE_COLORS["desert"][1],    "● desert"),
+                (_ARCHETYPE_COLORS["ice"][1],       "● ice"),
+                (_ARCHETYPE_COLORS["barren"][1],    "● barren"),
+                (palette.belt,                      "▬ belt"),
+                (palette.mainworld,                 "◯ MW"),
+                (palette.star_sec,                  "★ comp"),
             ]
             leg_x     = canvas_w - 88
             leg_y     = y_top + 14   # anchored to top of zone
@@ -1113,9 +1256,16 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 codes_str = ""
 
             moons_str = ""
+            moon_zone = ""
             if detail and detail.moons:
                 mc        = len(detail.moons)
                 moons_str = f"  {mc}♦"
+                first_sig = next(
+                    (m for m in detail.moons if not m.is_ring and m.temperature_zone),
+                    None,
+                )
+                if first_sig:
+                    moon_zone = first_sig.temperature_zone
 
             hz_tag    = "⌾ " if o.is_habitable_zone else ""
             type_abbr = _TYPE_ABBR.get(wt, wt)
@@ -1123,6 +1273,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 type_abbr = type_abbr + " " + _ANOM_SFXS.get(o.anomaly_type, "?")
             mw_tag    = "★MW " if is_mw else ""
             tz_col    = _TEMP_COLS.get(o.temperature_zone, palette.dim)
+            zone_label = (f"{o.temperature_zone}/{moon_zone}"
+                          if moon_zone else o.temperature_zone)
 
             s.append(
                 f'<text x="{c_idx}" y="{ry}" '
@@ -1162,7 +1314,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             s.append(
                 f'<text x="{c_zone}" y="{ry}" '
                 f'font-size="{_TBL_FONT_SM}" fill="{tz_col}" opacity="0.85">'
-                f'{esc(hz_tag)}{esc(o.temperature_zone)}{esc(moons_str)}</text>'
+                f'{esc(hz_tag)}{esc(zone_label)}{esc(moons_str)}</text>'
             )
             if wt != "empty" and o.orbit_period_yr is not None:
                 s.append(

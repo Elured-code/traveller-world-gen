@@ -217,6 +217,7 @@ class Moon:  # pylint: disable=too-many-instance-attributes
     orbit_eccentricity: float = field(default=0.0, init=False)
     orbit_inclination: float = field(default=0.0, init=False)  # >90° implies retrograde
     name: str = field(default="", init=False)  # set by attach_body_names()
+    temperature_zone: str = field(default="", init=False)  # inherited from parent orbit
 
     @property
     def size_str(self) -> str:
@@ -257,6 +258,8 @@ class Moon:  # pylint: disable=too-many-instance-attributes
             d["ring_span_pd"]   = self.ring_span_pd
         if self.name:
             d["name"] = self.name
+        if self.temperature_zone:
+            d["temperature_zone"] = self.temperature_zone
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
         return d
@@ -288,7 +291,8 @@ class Moon:  # pylint: disable=too-many-instance-attributes
                                        if d.get("orbit_period_hours") is not None else None)
             moon.orbit_eccentricity = float(d.get("orbit_eccentricity", 0.0))
             moon.orbit_inclination  = float(d.get("orbit_inclination", 0.0))
-        moon.name = str(d.get("name", ""))
+        moon.name            = str(d.get("name", ""))
+        moon.temperature_zone = str(d.get("temperature_zone", ""))
         if d.get("detail"):
             from .traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
             moon.detail = WorldDetail.from_dict(d["detail"])

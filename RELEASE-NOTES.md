@@ -6,6 +6,28 @@
 
 ---
 
+## System Map World Icon Textures (Session 143)
+
+**Procedural SVG textures on world icons.** Terrestrial and gas-giant glyphs in
+the system map now carry visual texture information rather than a flat two-colour
+(inhabited/uninhabited) scheme.
+
+- **8 terrestrial archetypes** — `_world_archetype()` classifies each world's
+  SAH codes + temperature zone into garden, ocean, desert, barren, ice, volcanic,
+  hostile, or tundra. Each archetype gets a distinct 4-stop radial gradient
+  (highlight → mid-light → midtone → shadow) that encodes physical world type at
+  a glance. Garden worlds are blue-green; desert worlds orange/tan; ice worlds
+  white/pale-blue; barren worlds grey; volcanic orange-red; etc.
+- **Gas giant cloud banding** — GG glyphs now draw a horizontal stripe
+  `<pattern>` (blue/white for small ice-giants, tan/beige for medium, orange/amber
+  for large) with a sphere-shading overlay gradient (`sph_overlay`) on top to
+  preserve the lit-sphere depth cue.
+- **Legend updated** — replaced the inhabited/uninhabited colour items with four
+  representative archetype colours (garden, desert, ice, barren).
+- No API or schema changes. All 2922 tests pass.
+
+---
+
 ## FastAPI Help Button + User Guide Modal (Session 142)
 
 **Help button on the web app.** Both `index.html` and `system.html` gain a "?"
