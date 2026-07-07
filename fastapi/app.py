@@ -1200,7 +1200,8 @@ async def generate_system_from_existing_world(request: Request) -> Response:  # 
             attach_detail(system, rng=rng,
                           independent_government=want_indep,
                           optional_biomass_rule=want_bio,
-                          optional_inhospitable_rule=want_inhospitable)
+                          optional_inhospitable_rule=want_inhospitable,
+                          runaway_greenhouse=want_rg)
             attach_body_names(system)
             _apply_mainworld_moon_tidal(system)
             attach_resource_factor(system, rng=rng)
@@ -1512,7 +1513,8 @@ def _map_system_response(  # pylint: disable=too-many-arguments,too-many-positio
         attach_detail(system,
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
-                      optional_inhospitable_rule=want_inhospitable)
+                      optional_inhospitable_rule=want_inhospitable,
+                      runaway_greenhouse=want_rg)
         attach_body_names(system)
         _apply_mainworld_moon_tidal(system)
         attach_resource_factor(system, rng=rng)
@@ -1672,7 +1674,8 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
         attach_detail(system, rng=rng,
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
-                      optional_inhospitable_rule=want_inhospitable)
+                      optional_inhospitable_rule=want_inhospitable,
+                      runaway_greenhouse=want_rg)
         attach_body_names(system)
         _apply_mainworld_moon_tidal(system)
         attach_resource_factor(system, rng=rng)
@@ -1886,7 +1889,8 @@ async def generate_map_world_card(request: Request) -> Response:  # pylint: disa
         attach_detail(system, rng=rng,
                       independent_government=want_indep,
                       optional_biomass_rule=want_bio,
-                      optional_inhospitable_rule=want_inhospitable)
+                      optional_inhospitable_rule=want_inhospitable,
+                      runaway_greenhouse=want_rg)
         attach_body_names(system)
         _apply_mainworld_moon_tidal(system)
         attach_resource_factor(system, rng=rng)

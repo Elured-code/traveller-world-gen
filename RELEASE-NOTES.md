@@ -1,8 +1,29 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–145
-**Tests:** 2926
+**Sessions:** 88–146
+**Tests:** 2949
+
+---
+
+## Runaway Greenhouse Extended to Secondary Worlds and Moons (Session 146)
+
+**Extended the WBH p.79 runaway greenhouse check** beyond the mainworld to every eligible
+secondary world and moon — never to gas giant bodies.
+
+- New `_apply_secondary_runaway_greenhouse()` in `traveller_world_detail.py`, called from
+  `attach_detail()` when `runaway_greenhouse=True`. Reuses the existing
+  `check_runaway_greenhouse()` logic unchanged; derives temperature via the lighter-weight
+  "Basic Mean Temperature" table (secondary worlds/moons have no full `WorldPhysical` body).
+- Gas giant bodies (orbit-level and moons that are themselves small gas giants) are always
+  excluded; rocky/icy moons orbiting a gas giant are still checked.
+- Reuses the existing `runaway_greenhouse` flag/checkbox — no new toggle. Added the
+  previously-missing `--runaway-greenhouse` CLI flag so the CLI can reach this feature
+  (mainworld and secondary/moon behavior both) for the first time.
+- `WorldDetail` gains a `runaway_greenhouse: bool` field (mirrors `WorldPhysical`'s field).
+- Fixed a latent test-isolation gap: `traveller_world_atmosphere_detail`'s `_rng` sentinel
+  was missing from `conftest.py`'s autouse reset list since the module was split out in
+  Session 100.
 
 ---
 

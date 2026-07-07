@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.join(_root, "fastapi"))
 
 
 @pytest.fixture(autouse=True)
-def reset_module_rngs():
+def reset_module_rngs():  # pylint: disable=too-many-locals
     """Reset every generation module's _rng sentinel to the global random
     module before each test so that random.seed() calls in tests work exactly
     as they did before injectable RNG was added (issue #42).
@@ -53,6 +53,7 @@ def reset_module_rngs():
     from traveller_gen import traveller_world_law_detail
     from traveller_gen import traveller_world_tech_detail
     from traveller_gen import traveller_world_culture_detail
+    from traveller_gen import traveller_world_atmosphere_detail
     # pylint: enable=import-outside-toplevel
 
     _modules = [
@@ -69,6 +70,7 @@ def reset_module_rngs():
         traveller_world_law_detail,
         traveller_world_tech_detail,
         traveller_world_culture_detail,
+        traveller_world_atmosphere_detail,
     ]
 
     for mod in _modules:

@@ -263,6 +263,7 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
             independent_government=options.independent_government,
             optional_biomass_rule=options.optional_biomass,
             optional_inhospitable_rule=options.optional_inhospitable,
+            runaway_greenhouse=options.runaway_greenhouse,
         )
         attach_body_names(system)
         _apply_moon_tidal(system)

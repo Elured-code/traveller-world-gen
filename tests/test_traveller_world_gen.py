@@ -41,6 +41,7 @@ import sys
 import os
 import json
 import random
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -148,8 +149,9 @@ from traveller_gen.traveller_world_government_detail import (
 )
 from traveller_gen.traveller_world_detail import (
     attach_detail, _ehex_to_int, generate_biomass_rating, WorldDetail,
-    reattach_mainworld_orbit,
+    reattach_mainworld_orbit, _apply_secondary_runaway_greenhouse,
 )
+from traveller_gen.traveller_moon_gen import Moon
 from traveller_gen.traveller_hydro_detail import HydrographicDetail
 from traveller_gen.traveller_world_physical import WorldPhysical
 from traveller_gen.traveller_belt_physical import BeltPhysical
@@ -6566,6 +6568,253 @@ class TestNativeSophontOnWorldDetail:
         """from_dict() defaults to False when key absent."""
         wd = WorldDetail.from_dict({"sah": "673"})
         assert wd.native_sophont is False
+
+
+class TestRunawayGreenhouseFieldOnWorldDetail:
+    """runaway_greenhouse field on WorldDetail (secondary/moon runaway greenhouse extension)."""
+
+    def test_default_false(self):
+        wd = WorldDetail(sah="673")
+        assert wd.runaway_greenhouse is False
+
+    def test_to_dict_omits_when_false(self):
+        wd = WorldDetail(sah="673")
+        assert "runaway_greenhouse" not in wd.to_dict()
+
+    def test_to_dict_emits_when_true(self):
+        wd = WorldDetail(sah="673")
+        wd.runaway_greenhouse = True
+        assert wd.to_dict().get("runaway_greenhouse") is True
+
+    def test_from_dict_restores_true(self):
+        wd = WorldDetail(sah="673")
+        wd.runaway_greenhouse = True
+        wd2 = WorldDetail.from_dict(wd.to_dict())
+        assert wd2.runaway_greenhouse is True
+
+    def test_from_dict_defaults_false(self):
+        wd = WorldDetail.from_dict({"sah": "673"})
+        assert wd.runaway_greenhouse is False
+
+
+class TestApplySecondaryRunawayGreenhouse:
+    """_apply_secondary_runaway_greenhouse() -- WBH p.79 check for secondaries/moons.
+
+    Uses lightweight SimpleNamespace stand-ins for TravellerSystem/OrbitSlot --
+    the function only ever accesses a handful of attributes on each, so full
+    dataclass construction isn't needed for isolated unit testing.
+    """
+
+    @staticmethod
+    def _orbit(world_type, detail, hz_deviation=0.0, is_mw=False):
+        return SimpleNamespace(
+            world_type=world_type, detail=detail,
+            hz_deviation=hz_deviation, is_mainworld_candidate=is_mw,
+        )
+
+    @staticmethod
+    def _system(orbits, mainworld_orbit=None, age_gyr=5.0):
+        return SimpleNamespace(
+            stellar_system=SimpleNamespace(primary=SimpleNamespace(age_gyr=age_gyr)),
+            system_orbits=SimpleNamespace(orbits=orbits),
+            mainworld_orbit=mainworld_orbit,
+        )
+
+    def _always_triggers(self, new_atmosphere=10):
+        from traveller_gen.traveller_world_atmosphere_detail import RunawayGreenhouseResult
+        return patch(
+            "traveller_gen.traveller_world_atmosphere_detail.check_runaway_greenhouse",
+            return_value=RunawayGreenhouseResult(new_atmosphere=new_atmosphere),
+        )
+
+    def test_terrestrial_secondary_mutated_on_trigger(self):
+        det = WorldDetail(sah="673")
+        orbit = self._orbit("terrestrial", det)
+        system = self._system([orbit])
+        with self._always_triggers(new_atmosphere=10):
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert det.runaway_greenhouse is True
+        assert det.sah[0] == "6"
+        assert det.sah[1] == "A"
+
+    def test_gas_giant_orbit_body_never_mutated(self):
+        gg_det = WorldDetail(sah="GM9")
+        orbit = self._orbit("gas_giant", gg_det)
+        system = self._system([orbit])
+        with self._always_triggers():
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert gg_det.runaway_greenhouse is False
+        assert gg_det.sah == "GM9"
+
+    def test_rocky_moon_of_gas_giant_is_checked(self):
+        gg_det = WorldDetail(sah="GM9")
+        moon_det = WorldDetail(sah="573")
+        gg_det.moons = [Moon(size_code=5, detail=moon_det)]
+        orbit = self._orbit("gas_giant", gg_det)
+        system = self._system([orbit])
+        with self._always_triggers(new_atmosphere=11):
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert gg_det.runaway_greenhouse is False
+        assert moon_det.runaway_greenhouse is True
+        assert moon_det.sah[1] == "B"
+
+    def test_moon_that_is_itself_a_gas_giant_is_skipped(self):
+        parent_det = WorldDetail(sah="673")
+        gg_moon_det = WorldDetail(sah="GS4")
+        parent_det.moons = [Moon(size_code=4, is_gas_giant_moon=True, detail=gg_moon_det)]
+        orbit = self._orbit("terrestrial", parent_det)
+        system = self._system([orbit])
+        with self._always_triggers():
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert gg_moon_det.runaway_greenhouse is False
+        assert gg_moon_det.sah == "GS4"
+
+    def test_ring_is_skipped(self):
+        parent_det = WorldDetail(sah="673")
+        ring_det = WorldDetail(sah="R00")
+        parent_det.moons = [Moon(size_code=0, is_ring=True, detail=ring_det)]
+        orbit = self._orbit("terrestrial", parent_det)
+        system = self._system([orbit])
+        with self._always_triggers():
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert ring_det.runaway_greenhouse is False
+
+    def test_belt_and_empty_orbits_skipped(self):
+        belt_det = WorldDetail(sah="000")
+        belt_orbit = self._orbit("belt", belt_det)
+        empty_orbit = self._orbit("empty", None)
+        system = self._system([belt_orbit, empty_orbit])
+        with self._always_triggers():
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert belt_det.runaway_greenhouse is False
+        assert belt_det.sah == "000"
+
+    def test_vacuum_secondary_ineligible_no_crash(self):
+        det = WorldDetail(sah="100")
+        orbit = self._orbit("terrestrial", det)
+        system = self._system([orbit])
+        with self._always_triggers():
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert det.runaway_greenhouse is False
+        assert det.sah == "100"
+
+    def test_no_trigger_leaves_detail_untouched(self):
+        det = WorldDetail(sah="673")
+        orbit = self._orbit("terrestrial", det)
+        system = self._system([orbit])
+        with patch(
+            "traveller_gen.traveller_world_atmosphere_detail.check_runaway_greenhouse",
+            return_value=None,
+        ):
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert det.runaway_greenhouse is False
+        assert det.sah == "673"
+
+    def test_already_exotic_flag_set_but_atmosphere_unchanged(self):
+        from traveller_gen.traveller_world_atmosphere_detail import RunawayGreenhouseResult
+        det = WorldDetail(sah="6A3")
+        orbit = self._orbit("terrestrial", det)
+        system = self._system([orbit])
+        with patch(
+            "traveller_gen.traveller_world_atmosphere_detail.check_runaway_greenhouse",
+            return_value=RunawayGreenhouseResult(new_atmosphere=None),
+        ):
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert det.runaway_greenhouse is True
+        assert det.sah[1] == "A"
+
+    def test_mainworld_own_orbit_skipped_in_general_loop(self):
+        mw_det = WorldDetail(sah="673")
+        mw_orbit = self._orbit("terrestrial", mw_det, is_mw=True)
+        system = self._system([mw_orbit], mainworld_orbit=mw_orbit)
+        with self._always_triggers():
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert mw_det.runaway_greenhouse is False
+        assert mw_det.sah == "673"
+
+    def test_mainworlds_own_moon_is_checked(self):
+        mw_det = WorldDetail(sah="673")
+        moon_det = WorldDetail(sah="473")
+        mw_det.moons = [Moon(size_code=4, detail=moon_det)]
+        mw_orbit = self._orbit("terrestrial", mw_det, is_mw=True)
+        system = self._system([mw_orbit], mainworld_orbit=mw_orbit)
+        with self._always_triggers(new_atmosphere=12):
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert mw_det.runaway_greenhouse is False
+        assert moon_det.runaway_greenhouse is True
+        assert moon_det.sah[1] == "C"
+
+    def test_gas_giant_mainworld_satellite_not_double_processed(self):
+        sat_det = WorldDetail(sah="673")
+        sibling_det = WorldDetail(sah="473")
+        gg_det = WorldDetail(sah="GM9")
+        gg_det.moons = [
+            Moon(size_code=6, detail=sat_det),
+            Moon(size_code=4, detail=sibling_det),
+        ]
+        mw_orbit = self._orbit("gas_giant", gg_det, is_mw=True)
+        system = self._system([mw_orbit], mainworld_orbit=mw_orbit)
+        with self._always_triggers(new_atmosphere=10):
+            _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+        assert sat_det.runaway_greenhouse is False
+        assert sibling_det.runaway_greenhouse is True
+
+    def test_no_mainworld_orbit_no_crash(self):
+        system = self._system([], mainworld_orbit=None)
+        _apply_secondary_runaway_greenhouse(system, rng=random.Random(1))
+
+
+class TestAttachDetailRunawayGreenhouseGating:
+    """attach_detail()'s runaway_greenhouse parameter gates the new pass."""
+
+    def test_default_off_never_invokes_new_pass(self):
+        system = generate_full_system("T", seed=42)
+        with patch(
+            "traveller_gen.traveller_world_detail._apply_secondary_runaway_greenhouse"
+        ) as mock_fn:
+            attach_detail(system, rng=random.Random(1))
+        mock_fn.assert_not_called()
+
+    def test_enabled_invokes_new_pass(self):
+        system = generate_full_system("T", seed=42)
+        with patch(
+            "traveller_gen.traveller_world_detail._apply_secondary_runaway_greenhouse"
+        ) as mock_fn:
+            attach_detail(system, rng=random.Random(1), runaway_greenhouse=True)
+        mock_fn.assert_called_once()
+
+    def test_default_off_no_secondary_ever_flagged(self):
+        """With the flag off, no secondary/moon WorldDetail is ever flagged."""
+        for seed in range(30):
+            system = generate_full_system("T", seed=seed)
+            attach_detail(system, rng=random.Random(seed + 90000))
+            for orbit in system.system_orbits.orbits:
+                if orbit.detail is None:
+                    continue
+                assert orbit.detail.runaway_greenhouse is False
+                for moon in orbit.detail.moons:
+                    if moon.detail is not None:
+                        assert moon.detail.runaway_greenhouse is False
+
+
+class TestCLIRunawayGreenhouseFlag:
+    """--runaway-greenhouse CLI flag reaches PipelineOptions."""
+
+    def test_flag_true_reaches_pipeline_options(self, monkeypatch):
+        from traveller_gen.traveller_system_gen import main
+        monkeypatch.setattr(sys, "argv", ["prog", "--seed", "1", "--runaway-greenhouse"])
+        with patch("traveller_gen.system_pipeline.run_detail_pipeline") as mock_run:
+            main()
+        _, _, options = mock_run.call_args.args
+        assert options.runaway_greenhouse is True
+
+    def test_flag_absent_defaults_false(self, monkeypatch):
+        from traveller_gen.traveller_system_gen import main
+        monkeypatch.setattr(sys, "argv", ["prog", "--seed", "1"])
+        with patch("traveller_gen.system_pipeline.run_detail_pipeline") as mock_run:
+            main()
+        _, _, options = mock_run.call_args.args
+        assert options.runaway_greenhouse is False
 
 
 class TestSelectMainworld:

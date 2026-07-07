@@ -1392,6 +1392,9 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
                         help="Roll eccentricity for each orbit slot (WBH p.27)")
     parser.add_argument("--orbital-inclination", action="store_true",
                         help="Roll inclination for each orbit slot (WBH p.28)")
+    parser.add_argument("--runaway-greenhouse", action="store_true",
+                        help="Apply the WBH p.79 runaway greenhouse check to the mainworld "
+                             "and (with --detail) every eligible secondary world and moon")
     # --format supersedes the legacy --json flag; --json kept for back-compat
     fmt_group = parser.add_mutually_exclusive_group()
     fmt_group.add_argument("--format", choices=["text", "json", "html"],
@@ -1435,6 +1438,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
         )
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=want_detail,
+            runaway_greenhouse=args.runaway_greenhouse,
         ))
 
         if out_format == "json":

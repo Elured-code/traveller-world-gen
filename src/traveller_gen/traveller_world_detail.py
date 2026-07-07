@@ -854,7 +854,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
                  "is_independent_government", "native_sophont", "classification",
                  "population_detail", "government_detail", "law_detail",
-                 "tech_detail", "culture_detail", "name")
+                 "tech_detail", "culture_detail", "name", "runaway_greenhouse")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -886,6 +886,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.biocomplexity_rating: Optional[int] = None
         self.habitability_rating: Optional[int] = None
         self.native_sophont: bool = False
+        self.runaway_greenhouse: bool = False
         # Gas giants and rings carry no trade codes
         if (len(sah) == 3 and sah[0] == "G" and sah[1] in ("S", "M", "L")) \
                 or (len(sah) >= 1 and sah[0] == "R"):
@@ -934,7 +935,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                 f"{to_hex(self.law_level)}"
                 f"-{to_hex(self.tech_level)}")
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict:  # pylint: disable=too-many-branches
         """Serialise this WorldDetail to a JSON-compatible dict."""
         d: dict = {
             "sah":         self.sah,
@@ -956,6 +957,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["is_independent_government"] = True
         if self.native_sophont:
             d["native_sophont"] = True
+        if self.runaway_greenhouse:
+            d["runaway_greenhouse"] = True
         if self.biomass_rating is not None:
             d["biomass_rating"] = self.biomass_rating
         if self.biocomplexity_rating is not None:
@@ -1001,6 +1004,7 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         obj.classification = d.get("classification") or None
         obj.is_independent_government = bool(d.get("is_independent_government", False))
         obj.native_sophont = bool(d.get("native_sophont", False))
+        obj.runaway_greenhouse = bool(d.get("runaway_greenhouse", False))
         if d.get("biomass_rating") is not None:
             obj.biomass_rating = int(d["biomass_rating"])
         if d.get("biocomplexity_rating") is not None:
@@ -1406,11 +1410,12 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
     return result
 
 
-def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements,too-many-arguments,too-many-positional-arguments
         system: TravellerSystem,
         optional_biomass_rule: bool = False,
         optional_inhospitable_rule: bool = False,
         independent_government: bool = False,
+        runaway_greenhouse: bool = False,
         rng: Optional[random.Random] = None,
 ) -> None:
     """
@@ -1427,6 +1432,10 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
     p.130 Suggested Usage).
     independent_government: when True, secondary worlds use Case 2 (WBH p.162)
     — 2D-7+Population — instead of the Case 1 dependent government table.
+    runaway_greenhouse: when True, apply the WBH p.79 runaway greenhouse check
+    (see check_runaway_greenhouse()) to every eligible secondary world and
+    moon — never to gas giant bodies. The mainworld's own runaway check is
+    handled separately, before attach_detail() runs (see system_pipeline.py).
     """
     rng = rng if rng is not None else _rng
     nhz = system.nhz_atmospheres
@@ -1569,6 +1578,9 @@ def attach_detail(  # pylint: disable=too-many-locals,too-many-branches,too-many
         if mw_orbit.detail is not None:
             mw_orbit.detail.physical = bp
         mainworld.size_detail = bp
+
+    if runaway_greenhouse:
+        _apply_secondary_runaway_greenhouse(system, rng=rng)
 
     _apply_biomass(system,
                    optional_biomass_rule=optional_biomass_rule,
@@ -1811,6 +1823,79 @@ def _set_biocomplexity(
                 detail.biocomplexity_rating, age_gyr, rng=rng,
             )
             detail.native_sophont = native
+
+
+def _apply_secondary_runaway_greenhouse(
+        system: TravellerSystem,
+        rng: Optional[random.Random] = None,
+) -> None:
+    """Apply the WBH p.79 runaway greenhouse check to secondary worlds and moons.
+
+    Never applied to gas giant bodies (orbit-level gas giants or moons that are
+    themselves small gas giants) — they have no meaningful atmosphere code.
+    Rocky/icy moons orbiting a gas giant ARE checked. The mainworld's own
+    runaway check runs separately in system_pipeline._attach_physical() /
+    fastapi._attach_mainworld_physical(), before attach_detail() is called, so
+    it is intentionally excluded here (including its synthetic satellite
+    WorldDetail when the mainworld is a gas-giant satellite).
+
+    Only mutates `detail.sah` (atmosphere + hydrographics digits) and the new
+    `detail.runaway_greenhouse` flag. Population, government, law, TL,
+    spaceport, trade codes, and classification are left stale here — they are
+    re-derived from the mutated sah by the later apply_secondary_social() call.
+    """
+    rng = rng if rng is not None else _rng
+    age_gyr = system.stellar_system.primary.age_gyr or 0.0
+
+    from . import traveller_world_atmosphere_detail as _twad  # pylint: disable=import-outside-toplevel
+    if rng is not None:
+        _twad._rng = rng  # pylint: disable=protected-access
+
+    def _check(detail: Optional["WorldDetail"], hz_deviation: float) -> None:
+        if detail is None or detail.is_gas_giant:
+            return
+        sz_ch = detail.sah[0] if detail.sah else "0"
+        sz  = 1 if sz_ch == "S" else _ehex_to_int(sz_ch)
+        atm = _ehex_to_int(detail.sah[1]) if len(detail.sah) > 1 else 0
+        if not 2 <= atm <= 15:
+            return
+        temp_k = _twad._compute_mean_temperature(hz_deviation, atm)  # pylint: disable=protected-access
+        rg = _twad.check_runaway_greenhouse(
+            atmosphere=atm, temp_k=temp_k, age_gyr=age_gyr, size=sz, rng=rng,
+        )
+        if rg is None:
+            return
+        detail.runaway_greenhouse = True
+        new_atm = rg.new_atmosphere if rg.new_atmosphere is not None else atm
+        new_hyd = generate_hydrographics(sz, new_atm, "Boiling")
+        detail.sah = f"{detail.sah[0]}{to_hex(new_atm)}{to_hex(new_hyd)}"
+
+    def _check_moons(moons: list, hz_deviation: float) -> None:
+        for moon in moons:
+            if moon.is_ring or moon.is_gas_giant_moon or moon.detail is None:
+                continue
+            _check(moon.detail, hz_deviation)
+
+    for orbit in system.system_orbits.orbits:
+        if orbit.world_type in ("empty", "belt") or orbit.is_mainworld_candidate:
+            continue
+        detail = orbit.detail
+        if orbit.world_type == "terrestrial":
+            _check(detail, orbit.hz_deviation)
+        _check_moons(detail.moons if detail is not None else [], orbit.hz_deviation)
+
+    mw_orbit = system.mainworld_orbit
+    if mw_orbit is not None:
+        if mw_orbit.world_type == "gas_giant":
+            if mw_orbit.detail and mw_orbit.detail.moons:
+                sat = mw_orbit.detail.moons[0]
+                if sat.detail is not None:
+                    _check_moons(sat.detail.moons, mw_orbit.hz_deviation)
+                # moons[1:] are sibling moons of the same gas giant.
+                _check_moons(mw_orbit.detail.moons[1:], mw_orbit.hz_deviation)
+        else:
+            mw_moons = mw_orbit.detail.moons if mw_orbit.detail else []
+            _check_moons(mw_moons, mw_orbit.hz_deviation)
 
 
 def _apply_biomass(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
