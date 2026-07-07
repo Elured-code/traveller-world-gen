@@ -1,8 +1,57 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–142
+**Sessions:** 88–145
 **Tests:** 2926
+
+---
+
+## Flex Consumption Migration + Body-Size Backstop — Issue #168 (Session 145)
+
+**Migrated `traveller-world-gen` from classic Consumption to Flex Consumption**,
+required to set `FUNCTIONS_REQUEST_BODY_SIZE_LIMIT` as a platform-level
+backstop underneath Session 144's ASGI middleware (issue #167).
+
+- In-place migration (`az functionapp flex-migration start`) failed against
+  the live app with `"Cannot change the site ... due to hosting constraints"`.
+  Used a validate-then-cutover approach instead: `scripts/create_flex_function_app.sh`
+  (stand up a temporary `-flex` app with its own storage account), `scripts/copy_app_settings_to_flex.sh`
+  (carry settings across, excluding storage/runtime/identity keys that must
+  stay app-specific), `scripts/cutover_flex_function_app.sh` (destructive,
+  typed-confirmation-gated — deletes the old app and the temp app, recreates
+  the original name on Flex Consumption, restores validated settings).
+  `scripts/create_azure_function_app.sh`/`.ps1` (classic Consumption) left
+  untouched as historical reference, not reused for Flex.
+- `.github/workflows/azure-deploy.yml` updated for Flex Consumption's
+  remote-build model: `sku: flexconsumption`, `remote-build: true`. Oryx now
+  installs `azure-api/requirements.txt` remotely; the workflow no longer
+  vendors dependencies into the deployment package itself.
+- `FUNCTIONS_REQUEST_BODY_SIZE_LIMIT=1048576` (1 MB) set as an app setting —
+  the issue #168 platform-level backstop under issue #167's 16 KB FastAPI
+  middleware limit.
+- **Security finding, remediated same session:** the cutover script's
+  `az functionapp create` call didn't pass `--assign-identity`, so the
+  recreated app silently fell back to connection-string/key-based auth for
+  both `AzureWebJobsStorage` and the Flex deployment storage container — a
+  regression from the original no-stored-keys design. A live storage account
+  key was exposed in a diagnostic command's output as a result. Remediated
+  live with zero downtime: assigned the identity, granted it `Storage Blob
+  Data Owner`, switched both settings to identity-based auth, removed the
+  key-based settings, then rotated both storage account keys to invalidate
+  the exposed one. Both migration scripts were then fixed to perform this
+  wiring automatically so future runs can't reproduce the gap.
+- **Live-verified end-to-end** against the migrated app: a body over the
+  FastAPI middleware's 16 KB limit but under the platform's 1 MB limit gets a
+  clean `413 PAYLOAD_TOO_LARGE`; a body over both never reaches Python at all
+  — the Azure Functions host (Kestrel) rejects it as a bare `500` with an
+  empty body, invisible to `_AppInsightsMiddleware` or any app-level error
+  handling. Confirms the platform setting is a backstop only, not a graceful
+  control.
+- Cleaned up orphaned resources left over from the failed in-place migration
+  attempt and the old classic-Consumption app (two storage accounts) after
+  confirming nothing live referenced them.
+- No schema changes; no new tests (infrastructure/deployment work — see
+  Session 144 for the 4 new `TestBodySizeLimit` tests). 2926 tests pass.
 
 ---
 

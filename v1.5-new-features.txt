@@ -669,3 +669,10 @@ BUG FIXES
 - Fixed: the `generate_law_level()` function could return values above 18 in
   edge cases (very high population codes with maximum DMs). Results are now
   clamped to the valid law level range.
+
+- Fixed: the web API had no limit on how large a request body it would accept.
+  A very large request (for example, a huge or malformed payload sent to the
+  "generate system from an existing world" endpoint) could previously make the
+  server buffer the entire thing in memory before rejecting it. Oversized
+  requests are now rejected immediately with a clear error message instead of
+  being processed.
