@@ -2,7 +2,41 @@
 
 **Branch:** `v1.5.0` → `main`
 **Sessions:** 88–142
-**Tests:** 2922
+**Tests:** 2926
+
+---
+
+## ASGI Request Body-Size Limit — Issue #167 (Session 144)
+
+**Streaming body-size limit on `fastapi/app.py`.** Neither Starlette nor
+FastAPI impose a default request-body size limit, so `POST /api/system/from-world`
+(and `/api/worlds`, and any other endpoint reading `Request.body()`) could have
+its body buffered entirely in memory regardless of size, risking an OOM DoS.
+
+- New `_BodySizeLimitMiddleware` — a **plain ASGI middleware**, not
+  `BaseHTTPMiddleware`-based (the existing `_SecurityHeadersMiddleware` /
+  `_AppInsightsMiddleware` are `BaseHTTPMiddleware` subclasses, but that base
+  class constructs its own `Request` around the same stream, which is the
+  wrong tool for intercepting the raw body). Rejects a request immediately if
+  `Content-Length` announces an oversized body, and also counts bytes as they
+  stream in via a wrapped `receive()`, so a missing or understated
+  `Content-Length` (chunked transfer, a lying client) can't bypass the limit.
+  Registered first (outermost) via `app.add_middleware()`.
+- Default threshold 16 KB, configurable via `MAX_REQUEST_BODY_BYTES` env var —
+  generous relative to the actual payload (a mainworld JSON object, a dozen
+  scalar fields).
+- Oversized requests get the project-standard `error()` JSON shape with the
+  new `ERR_PAYLOAD_TOO_LARGE` code and HTTP 413.
+- `azure-api/fastapi/app.py` is populated from this file at deploy time
+  (`scripts/prepare_azure.sh`), so this is a single-source fix covering both
+  deployment targets.
+- 4 new tests in `tests/test_fastapi_app.py` (`TestBodySizeLimit`); 2926 tests
+  pass; pylint 10.00/10 on `fastapi/app.py` and `fastapi/helpers.py`.
+
+Related follow-ups tracked separately (not in this session): lowering the
+Azure Functions platform-level body size limit as a defensive backstop
+(#168), schema-level `max_length` validation on string fields (#169), and an
+Application Insights alert on exception/restart frequency (#170).
 
 ---
 

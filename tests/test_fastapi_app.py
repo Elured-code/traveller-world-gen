@@ -34,6 +34,7 @@ Test organisation
   TestSystemFullEndpoint    - GET/POST /api/system/full (always detailed, 3 formats)
   TestSystemCard            - GET /api/system/{name}/card  (HTML)
   TestSystemFromWorld       - POST /api/system/from-world
+  TestBodySizeLimit         - _BodySizeLimitMiddleware (issue #167)
   TestMapSystem             - GET/POST /api/map/system  (mocked)
   TestMapSystemFull         - GET/POST /api/map/system/full  (mocked)
   TestMapWorldCard          - GET /api/map/world/card  (mocked)
@@ -61,7 +62,7 @@ from app import app  # noqa: E402  (fastapi/app.py)
 from helpers import (  # noqa: E402  (fastapi/helpers.py)
     ERR_INTERNAL, ERR_INVALID_BODY, ERR_INVALID_COUNT, ERR_INVALID_SEED,
     ERR_COUNT_TOO_LARGE, ERR_NAME_TOO_LONG, ERR_MISSING_PARAM,
-    ERR_NOT_FOUND, ERR_UPSTREAM,
+    ERR_NOT_FOUND, ERR_PAYLOAD_TOO_LARGE, ERR_UPSTREAM,
     error, max_batch_size, ok, parse_count, parse_name, parse_seed,
 )
 from traveller_gen.traveller_world_gen import generate_world as _gen_world  # noqa: E402
@@ -873,6 +874,83 @@ class TestSystemFromWorld:
         )
         assert resp.status_code == 400
         assert resp.json()["error"]["code"] == ERR_INVALID_SEED
+
+
+# ===========================================================================
+# TestBodySizeLimit
+# ===========================================================================
+
+class TestBodySizeLimit:
+    """Tests for _BodySizeLimitMiddleware (issue #167)."""
+
+    def test_oversized_content_length_returns_413(self):
+        from app import _MAX_BODY_BYTES
+
+        oversized = b"1" * (_MAX_BODY_BYTES + 1)
+        resp = client.post(
+            "/api/system/from-world",
+            content=oversized,
+            headers={"Content-Type": "application/json"},
+        )
+        assert resp.status_code == 413
+        assert resp.json()["error"]["code"] == ERR_PAYLOAD_TOO_LARGE
+
+    def test_small_valid_body_still_succeeds(self):
+        """Regression: wrapping receive() must not disturb a normal request."""
+        resp = client.post("/api/system/from-world",
+                           json=_SAMPLE_WORLD_DICT, params={"seed": "1"})
+        assert resp.status_code == 200
+
+    def test_streaming_body_over_limit_without_content_length(self):
+        """A missing/understated Content-Length must not bypass the limit —
+        drive the ASGI middleware directly with a chunked body and no
+        content-length header, as a chunked-transfer client would send."""
+        from app import _BodySizeLimitMiddleware, _BodyTooLargeError, _MAX_BODY_BYTES
+
+        async def inner_app(scope, receive, send):  # pylint: disable=unused-argument
+            while True:
+                message = await receive()
+                if not message.get("more_body", False):
+                    break
+
+        chunk = b"x" * 1024
+        num_chunks = (_MAX_BODY_BYTES // len(chunk)) + 2
+        messages = [
+            {"type": "http.request", "body": chunk, "more_body": True}
+            for _ in range(num_chunks)
+        ]
+        messages.append({"type": "http.request", "body": b"", "more_body": False})
+
+        async def fake_receive():
+            return messages.pop(0)
+
+        async def fake_send(message):  # pylint: disable=unused-argument
+            pass
+
+        scope = {"type": "http", "headers": []}
+        middleware = _BodySizeLimitMiddleware(inner_app)
+
+        with pytest.raises(_BodyTooLargeError):
+            asyncio.get_event_loop().run_until_complete(
+                middleware(scope, fake_receive, fake_send)
+            )
+
+    def test_non_http_scope_passes_through(self):
+        """Lifespan/websocket scopes must bypass the size check entirely."""
+        from app import _BodySizeLimitMiddleware
+
+        called = {}
+
+        async def inner_app(scope, receive, send):  # pylint: disable=unused-argument
+            called["ran"] = True
+
+        middleware = _BodySizeLimitMiddleware(inner_app)
+        scope = {"type": "lifespan"}
+
+        asyncio.get_event_loop().run_until_complete(
+            middleware(scope, MagicMock(), MagicMock())
+        )
+        assert called.get("ran") is True
 
 
 # ===========================================================================

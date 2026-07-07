@@ -111,6 +111,7 @@ ERR_MISSING_PARAM   = "MISSING_PARAM"
 ERR_NOT_FOUND       = "NOT_FOUND"
 ERR_UPSTREAM        = "UPSTREAM_ERROR"
 ERR_INTERNAL        = "INTERNAL_ERROR"
+ERR_PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
 
 
 # ---------------------------------------------------------------------------

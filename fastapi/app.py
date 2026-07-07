@@ -126,7 +126,8 @@ from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from helpers import (
-    ERR_INTERNAL, ERR_INVALID_BODY, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_UPSTREAM,
+    ERR_INTERNAL, ERR_INVALID_BODY, ERR_MISSING_PARAM, ERR_NOT_FOUND, ERR_PAYLOAD_TOO_LARGE,
+    ERR_UPSTREAM,
     apply_seed, error, ok,
     parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
     parse_nhz_atmospheres, parse_orbital_eccentricity, parse_orbital_inclination,
@@ -381,6 +382,76 @@ class _AppInsightsMiddleware(BaseHTTPMiddleware):  # pylint: disable=too-few-pub
 
 
 # ---------------------------------------------------------------------------
+# Request body size limit
+# ---------------------------------------------------------------------------
+# Neither Starlette nor FastAPI impose a default body-size limit, so an
+# oversized request body (arbitrary JSON accepted by /api/system/from-world,
+# /api/worlds, etc.) can be buffered entirely in memory and OOM the process.
+# This must NOT be BaseHTTPMiddleware-based: that base class would construct
+# its own Request wrapping the same stream, and the actual body reads happen
+# inside route handlers via Request.body()/.json() further down the stack.
+# A plain ASGI middleware instead wraps `receive` directly so oversized
+# bodies are rejected while still streaming in, before anything downstream
+# has a chance to buffer them.
+# ---------------------------------------------------------------------------
+
+_MAX_BODY_BYTES = int(os.environ.get("MAX_REQUEST_BODY_BYTES", str(16 * 1024)))
+
+
+class _BodyTooLargeError(Exception):
+    """Raised by _BodySizeLimitMiddleware's receive wrapper when the streamed
+    body exceeds _MAX_BODY_BYTES; caught by _body_too_large_handler."""
+
+
+class _BodySizeLimitMiddleware:  # pylint: disable=too-few-public-methods
+    """Pure-ASGI middleware rejecting request bodies over _MAX_BODY_BYTES.
+
+    Checks Content-Length up front where present, and also counts bytes as
+    they stream in so a missing or understated Content-Length (chunked
+    transfer, a lying client) can't bypass the limit.
+    """
+
+    def __init__(self, asgi_app):
+        self.app = asgi_app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers") or [])
+        content_length = headers.get(b"content-length")
+        if content_length is not None:
+            try:
+                too_large = int(content_length) > _MAX_BODY_BYTES
+            except ValueError:
+                too_large = False
+            if too_large:
+                response = error("Request body exceeds the maximum allowed size.",
+                                  ERR_PAYLOAD_TOO_LARGE, status_code=413)
+                await response(scope, receive, send)
+                return
+
+        total = 0
+
+        async def limited_receive():
+            nonlocal total
+            message = await receive()
+            total += len(message.get("body", b""))
+            if total > _MAX_BODY_BYTES:
+                raise _BodyTooLargeError()
+            return message
+
+        await self.app(scope, limited_receive, send)
+
+
+async def _body_too_large_handler(request: Request, exc: Exception) -> JSONResponse:  # pylint: disable=unused-argument
+    """Return the standard error() shape for a rejected oversized body."""
+    return error("Request body exceeds the maximum allowed size.",
+                  ERR_PAYLOAD_TOO_LARGE, status_code=413)
+
+
+# ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
@@ -391,6 +462,8 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
+app.add_exception_handler(_BodyTooLargeError, _body_too_large_handler)
+app.add_middleware(_BodySizeLimitMiddleware)
 app.add_middleware(_SecurityHeadersMiddleware)
 app.add_middleware(_AppInsightsMiddleware)
 app.mount("/static", StaticFiles(directory=os.path.join(_here, "static")), name="static")

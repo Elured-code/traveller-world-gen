@@ -58,15 +58,14 @@ jobs:
       - name: Assemble deployment package
         run: |
           # Install the traveller-gen package into azure-api/ via pip --target.
-          # --no-deps: Jinja2 and jsonschema are declared in azure-api/requirements.txt.
+          # --no-deps: Jinja2 and jsonschema are declared in azure-api/requirements.txt,
+          # installed remotely by Oryx during the Flex Consumption remote build below —
+          # do not pip-install them into the package here.
           pip install --quiet --target azure-api/ --no-deps .
           # Copy fastapi/ separately (it is not part of the Python package)
           cp -r fastapi azure-api/fastapi
           # Copy docs/ so the /api/user-guide endpoint can read the User Guide markdown
           cp -r docs azure-api/docs
-
-      - name: Install dependencies into package
-        run: pip install --target azure-api/.python_packages/lib/site-packages -r azure-api/requirements.txt
 
       - name: Deploy
         uses: azure/functions-action@v1
@@ -74,4 +73,5 @@ jobs:
           app-name: ${{ inputs.functionapp_name || secrets.AZURE_FUNCTIONAPP_NAME }}
           package: azure-api
           publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          scm-do-build-during-deployment: false
+          sku: flexconsumption
+          remote-build: true
