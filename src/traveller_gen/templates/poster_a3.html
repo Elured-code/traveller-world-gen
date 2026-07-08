@@ -31,7 +31,7 @@ body{display:flex;flex-direction:column;align-items:center;padding:8mm 0}
 .header{position:absolute;top:10mm;left:50%;transform:translateX(-50%);max-width:56%;z-index:1;
   display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;
   background:rgba(238,234,219,0.5);border:0.5px solid var(--bdr);border-radius:var(--r12);
-  padding:3mm 4mm;box-shadow:0 1mm 3mm rgba(0,0,0,0.28)}
+  padding:3mm 4mm}
 h1{font-size:19px;font-weight:600;margin:0}
 .sub{font-size:12px;color:var(--txt2);margin:0}
 .badge{display:inline-block;font-size:11px;font-weight:500;padding:2px 8px;
@@ -54,7 +54,7 @@ h1{font-size:19px;font-weight:600;margin:0}
   max-height:99mm;overflow:hidden;
   transform:scale(0.67);transform-origin:bottom right}
 .panel{background:rgba(238,234,219,0.5);border:0.5px solid var(--bdr);border-radius:var(--r12);
-  padding:4mm;box-shadow:0 1mm 3mm rgba(0,0,0,0.28)}
+  padding:4mm}
 .star-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;
   border-bottom:0.5px solid var(--bdr)}
 .star-row:last-child{border-bottom:none}
@@ -74,17 +74,20 @@ h1{font-size:19px;font-weight:600;margin:0}
 .notable-profile{color:var(--txt2)}
 .empty-note{font-size:12px;color:var(--txt3)}
 /* Same physical page size as .poster (420mm x 297mm A3 landscape) so the two
-   pages look/print consistently; min-height (not height+overflow:hidden) so
-   systems with more orbits/moons than fit on one sheet still show everything,
-   flowing onto further printed pages instead of being clipped. */
+   pages look/print consistently. Fixed height + overflow:hidden (not
+   min-height) so this page never spills onto a third printed page -- systems
+   with more orbits/moons than fit at full size are shrunk to fit instead (see
+   .full-card-content and full_card_scale, computed in to_poster_html()). */
 .full-card-page{
-  width:420mm;min-height:297mm;box-sizing:border-box;padding:10mm;margin:8mm auto 0;
+  width:420mm;height:297mm;box-sizing:border-box;padding:10mm;margin:8mm auto 0;
   background:var(--bg1);color:var(--txt1);
   box-shadow:0 0 6mm rgba(0,0,0,0.35);
+  overflow:hidden;
 }
 @media print{
   .full-card-page{box-shadow:none;margin-top:0;page-break-before:always}
 }
+.full-card-content{transform-origin:top center}
 .full-card-page table{width:100%;border-collapse:collapse;font-size:13px;margin-bottom:6mm}
 .full-card-page th{text-align:left;padding:4px 6px;color:var(--txt2);font-weight:500;
   border-bottom:1px solid var(--bdr);white-space:nowrap}
@@ -188,6 +191,7 @@ h1{font-size:19px;font-weight:600;margin:0}
 </div>
 
 <div class="full-card-page">
+<div class="full-card-content">
   <div class="section-title">Full system card</div>
 
   <table>
@@ -253,5 +257,27 @@ h1{font-size:19px;font-weight:600;margin:0}
     </tbody>
   </table>
 </div>
+</div>
+<script>
+(function () {
+  // Shrink the page-2 "Full system card" to fit exactly one A3 page if its
+  // natural (unscaled) content is taller than the page — measuring the real
+  // rendered height here is far more reliable than estimating it from row
+  // counts server-side, since it automatically accounts for font metrics,
+  // browser defaults, and content that varies per system. Runs synchronously
+  // during initial page load, so it has already applied by the time
+  // QWebEngineView's loadFinished fires and printToPdf() snapshots the page.
+  var page = document.querySelector(".full-card-page");
+  var content = document.querySelector(".full-card-content");
+  if (!page || !content) { return; }
+  var style = getComputedStyle(page);
+  var available = page.clientHeight
+    - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  var natural = content.scrollHeight;
+  if (natural > available && natural > 0) {
+    content.style.transform = "scale(" + (available / natural) + ")";
+  }
+})();
+</script>
 </body>
 </html>
