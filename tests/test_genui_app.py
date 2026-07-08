@@ -14,6 +14,7 @@ Skip them (e.g. in headless CI without Qt):
 import importlib.util
 import os
 import sys
+from unittest.mock import patch
 
 # ── Must be set before any Qt / QApplication is created ─────────────────────
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -39,8 +40,8 @@ SurveyFormWindow = _mod.SurveyFormWindow
 
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
-    QCheckBox, QComboBox, QDialog, QDialogButtonBox,
-    QLabel, QPushButton, QRadioButton, QTabWidget, QWidget,
+    QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
+    QLabel, QMessageBox, QPushButton, QRadioButton, QTabWidget, QWidget,
 )
 
 
@@ -49,16 +50,25 @@ from PySide6.QtWidgets import (  # noqa: E402
 # ════════════════════════════════════════════════════════════════════════════
 
 class _FakeSettings:
-    """QSettings replacement that never reads from or writes to disk."""
+    """QSettings replacement that never reads from or writes to disk.
+
+    Shares one class-level store across instances (mirroring how real
+    QSettings instances for the same organization/application share a single
+    backing store), so a test can verify a value written via one QSettings(...)
+    construction is visible to a later, separate construction -- e.g.
+    confirming a toggle persists across closing and reopening a window.
+    """
+
+    _shared_store: dict = {}
 
     def __init__(self, *args, **kwargs):
-        self._store: dict = {}
+        pass
 
     def value(self, key, default=None):
-        return self._store.get(key, default)
+        return self._shared_store.get(key, default)
 
     def setValue(self, key, value):
-        self._store[key] = value
+        self._shared_store[key] = value
 
 
 class _MockWebView(QWidget):
@@ -82,7 +92,8 @@ class _MockWebView(QWidget):
 
 @pytest.fixture
 def fake_settings(monkeypatch):
-    """Replace QSettings in genui_app with _FakeSettings."""
+    """Replace QSettings in genui_app with _FakeSettings (shared in-memory store)."""
+    _FakeSettings._shared_store.clear()  # pylint: disable=protected-access
     monkeypatch.setattr(_mod, "QSettings", _FakeSettings)
 
 
@@ -747,37 +758,37 @@ class TestDarkMode:
 # ════════════════════════════════════════════════════════════════════════════
 
 class TestSystemMapWindow:
-    def test_map_window_creates_without_error(self, qtbot, no_webengine, sample_system):
+    def test_map_window_creates_without_error(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win.show()
         assert win.isVisible()
 
-    def test_map_window_title_starts_with_system_map(self, qtbot, no_webengine, sample_system):
+    def test_map_window_title_starts_with_system_map(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         assert win.windowTitle().startswith("System Map")
 
-    def test_map_window_initial_palette_is_dark(self, qtbot, no_webengine, sample_system):
+    def test_map_window_initial_palette_is_dark(self, qtbot, fake_settings, no_webengine, sample_system):
         from traveller_gen.system_map import PALETTE_DARK  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         assert win._palette is PALETTE_DARK
 
-    def test_theme_toggle_switches_to_light_palette(self, qtbot, no_webengine, sample_system):
+    def test_theme_toggle_switches_to_light_palette(self, qtbot, fake_settings, no_webengine, sample_system):
         from traveller_gen.system_map import PALETTE_LIGHT  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_theme()
         assert win._palette is PALETTE_LIGHT
 
-    def test_theme_btn_text_becomes_dark_theme_after_toggle(self, qtbot, no_webengine, sample_system):
+    def test_theme_btn_text_becomes_dark_theme_after_toggle(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_theme()
         assert win._theme_btn.text() == "Dark Theme"
 
-    def test_theme_double_toggle_returns_to_dark(self, qtbot, no_webengine, sample_system):
+    def test_theme_double_toggle_returns_to_dark(self, qtbot, fake_settings, no_webengine, sample_system):
         from traveller_gen.system_map import PALETTE_DARK  # noqa: PLC0415
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
@@ -785,39 +796,136 @@ class TestSystemMapWindow:
         win._toggle_theme()
         assert win._palette is PALETTE_DARK
 
-    def test_perspective_initially_false(self, qtbot, no_webengine, sample_system):
+    def test_perspective_initially_false(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         assert win._perspective is False
 
-    def test_perspective_toggle_sets_true(self, qtbot, no_webengine, sample_system):
+    def test_perspective_toggle_sets_true(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_perspective()
         assert win._perspective is True
 
-    def test_perspective_btn_text_after_toggle(self, qtbot, no_webengine, sample_system):
+    def test_perspective_btn_text_after_toggle(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_perspective()
         assert win._persp_btn.text() == "Top-down View"
 
-    def test_perspective_double_toggle_returns_false(self, qtbot, no_webengine, sample_system):
+    def test_perspective_double_toggle_returns_false(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         win._toggle_perspective()
         win._toggle_perspective()
         assert win._perspective is False
 
-    def test_svg_str_populated_after_render(self, qtbot, no_webengine, sample_system):
+    def test_svg_str_populated_after_render(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         assert win._svg_str != ""
 
-    def test_svg_str_contains_svg_root_element(self, qtbot, no_webengine, sample_system):
+    def test_svg_str_contains_svg_root_element(self, qtbot, fake_settings, no_webengine, sample_system):
         win = SystemMapWindow(sample_system)
         qtbot.addWidget(win)
         assert "<svg" in win._svg_str
+
+    # ------------------------------------------------------------------
+    # Theme/perspective persistence across windows (regression: previously
+    # every new SystemMapWindow reset to dark/top-down regardless of what
+    # the user had last chosen).
+    # ------------------------------------------------------------------
+
+    def test_light_theme_persists_to_a_new_window(self, qtbot, fake_settings, no_webengine, sample_system):
+        from traveller_gen.system_map import PALETTE_LIGHT  # noqa: PLC0415
+        win1 = SystemMapWindow(sample_system)
+        qtbot.addWidget(win1)
+        win1._toggle_theme()
+        assert win1._palette is PALETTE_LIGHT
+
+        win2 = SystemMapWindow(sample_system)
+        qtbot.addWidget(win2)
+        assert win2._palette is PALETTE_LIGHT
+        assert win2._theme_btn.text() == "Dark Theme"
+
+    def test_dark_theme_choice_persists_to_a_new_window(self, qtbot, fake_settings, no_webengine, sample_system):
+        from traveller_gen.system_map import PALETTE_DARK  # noqa: PLC0415
+        win1 = SystemMapWindow(sample_system)
+        qtbot.addWidget(win1)
+        win1._toggle_theme()   # -> light
+        win1._toggle_theme()   # -> dark (explicit choice, not just the default)
+
+        win2 = SystemMapWindow(sample_system)
+        qtbot.addWidget(win2)
+        assert win2._palette is PALETTE_DARK
+        assert win2._theme_btn.text() == "Light Theme"
+
+    def test_perspective_choice_persists_to_a_new_window(self, qtbot, fake_settings, no_webengine, sample_system):
+        win1 = SystemMapWindow(sample_system)
+        qtbot.addWidget(win1)
+        win1._toggle_perspective()
+        assert win1._perspective is True
+
+        win2 = SystemMapWindow(sample_system)
+        qtbot.addWidget(win2)
+        assert win2._perspective is True
+        assert win2._persp_btn.text() == "Top-down View"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 11b. Export A3 Poster (HTML/PDF dispatch)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestExportPosterDialog:
+    def test_html_path_writes_file_directly(self, system_app_win, tmp_path):
+        target = str(tmp_path / "poster.html")
+        with patch.object(QFileDialog, "getSaveFileName",
+                          return_value=(target, "HTML (*.html)")), \
+             patch.object(QMessageBox, "information"):
+            system_app_win._on_export_poster_clicked()
+        with open(target, encoding="utf-8") as fh:
+            content = fh.read()
+        assert content.startswith("<!DOCTYPE html>")
+        assert "@page{ size: A3 landscape" in content
+
+    def test_pdf_path_dispatches_to_pdf_export(self, system_app_win, tmp_path):
+        target = str(tmp_path / "poster.pdf")
+        with patch.object(QFileDialog, "getSaveFileName",
+                          return_value=(target, "PDF (*.pdf)")), \
+             patch.object(system_app_win, "_export_poster_pdf") as mock_pdf:
+            system_app_win._on_export_poster_clicked()
+        mock_pdf.assert_called_once()
+        html_arg, path_arg = mock_pdf.call_args.args
+        assert path_arg == target
+        assert html_arg.startswith("<!DOCTYPE html>")
+        assert not os.path.exists(target)  # writing is _export_poster_pdf's job, not the caller's
+
+    def test_pdf_filter_without_extension_appends_pdf(self, system_app_win, tmp_path):
+        target = str(tmp_path / "poster")
+        with patch.object(QFileDialog, "getSaveFileName",
+                          return_value=(target, "PDF (*.pdf)")), \
+             patch.object(system_app_win, "_export_poster_pdf") as mock_pdf:
+            system_app_win._on_export_poster_clicked()
+        mock_pdf.assert_called_once()
+        assert mock_pdf.call_args.args[1] == target + ".pdf"
+
+    def test_html_filter_does_not_dispatch_to_pdf_export(self, system_app_win, tmp_path):
+        target = str(tmp_path / "poster.html")
+        with patch.object(QFileDialog, "getSaveFileName",
+                          return_value=(target, "HTML (*.html)")), \
+             patch.object(system_app_win, "_export_poster_pdf") as mock_pdf, \
+             patch.object(QMessageBox, "information"):
+            system_app_win._on_export_poster_clicked()
+        mock_pdf.assert_not_called()
+
+    def test_no_system_does_nothing(self, app_win, tmp_path):
+        target = str(tmp_path / "poster.pdf")
+        with patch.object(QFileDialog, "getSaveFileName",
+                          return_value=(target, "PDF (*.pdf)")), \
+             patch.object(app_win, "_export_poster_pdf") as mock_pdf:
+            app_win._on_export_poster_clicked()
+        mock_pdf.assert_not_called()
+        assert not os.path.exists(target)
 
 
 # ════════════════════════════════════════════════════════════════════════════
