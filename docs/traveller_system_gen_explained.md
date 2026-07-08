@@ -334,7 +334,7 @@ behaviour and output are unchanged, only the code organisation moved.
 
 ---
 
-## `to_poster_html()` — A3 poster export (Session 148, revised Sessions 150–157)
+## `to_poster_html()` — A3 poster export (Session 148, revised Sessions 150–159)
 
 `TravellerSystem.to_poster_html(perspective: bool = True) -> str` returns a
 self-contained, **two-page** HTML document meant to be printed at A3
@@ -344,12 +344,18 @@ self-contained, **two-page** HTML document meant to be printed at A3
   (`system_map.build_svg(..., show_table=False)` — see `system_map_explained.md`
   for what `show_table` does), a compact star list, the mainworld's key stats
   (via `_world_html_ctx()`, the same helper `World.to_html()` uses), and up to 5
-  "notable bodies" (gas giants and inhabited secondary worlds).
+  "notable bodies" (gas giants and inhabited secondary worlds). The floating cards
+  have no drop shadow (Session 159 — it didn't survive PDF conversion cleanly).
 - **Page 2** — the complete system card: full stars table + orbital survey table
   with moons, built via the same `_system_card_context()` helper `to_html()` uses.
-  Sized to `min-height:297mm` so it matches page 1's physical page size on screen,
-  while still growing (and paginating across further printed pages) for systems
-  with more orbits/moons than fit on one sheet.
+  Sized to the same `height:297mm` as page 1. As of Session 159 it's a fixed
+  height (not `min-height`, as it briefly was in Session 156) with `overflow:hidden`
+  as a backstop, and a small inline `<script>` measures the content's natural
+  height and shrinks it with `transform:scale()` if it wouldn't otherwise fit —
+  this always fits on one page rather than flowing onto a third. See
+  `context/gen-ui.md`'s Session 159 entry for why a Python-side row-count
+  heuristic was tried first and replaced with this JS measurement (the heuristic
+  measurably undershot on a real render). This is the template's only JavaScript.
 
 Raises `ValueError` if `self.mainworld is None` — a poster with nothing to
 highlight on its mainworld panel isn't meaningful.

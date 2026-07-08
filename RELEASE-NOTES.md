@@ -1,8 +1,17 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–157
+**Sessions:** 88–159
 **Tests:** 2942
+
+---
+
+## A3 Poster: No Card Shadows in PDF, Page 2 Always Fits — Session 159
+
+The floating cards on the poster's map page no longer have a drop shadow — it didn't
+convert cleanly through the PDF export. The "Full system card" page now always fits on a
+single page: if there's more detail than fits at full size, it shrinks to fit instead of
+spilling onto a third page.
 
 ---
 

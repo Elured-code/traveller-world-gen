@@ -598,21 +598,6 @@ the menu bar to open a rendered view of the full user guide in a new window.
   opened.
 - Multiple guide windows can be open at the same time.
 
-GEN-UI — EXPORT A3 POSTER
---------------------------
-The desktop app can now export a printable A3 poster for a generated system.
-After generating a full system with detail, choose File > Export A3 Poster…
-to save it.
-
-- Page 1 is a single landscape sheet with the perspective system map filling
-  the whole page, and floating cards showing the system title, star list,
-  mainworld's key stats, and a handful of notable bodies (gas giants and
-  inhabited secondary worlds).
-- Page 2 is the complete system card — full stars table and orbital survey
-  table with every secondary world and moon — sized to match page 1.
-- The save dialog offers two formats: HTML (open it in any browser and print
-  from there) or PDF (saved directly, ready to print, no browser step needed).
-
 BUG FIXES
 ---------
 - Fixed: TravellerMap canonical worlds (fetched from TravellerMap.com) had
@@ -684,11 +669,6 @@ BUG FIXES
 - Fixed: the `generate_law_level()` function could return values above 18 in
   edge cases (very high population codes with maximum DMs). Results are now
   clamped to the valid law level range.
-
-- Fixed: the System Map window did not remember your Light/Dark theme or
-  Perspective/Top-down view choice. Every newly opened map window reset to
-  Dark theme and Top-down view regardless of what you had last selected. Both
-  choices are now remembered and applied the next time you open a map window.
 
 - Fixed: the web API had no limit on how large a request body it would accept.
   A very large request (for example, a huge or malformed payload sent to the

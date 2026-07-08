@@ -1,0 +1,40 @@
+Traveller World & System Generator — What's New in v1.6.0
+==========================================================
+
+RUNAWAY GREENHOUSE — NOW APPLIES TO SECONDARY WORLDS AND MOONS
+-----------------------------------------------------------------
+The optional Runaway Greenhouse check (World Builder's Handbook p.79) previously
+only ever affected the mainworld. It now also applies to every eligible
+secondary world and moon in the system — gas giants themselves are never
+affected, but rocky and icy moons orbiting a gas giant are checked just like
+any other secondary world or moon.
+
+- There is no new option to turn on: this uses the same Runaway Greenhouse
+  setting that already existed for the mainworld, in the desktop app, the web
+  interface, and the API. Turning it on now affects the whole system instead
+  of just the mainworld.
+- The command-line tool gained a --runaway-greenhouse flag for the first time,
+  so this check (mainworld and secondary worlds/moons alike) can now be used
+  from the CLI as well as the desktop app and web API.
+
+GEN-UI — EXPORT A3 POSTER
+--------------------------
+The desktop app can now export a printable A3 poster for a generated system.
+After generating a full system with detail, choose File > Export A3 Poster…
+to save it.
+
+- Page 1 is a single landscape sheet with the perspective system map filling
+  the whole page, and floating cards showing the system title, star list,
+  mainworld's key stats, and a handful of notable bodies (gas giants and
+  inhabited secondary worlds).
+- Page 2 is the complete system card — full stars table and orbital survey
+  table with every secondary world and moon — sized to match page 1.
+- The save dialog offers two formats: HTML (open it in any browser and print
+  from there) or PDF (saved directly, ready to print, no browser step needed).
+
+BUG FIXES
+---------
+- Fixed: the System Map window did not remember your Light/Dark theme or
+  Perspective/Top-down view choice. Every newly opened map window reset to
+  Dark theme and Top-down view regardless of what you had last selected. Both
+  choices are now remembered and applied the next time you open a map window.
