@@ -1,8 +1,17 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–161
-**Tests:** 2970
+**Sessions:** 88–162
+**Tests:** 2978
+
+---
+
+## gen-ui: File > New / New with New Seed — Session 162
+
+Two new File menu actions: **New** (Ctrl+N) regenerates with the currently displayed seed
+and options — the plain Generate button can't do this once a seed has been auto-filled, it
+always rolls a fresh one. **New with New Seed** (Ctrl+Shift+N) always rolls a fresh seed,
+keeping the current options.
 
 ---
 

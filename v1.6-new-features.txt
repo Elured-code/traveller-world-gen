@@ -32,6 +32,19 @@ to save it.
 - The save dialog offers two formats: HTML (open it in any browser and print
   from there) or PDF (saved directly, ready to print, no browser step needed).
 
+GEN-UI — FILE > NEW AND FILE > NEW WITH NEW SEED
+--------------------------------------------------
+Two new menu items make it faster to regenerate without touching the seed field
+by hand.
+
+- File > New (Ctrl+N / Cmd+N) regenerates using whatever seed is currently
+  shown in the seed field, with your current options. Useful for re-running
+  the exact same system after changing an option, without having to retype
+  the seed.
+- File > New with New Seed (Ctrl+Shift+N) regenerates with a brand new random
+  seed, keeping your current options — the same as clicking Generate with an
+  empty seed field, available as a menu item and shortcut.
+
 BUG FIXES
 ---------
 - Fixed: the System Map window did not remember your Light/Dark theme or
