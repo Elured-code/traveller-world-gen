@@ -231,11 +231,8 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             lines.append(mw.summary())
         return "\n".join(lines)
 
-    def to_html(self, detail_attached: bool = False) -> str:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-        """Return a self-contained HTML system card.
-
-        Suitable for saving as a standalone .html file or serving directly
-        from the API /api/system/{name}/card endpoint.
+    def _system_card_context(self, detail_attached: bool = False) -> dict:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+        """Build the context dict for system_card.html (also reused by to_poster_html()).
 
         Parameters
         ----------
@@ -405,17 +402,108 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "biosphere_str": biosphere_str,
             })
 
-        return render("system_card.html",
-            title=(mw.name if mw else "Unknown") + " system",
+        return {
+            "title": (mw.name if mw else "Unknown") + " system",
+            "star_classes": " + ".join(
+                s.classification() for s in self.stellar_system.stars),
+            "age": (f"{self.stellar_system.age_gyr:.2f} Gyr"
+                    if self.stellar_system.age_gyr else "?"),
+            "nw": self.system_orbits.total_worlds,
+            "star_rows": star_rows,
+            "orbit_rows": orbit_rows,
+            "detail_attached": detail_attached,
+            "json_str": self.to_json(),
+        }
+
+    def to_html(self, detail_attached: bool = False) -> str:
+        """Return a self-contained HTML system card.
+
+        Suitable for saving as a standalone .html file or serving directly
+        from the API /api/system/{name}/card endpoint.
+
+        Parameters
+        ----------
+        detail_attached : bool
+            Pass True when attach_detail() has already been called so the
+            card includes secondary world profiles and satellite data.
+        """
+        return render("system_card.html", **self._system_card_context(detail_attached))
+
+    def to_poster_html(self, perspective: bool = True) -> str:
+        """Return a self-contained A3-poster HTML page for this system.
+
+        Combines a perspective system map, a curated star/orbit summary, and
+        the mainworld's key stats onto one printable page (CSS
+        `@page { size: A3 landscape }`). Requires a mainworld; raises
+        ValueError otherwise (a poster with no mainworld has nothing to
+        highlight in its sidebar).
+
+        This is intentionally a curated "highlights" view, not the full
+        system_card.html/world_card.html detail — see context/gen-ui.md.
+        """
+        if self.mainworld is None:
+            raise ValueError("to_poster_html() requires a mainworld")
+
+        # pylint: disable=import-outside-toplevel
+        from .system_map import build_svg, PALETTE_LIGHT
+        from .traveller_world_gen import _world_html_ctx
+
+        svg_str, canvas_h = build_svg(
+            self, canvas_w=1600, perspective=perspective, show_table=False,
+            palette=PALETTE_LIGHT,
+        )
+        svg_str = svg_str.replace(
+            '<svg xmlns="http://www.w3.org/2000/svg" ',
+            f'<svg xmlns="http://www.w3.org/2000/svg" '
+            f'viewBox="0 0 1600 {canvas_h}" preserveAspectRatio="xMidYMid meet" ',
+            1,
+        )
+
+        star_rows = [
+            {
+                "designation": s.designation,
+                "classification": s.classification(),
+                "mass": f"{s.mass:.2f}",
+            }
+            for s in self.stellar_system.stars
+        ]
+
+        notable = []
+        for o in self.system_orbits.orbits:
+            if o.is_mainworld_candidate or len(notable) >= 5:
+                continue
+            detail = getattr(o, "detail", None)
+            if o.world_type == "gas_giant":
+                notable.append({
+                    "name": o.name or "—",
+                    "profile": o.gg_sah or (detail.profile if detail else ""),
+                    "world_type": "Gas giant",
+                })
+            elif detail is not None and detail.inhabited:
+                notable.append({
+                    "name": o.name or "—",
+                    "profile": detail.profile,
+                    "world_type": "Secondary world",
+                })
+
+        detail_attached = any(
+            getattr(o, "detail", None) is not None
+            for o in self.system_orbits.orbits
+            if o.world_type != "empty"
+        )
+
+        return render("poster_a3.html",
+            title=self.mainworld.name + " system",
             star_classes=" + ".join(
                 s.classification() for s in self.stellar_system.stars),
             age=(f"{self.stellar_system.age_gyr:.2f} Gyr"
                  if self.stellar_system.age_gyr else "?"),
             nw=self.system_orbits.total_worlds,
-            star_rows=star_rows,
-            orbit_rows=orbit_rows,
-            detail_attached=detail_attached,
-            json_str=self.to_json(),
+            svg=svg_str,
+            stars=star_rows,
+            notable=notable,
+            mw=_world_html_ctx(self.mainworld),
+            full_card=self._system_card_context(detail_attached),
         )
 
     def to_survey_form_html(self) -> str:  # pylint: disable=too-many-locals

@@ -36,9 +36,9 @@ import re
 import secrets
 import sys
 
-from PySide6.QtCore import Qt, QSettings, QThread, Signal  # noqa: E402
+from PySide6.QtCore import Qt, QMarginsF, QSettings, QThread, Signal  # noqa: E402
 from PySide6.QtGui import (  # noqa: E402
-    QAction, QFontDatabase, QKeySequence, QShortcut,
+    QAction, QFontDatabase, QKeySequence, QPageLayout, QPageSize, QShortcut,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
@@ -379,9 +379,11 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self.setWindowTitle(f"System Map — {name}")
         self.resize(min(_MAP_CANVAS_W + 40, 1400), 720)
 
+        _s = QSettings("traveller-world-gen", "AppWindow")
+        is_light = str(_s.value("map_light_theme", False)).lower() == "true"
         self._system = system
-        self._palette = PALETTE_DARK
-        self._perspective = False
+        self._palette = PALETTE_LIGHT if is_light else PALETTE_DARK
+        self._perspective = str(_s.value("map_perspective", False)).lower() == "true"
         self._svg_str = ""
 
         central = QWidget()
@@ -395,11 +397,13 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         tbox.setContentsMargins(8, 6, 8, 6)
         tbox.setSpacing(8)
 
-        self._theme_btn = QPushButton("Light Theme")
+        self._theme_btn = QPushButton("Dark Theme" if is_light else "Light Theme")
         self._theme_btn.clicked.connect(self._toggle_theme)
         tbox.addWidget(self._theme_btn)
 
-        self._persp_btn = QPushButton("Perspective View")
+        self._persp_btn = QPushButton(
+            "Top-down View" if self._perspective else "Perspective View"
+        )
         self._persp_btn.clicked.connect(self._toggle_perspective)
         tbox.addWidget(self._persp_btn)
 
@@ -438,12 +442,18 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         else:
             self._palette = PALETTE_DARK
             self._theme_btn.setText("Light Theme")
+        QSettings("traveller-world-gen", "AppWindow").setValue(
+            "map_light_theme", self._palette is PALETTE_LIGHT
+        )
         self._render()
 
     def _toggle_perspective(self) -> None:
         self._perspective = not self._perspective
         self._persp_btn.setText(
             "Top-down View" if self._perspective else "Perspective View"
+        )
+        QSettings("traveller-world-gen", "AppWindow").setValue(
+            "map_perspective", self._perspective
         )
         self._render()
 
@@ -707,6 +717,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto: bool = False
         self._map_windows: list[object] = []
         self._survey_windows: list[object] = []
+        self._poster_pdf_exports: list[object] = []
         self._user_guide_windows: list[object] = []
         self._map_btn: QPushButton | None = None
         self._survey_btn: QPushButton | None = None
@@ -1139,6 +1150,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                         tech_level=world.tech_level,  # type: ignore[attr-defined]
                     )
         self._act_save.setEnabled(True)
+        self._act_export_poster.setEnabled(False)
         self._show_summary(world)
 
     def _finish_system_generation(
@@ -1161,6 +1173,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._current_world = system.mainworld  # type: ignore[attr-defined]
         self._detail_attached = attach_detail_flag
         self._act_save.setEnabled(True)
+        self._act_export_poster.setEnabled(self._current_world is not None)
         self._show_system_summary(system)
 
     def _load_system_from_json(self, system: object) -> None:
@@ -1168,6 +1181,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._current_world = system.mainworld  # type: ignore[attr-defined]
         self._detail_attached = False
         self._act_save.setEnabled(True)
+        self._act_export_poster.setEnabled(self._current_world is not None)
         self._show_system_summary(system)
         if self._map_btn is not None:
             self._map_btn.setEnabled(True)
@@ -1262,6 +1276,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._act_save.setEnabled(False)
         self._act_save.triggered.connect(self._on_save_clicked)
         file_menu.addAction(self._act_save)
+
+        self._act_export_poster = QAction("Export A3 Poster…", self)
+        self._act_export_poster.setEnabled(False)
+        self._act_export_poster.triggered.connect(self._on_export_poster_clicked)
+        file_menu.addAction(self._act_export_poster)
 
         view_menu = self.menuBar().addMenu("&View")
         self._act_dark_mode = QAction("Dark Mode", self)
@@ -1429,6 +1448,88 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         except OSError as exc:
             self._show_error(f"Save failed: {exc}")
 
+    def _on_export_poster_clicked(self) -> None:
+        system = self._current_system
+        if system is None or system.mainworld is None:  # type: ignore[attr-defined]
+            return
+
+        base_name = getattr(system.mainworld, "name", None) or "world"  # type: ignore[attr-defined]
+        safe_name = f"{base_name}-poster".replace(" ", "-").lower()
+
+        path, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export A3 Poster",
+            f"{safe_name}.html",
+            "HTML (*.html);;PDF (*.pdf)",
+        )
+        if not path:
+            return
+
+        # If the user picked the PDF filter but didn't type a .pdf extension,
+        # Qt leaves the dialog's default .html suffix in place — honour the
+        # chosen filter over the literal typed extension.
+        ext = os.path.splitext(path)[1].lower()
+        want_pdf = ext == ".pdf" or (ext != ".html" and "pdf" in selected_filter.lower())
+        if want_pdf and ext != ".pdf":
+            path += ".pdf"
+
+        try:
+            content = system.to_poster_html()  # type: ignore[attr-defined]
+        except ValueError as exc:
+            self._show_error(f"Poster export failed: {exc}")
+            return
+
+        if want_pdf:
+            self._export_poster_pdf(content, path)
+            return
+
+        try:
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+        except OSError as exc:
+            self._show_error(f"Poster export failed: {exc}")
+            return
+
+        QMessageBox.information(
+            self, "Poster Saved",
+            "Saved. Open it in a browser and use Print → Save as PDF "
+            "(A3, landscape) to print.",
+        )
+
+    def _export_poster_pdf(self, html: str, path: str) -> None:
+        """Render the poster HTML off-screen and print it to a PDF at path.
+
+        Uses QWebEngineView's Chromium engine (already a gen-ui dependency for
+        card display) — no new PDF library needed. The view is kept alive in
+        self._poster_pdf_exports until the async load/print finishes, since
+        nothing else would otherwise hold a reference to it.
+        """
+        view = QWebEngineView()
+        self._poster_pdf_exports.append(view)
+        layout = QPageLayout(
+            QPageSize(QPageSize.PageSizeId.A3),
+            QPageLayout.Orientation.Landscape,
+            QMarginsF(0, 0, 0, 0),
+        )
+
+        def _on_load_finished(ok: bool) -> None:
+            if not ok:
+                self._poster_pdf_exports.remove(view)
+                self._show_error("Poster PDF export failed: could not render the page.")
+                return
+            view.page().printToPdf(path, layout)
+
+        def _on_pdf_finished(file_path: str, success: bool) -> None:
+            self._poster_pdf_exports.remove(view)
+            if success:
+                QMessageBox.information(self, "Poster Saved", f"Saved to {file_path}")
+            else:
+                self._show_error(f"Poster PDF export failed for {file_path}")
+
+        view.loadFinished.connect(_on_load_finished)
+        view.page().pdfPrintingFinished.connect(_on_pdf_finished)
+        view.setHtml(html)
+
     # ------------------------------------------------------------------
     # HTML file management
     # ------------------------------------------------------------------
@@ -1451,6 +1552,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _show_placeholder(self) -> None:  # pylint: disable=too-many-statements
         self._clear_status()
         self._act_save.setEnabled(False)
+        self._act_export_poster.setEnabled(False)
 
         card = QFrame()
         card.setObjectName("onboard-card")

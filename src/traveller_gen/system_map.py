@@ -586,13 +586,249 @@ _COL_FRACS = (0.000, 0.030, 0.105, 0.220, 0.305, 0.490, 0.725, 0.890)
 _COL_NAMES = ("#", "Orbit#", "AU", "Type", "Profile", "Codes", "Zone  ♦", "Period")
 
 
+def _table_zone_svg(  # pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-statements
+    canvas_w: int, canvas_h: int, sep_y: int,
+    star_desigs: list, star_by_desig: dict, star_groups: dict,
+    sec_stars: list, col_w: int, mw: Any, orbit_idx: dict,
+    palette: ColourPalette,
+) -> list[str]:
+    """Return SVG fragments for the table zone (one column per star, rows grow downward).
+
+    Extracted from build_svg() (Session 153) so it can be omitted entirely
+    (via build_svg(..., show_table=False)) when the map is embedded somewhere
+    that already shows this data in its own form, e.g. the A3 poster.
+    """
+    frags: list[str] = []
+    frags.append(
+        f'<line x1="0" y1="{sep_y}" x2="{canvas_w}" y2="{sep_y}" '
+        f'stroke="{palette.axis}" stroke-width="0.8" opacity="0.45"/>'
+    )
+    frags.append('<g font-family="\'Courier New\', Courier, monospace">')
+    hdr_y      = sep_y + _TBL_HDR_OFF
+    uln_y      = sep_y + _TBL_ULN_OFF
+    col_hdr_y  = sep_y + _TBL_COL_HDR_OFF
+    col_uln_y  = sep_y + _TBL_COL_ULN_OFF
+    row0_y     = sep_y + _TBL_ROW0_OFF
+
+    for ci, d in enumerate(star_desigs):
+        star  = star_by_desig[d]
+        group = star_groups[d]
+        bx    = ci * col_w + _TBL_COL_PAD
+
+        # Proportional column x-positions — expand to fill the available width.
+        col_usable = col_w - 2 * _TBL_COL_PAD
+        (c_idx, c_orbit, c_au, c_type,
+         c_prof, c_codes, c_zone, c_period) = (
+            bx + int(col_usable * f) for f in _COL_FRACS
+        )
+
+        # Vertical column separator (left edge of each non-first column)
+        if ci > 0:
+            sx = ci * col_w
+            frags.append(
+                f'<line x1="{sx}" y1="{sep_y}" x2="{sx}" y2="{canvas_h}" '
+                f'stroke="{palette.axis}" stroke-width="0.6" opacity="0.30"/>'
+            )
+
+        # Column header
+        hdr_col = _star_colour(star.spectral_type, star.lum_class)
+        cls     = (f'{star.spectral_type}'
+                   f'{star.subtype if star.subtype is not None else ""}'
+                   f' {star.lum_class}')
+        if star.orbit_number > 0:
+            period_hdr = ""
+            if star.orbit_period_yr is not None:
+                period_hdr = f"  {_fmt_period(star.orbit_period_yr)}"
+            hdr = (f'Star {d}  {cls}  {star.mass:.2f} M☉  '
+                   f'Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)'
+                   f'{period_hdr}')
+        else:
+            hdr = f'Star {d}  {cls}  {star.mass:.2f} M☉  primary'
+        frags.append(
+            f'<text x="{bx}" y="{hdr_y}" '
+            f'font-size="{_TBL_FONT_LG}" fill="{hdr_col}">{esc(hdr)}</text>'
+        )
+        uln_x2 = (ci + 1) * col_w - _TBL_COL_PAD
+        frags.append(
+            f'<line x1="{bx}" y1="{uln_y}" x2="{uln_x2}" y2="{uln_y}" '
+            f'stroke="{palette.axis}" stroke-width="0.5" opacity="0.40"/>'
+        )
+
+        # Column labels — positions already absolute (c_* vars)
+        col_xs = (c_idx, c_orbit, c_au, c_type,
+                  c_prof, c_codes, c_zone, c_period)
+        for col_x, lbl in zip(col_xs, _COL_NAMES):
+            frags.append(
+                f'<text x="{col_x}" y="{col_hdr_y}" '
+                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}" opacity="0.70">'
+                f'{esc(lbl)}</text>'
+            )
+        frags.append(
+            f'<line x1="{bx}" y1="{col_uln_y}" x2="{uln_x2}" y2="{col_uln_y}" '
+            f'stroke="{palette.axis}" stroke-width="0.4" opacity="0.25"/>'
+        )
+
+        # Data rows — primary column merges companion star rows in orbit# order
+        if star.orbit_number == 0:
+            merged_rows: list[tuple[str, Any]] = (
+                [("orbit", o) for o in group]
+                + [("comp", st) for st in sec_stars]
+            )
+            merged_rows.sort(key=lambda x: x[1].orbit_number)
+        else:
+            merged_rows = [("orbit", o) for o in group]
+
+        for ri, (row_kind, row_item) in enumerate(merged_rows):
+            ry = row0_y + ri * _TBL_ROW_H
+
+            if row_kind == "comp":
+                st      = row_item
+                comp_c  = _star_colour(st.spectral_type, st.lum_class)
+                cls = (f'{st.spectral_type}'
+                       f'{st.subtype if st.subtype is not None else ""} {st.lum_class}')
+                frags.append(
+                    f'<text x="{c_idx}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}">★</text>'
+                )
+                frags.append(
+                    f'<text x="{c_orbit}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_LG}" fill="{comp_c}">'
+                    f'{st.orbit_number:.2f}</text>'
+                )
+                frags.append(
+                    f'<text x="{c_au}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
+                    f'{st.orbit_au:.3f} AU</text>'
+                )
+                frags.append(
+                    f'<text x="{c_type}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}">'
+                    f'Star {esc(st.designation)}</text>'
+                )
+                frags.append(
+                    f'<text x="{c_prof}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
+                    f'{esc(cls)}</text>'
+                )
+                if st.orbit_period_yr is not None:
+                    frags.append(
+                        f'<text x="{c_period}" y="{ry}" '
+                        f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
+                        f'{esc(_fmt_period(st.orbit_period_yr))}</text>'
+                    )
+                continue
+
+            o      = row_item
+            idx    = orbit_idx[id(o)]
+            is_mw  = o.is_mainworld_candidate
+            detail = getattr(o, "detail", None)
+            wt     = o.world_type
+            col1   = palette.mainworld if is_mw else palette.text
+
+            if o.canonical_profile:
+                profile = o.canonical_profile
+            elif is_mw and mw:
+                profile = mw.uwp()
+            elif wt == "gas_giant":
+                profile = getattr(o, "gg_sah", "")
+            elif detail:
+                profile = getattr(detail, "profile", "")
+            else:
+                profile = "—"
+
+            if is_mw and mw:
+                codes_str = "  ".join(mw.trade_codes) if mw.trade_codes else ""
+            elif detail and detail.inhabited:
+                codes_str = f"Gov {detail.government}  Law {detail.law_level}"
+            else:
+                codes_str = ""
+
+            moons_str = ""
+            moon_zone = ""
+            if detail and detail.moons:
+                mc        = len(detail.moons)
+                moons_str = f"  {mc}♦"
+                first_sig = next(
+                    (m for m in detail.moons if not m.is_ring and m.temperature_zone),
+                    None,
+                )
+                if first_sig:
+                    moon_zone = first_sig.temperature_zone
+
+            hz_tag    = "⌾ " if o.is_habitable_zone else ""
+            type_abbr = _TYPE_ABBR.get(wt, wt)
+            if o.anomaly_type:
+                type_abbr = type_abbr + " " + _ANOM_SFXS.get(o.anomaly_type, "?")
+            mw_tag    = "★MW " if is_mw else ""
+            tz_col    = _TEMP_COLS.get(o.temperature_zone, palette.dim)
+            zone_label = (f"{o.temperature_zone}/{moon_zone}"
+                          if moon_zone else o.temperature_zone)
+
+            frags.append(
+                f'<text x="{c_idx}" y="{ry}" '
+                f'font-size="{_TBL_FONT_LG}" fill="{col1}">{idx}</text>'
+            )
+            frags.append(
+                f'<text x="{c_orbit}" y="{ry}" '
+                f'font-size="{_TBL_FONT_LG}" fill="{palette.text}">'
+                f'{o.orbit_number:.2f}</text>'
+            )
+            _au_txt = (
+                f'{o.orbit_au:.3f} (e={o.eccentricity:.2f})'
+                if o.eccentricity > 0
+                else f'{o.orbit_au:.3f} AU'
+            )
+            frags.append(
+                f'<text x="{c_au}" y="{ry}" '
+                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
+                f'{_au_txt}</text>'
+            )
+            frags.append(
+                f'<text x="{c_type}" y="{ry}" '
+                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
+                f'{esc(mw_tag)}{type_abbr}</text>'
+            )
+            frags.append(
+                f'<text x="{c_prof}" y="{ry}" '
+                f'font-size="{_TBL_FONT_LG}" fill="{col1}">'
+                f'{esc(profile)}</text>'
+            )
+            if codes_str:
+                frags.append(
+                    f'<text x="{c_codes}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
+                    f'{esc(codes_str)}</text>'
+                )
+            frags.append(
+                f'<text x="{c_zone}" y="{ry}" '
+                f'font-size="{_TBL_FONT_SM}" fill="{tz_col}" opacity="0.85">'
+                f'{esc(hz_tag)}{esc(zone_label)}{esc(moons_str)}</text>'
+            )
+            if wt != "empty" and o.orbit_period_yr is not None:
+                frags.append(
+                    f'<text x="{c_period}" y="{ry}" '
+                    f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
+                    f'{esc(_fmt_period(o.orbit_period_yr))}</text>'
+                )
+
+    frags.append('</g>')
+    return frags
+
+
 def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-branches,too-many-nested-blocks
     system: Any,
     canvas_w: int = 1600,
     palette: ColourPalette = PALETTE_DARK,
     perspective: bool = False,
+    show_table: bool = True,
 ) -> tuple[str, int]:
-    """Build and return (svg_string, canvas_height) for the given system."""
+    """Build and return (svg_string, canvas_height) for the given system.
+
+    show_table: when False, omits the table zone (per-star orbit-data columns
+    below the arc zones) and shrinks canvas_h to just the arc-zone height.
+    Used by TravellerSystem.to_poster_html() (Session 153), which shows this
+    same data in its own "Full system card" page instead.
+    """
     mw        = system.mainworld
     # Sort orbit slots: all Star-A orbits first, then B, then C, etc.
     orbs      = sorted(system.system_orbits.orbits,
@@ -620,8 +856,11 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     pri_rows  = len(star_groups[pri_desig]) + len(sec_stars)
     max_rows  = max(pri_rows, max((len(g) for g in star_groups.values()), default=0))
     sep_y     = len(active_stars) * arc_zone_h + 1
-    tbl_h      = _TBL_ROW0_OFF + max_rows * _TBL_ROW_H + _TBL_BOT_PAD
-    canvas_h   = sep_y + tbl_h
+    if show_table:
+        tbl_h    = _TBL_ROW0_OFF + max_rows * _TBL_ROW_H + _TBL_BOT_PAD
+        canvas_h = sep_y + tbl_h
+    else:
+        canvas_h = sep_y
     n_tbl_cols = len(star_desigs)
     col_w      = canvas_w // n_tbl_cols
 
@@ -1105,225 +1344,14 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             )
 
     # ══════════════════════════════════════════════════════════════════════════
-    # SEPARATOR
+    # SEPARATOR + TABLE ZONE (optional — see show_table)
     # ══════════════════════════════════════════════════════════════════════════
-    s.append(
-        f'<line x1="0" y1="{sep_y}" x2="{canvas_w}" y2="{sep_y}" '
-        f'stroke="{palette.axis}" stroke-width="0.8" opacity="0.45"/>'
-    )
+    if show_table:
+        s.extend(_table_zone_svg(
+            canvas_w, canvas_h, sep_y, star_desigs, star_by_desig, star_groups,
+            sec_stars, col_w, mw, orbit_idx, palette,
+        ))
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # TABLE ZONE — one column per star, rows grow downward
-    # ══════════════════════════════════════════════════════════════════════════
-    s.append('<g font-family="\'Courier New\', Courier, monospace">')
-    hdr_y      = sep_y + _TBL_HDR_OFF
-    uln_y      = sep_y + _TBL_ULN_OFF
-    col_hdr_y  = sep_y + _TBL_COL_HDR_OFF
-    col_uln_y  = sep_y + _TBL_COL_ULN_OFF
-    row0_y     = sep_y + _TBL_ROW0_OFF
-
-    for ci, d in enumerate(star_desigs):
-        star  = star_by_desig[d]
-        group = star_groups[d]
-        bx    = ci * col_w + _TBL_COL_PAD
-
-        # Proportional column x-positions — expand to fill the available width.
-        col_usable = col_w - 2 * _TBL_COL_PAD
-        (c_idx, c_orbit, c_au, c_type,
-         c_prof, c_codes, c_zone, c_period) = (
-            bx + int(col_usable * f) for f in _COL_FRACS
-        )
-
-        # Vertical column separator (left edge of each non-first column)
-        if ci > 0:
-            sx = ci * col_w
-            s.append(
-                f'<line x1="{sx}" y1="{sep_y}" x2="{sx}" y2="{canvas_h}" '
-                f'stroke="{palette.axis}" stroke-width="0.6" opacity="0.30"/>'
-            )
-
-        # Column header
-        hdr_col = _star_colour(star.spectral_type, star.lum_class)
-        cls     = (f'{star.spectral_type}'
-                   f'{star.subtype if star.subtype is not None else ""}'
-                   f' {star.lum_class}')
-        if star.orbit_number > 0:
-            period_hdr = ""
-            if star.orbit_period_yr is not None:
-                period_hdr = f"  {_fmt_period(star.orbit_period_yr)}"
-            hdr = (f'Star {d}  {cls}  {star.mass:.2f} M☉  '
-                   f'Orbit# {star.orbit_number:.2f} ({star.orbit_au:.2f} AU)'
-                   f'{period_hdr}')
-        else:
-            hdr = f'Star {d}  {cls}  {star.mass:.2f} M☉  primary'
-        s.append(
-            f'<text x="{bx}" y="{hdr_y}" '
-            f'font-size="{_TBL_FONT_LG}" fill="{hdr_col}">{esc(hdr)}</text>'
-        )
-        uln_x2 = (ci + 1) * col_w - _TBL_COL_PAD
-        s.append(
-            f'<line x1="{bx}" y1="{uln_y}" x2="{uln_x2}" y2="{uln_y}" '
-            f'stroke="{palette.axis}" stroke-width="0.5" opacity="0.40"/>'
-        )
-
-        # Column labels — positions already absolute (c_* vars)
-        col_xs = (c_idx, c_orbit, c_au, c_type,
-                  c_prof, c_codes, c_zone, c_period)
-        for col_x, lbl in zip(col_xs, _COL_NAMES):
-            s.append(
-                f'<text x="{col_x}" y="{col_hdr_y}" '
-                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}" opacity="0.70">'
-                f'{esc(lbl)}</text>'
-            )
-        s.append(
-            f'<line x1="{bx}" y1="{col_uln_y}" x2="{uln_x2}" y2="{col_uln_y}" '
-            f'stroke="{palette.axis}" stroke-width="0.4" opacity="0.25"/>'
-        )
-
-        # Data rows — primary column merges companion star rows in orbit# order
-        if star.orbit_number == 0:
-            merged_rows: list[tuple[str, Any]] = (
-                [("orbit", o) for o in group]
-                + [("comp", st) for st in sec_stars]
-            )
-            merged_rows.sort(key=lambda x: x[1].orbit_number)
-        else:
-            merged_rows = [("orbit", o) for o in group]
-
-        for ri, (row_kind, row_item) in enumerate(merged_rows):
-            ry = row0_y + ri * _TBL_ROW_H
-
-            if row_kind == "comp":
-                st      = row_item
-                comp_c  = _star_colour(st.spectral_type, st.lum_class)
-                cls = (f'{st.spectral_type}'
-                       f'{st.subtype if st.subtype is not None else ""} {st.lum_class}')
-                s.append(
-                    f'<text x="{c_idx}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}">★</text>'
-                )
-                s.append(
-                    f'<text x="{c_orbit}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_LG}" fill="{comp_c}">'
-                    f'{st.orbit_number:.2f}</text>'
-                )
-                s.append(
-                    f'<text x="{c_au}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
-                    f'{st.orbit_au:.3f} AU</text>'
-                )
-                s.append(
-                    f'<text x="{c_type}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}">'
-                    f'Star {esc(st.designation)}</text>'
-                )
-                s.append(
-                    f'<text x="{c_prof}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
-                    f'{esc(cls)}</text>'
-                )
-                if st.orbit_period_yr is not None:
-                    s.append(
-                        f'<text x="{c_period}" y="{ry}" '
-                        f'font-size="{_TBL_FONT_SM}" fill="{comp_c}" opacity="0.75">'
-                        f'{esc(_fmt_period(st.orbit_period_yr))}</text>'
-                    )
-                continue
-
-            o      = row_item
-            idx    = orbit_idx[id(o)]
-            is_mw  = o.is_mainworld_candidate
-            detail = getattr(o, "detail", None)
-            wt     = o.world_type
-            col1   = palette.mainworld if is_mw else palette.text
-
-            if o.canonical_profile:
-                profile = o.canonical_profile
-            elif is_mw and mw:
-                profile = mw.uwp()
-            elif wt == "gas_giant":
-                profile = getattr(o, "gg_sah", "")
-            elif detail:
-                profile = getattr(detail, "profile", "")
-            else:
-                profile = "—"
-
-            if is_mw and mw:
-                codes_str = "  ".join(mw.trade_codes) if mw.trade_codes else ""
-            elif detail and detail.inhabited:
-                codes_str = f"Gov {detail.government}  Law {detail.law_level}"
-            else:
-                codes_str = ""
-
-            moons_str = ""
-            moon_zone = ""
-            if detail and detail.moons:
-                mc        = len(detail.moons)
-                moons_str = f"  {mc}♦"
-                first_sig = next(
-                    (m for m in detail.moons if not m.is_ring and m.temperature_zone),
-                    None,
-                )
-                if first_sig:
-                    moon_zone = first_sig.temperature_zone
-
-            hz_tag    = "⌾ " if o.is_habitable_zone else ""
-            type_abbr = _TYPE_ABBR.get(wt, wt)
-            if o.anomaly_type:
-                type_abbr = type_abbr + " " + _ANOM_SFXS.get(o.anomaly_type, "?")
-            mw_tag    = "★MW " if is_mw else ""
-            tz_col    = _TEMP_COLS.get(o.temperature_zone, palette.dim)
-            zone_label = (f"{o.temperature_zone}/{moon_zone}"
-                          if moon_zone else o.temperature_zone)
-
-            s.append(
-                f'<text x="{c_idx}" y="{ry}" '
-                f'font-size="{_TBL_FONT_LG}" fill="{col1}">{idx}</text>'
-            )
-            s.append(
-                f'<text x="{c_orbit}" y="{ry}" '
-                f'font-size="{_TBL_FONT_LG}" fill="{palette.text}">'
-                f'{o.orbit_number:.2f}</text>'
-            )
-            _au_txt = (
-                f'{o.orbit_au:.3f} (e={o.eccentricity:.2f})'
-                if o.eccentricity > 0
-                else f'{o.orbit_au:.3f} AU'
-            )
-            s.append(
-                f'<text x="{c_au}" y="{ry}" '
-                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
-                f'{_au_txt}</text>'
-            )
-            s.append(
-                f'<text x="{c_type}" y="{ry}" '
-                f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
-                f'{esc(mw_tag)}{type_abbr}</text>'
-            )
-            s.append(
-                f'<text x="{c_prof}" y="{ry}" '
-                f'font-size="{_TBL_FONT_LG}" fill="{col1}">'
-                f'{esc(profile)}</text>'
-            )
-            if codes_str:
-                s.append(
-                    f'<text x="{c_codes}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
-                    f'{esc(codes_str)}</text>'
-                )
-            s.append(
-                f'<text x="{c_zone}" y="{ry}" '
-                f'font-size="{_TBL_FONT_SM}" fill="{tz_col}" opacity="0.85">'
-                f'{esc(hz_tag)}{esc(zone_label)}{esc(moons_str)}</text>'
-            )
-            if wt != "empty" and o.orbit_period_yr is not None:
-                s.append(
-                    f'<text x="{c_period}" y="{ry}" '
-                    f'font-size="{_TBL_FONT_SM}" fill="{palette.dim}">'
-                    f'{esc(_fmt_period(o.orbit_period_yr))}</text>'
-                )
-
-    s.append('</g>')
     s.append('</svg>')
     return "\n".join(s), canvas_h
 

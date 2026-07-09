@@ -104,6 +104,7 @@ seed that produced it.
 | `.to_dict()` | `TravellerSystem` | Full system as a nested dict (JSON-ready) |
 | `.to_json()` | `TravellerSystem` | JSON string of the full system |
 | `.to_html()` | `TravellerSystem` | HTML system card (Jinja2 template) |
+| `.to_poster_html()` | `TravellerSystem` | Self-contained two-page A3 poster HTML — map + highlights, then the full system card (Session 148) |
 | `.to_survey_form_html()` | `TravellerSystem` | Self-contained IISS Class 0/I Survey form HTML page (Session 123) |
 | `.to_survey_form_html_class2()` | `TravellerSystem` | Self-contained IISS Class II/III Survey form HTML page (Session 139) |
 | `.to_survey_form_html_class4()` | `TravellerSystem` | Self-contained IISS Class IV Survey form HTML page — social detail (Session 140) |
@@ -322,3 +323,50 @@ The system card shows **stellar data and orbital survey only**. Mainworld detail
 on the Mainworld tab via `World.to_html()` — the `mw_data` construction block and
 the corresponding HTML section were removed in Session 83 (issue #114) to eliminate
 duplication between the System tab and Mainworld tab in gen-ui.
+
+**Refactor note (Session 150):** the `star_rows`/`orbit_rows` construction shown
+above used to live directly inside `to_html()`. It was extracted into a private
+helper, `_system_card_context(detail_attached=False) -> dict`, so `to_poster_html()`
+(below) could reuse the exact same star/orbit data without duplicating that ~170-line
+block. `to_html()` itself is now a one-liner:
+`render("system_card.html", **self._system_card_context(detail_attached))` — its
+behaviour and output are unchanged, only the code organisation moved.
+
+---
+
+## `to_poster_html()` — A3 poster export (Session 148, revised Sessions 150–159)
+
+`TravellerSystem.to_poster_html(perspective: bool = True) -> str` returns a
+self-contained, **two-page** HTML document meant to be printed at A3
+(`@page { size: A3 landscape }` in the template's CSS):
+
+- **Page 1** — a curated "highlights" sheet: the perspective system map
+  (`system_map.build_svg(..., show_table=False)` — see `system_map_explained.md`
+  for what `show_table` does), a compact star list, the mainworld's key stats
+  (via `_world_html_ctx()`, the same helper `World.to_html()` uses), and up to 5
+  "notable bodies" (gas giants and inhabited secondary worlds). The floating cards
+  have no drop shadow (Session 159 — it didn't survive PDF conversion cleanly).
+- **Page 2** — the complete system card: full stars table + orbital survey table
+  with moons, built via the same `_system_card_context()` helper `to_html()` uses.
+  Sized to the same `height:297mm` as page 1. As of Session 159 it's a fixed
+  height (not `min-height`, as it briefly was in Session 156) with `overflow:hidden`
+  as a backstop, and a small inline `<script>` measures the content's natural
+  height and shrinks it with `transform:scale()` if it wouldn't otherwise fit —
+  this always fits on one page rather than flowing onto a third. See
+  `context/gen-ui.md`'s Session 159 entry for why a Python-side row-count
+  heuristic was tried first and replaced with this JS measurement (the heuristic
+  measurably undershot on a real render). This is the template's only JavaScript.
+
+Raises `ValueError` if `self.mainworld is None` — a poster with nothing to
+highlight on its mainworld panel isn't meaningful.
+
+Template: `src/traveller_gen/templates/poster_a3.html` — its own `<style>` block,
+not shared with `system_card.html`/`world_card.html`/`world_list.html` (this
+project has no template inheritance; see `html_render.py`).
+
+**Entry point:** gen-ui only, via File > Export A3 Poster… (`gen-ui/app.py`). The
+save dialog offers HTML or PDF; choosing PDF renders the same HTML off-screen
+through `QWebEngineView` and calls `page().printToPdf()` — no new dependency,
+since `QWebEngineView` (Chromium) is already used for card display elsewhere in
+gen-ui. See `context/gen-ui.md` for the full write-up, including a couple of
+layout iterations that were tried and reverted based on feedback.

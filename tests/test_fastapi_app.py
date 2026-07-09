@@ -954,6 +954,48 @@ class TestBodySizeLimit:
 
 
 # ===========================================================================
+# TestWorldJsonFieldLengthValidation
+# ===========================================================================
+
+class TestWorldJsonFieldLengthValidation:
+    """Tests for issue #169 — max-length validation on World JSON string fields."""
+
+    def test_oversized_top_level_string_returns_422(self):
+        body = dict(_SAMPLE_WORLD_DICT, name="A" * 501)
+        resp = client.post("/api/system/from-world", json=body, params={"seed": "1"})
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == ERR_INVALID_BODY
+
+    def test_oversized_nested_string_returns_422(self):
+        body = dict(_SAMPLE_WORLD_DICT, notes=[{"nested": {"deep": "A" * 501}}])
+        resp = client.post("/api/system/from-world", json=body, params={"seed": "1"})
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == ERR_INVALID_BODY
+
+    def test_oversized_list_returns_422(self):
+        body = dict(_SAMPLE_WORLD_DICT, notes=["x"] * 201)
+        resp = client.post("/api/system/from-world", json=body, params={"seed": "1"})
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == ERR_INVALID_BODY
+
+    def test_excessive_nesting_depth_returns_422(self):
+        deep: dict = {}
+        cursor = deep
+        for _ in range(25):
+            cursor["a"] = {}
+            cursor = cursor["a"]
+        body = dict(_SAMPLE_WORLD_DICT, extra=deep)
+        resp = client.post("/api/system/from-world", json=body, params={"seed": "1"})
+        assert resp.status_code == 422
+        assert resp.json()["error"]["code"] == ERR_INVALID_BODY
+
+    def test_normal_payload_still_succeeds(self):
+        resp = client.post("/api/system/from-world",
+                           json=_SAMPLE_WORLD_DICT, params={"seed": "1"})
+        assert resp.status_code == 200
+
+
+# ===========================================================================
 # TestMapSystem
 # ===========================================================================
 

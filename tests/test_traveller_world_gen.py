@@ -41,6 +41,7 @@ import sys
 import os
 import json
 import random
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -8226,3 +8227,121 @@ class TestLawDetail:
                 attach_law_detail(system)
                 assert system.mainworld.law_detail is None
                 break
+
+
+class TestToPosterHtml:
+    """TravellerSystem.to_poster_html() — A3 poster export (curated highlights)."""
+
+    def _detailed_system(self, seed, star_count=None):
+        from traveller_gen import system_pipeline as _sp  # pylint: disable=import-outside-toplevel
+        system = generate_full_system("Poster", seed=seed, rng=random.Random(seed))
+        if star_count is not None and len(system.stellar_system.stars) != star_count:
+            return None
+        if system.mainworld is None:
+            return None
+        _sp.run_detail_pipeline(
+            system, random.Random(seed), _sp.PipelineOptions(want_detail=True),
+        )
+        return system
+
+    def test_raises_without_mainworld(self):
+        system = generate_full_system("Empty", seed=1)
+        system.mainworld = None
+        with pytest.raises(ValueError):
+            system.to_poster_html()
+
+    def test_returns_wellformed_looking_html_single_star(self):
+        for seed in range(100):
+            system = self._detailed_system(seed, star_count=1)
+            if system is not None:
+                break
+        assert system is not None, "No single-star system found in 100 seeds"
+        html = system.to_poster_html()
+        assert html.startswith("<!DOCTYPE html>")
+        assert html.rstrip().endswith("</html>")
+        assert "@page{ size: A3 landscape" in html
+        assert system.mainworld.uwp() in html
+        assert "<svg xmlns=" in html
+
+    def test_returns_wellformed_looking_html_multi_star(self):
+        for seed in range(300):
+            system = self._detailed_system(seed, star_count=2)
+            if system is not None:
+                break
+        assert system is not None, "No 2-star system found in 300 seeds"
+        html = system.to_poster_html()
+        assert html.startswith("<!DOCTYPE html>")
+        assert html.rstrip().endswith("</html>")
+        assert system.mainworld.uwp() in html
+
+    def test_full_system_card_section_present(self):
+        for seed in range(100):
+            system = self._detailed_system(seed)
+            if system is not None:
+                break
+        assert system is not None
+        html = system.to_poster_html()
+        assert "Full system card" in html
+        assert "Orbital survey" in html
+        # Every orbit's profile string should appear somewhere in the full card table.
+        for orbit in system.system_orbits.orbits:
+            detail = getattr(orbit, "detail", None)
+            if detail is not None and not detail.is_gas_giant and detail.profile:
+                assert detail.profile in html
+
+    def test_full_system_card_matches_system_card_context(self):
+        for seed in range(100):
+            system = self._detailed_system(seed)
+            if system is not None:
+                break
+        assert system is not None
+        detail_attached = any(
+            getattr(o, "detail", None) is not None
+            for o in system.system_orbits.orbits
+            if o.world_type != "empty"
+        )
+        expected = system._system_card_context(detail_attached)  # pylint: disable=protected-access
+        html = system.to_poster_html()
+        for star_row in expected["star_rows"]:
+            assert star_row["designation"] in html
+            assert star_row["classification"] in html
+
+    def test_viewbox_injected_matches_canvas(self):
+        for seed in range(100):
+            system = self._detailed_system(seed)
+            if system is not None:
+                break
+        assert system is not None
+        html = system.to_poster_html()
+        m = re.search(r'viewBox="0 0 1600 (\d+)"', html)
+        assert m is not None, "viewBox not found in poster SVG"
+        # canvas_h should also appear as the svg's own height attribute
+        assert f'height="{m.group(1)}"' in html
+
+    def test_no_notable_bodies_renders_empty_note(self):
+        # A system with no gas giants and no inhabited secondaries.
+        for seed in range(300):
+            system = self._detailed_system(seed)
+            if system is None:
+                continue
+            has_notable = any(
+                o.world_type == "gas_giant"
+                or (getattr(o, "detail", None) is not None and o.detail.inhabited)
+                for o in system.system_orbits.orbits
+                if not o.is_mainworld_candidate
+            )
+            if not has_notable:
+                html = system.to_poster_html()
+                assert "No other gas giants or inhabited secondary worlds." in html
+                return
+        pytest.skip("No system with zero notable bodies found in 300 seeds")
+
+    def test_gas_giant_mainworld_satellite_no_crash(self):
+        for seed in range(300):
+            system = self._detailed_system(seed)
+            if (system is not None and system.mainworld_orbit is not None
+                    and system.mainworld_orbit.world_type == "gas_giant"):
+                html = system.to_poster_html()
+                assert system.mainworld.uwp() in html
+                return
+        pytest.skip("No gas-giant-satellite mainworld found in 300 seeds")

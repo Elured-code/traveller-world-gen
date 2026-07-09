@@ -1,8 +1,107 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–146
-**Tests:** 2949
+**Sessions:** 88–160
+**Tests:** 2970
+
+---
+
+## Fix Issue #169: Max-Length Validation on World JSON Fields — Session 160
+
+`POST /api/system/from-world` now rejects (422) mainworld JSON bodies containing a string
+over 500 characters, a list over 200 items, or nesting deeper than 20 levels, anywhere in
+the payload — closing the last unvalidated body-accepting path in the API. Pairs with the
+existing 16 KB whole-body size limit (issues #167/#168); this is the fine-grained,
+schema-correctness half of that pair, not a replacement for it.
+
+---
+
+## A3 Poster: No Card Shadows in PDF, Page 2 Always Fits — Session 159
+
+The floating cards on the poster's map page no longer have a drop shadow — it didn't
+convert cleanly through the PDF export. The "Full system card" page now always fits on a
+single page: if there's more detail than fits at full size, it shrinks to fit instead of
+spilling onto a third page.
+
+---
+
+## A3 Poster: Centered Title Card — Session 157
+
+The poster's title card now sits centered at the top of the page instead of the top-right
+corner.
+
+---
+
+## A3 Poster: PDF Export + Page-2 Sizing — Session 156
+
+Export A3 Poster… now offers a PDF filter alongside HTML — choosing it renders and saves a
+proper 2-page PDF directly, no browser print step needed. The page-2 "Full system card" now
+matches the map page's A3 size on screen. The bottom-center card added last session was
+reverted per feedback.
+
+---
+
+## A3 Poster: Full System Card on Page 1 Too — Session 155
+
+The poster's first page now also includes a condensed copy of the full system card
+(stars + orbital survey table), positioned bottom-center between the Notable-bodies and
+Mainworld cards. Given how little width is available there, most table values are heavily
+truncated — the full, readable version remains on page 2.
+
+---
+
+## A3 Poster: Light-Mode Map + Smaller Cards — Session 154
+
+The poster's map now renders in light mode (matching the page's paper aesthetic instead of
+a dark navy map), and the Stars/Notable-bodies/Mainworld cards are scaled down a further
+~33%, still anchored to their corners.
+
+---
+
+## A3 Poster: Cleaner Map, Repositioned Cards — Sessions 152–153
+
+The poster's map no longer shows `system_map.py`'s embedded per-star orbit-data table (the
+same data already appears on the poster's "Full system card" page), so the orbital diagram
+now fills the entire map area. The Stars/Notable-bodies cards moved to the bottom-left and
+the Mainworld card to the bottom-right (each capped at no more than a third of the page
+height), and all card backgrounds are now semi-transparent so more of the map shows through.
+Every other consumer of the system map (gen-ui's System Map window, CLI, FastAPI) is
+unaffected.
+
+---
+
+## A3 Poster: Full-Bleed Map Layout — Session 151
+
+The A3 poster's first page now extends the system map to all four page edges, with the
+header and Stars/Mainworld/Notable-bodies cards floating on top of it in the same
+positions they held before.
+
+---
+
+## A3 Poster: Full System Card as a Second Page — Session 150
+
+The A3 poster export now appends the complete system card (full stars table + orbital
+survey table with all secondary worlds and moons) as additional page(s) after the curated
+highlights sheet, so nothing from the full system detail is left out of the printout.
+
+---
+
+## Fix: System Map Theme/Perspective Not Persisted (gen-ui) — Session 149
+
+The System Map window's Light/Dark theme and Perspective/Top-down view toggles now persist
+across windows — previously every newly opened map window silently reset to Dark theme and
+Top-down view regardless of what you'd last chosen.
+
+---
+
+## A3 System Poster Export (gen-ui) — Session 148
+
+New **File > Export A3 Poster…** action in gen-ui: saves a self-contained, print-ready HTML
+page (`@page { size: A3 landscape }`) combining the perspective system map, a compact star
+list, the mainworld's key stats, and up to 5 notable bodies (gas giants and inhabited
+secondary worlds). A curated-highlights view by design, not the full system/world card
+detail — built for print legibility. Open the saved file in any browser and use Print →
+Save as PDF to print at A3.
 
 ---
 

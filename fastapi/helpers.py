@@ -360,6 +360,49 @@ def parse_hex_pos(
     return hex_pos, None
 
 
+MAX_WORLD_JSON_STRING_LEN = 500
+MAX_WORLD_JSON_LIST_LEN = 200
+MAX_WORLD_JSON_DEPTH = 20
+
+
+def _find_oversized_json_value(  # pylint: disable=too-many-return-statements
+    obj: object, depth: int = 0,
+) -> Optional[str]:
+    """Recursively look for a string, list, or nesting depth that exceeds the
+    World-JSON limits, returning a description of the first violation found
+    (or None if obj is entirely within bounds).
+
+    Applied once to the whole parsed body in parse_world_json() so that every
+    string field in the World JSON shape — including ones nested inside
+    detail sub-objects (population_detail, government_detail, etc.) — is
+    covered by one check, rather than needing a length check hand-written
+    into each of those classes' own from_dict().
+    """
+    if depth > MAX_WORLD_JSON_DEPTH:
+        return f"exceeds maximum nesting depth of {MAX_WORLD_JSON_DEPTH}"
+    if isinstance(obj, str):
+        if len(obj) > MAX_WORLD_JSON_STRING_LEN:
+            return f"string value exceeds {MAX_WORLD_JSON_STRING_LEN} characters"
+        return None
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            if isinstance(key, str) and len(key) > MAX_WORLD_JSON_STRING_LEN:
+                return f"object key exceeds {MAX_WORLD_JSON_STRING_LEN} characters"
+            found = _find_oversized_json_value(value, depth + 1)
+            if found:
+                return found
+        return None
+    if isinstance(obj, list):
+        if len(obj) > MAX_WORLD_JSON_LIST_LEN:
+            return f"list exceeds {MAX_WORLD_JSON_LIST_LEN} items"
+        for item in obj:
+            found = _find_oversized_json_value(item, depth + 1)
+            if found:
+                return found
+        return None
+    return None
+
+
 def parse_world_json(
     body_raw: bytes,
     body: dict,
@@ -368,7 +411,9 @@ def parse_world_json(
 
     The body must be a JSON object in the shape produced by World.to_dict().
     Minimal required fields: either 'uwp' or the individual characteristic
-    sub-objects ('size', 'atmosphere', 'hydrographics', 'population').
+    sub-objects ('size', 'atmosphere', 'hydrographics', 'population'). Every
+    string value (at any nesting depth), every list length, and the overall
+    nesting depth are also bounded — see _find_oversized_json_value().
 
     Args:
         body_raw: Raw bytes of the request body (used only to detect absence).
@@ -392,6 +437,13 @@ def parse_world_json(
             "Request body must include 'uwp' or the individual world "
             "characteristic fields (size, atmosphere, hydrographics, population).",
             ERR_INVALID_BODY,
+        )
+    oversized = _find_oversized_json_value(body)
+    if oversized:
+        return None, error(
+            f"Request body rejected: {oversized}.",
+            ERR_INVALID_BODY,
+            status_code=422,
         )
     return body, None
 

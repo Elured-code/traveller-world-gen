@@ -30,6 +30,7 @@ The diagram has two zones stacked vertically:
 | `PALETTE_DARK` / `PALETTE_LIGHT` | Dark and light colour palettes |
 | Geometry helpers | `_orbit_screen_pts`, `_orbit_arc`, `_shadow_orbit_arc`, `_orbit_marker`, `_orbit_half_deg` |
 | Visual helpers | `_sphere_gradient_def`, `_sph`, `_gg_ring_px`, `_ring_halves`, `_belt_band_path`, `_iso_grid` |
+| `_table_zone_svg()` | Renders the table-zone SVG fragments (separator + per-star columns); called by `build_svg()` unless `show_table=False` |
 | SVG builder | `build_svg()` — assembles the complete SVG string |
 | `main()` | Command-line entry point |
 
@@ -137,10 +138,10 @@ Temperature zones affect the arc **stroke colour** (see `_TEMP_COLS`), not the g
 ```python
 svg_string, canvas_h = build_svg(
     system,                 # TravellerSystem
-    name="Regina",          # displayed in the title bar
     canvas_w=1600,          # total width in pixels
     palette=PALETTE_DARK,   # ColourPalette — use PALETTE_LIGHT for white background
     perspective=False,      # True for perspective (3-D looking) view
+    show_table=True,        # False omits the table zone entirely (see below)
 )
 ```
 
@@ -149,7 +150,30 @@ document that can be written to a `.svg` file, embedded in an HTML `<body>`, or
 displayed in the PySide6 GUI via `QWebEngineView.setHtml(html)`.
 
 > **Note:** The function was renamed `build_svg` (from `build_system_map_svg`)
-> when the palette and perspective parameters were added.
+> when the palette and perspective parameters were added. It never actually took
+> a `name` parameter — the system/mainworld name shown in the title text comes
+> from `system.mainworld.name`.
+
+### `show_table=False` — omitting the table zone
+
+The table zone (see below) is drawn by a separate helper,
+`_table_zone_svg(canvas_w, canvas_h, sep_y, star_desigs, star_by_desig,
+star_groups, sec_stars, col_w, mw, orbit_idx, palette)`, extracted out of
+`build_svg()` so it can be skipped entirely. When `show_table=False`:
+
+- The separator line and the whole per-star table (headers, orbit rows, moon
+  rows) are omitted.
+- `canvas_h` shrinks to just the arc-zone height (`sep_y`) instead of
+  `sep_y + tbl_h` — the returned SVG is shorter, not just visually blank at the
+  bottom.
+
+`TravellerSystem.to_poster_html()` (in `traveller_system_gen.py`) is the only
+caller that passes `show_table=False` — its A3 poster page shows this same
+per-star orbit data on its own "Full system card" page instead, and having the
+map's own copy of it competing for space with the poster's other cards looked
+cluttered. Every other caller (the CLI, gen-ui's `SystemMapWindow`, the FastAPI
+raw-SVG endpoints) doesn't pass this argument, so it defaults `True` and their
+output is completely unaffected.
 
 ---
 
