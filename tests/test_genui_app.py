@@ -541,6 +541,71 @@ class TestSeedHandling:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# 6b. File > New / New with New Seed
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestFileMenuNewActions:
+    def test_menu_actions_exist_with_expected_labels(self, app_win):
+        assert app_win._act_new.text() == "New"
+        assert app_win._act_new_seed.text() == "New with New Seed"
+
+    def test_new_reuses_current_seed(self, app_win):
+        app_win._seed_entry.setText("777")
+        app_win._generate_btn.click()
+        assert app_win._seed_entry.text() == "777"
+        app_win._act_new.trigger()
+        assert app_win._seed_entry.text() == "777"
+
+    def test_new_reuses_seed_even_after_auto_fill(self, app_win):
+        """Regression: after a plain Generate click, the seed field holds an
+        auto-filled value (_seed_auto=True). File > New must still reuse
+        that displayed value rather than treating it as stale and rerolling
+        a fresh one -- this is exactly the case the plain Generate button
+        does NOT handle (it rerolls), which is why this action exists."""
+        app_win._seed_entry.clear()
+        app_win._generate_btn.click()
+        displayed_seed = app_win._seed_entry.text()
+        assert displayed_seed != ""
+        app_win._act_new.trigger()
+        assert app_win._seed_entry.text() == displayed_seed
+
+    def test_new_with_empty_seed_field_falls_back_to_random(self, app_win):
+        app_win._seed_entry.clear()
+        app_win._act_new.trigger()
+        assert app_win._seed_entry.text() != ""
+        assert app_win._seed_entry.text().lstrip("-").isdigit()
+
+    def test_new_with_new_seed_changes_the_seed(self, app_win):
+        app_win._seed_entry.setText("42")
+        app_win._generate_btn.click()
+        assert app_win._seed_entry.text() == "42"
+        app_win._act_new_seed.trigger()
+        assert app_win._seed_entry.text() != "42"
+        assert app_win._seed_entry.text().lstrip("-").isdigit()
+
+    def test_new_keeps_current_options(self, app_win):
+        app_win._opt_nhz = True
+        app_win._seed_entry.setText("555")
+        app_win._act_new.trigger()
+        assert app_win._opt_nhz is True
+
+    def test_new_with_new_seed_keeps_current_options(self, app_win):
+        app_win._opt_nhz = True
+        app_win._act_new_seed.trigger()
+        assert app_win._opt_nhz is True
+
+    def test_new_invalid_current_seed_shows_error(self, app_win):
+        """File > New validates the current seed field the same way the
+        plain Generate button does, rather than silently discarding
+        whatever the user typed there."""
+        app_win._seed_entry.setText("not-a-number")
+        app_win._act_new.trigger()
+        lbl = app_win.findChild(QLabel, "error-label")
+        assert lbl is not None
+        assert "integer" in lbl.text().lower()
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # 7. TravellerMap error paths (no network required)
 # ════════════════════════════════════════════════════════════════════════════
 

@@ -1009,11 +1009,42 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_inclination", self._opt_inclination)
         self._on_detail_toggled(self._opt_full_system)
 
-    def _on_generate(self) -> None:
+    def _on_menu_new(self) -> None:
+        """File > New: regenerate with the currently displayed seed and
+        options. Falls back to a new random seed if the seed field is empty
+        (e.g. before any generation has happened yet)."""
+        self._on_generate(seed_mode="current")
+
+    def _on_menu_new_with_new_seed(self) -> None:
+        """File > New with New Seed: regenerate with a fresh random seed,
+        keeping the current options."""
+        self._on_generate(seed_mode="new")
+
+    def _on_generate(self, *, seed_mode: str = "auto") -> None:
+        """Generate a world/system.
+
+        seed_mode is keyword-only: _generate_btn.clicked and
+        _seed_entry.returnPressed both connect directly to this method, and
+        clicked(bool checked) would otherwise land in a positional seed_mode
+        parameter, silently overriding the "auto" default with a bool.
+
+        seed_mode controls which seed is used:
+          "auto"    (default, Generate button / Enter key) - reuse the typed
+                    seed if the user entered one and it hasn't already been
+                    consumed by a prior generation; otherwise a new random
+                    seed. This is the long-standing default behaviour.
+          "current" (File > New) - always reuse whatever seed is currently
+                    displayed, ignoring the auto-fill flag.
+          "new"     (File > New with New Seed) - always generate a fresh
+                    random seed, ignoring the seed field entirely.
+        """
         name = self._name_entry.text().strip() or "Unknown"
         seed_raw = self._seed_entry.text().strip()
 
-        if seed_raw and not self._seed_auto:
+        use_typed_seed = bool(seed_raw) and (
+            seed_mode == "current" or (seed_mode == "auto" and not self._seed_auto)
+        )
+        if use_typed_seed:
             try:
                 seed = int(seed_raw)
             except ValueError:
@@ -1264,6 +1295,18 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _build_menu_bar(self) -> None:
         # pylint: disable=attribute-defined-outside-init
         file_menu = self.menuBar().addMenu("&File")
+
+        self._act_new = QAction("New", self)
+        self._act_new.setShortcut(QKeySequence.StandardKey.New)
+        self._act_new.triggered.connect(self._on_menu_new)
+        file_menu.addAction(self._act_new)
+
+        self._act_new_seed = QAction("New with New Seed", self)
+        self._act_new_seed.setShortcut(QKeySequence("Ctrl+Shift+N"))
+        self._act_new_seed.triggered.connect(self._on_menu_new_with_new_seed)
+        file_menu.addAction(self._act_new_seed)
+
+        file_menu.addSeparator()
 
         self._act_open_json = QAction("Open JSON…", self)
         self._act_open_json.triggered.connect(self._on_open_json)
@@ -1629,8 +1672,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     ) -> None:
         display = search_name or hex_pos or "world"
         self._show_loading(f"Looking up {display} in {sector}…")
-        if self._generate_btn is not None:
-            self._generate_btn.setEnabled(False)
+        self._set_generation_controls_enabled(False)
         worker = _TravMapWorker(sector, search_name, hex_pos, seed,
                                 orbital_eccentricity=orbital_eccentricity,
                                 orbital_inclination=orbital_inclination)
@@ -1641,9 +1683,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._worker = worker
         worker.start()
 
-    def _on_worker_result(self, system: object) -> None:
+    def _set_generation_controls_enabled(self, enabled: bool) -> None:
+        """Enable/disable everything that can trigger a new generation, so a
+        second one can't be started while a TravellerMap fetch is in flight."""
         if self._generate_btn is not None:
-            self._generate_btn.setEnabled(True)
+            self._generate_btn.setEnabled(enabled)
+        self._act_new.setEnabled(enabled)
+        self._act_new_seed.setEnabled(enabled)
+
+    def _on_worker_result(self, system: object) -> None:
+        self._set_generation_controls_enabled(True)
         if self._pending_full_system:
             rng = (
                 random.Random(self._pending_seed)
@@ -1661,13 +1710,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             self._finish_generation(world)
 
     def _on_worker_error(self, message: str) -> None:
-        if self._generate_btn is not None:
-            self._generate_btn.setEnabled(True)
+        self._set_generation_controls_enabled(True)
         self._show_error(message)
 
     def _on_worker_ambiguous(self, exc: object) -> None:
-        if self._generate_btn is not None:
-            self._generate_btn.setEnabled(True)
+        self._set_generation_controls_enabled(True)
         self._show_disambiguation_dialog(exc, self._pending_seed)  # type: ignore[arg-type]
 
     def _show_summary(self, world: object) -> None:
