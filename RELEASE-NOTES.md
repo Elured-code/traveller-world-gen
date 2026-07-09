@@ -1,8 +1,18 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–159
-**Tests:** 2942
+**Sessions:** 88–160
+**Tests:** 2947
+
+---
+
+## Fix Issue #169: Max-Length Validation on World JSON Fields — Session 160
+
+`POST /api/system/from-world` now rejects (422) mainworld JSON bodies containing a string
+over 500 characters, a list over 200 items, or nesting deeper than 20 levels, anywhere in
+the payload — closing the last unvalidated body-accepting path in the API. Pairs with the
+existing 16 KB whole-body size limit (issues #167/#168); this is the fine-grained,
+schema-correctness half of that pair, not a replacement for it.
 
 ---
 
