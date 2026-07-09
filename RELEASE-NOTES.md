@@ -1,8 +1,19 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–160
+**Sessions:** 88–161
 **Tests:** 2970
+
+---
+
+## Fix Issue #170: Azure Monitor Alerts for Exception/Restart Frequency — Session 161
+
+New `scripts/set_azure_exception_restart_alert.sh` provisions two Azure Monitor alerts on
+the live `traveller-world-gen` Function App/App Insights resources, emailing on threshold
+breach: exception-frequency (standard `exceptions/server` metric) and restart-frequency
+(a log-query proxy — Flex Consumption exposes no platform restart-count metric). Vigilance,
+not a control — surfaces whatever slips past the already-shipped body-size and schema
+validation fixes (#167–169). Infrastructure-only; already run against the live resources.
 
 ---
 
