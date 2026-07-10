@@ -7862,20 +7862,20 @@ class TestBodyNames:
     def test_star_primary_name(self):
         system = _name_system("Zeta")
         primary = system.stellar_system.stars[0]
-        assert primary.name == "Zeta-Primary"
+        assert primary.name == "Zeta A"
 
     def test_star_secondary_name(self):
         system = _name_system()
         non_companions = [s for s in system.stellar_system.stars if s.role != "companion"]
         assert len(non_companions) >= 2
-        assert non_companions[1].name == "Test-Secondary"
+        assert non_companions[1].name == f"Test {non_companions[1].designation}"
 
-    def test_companion_star_name_unchanged(self):
+    def test_companion_star_now_named(self):
         system = _name_system()
         companions = [s for s in system.stellar_system.stars if s.role == "companion"]
         assert len(companions) >= 1
         for comp in companions:
-            assert comp.name == ""
+            assert comp.name == f"Test {comp.designation}"
 
     # ------------------------------------------------------------------
     # Orbit slot naming
@@ -7885,46 +7885,58 @@ class TestBodyNames:
         system = _name_system("Altair")
         assert system.mainworld_orbit is not None
         assert system.mainworld_orbit.name == system.mainworld.name
+        assert system.mainworld_orbit.name == "Altair Prime"
 
-    def test_world_names_sequential(self):
-        system = _name_system()
-        world_orbits = [
-            o for o in system.system_orbits.orbits
-            if o.world_type in ("terrestrial", "gas_giant")
-            and o is not system.mainworld_orbit
-        ]
-        for idx, orbit in enumerate(world_orbits):
-            expected = f"Test-{chr(ord('A') + idx)}"
-            assert orbit.name == expected
+    def test_attach_body_names_idempotent_on_mainworld_name(self):
+        # attach_body_names() must not keep appending " Prime" on repeat calls.
+        system = _name_system("Altair")
+        attach_body_names(system)
+        attach_body_names(system)
+        assert system.mainworld.name == "Altair Prime"
+        assert system.mainworld_orbit.name == "Altair Prime"
 
-    def test_belt_names_separate_counter(self):
+    def test_world_names_sequential_per_star(self):
+        # Worlds and belts share one ordinal counter per star, in orbital-
+        # radius order; the mainworld doesn't consume a number.
         system = _name_system()
-        belt_orbits = [
-            o for o in system.system_orbits.orbits
-            if o.world_type == "belt"
-        ]
-        assert len(belt_orbits) >= 1
-        for idx, orbit in enumerate(belt_orbits):
-            expected = f"Test-Belt-{chr(ord('A') + idx)}"
-            assert orbit.name == expected
+        orbits_by_star: dict = {}
+        for o in system.system_orbits.orbits:
+            if o.world_type == "empty":
+                continue
+            orbits_by_star.setdefault(o.star_designation, []).append(o)
+        assert orbits_by_star  # sanity: seed 370 has non-empty orbits
+
+        checked_belt = False
+        for star_desig, orbits in orbits_by_star.items():
+            orbits.sort(key=lambda o: o.orbit_au)
+            counter = 0
+            for orbit in orbits:
+                if orbit is system.mainworld_orbit:
+                    assert orbit.name == system.mainworld.name
+                else:
+                    counter += 1
+                    assert orbit.name == f"Test {star_desig}-{counter}"
+                    if orbit.world_type == "belt":
+                        checked_belt = True
+        assert checked_belt, "seed 370 should include a belt in the counted sequence"
 
     # ------------------------------------------------------------------
     # Moon naming
     # ------------------------------------------------------------------
 
-    def test_moon_names_greek(self):
+    def test_moon_names_phonetic(self):
         system = _name_system()
         for orbit in system.system_orbits.orbits:
             if orbit.detail is None:
                 continue
             non_ring_moons = [m for m in orbit.detail.moons if not m.is_ring]
             if len(non_ring_moons) >= 2:
-                assert non_ring_moons[0].name == f"{orbit.name}-alpha"
-                assert non_ring_moons[1].name == f"{orbit.name}-beta"
+                assert non_ring_moons[0].name == f"{orbit.name} ay"
+                assert non_ring_moons[1].name == f"{orbit.name} bee"
                 return
         pytest.fail("No orbit with 2+ non-ring moons found")
 
-    def test_ring_skipped_in_greek_sequence(self):
+    def test_ring_skipped_in_phonetic_sequence(self):
         system = _name_system()
         for orbit in system.system_orbits.orbits:
             if orbit.detail is None:
@@ -7932,7 +7944,7 @@ class TestBodyNames:
             moons = orbit.detail.moons
             if moons and moons[0].is_ring and len(moons) > 1 and not moons[1].is_ring:
                 assert moons[0].name == ""
-                assert moons[1].name == f"{orbit.name}-alpha"
+                assert moons[1].name == f"{orbit.name} ay"
                 return
         pytest.fail("No orbit starting with ring then non-ring found")
 
@@ -7974,7 +7986,7 @@ class TestBodyNames:
         system = _name_system("Betelgeuse")
         primary = system.stellar_system.stars[0]
         d = primary.to_dict()
-        assert d["name"] == "Betelgeuse-Primary"
+        assert d["name"] == "Betelgeuse A"
 
 
 # ===========================================================================
@@ -8305,6 +8317,67 @@ class TestToPosterHtml:
         for star_row in expected["star_rows"]:
             assert star_row["designation"] in html
             assert star_row["classification"] in html
+
+    def test_orbit_rows_include_companion_star_sorted_by_orbital_radius(self):
+        # Seed with a companion of a secondary star: A (primary), B (near
+        # secondary, has its own worlds), Ba (companion of B). B itself is
+        # also close/near/far so it gets its own context row under A, in
+        # addition to Ba's row under B — mirrors system_map.py's SVG, which
+        # always shows a secondary as context in the primary's zone even
+        # when it also has its own zone for its own worlds.
+        system = generate_full_system(seed=1076570818)
+        stars = system.stellar_system.stars
+        assert [s.designation for s in stars] == ["A", "B", "Ba"]
+        b, ba = stars[1], stars[2]
+        assert b.role == "near"
+        assert ba.role == "companion"
+
+        ctx = system._system_card_context()  # pylint: disable=protected-access
+        orbit_rows = ctx["orbit_rows"]
+
+        star_rows = [r for r in orbit_rows if r["world_type"] == "star"]
+        assert len(star_rows) == 2
+
+        b_row = next(r for r in star_rows if r["profile"] == b.classification())
+        assert b_row["star_desig"] == "A", "B's own row should be listed under its parent, A"
+        assert b_row["orbit_au"] == f"{b.orbit_au:.3f}"
+
+        ba_row = next(r for r in star_rows if r["profile"] == ba.classification())
+        assert ba_row["star_desig"] == "B", "Ba's row should be listed under its parent, B"
+        assert ba_row["orbit_au"] == f"{ba.orbit_au:.3f}"
+
+        # orbit_rows must already be in (star_desig, orbit_au) sorted order —
+        # both star rows correctly interleaved among their parent's own
+        # worlds, not tacked on at the start/end.
+        resorted = sorted(orbit_rows, key=lambda r: (r["star_desig"], float(r["orbit_au"])))
+        assert orbit_rows == resorted
+
+    def test_orbit_rows_include_secondary_star_with_no_orbit_slots_of_its_own(self):
+        # Seed from the bug report: A (primary), B (close secondary with
+        # ZERO orbit slots of its own — its exclusion zone leaves A with an
+        # inner zone and an outer zone but B hosts no worlds at all). B was
+        # previously entirely invisible in this table.
+        system = generate_full_system(seed=1559916071)
+        stars = system.stellar_system.stars
+        assert [s.designation for s in stars] == ["A", "B"]
+        b = stars[1]
+        assert b.role == "close"
+
+        ctx = system._system_card_context()  # pylint: disable=protected-access
+        orbit_rows = ctx["orbit_rows"]
+
+        star_rows = [r for r in orbit_rows if r["world_type"] == "star"]
+        assert len(star_rows) == 1
+        b_row = star_rows[0]
+        assert b_row["star_desig"] == "A"
+        assert b_row["profile"] == b.classification()
+        assert b_row["orbit_au"] == f"{b.orbit_au:.3f}"
+
+        # B's row must sit between the Orbit# 1.06 (0.418 AU) and Orbit# 6.84
+        # (9.232 AU) world rows, per the bug report.
+        b_idx = orbit_rows.index(b_row)
+        assert orbit_rows[b_idx - 1]["orbit_num"] == "1.06"
+        assert orbit_rows[b_idx + 1]["orbit_num"] == "6.84"
 
     def test_viewbox_injected_matches_canvas(self):
         for seed in range(100):

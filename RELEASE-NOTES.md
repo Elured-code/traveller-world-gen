@@ -1,8 +1,69 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–162
-**Tests:** 2978
+**Sessions:** 88–170
+**Tests:** 2984
+
+---
+
+## New Default Body-Naming Scheme — Session 168–170
+
+Stars, worlds, and moons are now named more systematically. Stars: `<systemname> <designation>`
+(e.g. "Unknown A", "Unknown Ba") — companion stars are now named too, previously left blank.
+Worlds and belts: `<systemname> <designation>-<n>`, numbered per star in order of orbital
+radius (belts now share the same sequence as worlds, instead of their own separate counter).
+The mainworld gets `<systemname> Prime` (e.g. "Unknown Prime"). Moons: `<parentname> <satellite>`,
+using a phonetic letter-name spelling (ay, bee, cee, ... zed) instead of Greek letters.
+
+---
+
+## Bug Fixes: Orbit Numbering and Missing Secondary Star — Session 167
+
+Fixed two bugs in systems where a companion's exclusion zone splits a star's own worlds into
+an inner and outer placement zone: (1) the "#" orbit numbering in the system detail card's
+Orbital survey table incorrectly restarted at 1 for the outer zone instead of continuing —
+this also meant `attach_detail()` could silently misattribute a world's generated detail to
+the wrong orbit in affected systems, now fixed at the source with continuous numbering.
+(2) A close/near/far secondary star with no orbit slots of its own (e.g. all its worlds ended
+up with the primary) was entirely invisible in that same table; it now shows as a row under
+the primary, positioned by orbital radius, same as companion stars already were.
+
+---
+
+## System Detail Card: Companion Stars in Orbital Survey — Session 166
+
+The system detail card's Orbital survey table (gen-ui, the FastAPI web app, and the A3 poster's
+"Full system card" page) now lists each companion star (e.g. "Ba") as a row under its own
+immediate parent star, positioned by orbital radius alongside the worlds that orbit that same
+star — previously companion stars only appeared in the separate Stars table.
+
+---
+
+## System Map: Nested Companion Star Markers — Session 165
+
+A secondary star's own companion (e.g. "Ba", orbiting secondary star "B") is now also drawn as a
+small satellite orbit next to its parent's marker wherever that parent appears as dashed context
+— e.g. inside the primary's arc zone — in addition to its already-correct placement in its own
+zone. Uses the same orbital-path/shadow/connector-line styling as world orbits, scaled to an
+appropriate local distance and matching its parent's own orbit inclination.
+
+---
+
+## Fix Issue #171: System Map Companion Star Placement — Session 164
+
+Fixed a bug where a companion star of a *secondary* star (e.g. "Ba", orbiting secondary star
+"B") was drawn in the system map's arc zone and table column for the **primary** star,
+positioned right next to it, instead of next to its actual parent. Each star's zone/column now
+shows only its own direct companion(s) as dashed context arcs.
+
+---
+
+## System Card: Primary Column in Stars Table — Session 163
+
+The Stars table (gen-ui System tab and the FastAPI web app's system card — both share the
+same `system_card.html` template) gains a **Primary** column between Desig and Class,
+showing which star each star orbits: `"--"` for the primary star itself, and the parent
+star's designation for every companion or close/near/far secondary star.
 
 ---
 

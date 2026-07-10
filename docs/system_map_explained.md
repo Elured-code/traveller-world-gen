@@ -158,7 +158,7 @@ displayed in the PySide6 GUI via `QWebEngineView.setHtml(html)`.
 
 The table zone (see below) is drawn by a separate helper,
 `_table_zone_svg(canvas_w, canvas_h, sep_y, star_desigs, star_by_desig,
-star_groups, sec_stars, col_w, mw, orbit_idx, palette)`, extracted out of
+star_groups, children_by_parent, col_w, mw, orbit_idx, palette)`, extracted out of
 `build_svg()` so it can be skipped entirely. When `show_table=False`:
 
 - The separator line and the whole per-star table (headers, orbit rows, moon
@@ -174,6 +174,49 @@ map's own copy of it competing for space with the poster's other cards looked
 cluttered. Every other caller (the CLI, gen-ui's `SystemMapWindow`, the FastAPI
 raw-SVG endpoints) doesn't pass this argument, so it defaults `True` and their
 output is completely unaffected.
+
+---
+
+## Companion star context markers (fixed issue #171; nesting added Session 165)
+
+Each active star's arc zone draws its **own direct companion(s)** as dashed
+"context" arcs — a small sphere on a dashed orbital path, using the same
+shadow-ellipse/drop-line treatment as world orbits, just styled differently
+(dashed stroke, no world glyph). This is built from `children_by_parent`, a
+dict keyed by every star's own designation mapping to its direct children:
+companions (`role == "companion"`, parent = `designation[:-1]`) and, for the
+primary only, close/near/far secondaries (they always orbit the primary
+directly).
+
+**Bug fixed (issue #171):** before this, a single flat `sec_stars` list
+(`[s for s in stars if s.orbit_number > 0]`) was used as "the primary's
+context" — but that also caught companions of *secondary* stars (e.g. "Ba",
+which orbits secondary "B", not the primary "A"). Since a star's
+`orbit_number`/`orbit_au` are relative to its *own* parent, "Ba" (0.318 AU
+from B) was being plotted as if it were 0.318 AU from A — landing almost on
+top of A's own glyph instead of near B's. `children_by_parent` fixed this by
+grouping each star's context children by their actual immediate parent, and
+every active star's zone/column now uses `children_by_parent[<its own
+designation>]`, not just the primary's.
+
+**Nested markers (Session 165):** a companion of a *secondary* star is drawn
+twice by design — once in its own zone (correct top-level placement) and once
+more, nested next to its parent's own context marker wherever that parent
+itself appears as dashed context (e.g. "Ba" nested beside "B"'s marker inside
+the primary's zone). Each `"star"`-kind item dict gained an optional
+`"origin": (x, y)` key (both `kind == "star"` render blocks read
+`item.get("origin", (cx, cy))` instead of hardcoding the zone's own centre);
+nested items set `origin` to their parent item's own `(mx, my)`. The nested
+item's distance uses a small local scale anchored to the parent glyph's own
+pixel radius (`nest_target = max(5 × parent's glyph radius, 40)`, not the
+zone-wide AU axis — a companion's own `orbit_au` is tiny next to typical
+planetary AU and would be invisible on the zone's main log scale), and its
+drawn *inclination* deliberately matches the **parent's own** orbit
+inclination, not the nested companion's own. Nested items are appended to
+`items` only after the top-level `items.sort(key=lambda x: x["r"])` call,
+since a nested item's `r` lives on this unrelated smaller scale — sorting it
+in with top-level items would be meaningless and could draw a child before
+its own parent exists. One level of nesting only.
 
 ---
 

@@ -55,6 +55,7 @@ tr:last-child td{border-bottom:none}
 .type-terr{color:var(--txt2)}
 .type-belt{color:var(--txt3)}
 .type-empty{color:var(--txt3)}
+.type-star{color:var(--acc)}
 .mw-row td{background:var(--bg2);font-weight:500}
 .mw-note{font-size:12px;color:#085041}
 .moon-row td{color:var(--txt2);font-size:12px;background:var(--bg1)}
@@ -83,12 +84,13 @@ pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
 
   <div class="section-title">Stars</div>
   <div class="table-scroll"><table>
-    <thead><tr><th>Desig</th><th>Class</th><th>Mass</th>
+    <thead><tr><th>Desig</th><th>Primary</th><th>Class</th><th>Mass</th>
     <th>Temp</th><th>Lum</th><th>Orbit</th><th>MAO</th><th>HZ Orbit#</th></tr></thead>
     <tbody>
     {% for s in star_rows %}
     <tr>
       <td class="mono">{{ s.designation }}</td>
+      <td class="mono">{{ s.primary }}</td>
       <td>{{ s.classification }}</td>
       <td class="mono">{{ s.mass }} M☉</td>
       <td class="mono">{{ s.temperature }} K</td>

@@ -252,8 +252,15 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             hzco_v   = self.system_orbits.star_hzco.get(desig)
             hz_in_v  = self.system_orbits.star_hz_inner.get(desig)
             hz_out_v = self.system_orbits.star_hz_outer.get(desig)
+            if star.role == "primary":
+                primary_of = "--"
+            elif star.role == "companion":
+                primary_of = desig[:-1]
+            else:  # close / near / far secondary
+                primary_of = self.stellar_system.primary.designation
             star_rows.append({
                 "designation":    desig,
+                "primary":        primary_of,
                 "classification": star.classification(),
                 "mass":           f"{star.mass:.2f}",
                 "temperature":    f"{star.temperature:,}",
@@ -401,6 +408,49 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "moons": moons,
                 "biosphere_str": biosphere_str,
             })
+
+        # Non-primary stars are otherwise invisible in this table unless they
+        # happen to have their own orbit slots (companions never do — planets
+        # don't orbit them directly under WBH rules; a close/near/far
+        # secondary may have none too, e.g. when its own exclusion zone
+        # leaves it no room). List each one under its own immediate parent
+        # star (companions: designation[:-1]; close/near/far: always the
+        # system primary), positioned by orbital radius among the worlds
+        # that orbit that same star — mirrors how system_map.py's SVG
+        # rendering always shows a secondary as context in the primary's
+        # zone regardless of whether it also has its own zone.
+        pri_desig = next(s.designation for s in self.stellar_system.stars
+                          if s.orbit_number == 0)
+        for st in self.stellar_system.stars:
+            if st.role == "companion":
+                parent_d = st.designation[:-1]
+            elif st.role in ("close", "near", "far"):
+                parent_d = pri_desig
+            else:
+                continue  # the primary itself
+            comp_ecc_incl = (
+                f"{st.orbit_eccentricity:.3f}/{st.orbit_inclination:.1f}°"
+                if (st.orbit_eccentricity > 0 or st.orbit_inclination > 0)
+                else "—"
+            )
+            orbit_rows.append({
+                "name": st.name,
+                "star_desig": parent_d,
+                "slot_index": "",
+                "orbit_num": f"{st.orbit_number:.2f}" if st.orbit_number is not None else "",
+                "orbit_au": f"{st.orbit_au:.3f}" if st.orbit_au is not None else "",
+                "ecc_incl": comp_ecc_incl,
+                "world_type": "star",
+                "type_cls": "type-star",
+                "profile": st.classification(),
+                "codes": [],
+                "temp_zone": "",
+                "mw_mark": "",
+                "row_cls": "",
+                "moons": [],
+                "biosphere_str": "",
+            })
+        orbit_rows.sort(key=lambda r: (r["star_desig"], float(r["orbit_au"] or 0.0)))
 
         return {
             "title": (mw.name if mw else "Unknown") + " system",
@@ -1391,16 +1441,13 @@ def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-m
 # Body naming
 # ---------------------------------------------------------------------------
 
-_STAR_SUFFIXES = [
-    "Primary", "Secondary", "Tertiary", "Quaternary",
-    "Quinary", "Senary", "Septenary", "Octonary",
+_PHONETIC_LETTERS = [
+    "ay", "bee", "cee", "dee", "ee", "ef", "gee", "haich",
+    "eye", "jay", "kay", "el", "em", "en", "oh", "pee",
+    "cue", "ar", "es", "tee", "you", "vee", "double-you",
+    "ex", "why", "zed",
 ]
-_GREEK = [
-    "alpha", "beta", "gamma", "delta", "epsilon", "zeta",
-    "eta", "theta", "iota", "kappa", "lambda", "mu",
-    "nu", "xi", "omicron", "pi", "rho", "sigma",
-    "tau", "upsilon", "phi", "chi", "psi", "omega",
-]
+_MAINWORLD_SUFFIX = " Prime"
 
 
 def attach_body_names(system: TravellerSystem) -> None:
@@ -1410,44 +1457,48 @@ def attach_body_names(system: TravellerSystem) -> None:
     Safe to call multiple times (idempotent).
     """
     mw_name = system.mainworld.name if system.mainworld else "Unknown"
+    if mw_name.endswith(_MAINWORLD_SUFFIX):
+        mw_name = mw_name[:-len(_MAINWORLD_SUFFIX)]
 
-    # Name stars — companions share their parent's orbit, so skip them.
-    star_idx = 0
+    # Name every star, including companions, as <systemname> <designation>.
     for star in system.stellar_system.stars:
-        if star.role == "companion":
-            continue
-        suffix = (_STAR_SUFFIXES[star_idx] if star_idx < len(_STAR_SUFFIXES)
-                  else f"{star_idx + 1}th")
-        star.name = f"{mw_name}-{suffix}"
-        star_idx += 1
+        star.name = f"{mw_name} {star.designation}"
 
-    # Name orbit slots with separate counters for worlds and belts.
-    world_letter_idx = 0
-    belt_letter_idx = 0
+    # Name orbit slots: one ordinal counter per star, combining worlds and
+    # belts in orbital-radius order (empty slots and the mainworld itself
+    # don't consume a number — mainworld gets "<systemname> Prime" instead).
+    orbits_by_star: dict[str, list] = {}
     for orbit in system.system_orbits.orbits:
         if orbit.world_type == "empty":
             continue
-        if orbit is system.mainworld_orbit:
-            orbit.name = mw_name
-        elif orbit.world_type == "belt":
-            orbit.name = f"{mw_name}-Belt-{chr(ord('A') + belt_letter_idx)}"
-            belt_letter_idx += 1
-        else:
-            orbit.name = f"{mw_name}-{chr(ord('A') + world_letter_idx)}"
-            world_letter_idx += 1
+        orbits_by_star.setdefault(orbit.star_designation, []).append(orbit)
 
-        # Propagate name to WorldDetail and assign Greek-letter moon names.
-        if orbit.detail is None:
-            continue
-        orbit.detail.name = orbit.name
-        greek_idx = 0
-        for moon in orbit.detail.moons:
-            if moon.is_ring:
+    for star_desig, orbits in orbits_by_star.items():
+        orbits.sort(key=lambda o: o.orbit_au)
+        counter = 0
+        for orbit in orbits:
+            if orbit is system.mainworld_orbit:
+                orbit.name = f"{mw_name}{_MAINWORLD_SUFFIX}"
+                # mainworld_orbit and mainworld are always set together.
+                system.mainworld.name = orbit.name  # type: ignore[union-attr]
+            else:
+                counter += 1
+                orbit.name = f"{mw_name} {star_desig}-{counter}"
+
+            # Propagate name to WorldDetail and assign phonetic moon names.
+            if orbit.detail is None:
                 continue
-            moon.name = f"{orbit.name}-{_GREEK[greek_idx]}"
-            if moon.detail is not None:
-                moon.detail.name = moon.name
-            greek_idx += 1
+            orbit.detail.name = orbit.name
+            moon_idx = 0
+            for moon in orbit.detail.moons:
+                if moon.is_ring:
+                    continue
+                letter = (_PHONETIC_LETTERS[moon_idx] if moon_idx < len(_PHONETIC_LETTERS)
+                          else str(moon_idx + 1))
+                moon.name = f"{orbit.name} {letter}"
+                if moon.detail is not None:
+                    moon.detail.name = moon.name
+                moon_idx += 1
 
 
 # ---------------------------------------------------------------------------

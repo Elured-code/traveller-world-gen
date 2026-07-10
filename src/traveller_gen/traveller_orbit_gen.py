@@ -649,6 +649,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
 
         hzco         = star_hzco[d]
         n_total_stars = len(primary_stars)
+        slot_counter  = 0  # continuous per-star index across inner/outer zones
 
         for zone_mao, zone_max_o, zone_n, zone_empty in zones:
             total_slots = zone_n + zone_empty
@@ -775,9 +776,10 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                     _roll_gg_mass(slot_gg_sah[:2])
                     if slot_gg_sah else None
                 )
+                slot_counter += 1
                 result.orbits.append(OrbitSlot(
                     star_designation=d, orbit_number=on, orbit_au=au,
-                    slot_index=si+1, world_type=wtype,
+                    slot_index=slot_counter, world_type=wtype,
                     is_habitable_zone=in_hz, hz_deviation=round(dev,3),
                     temperature_zone=tz, gg_sah=slot_gg_sah,
                 ))

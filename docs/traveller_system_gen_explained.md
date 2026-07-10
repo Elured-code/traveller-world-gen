@@ -167,7 +167,7 @@ TravellerSystem(stellar, orbits, mainworld, mainworld_orbit)
         (when detail requested)
         ▼
 attach_detail(system, ...)               →  WorldDetail for each secondary; biomass; habitability
-attach_body_names(system)                →  name="" → "Homeworld-Primary", "Homeworld-A", etc.
+attach_body_names(system)                →  name="" → "Homeworld A", "Homeworld Prime", etc.
 _attach_mainworld_physical(system)       →  WorldPhysical for mainworld (resource_rating)
 _apply_mainworld_moon_tidal(system)      →  tidal effects on mainworld
         │
@@ -213,28 +213,42 @@ python traveller_system_gen.py [OPTIONS]
 
 ---
 
-## `attach_body_names()` — placeholder body names (Session 102, issue #131)
+## `attach_body_names()` — placeholder body names (Session 102, issue #131; naming scheme redesigned Sessions 168–170)
 
 `attach_body_names(system)` assigns a human-readable placeholder name to every
 star, orbit slot, and moon in the system. It must be called **after**
 `attach_detail()` because moon objects don't exist until then. It is
 deterministic (no dice) and idempotent.
 
-**Naming scheme:**
+**Naming scheme (current, Session 168–170):**
 
-| Body | Placeholder |
-|------|-------------|
-| Mainworld orbit | `World.name` (already set) |
-| Star A (non-companion) | `<mw>-Primary` |
-| Star B (non-companion) | `<mw>-Secondary`, then Tertiary, etc. |
-| Companion stars | Not named (`name` stays `""`) — companions share their parent's orbit |
-| Non-mainworld terrestrial / GG | `<mw>-A`, `<mw>-B`, … (separate counter from belts) |
-| Belt | `<mw>-Belt-A`, `<mw>-Belt-B`, … (separate counter from worlds) |
-| Non-ring moon | `<orbit_name>-alpha`, `…-beta`, … (Greek sequence; rings skipped) |
-| Ring moon | Not named (`name` stays `""`) |
+| Body | Placeholder | Example |
+|------|-------------|---------|
+| Every star, including companions | `<systemname> <designation>` | `"Unknown A"`, `"Unknown Ba"` |
+| Mainworld orbit | `<systemname> Prime` | `"Unknown Prime"` |
+| Non-mainworld world or belt | `<systemname> <star_designation>-<n>` — `n` is the body's 1-based position among its own star's non-empty orbit slots, sorted by `orbit_au` ascending. Worlds and belts share one counter (no longer separate) | `"Unknown A-1"`, `"Unknown A-2"` (could be a belt) |
+| Non-ring moon | `<orbit_name> <satellite>` — phonetic letter-name sequence (`ay, bee, cee, dee, ee, ef, gee, haich, eye, jay, kay, el, em, en, oh, pee, cue, ar, es, tee, you, vee, double-you, ex, why, zed`; rings skipped) | `"Unknown A-1 ay"`, `"Unknown A-1 bee"` |
+| Ring moon | Not named (`name` stays `""`) | — |
 
 `orbit.detail.name` and `moon.detail.name` are also set to mirror the parent
 slot/moon name, so `WorldDetail` objects carry their own name for JSON output.
+`system.mainworld.name` is also written directly (not just `mainworld_orbit.name`)
+so page titles reading `system.mainworld.name` pick up the `" Prime"` suffix too
+— `mainworld` and `mainworld_orbit` are two separate objects, and earlier
+versions of this function only ever updated the orbit's copy.
+
+Because the function derives its base `mw_name` by reading back
+`system.mainworld.name` on every call (needed for idempotency across repeat
+calls), it strips a previously-applied `" Prime"` suffix before re-deriving
+names — otherwise a second call would compound into `"Unknown Prime Prime"`.
+
+**History:** prior to Session 168 stars used word suffixes (`<mw>-Primary`,
+`<mw>-Secondary`, …), companion stars were left unnamed, worlds and belts had
+separate letter counters (`<mw>-A`, `<mw>-Belt-A`), and moons used a Greek
+sequence (`<orbit>-alpha`, `<orbit>-beta`, …). No downstream code parses these
+strings structurally — every consumer (gen-ui, FastAPI, templates,
+`system_map.py`) treats `.name` as an opaque display string, so the redesign
+was a safe, purely cosmetic change.
 
 ---
 
@@ -307,16 +321,37 @@ The method is called by:
 two main data structures:
 
 - **`star_rows`** — one dict per star: `designation`, `classification`, `mass`,
-  `temperature`, `luminosity`, `orbit`, plus four new fields added in Session 83
+  `temperature`, `luminosity`, `orbit`, plus four fields added in Session 83
   (issue #115):
   - `mao` — Minimum Armistice Orbit (Orbit# at stellar separation / 3), or `"—"` for
     the primary
   - `hz_inner` / `hzco` / `hz_outer` — inner edge, centre, and outer edge of the
     Habitable Zone, formatted to 2 decimal places, or `"—"` for stars without a
     computed HZ
+
+  Session 163 added `"primary"` — which star this star orbits: `"--"` for the
+  primary itself, `desig[:-1]` for a companion, or the system primary's
+  designation for a close/near/far secondary. Rendered between the Desig and
+  Class columns.
 - **`orbit_rows`** — one dict per orbit slot, with inline `moons` list. Session 102 added
   `"name"` as the first key in each orbit row and moon sub-dict, so `system_card.html` can
   display it as the leftmost column.
+
+  Sessions 166–167 added synthetic rows for non-primary stars — companions and
+  close/near/far secondaries alike — so they're visible in this table even
+  when they have no orbit slots of their own (a secondary can host zero
+  worlds, e.g. when its own exclusion zone leaves it no room). Each such row
+  has `world_type == "star"`, `profile` set to the star's classification
+  (e.g. `"K1 V"`), and `star_desig` set to its immediate parent (`desig[:-1]`
+  for a companion, the system primary's designation for a secondary). After
+  building the real per-`OrbitSlot` rows, these star rows are appended and the
+  whole `orbit_rows` list is re-sorted once by `(star_desig, orbit_au)` so
+  each star row lands in its correct position among its parent's own worlds —
+  this is also why `OrbitSlot.slot_index` had to be fixed (Session 167) to be
+  continuous across a star's inner/outer placement zones instead of resetting
+  per zone, since `attach_detail()` keys its results by
+  `f"{star_designation}-{slot_index}"` and a reset could silently collide two
+  different orbits onto the same key.
 
 The system card shows **stellar data and orbital survey only**. Mainworld detail
 (UWP stats, atmosphere, hydrographic, biological, habitability) appears exclusively

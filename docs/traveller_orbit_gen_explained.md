@@ -42,7 +42,9 @@ class OrbitSlot:
     star_designation: str   # which star this orbits ("A", "B", ...)
     orbit_number: float     # WBH Orbit# (non-linear scale; see table below)
     orbit_au: float         # distance from the star in AU
-    slot_index: int         # sequential position in this star's orbit list
+    slot_index: int         # sequential position in this star's orbit list —
+                             # continuous across a star's inner+outer placement
+                             # zones (Session 167 fix; see note below)
     world_type: str         # "gas_giant" | "terrestrial" | "belt" | "empty"
     is_habitable_zone: bool # True when |hz_deviation| ≤ 1.0
     hz_deviation: float     # orbit_number − HZCO; negative = warmer
@@ -139,6 +141,24 @@ was chosen as the mainworld.
 5. **Slot placement** — fill slots in order: empties, gas giants, belts, terrestrials (Step 6)
 6. **Mainworld** — pick the best inhabited or HZ candidate (p.51)
 7. **Anomalies** — randomly assign eccentric/inclined/retrograde/trojan orbits (Step 7)
+
+**Inner/outer placement zones:** when a star has a companion close enough to
+carve out an exclusion band around it (see "Primary star outer zone" in
+`context/stellar-orbit.md`), that star's own worlds get placed in **two
+separate passes** — an inner zone and an outer zone, each with its own
+`baseline`/`spread`/`slots` calculation — instead of one continuous pass.
+
+**Bug fixed (Session 167):** `slot_index` was being assigned from each zone's
+own local `enumerate(slots)` (`si + 1`), so it reset to 1 for the outer
+zone instead of continuing from the inner zone's last value — e.g. a star
+with 3 inner-zone slots and 4 outer-zone slots would number them 1,2,3,1,2,3,4
+instead of 1–7. This wasn't just cosmetic:
+`traveller_world_detail.py`'s `attach_detail()` keys its per-orbit
+`WorldDetail` results by `f"{star_designation}-{slot_index}"`, so two
+*different* orbit slots on the same star could collide on the same key,
+silently overwriting one's generated detail with the other's. Fixed with a
+single `slot_counter` declared once per star, before the zones loop, and
+incremented (not reset) across both zones.
 
 ---
 
