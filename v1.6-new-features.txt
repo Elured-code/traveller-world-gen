@@ -106,3 +106,7 @@ BUG FIXES
   zone splits a star's worlds into two groups. In rare cases this could
   also cause a secondary world's generated details to be silently swapped
   with a different world's.
+- Fixed: the Name field stopped accepting keyboard input (no blinking
+  cursor at all) once you generated a world or system. Clicking into it
+  no longer helped. The read-only result views no longer take keyboard
+  focus away from it.

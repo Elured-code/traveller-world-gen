@@ -417,6 +417,10 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         # QWebEngineView (Chromium) handles the full SVG feature set including
         # feGaussianBlur filters and correct palette background colours.
         self._map_view = QWebEngineView()
+        # Read-only display, no keyboard interaction needed — NoFocus stops
+        # it from grabbing native keyboard focus away from other windows'
+        # text fields (a known QWebEngineView/Chromium focus-stealing quirk).
+        self._map_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         vbox.addWidget(self._map_view, stretch=1)
 
         self._render()
@@ -481,6 +485,7 @@ class SurveyFormWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self.resize(980, 700)
 
         self._view = QWebEngineView()
+        self._view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCentralWidget(self._view)
         self._view.setHtml(html)
 
@@ -493,6 +498,7 @@ class UserGuideWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self.setWindowTitle("User Guide — Traveller World Generator")
         self.resize(900, 720)
         view = QWebEngineView()
+        view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCentralWidget(view)
         try:
             html = _md_to_html(md_path.read_text(encoding="utf-8"), dark=dark)
@@ -1722,6 +1728,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.addWidget(self._build_summary_header(world))
         self._status_layout.addWidget(_make_hsep(margin_v=6))
         view = QWebEngineView()
+        # Read-only display; NoFocus keeps it from grabbing native keyboard
+        # focus away from the Name field in the main window (a known
+        # QWebEngineView/Chromium focus-stealing quirk).
+        view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         view.setHtml(self._themed_html(world.to_html()))  # type: ignore[attr-defined]
         view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -1742,7 +1752,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
 
         # Tab 1 — System: HTML view via system.to_html()
+        # Read-only displays; NoFocus keeps them from grabbing native
+        # keyboard focus away from the Name field in the main window (a
+        # known QWebEngineView/Chromium focus-stealing quirk).
         system_view = QWebEngineView()
+        system_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         system_view.setHtml(self._themed_html(
             system.to_html(detail_attached=self._detail_attached)  # type: ignore[attr-defined]
         ))
@@ -1754,6 +1768,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         # Tab 2 — Mainworld: world card HTML view
         if mw is not None:
             mw_view = QWebEngineView()
+            mw_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             mw_view.setHtml(self._themed_html(mw.to_html()))  # type: ignore[attr-defined]
             mw_view.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding

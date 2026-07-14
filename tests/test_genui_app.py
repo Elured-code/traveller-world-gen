@@ -694,6 +694,16 @@ class TestProceduralWorldGeneration:
         app_win._generate_btn.click()
         assert app_win._current_world.name == "Unknown"
 
+    def test_world_card_view_has_no_focus_policy(self, app_win):
+        # Read-only content display; must not grab native keyboard focus away
+        # from the Name field (a known QWebEngineView/Chromium focus-stealing
+        # quirk).
+        self._gen(app_win)
+        views = app_win.findChildren(_MockWebView)
+        assert views
+        for view in views:
+            assert view.focusPolicy() == Qt.FocusPolicy.NoFocus
+
     def test_different_seeds_produce_different_uwps(self, app_win):
         # Seeds 1 and 2 produce different systems — statistically guaranteed
         self._gen(app_win, seed="1")
@@ -754,6 +764,14 @@ class TestProceduralSystemGeneration:
     def test_mainworld_tab_is_active_by_default(self, system_app_win):
         tabs = system_app_win.findChild(QTabWidget)
         assert tabs.tabText(tabs.currentIndex()) == "Mainworld"
+
+    def test_system_and_mainworld_tab_views_have_no_focus_policy(self, system_app_win):
+        # The System/Mainworld web views are read-only content displays; they
+        # must not be able to grab native keyboard focus away from the Name
+        # field (a known QWebEngineView/Chromium focus-stealing quirk).
+        tabs = system_app_win.findChild(QTabWidget)
+        for i in range(tabs.count()):
+            assert tabs.widget(i).focusPolicy() == Qt.FocusPolicy.NoFocus
 
     def _gen(self, win, seed):
         win._seed_entry.blockSignals(True)

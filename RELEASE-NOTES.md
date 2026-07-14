@@ -1,8 +1,18 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–171
-**Tests:** 2985
+**Sessions:** 88–172
+**Tests:** 2987
+
+---
+
+## Fix: Name Field Going Keyboard-Dead After Generating — Session 172
+
+Fixed a bug where the `Name:` field in the desktop app stopped accepting keyboard input
+(no blinking cursor at all) once a world or system had been generated. Caused by a known
+PySide6/QtWebEngine focus-stealing quirk — the read-only result views could end up holding
+native keyboard focus in a way that left other fields unable to become focused. All result
+views are now explicitly excluded from keyboard focus, since none of them need it.
 
 ---
 
