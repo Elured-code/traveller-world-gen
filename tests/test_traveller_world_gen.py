@@ -7882,25 +7882,27 @@ class TestBodyNames:
     # ------------------------------------------------------------------
 
     def test_mainworld_orbit_name_matches_mw_when_name_supplied(self):
-        # A supplied system name is used for the mainworld as-is — no " Prime".
+        # A supplied system name is used for the mainworld as-is, no suffix.
         system = _name_system("Altair")
         assert system.mainworld_orbit is not None
         assert system.mainworld_orbit.name == system.mainworld.name
         assert system.mainworld_orbit.name == "Altair"
 
-    def test_mainworld_gets_prime_suffix_when_no_name_supplied(self):
-        # The default placeholder name ("Unknown") is the only case that
-        # gets " Prime" appended.
+    def test_mainworld_orbit_name_matches_mw_when_no_name_supplied(self):
+        # The default placeholder name ("Unknown") is used for the mainworld
+        # as-is too — no suffix is ever added, regardless of whether a name
+        # was supplied.
         system = _name_system("Unknown")
         assert system.mainworld_orbit is not None
         assert system.mainworld_orbit.name == system.mainworld.name
-        assert system.mainworld_orbit.name == "Unknown Prime"
+        assert system.mainworld_orbit.name == "Unknown"
         # Stars/worlds still use the bare base name, unaffected.
         assert system.stellar_system.stars[0].name == "Unknown A"
 
     def test_attach_body_names_idempotent_on_mainworld_name(self):
-        # attach_body_names() must not keep appending " Prime" on repeat calls,
-        # whether or not a system name was supplied.
+        # attach_body_names() must be safe to call repeatedly without
+        # changing the mainworld's name, whether or not a system name was
+        # supplied.
         system = _name_system("Altair")
         attach_body_names(system)
         attach_body_names(system)
@@ -7910,8 +7912,8 @@ class TestBodyNames:
         default_system = _name_system("Unknown")
         attach_body_names(default_system)
         attach_body_names(default_system)
-        assert default_system.mainworld.name == "Unknown Prime"
-        assert default_system.mainworld_orbit.name == "Unknown Prime"
+        assert default_system.mainworld.name == "Unknown"
+        assert default_system.mainworld_orbit.name == "Unknown"
 
     def test_world_names_sequential_per_star(self):
         # Worlds and belts share one ordinal counter per star, in orbital-

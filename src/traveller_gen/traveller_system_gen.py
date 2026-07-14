@@ -1447,7 +1447,6 @@ _PHONETIC_LETTERS = [
     "cue", "ar", "es", "tee", "you", "vee", "double-you",
     "ex", "why", "zed",
 ]
-_MAINWORLD_SUFFIX = " Prime"
 _DEFAULT_SYSTEM_NAME = "Unknown"  # sentinel used everywhere (CLI, gen-ui,
                                   # generate_full_system()) when no name is
                                   # supplied — matches "--name NAME" default.
@@ -1460,13 +1459,6 @@ def attach_body_names(system: TravellerSystem) -> None:
     Safe to call multiple times (idempotent).
     """
     mw_name = system.mainworld.name if system.mainworld else _DEFAULT_SYSTEM_NAME
-    if mw_name.endswith(_MAINWORLD_SUFFIX):
-        mw_name = mw_name[:-len(_MAINWORLD_SUFFIX)]
-    # Only the default placeholder name gets "Prime" appended — a system
-    # name the caller actually supplied is used for the mainworld as-is.
-    mainworld_name = (
-        f"{mw_name}{_MAINWORLD_SUFFIX}" if mw_name == _DEFAULT_SYSTEM_NAME else mw_name
-    )
 
     # Name every star, including companions, as <systemname> <designation>.
     for star in system.stellar_system.stars:
@@ -1474,8 +1466,7 @@ def attach_body_names(system: TravellerSystem) -> None:
 
     # Name orbit slots: one ordinal counter per star, combining worlds and
     # belts in orbital-radius order (empty slots and the mainworld itself
-    # don't consume a number — mainworld gets "<systemname> Prime" only
-    # when no system name was supplied; a supplied name is used as-is).
+    # don't consume a number — the mainworld keeps the bare system name).
     orbits_by_star: dict[str, list] = {}
     for orbit in system.system_orbits.orbits:
         if orbit.world_type == "empty":
@@ -1487,7 +1478,7 @@ def attach_body_names(system: TravellerSystem) -> None:
         counter = 0
         for orbit in orbits:
             if orbit is system.mainworld_orbit:
-                orbit.name = mainworld_name
+                orbit.name = mw_name
                 # mainworld_orbit and mainworld are always set together.
                 system.mainworld.name = orbit.name  # type: ignore[union-attr]
             else:

@@ -1,7 +1,7 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–172
+**Sessions:** 88–173
 **Tests:** 2987
 
 ---
@@ -16,23 +16,15 @@ views are now explicitly excluded from keyboard focus, since none of them need i
 
 ---
 
-## Fix: "Prime" No Longer Added When a System Name Is Supplied — Session 171
-
-The mainworld only gets `" Prime"` appended to its name when no system name was supplied
-(the default placeholder "Unknown" — e.g. "Unknown Prime"). If you type a name when
-generating, the mainworld now uses that name exactly as given, with no suffix.
-
----
-
-## New Default Body-Naming Scheme — Session 168–170
+## New Default Body-Naming Scheme — Session 168–170, 173
 
 Stars, worlds, and moons are now named more systematically. Stars: `<systemname> <designation>`
 (e.g. "Unknown A", "Unknown Ba") — companion stars are now named too, previously left blank.
 Worlds and belts: `<systemname> <designation>-<n>`, numbered per star in order of orbital
 radius (belts now share the same sequence as worlds, instead of their own separate counter).
-The mainworld gets `<systemname> Prime` when no name is supplied (e.g. "Unknown Prime").
-Moons: `<parentname> <satellite>`, using a phonetic letter-name spelling (ay, bee, cee, ... zed)
-instead of Greek letters.
+The mainworld uses the system name exactly as given (or "Unknown" if none was supplied),
+with no suffix. Moons: `<parentname> <satellite>`, using a phonetic letter-name spelling
+(ay, bee, cee, ... zed) instead of Greek letters.
 
 ---
 

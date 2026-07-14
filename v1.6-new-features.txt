@@ -80,9 +80,8 @@ new, more systematic pattern.
 - Stars are named "<system name> <letter>", for example "Unknown A",
   "Unknown B", "Unknown Ba" — every star gets a name now, including
   companion stars, which previously had none.
-- The system's main world is named "<system name> Prime" when you don't type
-  a system name — for example "Unknown Prime". If you do type a name, the
-  main world uses exactly that name, with no "Prime" added.
+- The system's main world uses the system name exactly as given (or
+  "Unknown" if you don't type one) — no suffix is added.
 - Every other world (including asteroid belts, which previously used a
   separate naming pattern) is named "<system name> <star letter>-<number>",
   numbered in order of distance from its star — for example "Unknown A-1",

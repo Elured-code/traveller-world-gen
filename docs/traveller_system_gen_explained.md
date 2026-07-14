@@ -168,7 +168,6 @@ TravellerSystem(stellar, orbits, mainworld, mainworld_orbit)
         ▼
 attach_detail(system, ...)               →  WorldDetail for each secondary; biomass; habitability
 attach_body_names(system)                →  name="" → "Homeworld A", "Homeworld", etc.
-                                             (or "Unknown Prime" if no name was supplied)
 _attach_mainworld_physical(system)       →  WorldPhysical for mainworld (resource_rating)
 _apply_mainworld_moon_tidal(system)      →  tidal effects on mainworld
         │
@@ -214,20 +213,19 @@ python traveller_system_gen.py [OPTIONS]
 
 ---
 
-## `attach_body_names()` — placeholder body names (Session 102, issue #131; naming scheme redesigned Sessions 168–171)
+## `attach_body_names()` — placeholder body names (Session 102, issue #131; naming scheme redesigned Sessions 168–170; Session 173 removed "Prime")
 
 `attach_body_names(system)` assigns a human-readable placeholder name to every
 star, orbit slot, and moon in the system. It must be called **after**
 `attach_detail()` because moon objects don't exist until then. It is
 deterministic (no dice) and idempotent.
 
-**Naming scheme (current, Session 168–171):**
+**Naming scheme (current, Session 168–170, 173):**
 
 | Body | Placeholder | Example |
 |------|-------------|---------|
 | Every star, including companions | `<systemname> <designation>` | `"Unknown A"`, `"Unknown Ba"` |
-| Mainworld orbit — no system name supplied | `<systemname> Prime` | `"Unknown Prime"` |
-| Mainworld orbit — system name supplied | `<systemname>` (unchanged, no suffix) | `"Regina"` |
+| Mainworld orbit | `<systemname>` (bare, no suffix) | `"Unknown"`, `"Regina"` |
 | Non-mainworld world or belt | `<systemname> <star_designation>-<n>` — `n` is the body's 1-based position among its own star's non-empty orbit slots, sorted by `orbit_au` ascending. Worlds and belts share one counter (no longer separate) | `"Unknown A-1"`, `"Unknown A-2"` (could be a belt) |
 | Non-ring moon | `<orbit_name> <satellite>` — phonetic letter-name sequence (`ay, bee, cee, dee, ee, ef, gee, haich, eye, jay, kay, el, em, en, oh, pee, cue, ar, es, tee, you, vee, double-you, ex, why, zed`; rings skipped) | `"Unknown A-1 ay"`, `"Unknown A-1 bee"` |
 | Ring moon | Not named (`name` stays `""`) | — |
@@ -239,22 +237,17 @@ so page titles reading `system.mainworld.name` pick up the mainworld's final
 name too — `mainworld` and `mainworld_orbit` are two separate objects, and
 earlier versions of this function only ever updated the orbit's copy.
 
-**"Prime" is conditional on the default sentinel (Session 171):** the module
-constant `_DEFAULT_SYSTEM_NAME = "Unknown"` is the same placeholder used
-everywhere a name is optional (`generate_full_system(name: str = "Unknown", ...)`,
-`generate_world(name: str = "Unknown", ...)`, the CLI's `--name` default, and
-gen-ui's `self._name_entry.text().strip() or "Unknown"`) — there's no separate
-boolean tracking "was a name actually typed," so `mw_name == _DEFAULT_SYSTEM_NAME`
-is the established, pre-existing signal for "no name was supplied." `" Prime"`
-is only appended when that condition holds; a caller-supplied name (anything
-other than the literal string `"Unknown"`) is used for the mainworld exactly
-as given.
-
-Because the function derives its base `mw_name` by reading back
-`system.mainworld.name` on every call (needed for idempotency across repeat
-calls), it strips a previously-applied `" Prime"` suffix before re-deriving
-names — otherwise a second call on a default-named system would compound into
-`"Unknown Prime Prime"`.
+**History — "Prime" added then removed (Sessions 170, 171, 173):** Session 170
+briefly appended `" Prime"` to every mainworld name unconditionally. Session 171
+made that conditional on the module constant `_DEFAULT_SYSTEM_NAME = "Unknown"`
+(the same placeholder used everywhere a name is optional —
+`generate_full_system(name: str = "Unknown", ...)`, `generate_world(name: str
+= "Unknown", ...)`, the CLI's `--name` default, and gen-ui's
+`self._name_entry.text().strip() or "Unknown"`), so only the default sentinel
+got the suffix. Session 173 removed the suffix entirely per user request — the
+mainworld orbit's name is now always the bare `mw_name`, whether or not a
+system name was supplied. `_DEFAULT_SYSTEM_NAME` remains as the fallback value
+used when `system.mainworld` is `None`.
 
 **History:** prior to Session 168 stars used word suffixes (`<mw>-Primary`,
 `<mw>-Secondary`, …), companion stars were left unnamed, worlds and belts had
