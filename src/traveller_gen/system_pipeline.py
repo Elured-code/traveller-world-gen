@@ -49,6 +49,7 @@ class PipelineOptions:  # pylint: disable=too-many-instance-attributes
     independent_government: bool = False
     optional_biomass:       bool = False
     optional_inhospitable:  bool = False
+    relic_tech:             bool = False
     settlement_type:        str  = "standard"
     want_social_detail:     bool = False
 
@@ -298,7 +299,7 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
         attach_population_detail(system, rng=rng)
         attach_government_detail(system, rng=rng)
         attach_law_detail(system, rng=rng)
-        attach_tech_detail(system, rng=rng)
+        attach_tech_detail(system, rng=rng, relic_tech_rule=options.relic_tech)
         attach_culture_detail(system, rng=rng)
         attach_importance_detail(system, rng=rng)
         attach_starport_detail(system, rng=rng)

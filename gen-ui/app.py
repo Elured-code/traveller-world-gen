@@ -527,6 +527,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
         seed: int,
         orbital_eccentricity: bool = True,
         orbital_inclination: bool = True,
+        compute_novelty_tl: bool = False,
     ) -> None:
         super().__init__()
         self._sector = sector
@@ -535,6 +536,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
         self._seed = seed
         self._orbital_eccentricity = orbital_eccentricity
         self._orbital_inclination = orbital_inclination
+        self._compute_novelty_tl = compute_novelty_tl
 
     def run(self) -> None:
         """Call generate_system_from_map and emit result, failed, or ambiguous."""
@@ -546,6 +548,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
                 seed=self._seed,
                 orbital_eccentricity=self._orbital_eccentricity,
                 orbital_inclination=self._orbital_inclination,
+                compute_novelty_tl=self._compute_novelty_tl,
             )
             self.result.emit(system)
         except AmbiguousWorldError as exc:
@@ -574,6 +577,7 @@ class _OptionsDialog(QDialog):
         independent_government: bool,
         select_mainworld: bool,
         social_detail: bool,
+        relic_tech: bool,
         settlement_type: str,
         eccentricity: bool = True,
         inclination: bool = True,
@@ -619,6 +623,14 @@ class _OptionsDialog(QDialog):
         self._check_social_detail = QCheckBox("Social detail")
         self._check_social_detail.setChecked(social_detail)
         layout.addWidget(self._check_social_detail)
+
+        self._check_relic_tech = QCheckBox("Relic technology (house rule)")
+        self._check_relic_tech.setChecked(relic_tech)
+        self._check_relic_tech.setToolTip(
+            "Novelty TL: chance of a previous fallen culture's relic technology "
+            "(not WBH RAW — no dice mechanic given in the source material)."
+        )
+        layout.addWidget(self._check_relic_tech)
 
         settlement_group = QGroupBox("Settlement type")
         settlement_layout = QVBoxLayout(settlement_group)
@@ -699,6 +711,10 @@ class _OptionsDialog(QDialog):
         return self._check_social_detail.isChecked()
 
     @property
+    def relic_tech(self) -> bool:
+        return self._check_relic_tech.isChecked()
+
+    @property
     def settlement_type(self) -> str:
         btn = self._settlement_btn_group.checkedButton()
         return btn.property("key") if btn is not None else "none"
@@ -750,6 +766,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         self._opt_social_detail: bool = (
             str(_s.value("opt_social_detail", False)).lower() == "true"
+        )
+        self._opt_relic_tech: bool = (
+            str(_s.value("opt_relic_tech", False)).lower() == "true"
         )
         self._opt_select_mw: bool = (
             str(_s.value("opt_select_mw", False)).lower() == "true"
@@ -986,6 +1005,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             independent_government=self._opt_independent_gov,
             select_mainworld=self._opt_select_mw,
             social_detail=self._opt_social_detail,
+            relic_tech=self._opt_relic_tech,
             settlement_type=self._opt_settlement_type,
             eccentricity=self._opt_eccentricity,
             inclination=self._opt_inclination,
@@ -999,6 +1019,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_independent_gov = dialog.independent_government
         self._opt_select_mw = dialog.select_mainworld
         self._opt_social_detail = dialog.social_detail
+        self._opt_relic_tech = dialog.relic_tech
         self._opt_settlement_type = dialog.settlement_type
         self._opt_eccentricity = dialog.eccentricity
         self._opt_inclination = dialog.inclination
@@ -1010,6 +1031,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_independent_gov", self._opt_independent_gov)
         _s.setValue("opt_select_mw", self._opt_select_mw)
         _s.setValue("opt_social_detail", self._opt_social_detail)
+        _s.setValue("opt_relic_tech", self._opt_relic_tech)
         _s.setValue("opt_settlement_type", self._opt_settlement_type)
         _s.setValue("opt_eccentricity", self._opt_eccentricity)
         _s.setValue("opt_inclination", self._opt_inclination)
@@ -1203,6 +1225,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 runaway_greenhouse=self._opt_runaway_greenhouse,
                 independent_government=self._opt_independent_gov,
                 optional_biomass=self._opt_oxygen_biomass,
+                relic_tech=self._opt_relic_tech,
                 settlement_type=self._opt_settlement_type,
                 want_social_detail=self._opt_social_detail,
             ),
@@ -1681,7 +1704,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._set_generation_controls_enabled(False)
         worker = _TravMapWorker(sector, search_name, hex_pos, seed,
                                 orbital_eccentricity=orbital_eccentricity,
-                                orbital_inclination=orbital_inclination)
+                                orbital_inclination=orbital_inclination,
+                                compute_novelty_tl=self._opt_social_detail)
         worker.result.connect(self._on_worker_result)
         worker.failed.connect(self._on_worker_error)
         worker.ambiguous.connect(self._on_worker_ambiguous)

@@ -148,7 +148,7 @@ def _default_options(parent) -> _OptionsDialog:
         parent,
         full_system=False, nhz=False, oxygen_biomass=False,
         runaway_greenhouse=False, independent_government=False,
-        select_mainworld=False, social_detail=False,
+        select_mainworld=False, social_detail=False, relic_tech=False,
         settlement_type="standard",
         eccentricity=True, inclination=True,
     )
@@ -283,7 +283,7 @@ class TestOptionsDialogConstruction:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -295,7 +295,7 @@ class TestOptionsDialogConstruction:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=True, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -306,7 +306,7 @@ class TestOptionsDialogConstruction:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=True, oxygen_biomass=True,
             runaway_greenhouse=True, independent_government=True,
-            select_mainworld=True, social_detail=False,
+            select_mainworld=True, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -333,6 +333,11 @@ class TestOptionsDialogConstruction:
         qtbot.addWidget(dlg)
         assert hasattr(dlg, "_check_social_detail")
 
+    def test_relic_tech_checkbox_present(self, qtbot, app_win):
+        dlg = _default_options(app_win)
+        qtbot.addWidget(dlg)
+        assert hasattr(dlg, "_check_relic_tech")
+
     def test_ok_and_cancel_buttons_present(self, qtbot, app_win):
         dlg = _default_options(app_win)
         qtbot.addWidget(dlg)
@@ -342,7 +347,7 @@ class TestOptionsDialogConstruction:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -363,7 +368,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -381,7 +386,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=False,
         )
         qtbot.addWidget(dlg)
@@ -391,7 +396,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=False, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -402,7 +407,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=False, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -412,7 +417,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=True,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -422,7 +427,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=True, social_detail=False,
+            select_mainworld=True, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -432,17 +437,32 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=False, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=True,
+            select_mainworld=False, social_detail=True, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
         assert dlg.social_detail is True
 
+    def test_relic_tech_property_false(self, qtbot, app_win):
+        dlg = _default_options(app_win)
+        qtbot.addWidget(dlg)
+        assert dlg.relic_tech is False
+
+    def test_relic_tech_property_true(self, qtbot, app_win):
+        dlg = _OptionsDialog(
+            app_win, full_system=False, nhz=False, oxygen_biomass=False,
+            runaway_greenhouse=False, independent_government=False,
+            select_mainworld=False, social_detail=False, relic_tech=True,
+            settlement_type="standard", eccentricity=True, inclination=True,
+        )
+        qtbot.addWidget(dlg)
+        assert dlg.relic_tech is True
+
     def test_settlement_type_long_settled(self, qtbot, app_win):
         dlg = _OptionsDialog(
             app_win, full_system=False, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="long_settled", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)

@@ -137,7 +137,8 @@ class TechDetail:  # pylint: disable=too-many-instance-attributes
     # Military sub-TLs
     tl_military_personal:  int
     tl_military_heavy:     int
-    # Novelty TL (issue #154: placeholder = tl_high_common until WBH §5 procedure transcribed)
+    # Novelty TL (WBH §5, issue #137): highest of subcategory/prototype/nearby
+    # -worlds/relic-tech factors — see generate_tech_detail() for the formula
     tl_novelty:            int
     # Profile
     technology_profile:    str   # "H-L-QQQQQ-TTTT-MM-N"
@@ -200,6 +201,8 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
         pcr: int = 0,
         habitability_rating: Optional[int] = None,
         trade_codes: Optional[list] = None,
+        novelty_tl_floor: Optional[int] = None,
+        relic_tech_rule: bool = False,
         rng: Optional[random.Random] = None,
 ) -> Optional[TechDetail]:
     """Generate a full WBH tech level profile for one inhabited world.
@@ -232,6 +235,17 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
         minimum TL.  Defaults to None (atmosphere-only minimum used).
     trade_codes : Optional[list]
         Trade code strings (e.g. ["In", "Ag"]).  Used for subcategory DMs.
+    novelty_tl_floor : Optional[int]
+        Nearby-worlds Novelty TL floor (issue #137), from a TravellerMap
+        jumpworlds lookup — the highest TL among Rich/Industrial/Class-A
+        worlds within 6 parsecs.  None (default) for procedurally generated
+        worlds, which have no TravellerMap location to look up.
+    relic_tech_rule : bool
+        House rule (not transcribed WBH text — the source only gives
+        narrative guidance for "previous fallen culture" relic technology,
+        no dice mechanic).  When True, rolls 2D; on a 12 (1/36), a relic
+        culture is found and tl_novelty may be raised by 1D above tl_high.
+        Defaults to False (off) so existing seeds are unaffected.
     rng : Optional[random.Random]
         Injectable RNG.  When provided, replaces the module-level ``_rng``.
     """
@@ -422,10 +436,30 @@ def generate_tech_detail(  # pylint: disable=too-many-arguments,too-many-positio
     tl_military_heavy = _sub_tl(0, tl_manufacturing, heavy_dm, base=tl_manufacturing)
 
     # ------------------------------------------------------------------
-    # Novelty TL (issue #154) — placeholder: max local TL.
-    # Replace with the actual WBH §5 per-nation procedure when transcribed.
+    # Novelty TL (WBH §5; issue #137): tl_novelty is the highest of —
+    #   1. nearby rich/industrial/Class-A world TL (novelty_tl_floor param;
+    #      TravellerMap jumpworlds lookup — see traveller_map_fetch.py)
+    #   2. highest local subcategory TL (locally produced prototypes)
+    #   3. previous-culture relic technology TL — house rule, opt-in via
+    #      relic_tech_rule; no dice mechanic given in the source material
+    #   4. survivable early-prototype TL when tl_high is below the world's
+    #      minimum sustainable TL (min_tech − 2, per the WBH vacuum-world
+    #      example: a TL2 world requiring TL8 still has TL6 prototypes)
     # ------------------------------------------------------------------
-    tl_novelty = tl_high
+    subcategory_max = max(
+        tl_energy, tl_electronics, tl_manufacturing, tl_medical, tl_environmental,
+        tl_land, tl_sea, tl_air, tl_space,
+        tl_military_personal, tl_military_heavy,
+    )
+    prototype_floor = max(0, min_tech - 2) if tl_high < min_tech else 0
+
+    relic_tl = 0
+    if relic_tech_rule and _rng.randint(1, 6) + _rng.randint(1, 6) == 12:
+        relic_tl = tl_high + _rng.randint(1, 6)
+
+    tl_novelty = max(tl_high, subcategory_max, prototype_floor, relic_tl)
+    if novelty_tl_floor is not None:
+        tl_novelty = max(tl_novelty, novelty_tl_floor)
 
     # ------------------------------------------------------------------
     # Technology profile: H-L-QQQQQ-TTTT-MM-N
@@ -468,7 +502,11 @@ def _sah_digit(sah: str, idx: int) -> int:
     return pos if pos >= 0 else 0
 
 
-def _tech_detail_for_det(det: object) -> Optional[TechDetail]:
+def _tech_detail_for_det(
+        det: object,
+        novelty_tl_floor: Optional[int] = None,
+        relic_tech_rule: bool = False,
+) -> Optional[TechDetail]:
     """Generate TechDetail for a WorldDetail (secondary world)."""
     pop:   int = getattr(det, "population", 0)
     tl:    int = getattr(det, "tech_level", 0)
@@ -485,22 +523,33 @@ def _tech_detail_for_det(det: object) -> Optional[TechDetail]:
     return generate_tech_detail(
         tl=tl, atmosphere=atm, hydrographics=hydro,
         population=pop, government=gov, law_level=law,
-        starport=port, size=sz, pcr=pcr, trade_codes=tc, rng=None,
+        starport=port, size=sz, pcr=pcr, trade_codes=tc,
+        novelty_tl_floor=novelty_tl_floor, relic_tech_rule=relic_tech_rule,
+        rng=None,
     )
 
 
-def _attach_det_tech(det: object) -> None:
+def _attach_det_tech(
+        det: object,
+        novelty_tl_floor: Optional[int] = None,
+        relic_tech_rule: bool = False,
+) -> None:
     """Attach tech detail to one WorldDetail and its inhabited moons."""
-    det.tech_detail = _tech_detail_for_det(det)  # type: ignore[attr-defined]
+    det.tech_detail = _tech_detail_for_det(  # type: ignore[attr-defined]
+        det, novelty_tl_floor, relic_tech_rule,
+    )
     for moon in getattr(det, "moons", []):
         moon_det = getattr(moon, "detail", None)
         if moon_det is not None and getattr(moon_det, "inhabited", False):
-            moon_det.tech_detail = _tech_detail_for_det(moon_det)
+            moon_det.tech_detail = _tech_detail_for_det(
+                moon_det, novelty_tl_floor, relic_tech_rule,
+            )
 
 
 def attach_tech_detail(
         system: "TravellerSystem",
         rng: Optional[random.Random] = None,
+        relic_tech_rule: bool = False,
 ) -> None:
     """Attach tech level detail to mainworld and all inhabited secondaries.
 
@@ -509,10 +558,23 @@ def attach_tech_detail(
     Reads habitability_rating from WorldPhysical when available (mainworld only).
     Uses population_detail.pcr when available; falls back to pcr=0.
     No-op when mainworld is uninhabited.
+
+    When system.novelty_tl_floor is set (a dynamic attribute stamped by
+    generate_system_from_map(), issue #137 — see traveller_map_fetch.py), it
+    is applied to every inhabited world in the system, since it reflects the
+    system's interstellar location rather than any one body.  Procedurally
+    generated systems have no such attribute, so this factor of Novelty TL
+    does not apply to them — but the subcategory-TL and survivable-prototype
+    factors (see generate_tech_detail()) always apply regardless of origin.
+
+    relic_tech_rule is a house rule (issue #137 — see generate_tech_detail())
+    passed through to every world; defaults to False.
     """
     global _rng  # pylint: disable=global-statement
     if rng is not None:
         _rng = rng
+
+    novelty_tl_floor = getattr(system, "novelty_tl_floor", None)
 
     mw = system.mainworld
     if mw is not None and mw.population > 0:
@@ -535,6 +597,8 @@ def attach_tech_detail(
             pcr=pcr,
             habitability_rating=hab,
             trade_codes=list(mw.trade_codes or []),  # type: ignore[attr-defined]
+            novelty_tl_floor=novelty_tl_floor,
+            relic_tech_rule=relic_tech_rule,
             rng=None,
         )
 
@@ -544,4 +608,4 @@ def attach_tech_detail(
         det = orbit.detail
         if det is None or not det.inhabited:
             continue
-        _attach_det_tech(det)
+        _attach_det_tech(det, novelty_tl_floor, relic_tech_rule)

@@ -102,6 +102,11 @@ from .world_codes import StarportCode
 TRAVELLERMAP_BASE = "https://travellermap.com"
 SEARCH_ENDPOINT   = f"{TRAVELLERMAP_BASE}/api/search"
 DATA_ENDPOINT     = f"{TRAVELLERMAP_BASE}/data"
+JUMPWORLDS_ENDPOINT = f"{TRAVELLERMAP_BASE}/api/jumpworlds"
+
+# WBH §5 Novelty TL: "highest TL of any industrial or rich world with a Class A
+# starport within the same subsector or six parsecs" (issue #137).
+_NOVELTY_TL_JUMP_RANGE = 6
 
 _HEX_MAP = {ch: i for i, ch in enumerate("0123456789ABCDEFG")}
 
@@ -332,6 +337,64 @@ def fetch_world_data(
         cx        = cx_raw,
         importance = _parse_importance(ix_raw),
     )
+
+
+def fetch_jumpworlds(
+    sector:  str,
+    hex_pos: str,
+    jump:    int = _NOVELTY_TL_JUMP_RANGE,
+    timeout: int = 10,
+) -> List[dict]:
+    """
+    Fetch worlds within `jump` parsecs of (sector, hex_pos) via TravellerMap's
+    jumpworlds API.
+
+    Returns the raw list of world record dicts exactly as TravellerMap
+    provides them (same shape as the /data endpoint's "Worlds" array — UWP,
+    Remarks, etc.), so existing helpers like _raw_field() and parse_uwp()
+    apply directly.  Returns [] if the response has no "Worlds" key.
+
+    Raises
+    ------
+    urllib.error.URLError  on network failure or HTTP error.
+    """
+    encoded_sector = urllib.parse.quote(sector, safe="")
+    url = (
+        f"{JUMPWORLDS_ENDPOINT}?sector={encoded_sector}"
+        f"&hex={urllib.parse.quote(hex_pos, safe='')}&jump={jump}"
+    )
+    req = urllib.request.Request(
+        url, headers={"User-Agent": "traveller-world-gen/1.0",
+                      "Accept": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data.get("Worlds", [])
+
+
+def _novelty_tl_floor_from_jumpworlds(worlds: List[dict]) -> int:
+    """
+    Compute the WBH §5 Novelty TL "nearby rich/industrial/Class A" floor.
+
+    A world qualifies if it has a Class A starport, or the Rich (Ri) or
+    Industrial (In) trade code.  Returns the highest tech_level among
+    qualifying worlds, or 0 if none qualify (a no-op floor for max()).
+    Malformed UWP entries (unexplored worlds, parse failures) are skipped.
+    """
+    floor = 0
+    for world in worlds:
+        uwp_str = _raw_field(world, "UWP", "Uwp")
+        if not uwp_str:
+            continue
+        try:
+            uwp = parse_uwp(uwp_str)
+        except ValueError:
+            continue
+        remarks = _raw_field(world, "Remarks", "Remark")
+        tokens = set(remarks.split())
+        if uwp["starport"] == "A" or "Ri" in tokens or "In" in tokens:
+            floor = max(floor, uwp["tech_level"])
+    return floor
 
 
 # ---------------------------------------------------------------------------
@@ -655,6 +718,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     nhz_atmospheres:      bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination:  bool = False,
+    compute_novelty_tl:   bool = False,
 ) -> TravellerSystem:
     """
     Fetch a world from TravellerMap and generate a complete star system.
@@ -675,6 +739,12 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
                          does not affect canonical atmosphere (fixed UWP).
     orbital_eccentricity When True, roll eccentricity for each orbit (WBH p.27).
     orbital_inclination  When True, roll inclination for each orbit (WBH p.28).
+    compute_novelty_tl   When True, fetch nearby worlds (jumpworlds API, issue
+                         #137) and stamp system.novelty_tl_floor with the
+                         highest TL among Rich/Industrial/Class-A worlds within
+                         6 parsecs, for attach_tech_detail() to use.  Only
+                         worth setting when tech/social detail will actually
+                         be generated — it costs one extra API call.
 
     Returns
     -------
@@ -688,6 +758,17 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     """
     # Step 1: fetch canonical data — mainworld is taken directly from this
     map_data = fetch_world_data(name=name, sector=sector, hex_pos=hex_pos)
+
+    # Step 1b: nearby-worlds context for Novelty TL (issue #137).  Best-effort
+    # — a failure here must not fail the whole system fetch, since the core
+    # world data has already been retrieved successfully.
+    novelty_tl_floor: Optional[int] = None
+    if compute_novelty_tl:
+        try:
+            nearby = fetch_jumpworlds(map_data.sector, map_data.hex_pos)
+            novelty_tl_floor = _novelty_tl_floor_from_jumpworlds(nearby)
+        except (urllib.error.URLError, ValueError, TimeoutError):
+            novelty_tl_floor = None
 
     if seed is None:
         seed = secrets.randbelow(2 ** 31)
@@ -780,6 +861,8 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
         orbital_inclination  = orbital_inclination,
         seed                 = seed,
     )
+    if novelty_tl_floor is not None:
+        system.novelty_tl_floor = novelty_tl_floor  # type: ignore[attr-defined]
 
     if attach:
         attach_detail(system, rng=rng)
