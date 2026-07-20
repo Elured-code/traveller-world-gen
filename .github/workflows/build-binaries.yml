@@ -153,6 +153,14 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Now that a real git clone happened (git was in PATH above), git
+      # itself is used by later steps (compute_version.sh) but sees the
+      # checkout as owned by a different UID than the container's, and
+      # refuses to operate on it ("detected dubious ownership") unless
+      # explicitly marked safe.
+      - name: Mark workspace as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
