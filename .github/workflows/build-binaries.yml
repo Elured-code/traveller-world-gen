@@ -130,10 +130,13 @@ jobs:
     container: fedora:latest
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
+      # fedora:latest ships with no git. actions/checkout needs git in PATH
+      # to perform a real clone (fetch-depth: 0 requires full history for
+      # scripts/compute_version.sh's `git rev-list --count HEAD`); without
+      # it, checkout silently falls back to downloading a plain source
+      # tarball via the GitHub REST API — no .git directory at all — so this
+      # must run *before* actions/checkout, not after.
+      #
       # actions/setup-python is unreliable in a Fedora container (toolcache
       # glibc mismatch). Install Python natively via dnf instead.
       # gcc/gcc-c++ are required if PyInstaller needs to compile its bootloader.
@@ -146,12 +149,9 @@ jobs:
             upx
           python3.11 -m ensurepip --upgrade
 
-      # actions/checkout runs as the runner's host UID; inside the container
-      # git sees the checked-out workspace as owned by a different user and
-      # refuses to treat it as a repository ("not a git repository (or any
-      # parent up to mount point /)") unless explicitly marked safe.
-      - name: Mark workspace as a safe git directory
-        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/cache@v4
         with:
