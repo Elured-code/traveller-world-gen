@@ -589,7 +589,7 @@ _COL_NAMES = ("#", "Orbit#", "AU", "Type", "Profile", "Codes", "Zone  ♦", "Per
 def _table_zone_svg(  # pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-statements
     canvas_w: int, canvas_h: int, sep_y: int,
     star_desigs: list, star_by_desig: dict, star_groups: dict,
-    sec_stars: list, col_w: int, mw: Any, orbit_idx: dict,
+    children_by_parent: dict, col_w: int, mw: Any, orbit_idx: dict,
     palette: ColourPalette,
 ) -> list[str]:
     """Return SVG fragments for the table zone (one column per star, rows grow downward).
@@ -668,15 +668,12 @@ def _table_zone_svg(  # pylint: disable=too-many-locals,too-many-arguments,too-m
             f'stroke="{palette.axis}" stroke-width="0.4" opacity="0.25"/>'
         )
 
-        # Data rows — primary column merges companion star rows in orbit# order
-        if star.orbit_number == 0:
-            merged_rows: list[tuple[str, Any]] = (
-                [("orbit", o) for o in group]
-                + [("comp", st) for st in sec_stars]
-            )
-            merged_rows.sort(key=lambda x: x[1].orbit_number)
-        else:
-            merged_rows = [("orbit", o) for o in group]
+        # Data rows — each column merges its own direct companion(s) in orbit# order
+        merged_rows: list[tuple[str, Any]] = (
+            [("orbit", o) for o in group]
+            + [("comp", st) for st in children_by_parent[d]]
+        )
+        merged_rows.sort(key=lambda x: x[1].orbit_number)
 
         for ri, (row_kind, row_item) in enumerate(merged_rows):
             ry = row0_y + ri * _TBL_ROW_H
@@ -833,7 +830,6 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     # Sort orbit slots: all Star-A orbits first, then B, then C, etc.
     orbs      = sorted(system.system_orbits.orbits,
                        key=lambda o: (o.star_designation, o.orbit_number))
-    sec_stars = [s for s in system.stellar_system.stars if s.orbit_number > 0]
 
     # Group orbits by star; find stars that actually have orbit slots.
     all_stars     = system.stellar_system.stars
@@ -842,7 +838,29 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     star_groups: dict[str, list] = {d: [] for d in star_desigs}
     for o in orbs:
         star_groups[o.star_designation].append(o)
-    active_stars = [s for s in all_stars if star_groups[s.designation]]
+
+    # Direct children (companions, plus primary-orbiting close/near/far
+    # secondaries) keyed by their immediate parent's designation — used to
+    # draw each star's own companion(s) as dashed "context" arcs/rows in
+    # *that* star's own zone/column, not always the primary's. Fixes issue
+    # #171: a companion of a secondary star (e.g. "Ba" orbiting "B") was
+    # previously lumped into the primary's context list and drawn right next
+    # to the primary instead of next to its actual parent.
+    pri_desig = next(s.designation for s in all_stars if s.orbit_number == 0)
+    children_by_parent: dict[str, list] = {d: [] for d in star_desigs}
+    for st in all_stars:
+        if st.role == "companion":
+            parent_d = st.designation[:-1]
+            if parent_d in children_by_parent:
+                children_by_parent[parent_d].append(st)
+        elif st.role in ("close", "near", "far"):
+            # Secondary stars always orbit the system primary directly.
+            children_by_parent[pri_desig].append(st)
+
+    active_stars = [
+        s for s in all_stars
+        if star_groups[s.designation] or children_by_parent[s.designation]
+    ]
 
     # Geometry constants (arc zone is 1.5:1 width:height; available is constant across zones)
     arc_zone_h = canvas_w * 2 // 3
@@ -851,10 +869,11 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     available  = arc_zone_h // 2 - arc_margin   # fixed arc half-height in pixels
     # star_r_px is now computed per-star inside the arc zone loop (_star_r_px)
 
-    # Table zone metrics — primary column includes companion rows
-    pri_desig = next(s.designation for s in all_stars if s.orbit_number == 0)
-    pri_rows  = len(star_groups[pri_desig]) + len(sec_stars)
-    max_rows  = max(pri_rows, max((len(g) for g in star_groups.values()), default=0))
+    # Table zone metrics — each column includes its own companion rows
+    max_rows  = max(
+        (len(star_groups[d]) + len(children_by_parent[d]) for d in star_desigs),
+        default=0,
+    )
     sep_y     = len(active_stars) * arc_zone_h + 1
     if show_table:
         tbl_h    = _TBL_ROW0_OFF + max_rows * _TBL_ROW_H + _TBL_BOT_PAD
@@ -912,13 +931,11 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         y_top  = zi * arc_zone_h
         cy     = y_top + arc_zone_h // 2
         group  = star_groups[star.designation]
-        is_pri = star.orbit_number == 0
+        kids   = children_by_parent[star.designation]
 
-        # Per-star scale: cover this star's orbits; primary also includes
-        # companion-star orbital radii so their arcs fit the zone.
-        au_vals  = [o.orbit_au for o in group]
-        if is_pri:
-            au_vals += [st.orbit_au for st in sec_stars]
+        # Per-star scale: cover this star's own orbits plus its own direct
+        # companion(s)' orbital radii so their context arcs fit the zone.
+        au_vals  = [o.orbit_au for o in group] + [st.orbit_au for st in kids]
         max_au   = max(au_vals + [0.1])
         target_r  = int(canvas_w * 0.75) - cx
         log_scale = max(30.0, min(canvas_w * 0.75, target_r / math.log1p(max_au)))
@@ -936,16 +953,53 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 "kind": "orbit", "obj": o, "r": r, "e": o_e, "i_rad": o_i,
                 "mx": mx, "my": my, "idx": orbit_idx[id(o)], "half_deg": hd,
             })
-        if is_pri:
-            for st in sec_stars:
-                r     = math.log1p(st.orbit_au) * log_scale
-                st_e  = getattr(st, "orbit_eccentricity", 0.0)
-                st_i  = math.radians(getattr(st, "orbit_inclination", 0.0)) if perspective else 0.0
-                hd    = _orbit_half_deg(r, st_e, available, persp_y, st_i, rot_z)
-                mx, my = _orbit_marker(cx, cy, r, st_e, hd, persp_y, st_i, rot_z)
-                items.append({"kind": "star", "obj": st, "r": r, "e": st_e, "i_rad": st_i,
-                               "mx": mx, "my": my, "half_deg": hd})
+        for st in kids:
+            r     = math.log1p(st.orbit_au) * log_scale
+            st_e  = getattr(st, "orbit_eccentricity", 0.0)
+            st_i  = math.radians(getattr(st, "orbit_inclination", 0.0)) if perspective else 0.0
+            hd    = _orbit_half_deg(r, st_e, available, persp_y, st_i, rot_z)
+            mx, my = _orbit_marker(cx, cy, r, st_e, hd, persp_y, st_i, rot_z)
+            items.append({"kind": "star", "obj": st, "r": r, "e": st_e, "i_rad": st_i,
+                           "mx": mx, "my": my, "half_deg": hd})
+
+        # Nested companions: a companion star (e.g. "B") that itself has a
+        # direct companion (e.g. "Ba") also gets that companion drawn here,
+        # as a small satellite orbit around B's own marker rather than this
+        # zone's central star — scaled to a local budget anchored on the
+        # parent glyph's size, not the zone-wide AU scale (a companion's
+        # orbit_au relative to *its* parent is tiny next to planetary AU and
+        # would be invisible on the zone's main log_scale). Drawn inclination
+        # matches the *parent's own* orbit inclination, not the nested
+        # companion's. One level of nesting only.
+        nested_items: list[dict] = []
+        for parent_item in items:
+            if parent_item["kind"] != "star":
+                continue
+            parent_st = parent_item["obj"]
+            grandkids = children_by_parent[parent_st.designation]
+            if not grandkids:
+                continue
+            ocx, ocy    = parent_item["mx"], parent_item["my"]
+            parent_r_px = _star_r_px(parent_st.diameter, arc_zone_h)
+            nest_target = max(5.0 * parent_r_px, 40.0)
+            nest_max_au = max((gc.orbit_au for gc in grandkids), default=0.1)
+            nest_scale  = max(6.0, nest_target / math.log1p(nest_max_au))
+            for gc in grandkids:
+                gr    = math.log1p(gc.orbit_au) * nest_scale
+                gc_e  = getattr(gc, "orbit_eccentricity", 0.0)
+                gc_i  = parent_item["i_rad"]
+                gc_hd = _orbit_half_deg(gr, gc_e, available, persp_y, gc_i, rot_z)
+                gmx, gmy = _orbit_marker(ocx, ocy, gr, gc_e, gc_hd, persp_y, gc_i, rot_z)
+                nested_items.append({
+                    "kind": "star", "obj": gc, "r": gr, "e": gc_e, "i_rad": gc_i,
+                    "mx": gmx, "my": gmy, "half_deg": gc_hd, "origin": (ocx, ocy),
+                })
         items.sort(key=lambda x: x["r"])
+        # Appended after sorting so a nested item always paints after its own
+        # parent — its "r" lives on an unrelated, much smaller local scale,
+        # so sorting it in with top-level items would be meaningless and
+        # could draw a nested child before its own parent marker exists.
+        items.extend(nested_items)
 
         # ── Per-zone clip rect (used to contain orbit arcs in perspective) ──────
         clip_id = f"zone_clip_{zi}"
@@ -966,11 +1020,12 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             e  = item["e"]
             ir = item["i_rad"]
             if item["kind"] == "star":
+                ocx, ocy  = item.get("origin", (cx, cy))
                 comp_col  = _star_colour(item["obj"].spectral_type,
                                          item["obj"].lum_class)
                 comp_clip = f'clip-path="url(#{clip_id})"' if perspective else ""
                 if perspective and abs(ir) > 1e-6:
-                    shp = _shadow_orbit_arc(cx, cy, r, e, 180.0, persp_y, ir, rot_z)
+                    shp = _shadow_orbit_arc(ocx, ocy, r, e, 180.0, persp_y, ir, rot_z)
                     s.append(
                         f'<path d="{shp}" fill="none" stroke="{palette.axis}" '
                         f'stroke-width="1.4" opacity="0.45" filter="url(#shadow_blur)"'
@@ -979,12 +1034,12 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 if perspective:
                     if abs(ir) < math.radians(3.0):
                         s.append(
-                            f'<path d="{_orbit_arc(cx, cy, r, e, 180.0, persp_y, ir, rot_z)}"'
+                            f'<path d="{_orbit_arc(ocx, ocy, r, e, 180.0, persp_y, ir, rot_z)}"'
                             f' fill="none" stroke="{comp_col}" stroke-width="1.2"'
                             f' stroke-dasharray="8,6" opacity="0.40" {comp_clip}/>'
                         )
                     else:
-                        c_pts = _orbit_screen_pts(cx, cy, r, e, 180.0, persp_y, ir, rot_z)
+                        c_pts = _orbit_screen_pts(ocx, ocy, r, e, 180.0, persp_y, ir, rot_z)
                         c_mid = len(c_pts) // 2
                         c_near = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in c_pts[:c_mid + 1])
                         c_far  = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in c_pts[c_mid:])
@@ -998,7 +1053,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                         )
                 else:
                     s.append(
-                        f'<path d="{_orbit_arc(cx, cy, r, e, hd, persp_y, ir, rot_z)}"'
+                        f'<path d="{_orbit_arc(ocx, ocy, r, e, hd, persp_y, ir, rot_z)}"'
                         f' fill="none" stroke="{comp_col}" stroke-width="1.2"'
                         f' stroke-dasharray="8,6" opacity="0.40" {comp_clip}/>'
                     )
@@ -1156,6 +1211,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
 
             if kind == "star":
                 st     = item["obj"]
+                ocx, ocy = item.get("origin", (cx, cy))
                 st_col = _star_colour(st.spectral_type, st.lum_class)
                 st_r   = _star_r_px(st.diameter, arc_zone_h)
                 smy_c  = my  # z=0 shadow y; updated in perspective block below
@@ -1174,8 +1230,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                     yo_m   = b_cs * math.sin(alp_m)
                     x4_m   = xo_m * cos_rm + yo_m * cos_im * sin_rm
                     y4_m   = -xo_m * sin_rm + yo_m * cos_im * cos_rm
-                    smx_c  = cx + x4_m
-                    smy_c  = cy - y4_m * persp_y
+                    smx_c  = ocx + x4_m
+                    smy_c  = ocy - y4_m * persp_y
                     ry_sh  = max(1.0, st_r * persp_y)
                     s.append(
                         f'<ellipse cx="{smx_c:.1f}" cy="{smy_c:.1f}" '
@@ -1349,7 +1405,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     if show_table:
         s.extend(_table_zone_svg(
             canvas_w, canvas_h, sep_y, star_desigs, star_by_desig, star_groups,
-            sec_stars, col_w, mw, orbit_idx, palette,
+            children_by_parent, col_w, mw, orbit_idx, palette,
         ))
 
     s.append('</svg>')

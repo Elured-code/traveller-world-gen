@@ -132,7 +132,7 @@ from helpers import (
     parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
     parse_nhz_atmospheres, parse_orbital_eccentricity, parse_orbital_inclination,
     parse_runaway_greenhouse, parse_independent_government,
-    parse_optional_biomass, parse_optional_inhospitable,
+    parse_optional_biomass, parse_optional_inhospitable, parse_relic_tech,
     parse_social_detail, parse_settlement_type, parse_include_mw_card,
     parse_seed, parse_sector, parse_world_json,
 )
@@ -143,7 +143,7 @@ try:
     from traveller_gen import _version as _ver  # type: ignore[import]
     _APP_VERSION = _ver.__version__
 except ImportError:
-    _APP_VERSION = "1.5.37"
+    _APP_VERSION = "1.5.38"
 
 # FastAPI light-mode background matches the page (#f4f0e4), not pure white.
 _PALETTE_LIGHT = dataclasses.replace(PALETTE_LIGHT, bg="#f4f0e4")
@@ -965,7 +965,8 @@ async def generate_world_batch(request: Request) -> Response:  # pylint: disable
 async def generate_world_card(request: Request) -> Response:  # pylint: disable=too-many-locals
     """Return a standalone HTML mainworld display card.
 
-    Parameters: seed (int, opt), detail (bool, opt).
+    Parameters: seed (int, opt), detail (bool, opt), social_detail (bool, opt),
+                relic_tech_rule (bool, opt) — Novelty TL house rule, issue #137.
     When detail=true, generates a full system and returns the mainworld card
     with all detail cards (physical, atmosphere, biological, habitability).
     """
@@ -981,6 +982,7 @@ async def generate_world_card(request: Request) -> Response:  # pylint: disable=
     want_detail = parse_detail(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_social_detail = parse_social_detail(request, body)
+    want_relic = parse_relic_tech(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         if want_detail:
@@ -998,7 +1000,7 @@ async def generate_world_card(request: Request) -> Response:  # pylint: disable=
                 attach_population_detail(system, rng=rng)
                 attach_government_detail(system, rng=rng)
                 attach_law_detail(system, rng=rng)
-                attach_tech_detail(system, rng=rng)
+                attach_tech_detail(system, rng=rng, relic_tech_rule=want_relic)
                 attach_culture_detail(system, rng=rng)
                 attach_importance_detail(system, rng=rng)
             world = system.mainworld
@@ -1609,7 +1611,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
     Parameters: sector (required), name or hex, seed, format,
                 nhz_atmospheres, orbital_eccentricity, orbital_inclination,
                 runaway_greenhouse, independent_government, optional_biomass_rule,
-                optional_inhospitable_rule, social_detail.
+                optional_inhospitable_rule, social_detail, relic_tech_rule.
     """
     logger.info("generate_map_system_full [method=%s]", request.method)
     body = await _get_body(request)
@@ -1645,6 +1647,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_social_detail = parse_social_detail(request, body)
     want_mw_card = parse_include_mw_card(request, body)
+    want_relic = parse_relic_tech(request, body)
     seed, rng = apply_seed(seed_val)
     try:
         system = generate_system_from_map(
@@ -1653,6 +1656,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
             nhz_atmospheres=want_nhz,
             orbital_eccentricity=want_ecc,
             orbital_inclination=want_incl,
+            compute_novelty_tl=want_social_detail,
         )
     except LookupError as exc:
         logger.warning("TravellerMap lookup failed: %s", exc)
@@ -1684,7 +1688,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
             attach_population_detail(system, rng=rng)
             attach_government_detail(system, rng=rng)
             attach_law_detail(system, rng=rng)
-            attach_tech_detail(system, rng=rng)
+            attach_tech_detail(system, rng=rng, relic_tech_rule=want_relic)
             attach_culture_detail(system, rng=rng)
             attach_importance_detail(system)
     except Exception as exc:
@@ -1826,7 +1830,7 @@ async def generate_map_world_card(request: Request) -> Response:  # pylint: disa
     Parameters: sector (required), name or hex, seed,
                 nhz_atmospheres, orbital_eccentricity, orbital_inclination,
                 runaway_greenhouse, independent_government, optional_biomass_rule,
-                optional_inhospitable_rule, social_detail.
+                optional_inhospitable_rule, social_detail, relic_tech_rule.
     """
     logger.info("generate_map_world_card called")
     body = await _get_body(request)
@@ -1860,6 +1864,7 @@ async def generate_map_world_card(request: Request) -> Response:  # pylint: disa
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_social_detail = parse_social_detail(request, body)
+    want_relic = parse_relic_tech(request, body)
     seed, rng = apply_seed(seed_val)
     try:
         system = generate_system_from_map(
@@ -1868,6 +1873,7 @@ async def generate_map_world_card(request: Request) -> Response:  # pylint: disa
             nhz_atmospheres=want_nhz,
             orbital_eccentricity=want_ecc,
             orbital_inclination=want_incl,
+            compute_novelty_tl=want_social_detail,
         )
     except LookupError as exc:
         logger.warning("TravellerMap lookup failed: %s", exc)
@@ -1899,7 +1905,7 @@ async def generate_map_world_card(request: Request) -> Response:  # pylint: disa
             attach_population_detail(system, rng=rng)
             attach_government_detail(system, rng=rng)
             attach_law_detail(system, rng=rng)
-            attach_tech_detail(system, rng=rng)
+            attach_tech_detail(system, rng=rng, relic_tech_rule=want_relic)
             attach_culture_detail(system, rng=rng)
             attach_importance_detail(system)
     except Exception as exc:

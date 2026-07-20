@@ -417,6 +417,10 @@ class SystemMapWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         # QWebEngineView (Chromium) handles the full SVG feature set including
         # feGaussianBlur filters and correct palette background colours.
         self._map_view = QWebEngineView()
+        # Read-only display, no keyboard interaction needed — NoFocus stops
+        # it from grabbing native keyboard focus away from other windows'
+        # text fields (a known QWebEngineView/Chromium focus-stealing quirk).
+        self._map_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         vbox.addWidget(self._map_view, stretch=1)
 
         self._render()
@@ -481,6 +485,7 @@ class SurveyFormWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self.resize(980, 700)
 
         self._view = QWebEngineView()
+        self._view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCentralWidget(self._view)
         self._view.setHtml(html)
 
@@ -493,6 +498,7 @@ class UserGuideWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self.setWindowTitle("User Guide — Traveller World Generator")
         self.resize(900, 720)
         view = QWebEngineView()
+        view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCentralWidget(view)
         try:
             html = _md_to_html(md_path.read_text(encoding="utf-8"), dark=dark)
@@ -521,6 +527,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
         seed: int,
         orbital_eccentricity: bool = True,
         orbital_inclination: bool = True,
+        compute_novelty_tl: bool = False,
     ) -> None:
         super().__init__()
         self._sector = sector
@@ -529,6 +536,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
         self._seed = seed
         self._orbital_eccentricity = orbital_eccentricity
         self._orbital_inclination = orbital_inclination
+        self._compute_novelty_tl = compute_novelty_tl
 
     def run(self) -> None:
         """Call generate_system_from_map and emit result, failed, or ambiguous."""
@@ -540,6 +548,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
                 seed=self._seed,
                 orbital_eccentricity=self._orbital_eccentricity,
                 orbital_inclination=self._orbital_inclination,
+                compute_novelty_tl=self._compute_novelty_tl,
             )
             self.result.emit(system)
         except AmbiguousWorldError as exc:
@@ -568,6 +577,7 @@ class _OptionsDialog(QDialog):
         independent_government: bool,
         select_mainworld: bool,
         social_detail: bool,
+        relic_tech: bool,
         settlement_type: str,
         eccentricity: bool = True,
         inclination: bool = True,
@@ -613,6 +623,14 @@ class _OptionsDialog(QDialog):
         self._check_social_detail = QCheckBox("Social detail")
         self._check_social_detail.setChecked(social_detail)
         layout.addWidget(self._check_social_detail)
+
+        self._check_relic_tech = QCheckBox("Relic technology (house rule)")
+        self._check_relic_tech.setChecked(relic_tech)
+        self._check_relic_tech.setToolTip(
+            "Novelty TL: chance of a previous fallen culture's relic technology "
+            "(not WBH RAW — no dice mechanic given in the source material)."
+        )
+        layout.addWidget(self._check_relic_tech)
 
         settlement_group = QGroupBox("Settlement type")
         settlement_layout = QVBoxLayout(settlement_group)
@@ -693,6 +711,10 @@ class _OptionsDialog(QDialog):
         return self._check_social_detail.isChecked()
 
     @property
+    def relic_tech(self) -> bool:
+        return self._check_relic_tech.isChecked()
+
+    @property
     def settlement_type(self) -> str:
         btn = self._settlement_btn_group.checkedButton()
         return btn.property("key") if btn is not None else "none"
@@ -744,6 +766,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         self._opt_social_detail: bool = (
             str(_s.value("opt_social_detail", False)).lower() == "true"
+        )
+        self._opt_relic_tech: bool = (
+            str(_s.value("opt_relic_tech", False)).lower() == "true"
         )
         self._opt_select_mw: bool = (
             str(_s.value("opt_select_mw", False)).lower() == "true"
@@ -980,6 +1005,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             independent_government=self._opt_independent_gov,
             select_mainworld=self._opt_select_mw,
             social_detail=self._opt_social_detail,
+            relic_tech=self._opt_relic_tech,
             settlement_type=self._opt_settlement_type,
             eccentricity=self._opt_eccentricity,
             inclination=self._opt_inclination,
@@ -993,6 +1019,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_independent_gov = dialog.independent_government
         self._opt_select_mw = dialog.select_mainworld
         self._opt_social_detail = dialog.social_detail
+        self._opt_relic_tech = dialog.relic_tech
         self._opt_settlement_type = dialog.settlement_type
         self._opt_eccentricity = dialog.eccentricity
         self._opt_inclination = dialog.inclination
@@ -1004,16 +1031,48 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_independent_gov", self._opt_independent_gov)
         _s.setValue("opt_select_mw", self._opt_select_mw)
         _s.setValue("opt_social_detail", self._opt_social_detail)
+        _s.setValue("opt_relic_tech", self._opt_relic_tech)
         _s.setValue("opt_settlement_type", self._opt_settlement_type)
         _s.setValue("opt_eccentricity", self._opt_eccentricity)
         _s.setValue("opt_inclination", self._opt_inclination)
         self._on_detail_toggled(self._opt_full_system)
 
-    def _on_generate(self) -> None:
+    def _on_menu_new(self) -> None:
+        """File > New: regenerate with the currently displayed seed and
+        options. Falls back to a new random seed if the seed field is empty
+        (e.g. before any generation has happened yet)."""
+        self._on_generate(seed_mode="current")
+
+    def _on_menu_new_with_new_seed(self) -> None:
+        """File > New with New Seed: regenerate with a fresh random seed,
+        keeping the current options."""
+        self._on_generate(seed_mode="new")
+
+    def _on_generate(self, *, seed_mode: str = "auto") -> None:
+        """Generate a world/system.
+
+        seed_mode is keyword-only: _generate_btn.clicked and
+        _seed_entry.returnPressed both connect directly to this method, and
+        clicked(bool checked) would otherwise land in a positional seed_mode
+        parameter, silently overriding the "auto" default with a bool.
+
+        seed_mode controls which seed is used:
+          "auto"    (default, Generate button / Enter key) - reuse the typed
+                    seed if the user entered one and it hasn't already been
+                    consumed by a prior generation; otherwise a new random
+                    seed. This is the long-standing default behaviour.
+          "current" (File > New) - always reuse whatever seed is currently
+                    displayed, ignoring the auto-fill flag.
+          "new"     (File > New with New Seed) - always generate a fresh
+                    random seed, ignoring the seed field entirely.
+        """
         name = self._name_entry.text().strip() or "Unknown"
         seed_raw = self._seed_entry.text().strip()
 
-        if seed_raw and not self._seed_auto:
+        use_typed_seed = bool(seed_raw) and (
+            seed_mode == "current" or (seed_mode == "auto" and not self._seed_auto)
+        )
+        if use_typed_seed:
             try:
                 seed = int(seed_raw)
             except ValueError:
@@ -1166,6 +1225,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 runaway_greenhouse=self._opt_runaway_greenhouse,
                 independent_government=self._opt_independent_gov,
                 optional_biomass=self._opt_oxygen_biomass,
+                relic_tech=self._opt_relic_tech,
                 settlement_type=self._opt_settlement_type,
                 want_social_detail=self._opt_social_detail,
             ),
@@ -1264,6 +1324,18 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _build_menu_bar(self) -> None:
         # pylint: disable=attribute-defined-outside-init
         file_menu = self.menuBar().addMenu("&File")
+
+        self._act_new = QAction("New", self)
+        self._act_new.setShortcut(QKeySequence.StandardKey.New)
+        self._act_new.triggered.connect(self._on_menu_new)
+        file_menu.addAction(self._act_new)
+
+        self._act_new_seed = QAction("New with New Seed", self)
+        self._act_new_seed.setShortcut(QKeySequence("Ctrl+Shift+N"))
+        self._act_new_seed.triggered.connect(self._on_menu_new_with_new_seed)
+        file_menu.addAction(self._act_new_seed)
+
+        file_menu.addSeparator()
 
         self._act_open_json = QAction("Open JSON…", self)
         self._act_open_json.triggered.connect(self._on_open_json)
@@ -1629,11 +1701,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     ) -> None:
         display = search_name or hex_pos or "world"
         self._show_loading(f"Looking up {display} in {sector}…")
-        if self._generate_btn is not None:
-            self._generate_btn.setEnabled(False)
+        self._set_generation_controls_enabled(False)
         worker = _TravMapWorker(sector, search_name, hex_pos, seed,
                                 orbital_eccentricity=orbital_eccentricity,
-                                orbital_inclination=orbital_inclination)
+                                orbital_inclination=orbital_inclination,
+                                compute_novelty_tl=self._opt_social_detail)
         worker.result.connect(self._on_worker_result)
         worker.failed.connect(self._on_worker_error)
         worker.ambiguous.connect(self._on_worker_ambiguous)
@@ -1641,9 +1713,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._worker = worker
         worker.start()
 
-    def _on_worker_result(self, system: object) -> None:
+    def _set_generation_controls_enabled(self, enabled: bool) -> None:
+        """Enable/disable everything that can trigger a new generation, so a
+        second one can't be started while a TravellerMap fetch is in flight."""
         if self._generate_btn is not None:
-            self._generate_btn.setEnabled(True)
+            self._generate_btn.setEnabled(enabled)
+        self._act_new.setEnabled(enabled)
+        self._act_new_seed.setEnabled(enabled)
+
+    def _on_worker_result(self, system: object) -> None:
+        self._set_generation_controls_enabled(True)
         if self._pending_full_system:
             rng = (
                 random.Random(self._pending_seed)
@@ -1661,13 +1740,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             self._finish_generation(world)
 
     def _on_worker_error(self, message: str) -> None:
-        if self._generate_btn is not None:
-            self._generate_btn.setEnabled(True)
+        self._set_generation_controls_enabled(True)
         self._show_error(message)
 
     def _on_worker_ambiguous(self, exc: object) -> None:
-        if self._generate_btn is not None:
-            self._generate_btn.setEnabled(True)
+        self._set_generation_controls_enabled(True)
         self._show_disambiguation_dialog(exc, self._pending_seed)  # type: ignore[arg-type]
 
     def _show_summary(self, world: object) -> None:
@@ -1675,6 +1752,10 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._status_layout.addWidget(self._build_summary_header(world))
         self._status_layout.addWidget(_make_hsep(margin_v=6))
         view = QWebEngineView()
+        # Read-only display; NoFocus keeps it from grabbing native keyboard
+        # focus away from the Name field in the main window (a known
+        # QWebEngineView/Chromium focus-stealing quirk).
+        view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         view.setHtml(self._themed_html(world.to_html()))  # type: ignore[attr-defined]
         view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -1695,7 +1776,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
 
         # Tab 1 — System: HTML view via system.to_html()
+        # Read-only displays; NoFocus keeps them from grabbing native
+        # keyboard focus away from the Name field in the main window (a
+        # known QWebEngineView/Chromium focus-stealing quirk).
         system_view = QWebEngineView()
+        system_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         system_view.setHtml(self._themed_html(
             system.to_html(detail_attached=self._detail_attached)  # type: ignore[attr-defined]
         ))
@@ -1707,6 +1792,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         # Tab 2 — Mainworld: world card HTML view
         if mw is not None:
             mw_view = QWebEngineView()
+            mw_view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             mw_view.setHtml(self._themed_html(mw.to_html()))  # type: ignore[attr-defined]
             mw_view.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding

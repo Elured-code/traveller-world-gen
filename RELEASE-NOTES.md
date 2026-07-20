@@ -1,8 +1,143 @@
 # Release Notes — v1.5.0 (draft)
 
 **Branch:** `v1.5.0` → `main`
-**Sessions:** 88–161
-**Tests:** 2970
+**Sessions:** 88–176
+**Tests:** 3023
+
+---
+
+## Novelty Tech Level Complete for All Worlds — Session 176 (issue #137)
+
+Building on Session 175's TravellerMap-only nearby-worlds factor, Novelty TL
+(WBH §5) is now the highest of four factors for **every** world, generated or
+TravellerMap-fetched: (1) nearby Rich/Industrial/Class-A world TL within 6
+parsecs (TravellerMap worlds only); (2) the highest of a world's own 11
+technology subcategory levels (energy, electronics, manufacturing, etc.) — a
+world's locally produced prototypes can outpace its common-use Tech Level;
+(3) an optional **house rule** for previous-culture relic technology (default
+off — the WBH source gives no dice mechanic for this factor, only narrative
+guidance, so this is a non-canonical addition, togglable per-generation); and
+(4) a "survivable prototype" floor for worlds whose common Tech Level falls
+short of what their environment requires — e.g. a Tech Level 2 vacuum world
+(which normally needs Tech Level 8 to be viable) is now assumed to have at
+least Tech Level 6 prototype life support explaining its survival, per the
+WBH example. Generated worlds previously kept a flat placeholder; they now
+get the same real Novelty TL computation as TravellerMap worlds (factors 2
+and 4 always apply; factor 1 needs TravellerMap data and factor 3 is opt-in).
+
+---
+
+## Novelty Tech Level for TravellerMap Worlds — Session 175 (issue #137, partial)
+
+A world's Novelty TL (WBH §5) reflects cutting-edge technology available through
+imports, prototypes, or local industry — beyond a world's own common Tech Level.
+It has been a placeholder (equal to the world's own TL) since it was introduced.
+This release implements one factor of the full procedure — the highest Tech
+Level among nearby Rich, Industrial, or Class-A-starport worlds — for worlds
+**fetched from TravellerMap**. It fetches worlds within 6 parsecs via
+TravellerMap's `jumpworlds` API and raises Novelty TL to the highest Tech Level
+found among qualifying worlds, when that exceeds the local placeholder.
+Procedurally generated worlds are unaffected and keep the previous placeholder
+behaviour; a full local-procedure implementation (subcategory/previous-culture/
+prototype factors, and a generated-world input option) remains deferred.
+
+---
+
+## Fix Issue #172: Stale Build Artifact Could Shadow Source Package in Local Test Runs — Session 174
+
+`conftest.py` added `azure-api/` and `fastapi/` to the front of `sys.path` (`insert(0, ...)`) so
+test files could import the API-layer modules. If a developer had ever run
+`scripts/prepare_azure.sh` locally (e.g. to test a deploy), it leaves behind a gitignored
+`azure-api/traveller_gen/` mirror of the real package — which, because it sat first on
+`sys.path`, would silently shadow the actual `src/traveller_gen` package for the rest of that
+pytest session. Tests would still "pass," but against stale code, with new source edits
+invisible until the leftover directory was manually deleted. Not a CI issue (the mirror is
+gitignored and never exists on a fresh checkout), only a local-development hazard. Fixed by
+appending instead of inserting those paths, so the editable-installed `src/` package (already
+on `sys.path` via its `.pth` file) always wins; also added a `conftest.py` assertion that
+`traveller_gen.__file__` resolves under `src/`, so any future recurrence fails loudly instead
+of silently.
+
+---
+
+## Fix: Name Field Going Keyboard-Dead After Generating — Session 172
+
+Fixed a bug where the `Name:` field in the desktop app stopped accepting keyboard input
+(no blinking cursor at all) once a world or system had been generated. Caused by a known
+PySide6/QtWebEngine focus-stealing quirk — the read-only result views could end up holding
+native keyboard focus in a way that left other fields unable to become focused. All result
+views are now explicitly excluded from keyboard focus, since none of them need it.
+
+---
+
+## New Default Body-Naming Scheme — Session 168–170, 173
+
+Stars, worlds, and moons are now named more systematically. Stars: `<systemname> <designation>`
+(e.g. "Unknown A", "Unknown Ba") — companion stars are now named too, previously left blank.
+Worlds and belts: `<systemname> <designation>-<n>`, numbered per star in order of orbital
+radius (belts now share the same sequence as worlds, instead of their own separate counter).
+The mainworld uses the system name exactly as given (or "Unknown" if none was supplied),
+with no suffix. Moons: `<parentname> <satellite>`, using a phonetic letter-name spelling
+(ay, bee, cee, ... zed) instead of Greek letters.
+
+---
+
+## Bug Fixes: Orbit Numbering and Missing Secondary Star — Session 167
+
+Fixed two bugs in systems where a companion's exclusion zone splits a star's own worlds into
+an inner and outer placement zone: (1) the "#" orbit numbering in the system detail card's
+Orbital survey table incorrectly restarted at 1 for the outer zone instead of continuing —
+this also meant `attach_detail()` could silently misattribute a world's generated detail to
+the wrong orbit in affected systems, now fixed at the source with continuous numbering.
+(2) A close/near/far secondary star with no orbit slots of its own (e.g. all its worlds ended
+up with the primary) was entirely invisible in that same table; it now shows as a row under
+the primary, positioned by orbital radius, same as companion stars already were.
+
+---
+
+## System Detail Card: Companion Stars in Orbital Survey — Session 166
+
+The system detail card's Orbital survey table (gen-ui, the FastAPI web app, and the A3 poster's
+"Full system card" page) now lists each companion star (e.g. "Ba") as a row under its own
+immediate parent star, positioned by orbital radius alongside the worlds that orbit that same
+star — previously companion stars only appeared in the separate Stars table.
+
+---
+
+## System Map: Nested Companion Star Markers — Session 165
+
+A secondary star's own companion (e.g. "Ba", orbiting secondary star "B") is now also drawn as a
+small satellite orbit next to its parent's marker wherever that parent appears as dashed context
+— e.g. inside the primary's arc zone — in addition to its already-correct placement in its own
+zone. Uses the same orbital-path/shadow/connector-line styling as world orbits, scaled to an
+appropriate local distance and matching its parent's own orbit inclination.
+
+---
+
+## Fix Issue #171: System Map Companion Star Placement — Session 164
+
+Fixed a bug where a companion star of a *secondary* star (e.g. "Ba", orbiting secondary star
+"B") was drawn in the system map's arc zone and table column for the **primary** star,
+positioned right next to it, instead of next to its actual parent. Each star's zone/column now
+shows only its own direct companion(s) as dashed context arcs.
+
+---
+
+## System Card: Primary Column in Stars Table — Session 163
+
+The Stars table (gen-ui System tab and the FastAPI web app's system card — both share the
+same `system_card.html` template) gains a **Primary** column between Desig and Class,
+showing which star each star orbits: `"--"` for the primary star itself, and the parent
+star's designation for every companion or close/near/far secondary star.
+
+---
+
+## gen-ui: File > New / New with New Seed — Session 162
+
+Two new File menu actions: **New** (Ctrl+N) regenerates with the currently displayed seed
+and options — the plain Generate button can't do this once a seed has been auto-filled, it
+always rolls a fresh one. **New with New Seed** (Ctrl+Shift+N) always rolls a fresh seed,
+keeping the current options.
 
 ---
 

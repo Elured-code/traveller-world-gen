@@ -159,3 +159,23 @@ class TestAnomalyEccentricityDMs:
     def test_normal_orbit_dm_zero(self):
         """Normal (non-anomalous) orbit uses no anomaly DM."""
         self._assert_dm(0, 0)
+
+
+# ---------------------------------------------------------------------------
+# TestSlotIndexContinuity
+# ---------------------------------------------------------------------------
+
+class TestSlotIndexContinuity:
+    """A star split into an inner + outer placement zone (by a companion's
+    exclusion band) must get one continuous slot_index sequence, not a
+    reset per zone — a reset previously produced duplicate (star, slot_index)
+    keys, which attach_detail() uses to key its WorldDetail results."""
+
+    def test_slot_index_continuous_across_inner_and_outer_zones(self):
+        # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_system_gen import generate_full_system
+
+        system = generate_full_system(seed=1559916071)
+        a_slots = [o.slot_index for o in system.system_orbits.orbits
+                   if o.star_designation == "A"]
+        assert sorted(a_slots) == list(range(1, len(a_slots) + 1))

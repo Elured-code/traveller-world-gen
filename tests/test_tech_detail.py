@@ -40,7 +40,8 @@ _PROFILE_RE = re.compile(r"^[0-9A-Z]-[0-9A-Z]-[0-9A-Z]{5}-[0-9A-Z]{4}-[0-9A-Z]{2
 def _gen(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     tl=10, atmosphere=6, hydrographics=7, population=8,
     government=6, law_level=5, starport="A", size=6, pcr=4,
-    habitability_rating=None, trade_codes=None, rng=None,
+    habitability_rating=None, trade_codes=None, novelty_tl_floor=None,
+    relic_tech_rule=False, rng=None,
 ) -> TechDetail:
     """Convenience wrapper: generate a TechDetail with sensible defaults."""
     result = generate_tech_detail(
@@ -48,7 +49,8 @@ def _gen(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         population=population, government=government, law_level=law_level,
         starport=starport, size=size, pcr=pcr,
         habitability_rating=habitability_rating,
-        trade_codes=trade_codes, rng=rng,
+        trade_codes=trade_codes, novelty_tl_floor=novelty_tl_floor,
+        relic_tech_rule=relic_tech_rule, rng=rng,
     )
     assert result is not None
     return result
@@ -951,21 +953,34 @@ class TestRoundTrip:
 
 
 # ---------------------------------------------------------------------------
-# Novelty TL (issue #154 placeholder)
+# Novelty TL (WBH §5, issue #137): highest of subcategory / prototype /
+# nearby-worlds / relic-tech factors
 # ---------------------------------------------------------------------------
 
+def _subcat_max(td: TechDetail) -> int:
+    """Highest of the 11 subcategory sub-TLs — mirrors the production formula."""
+    return max(
+        td.tl_energy, td.tl_electronics, td.tl_manufacturing,
+        td.tl_medical, td.tl_environmental,
+        td.tl_land, td.tl_sea, td.tl_air, td.tl_space,
+        td.tl_military_personal, td.tl_military_heavy,
+    )
+
+
 class TestNoveltyTL:
-    """Tests for tl_novelty placeholder behaviour."""
+    """General invariants for tl_novelty, regardless of which factor wins."""
 
-    def test_novelty_equals_high_common(self):
-        """Placeholder: tl_novelty equals tl_high_common."""
-        td = _gen(tl=10, rng=random.Random(1))
-        assert td.tl_novelty == td.tl_high_common
-
-    def test_novelty_equals_high_common_various_tls(self):
+    def test_novelty_at_least_high_common(self):
+        """tl_novelty is never lower than the world's own common TL."""
         for tl in (0, 5, 10, 15):
             td = _gen(tl=tl, rng=random.Random(tl))
-            assert td.tl_novelty == td.tl_high_common
+            assert td.tl_novelty >= td.tl_high_common
+
+    def test_novelty_at_least_subcategory_max(self):
+        """tl_novelty is never lower than the highest subcategory TL."""
+        for seed in range(10):
+            td = _gen(tl=8, rng=random.Random(seed))
+            assert td.tl_novelty >= _subcat_max(td)
 
     def test_novelty_non_negative(self):
         td = _gen(tl=0, rng=random.Random(42))
@@ -989,6 +1004,139 @@ class TestNoveltyTL:
         td = _gen(tl=12, rng=random.Random(9))
         novelty_char = td.technology_profile.split("-")[5]
         assert _EHEX.index(novelty_char) == td.tl_novelty
+
+
+class TestNoveltyTLSubcategoryFactor:
+    """Factor 2: highest local subcategory TL (locally produced prototypes)."""
+
+    def test_subcategory_exceeding_high_raises_novelty(self):
+        """When a sub-TL rolls above tl_high, tl_novelty follows it up."""
+        # Seed 5 rolls tl_electronics=9 against tl_high=8 for these inputs
+        # (verified: no novelty_tl_floor/relic_tech_rule in play).
+        td = _gen(tl=8, rng=random.Random(5))
+        assert _subcat_max(td) > td.tl_high_common
+        assert td.tl_novelty == _subcat_max(td)
+
+    def test_no_subcategory_exceedance_keeps_novelty_at_high(self):
+        """When no sub-TL exceeds tl_high, tl_novelty falls back to tl_high."""
+        # Seed 1 keeps every sub-TL <= tl_high for these inputs.
+        td = _gen(tl=8, rng=random.Random(1))
+        assert _subcat_max(td) <= td.tl_high_common
+        assert td.tl_novelty == td.tl_high_common
+
+
+class TestNoveltyTLPrototypeFactor:
+    """Factor 4: survivable early-prototype TL (WBH vacuum-world example)."""
+
+    def test_vacuum_world_below_minimum_gets_prototype_floor(self):
+        """TL2 vacuum world (min sustainable TL8) gets a TL6 prototype floor."""
+        td = _gen(
+            tl=2, atmosphere=0, hydrographics=0, population=4,
+            government=6, law_level=5, starport="C", size=6, pcr=4,
+            rng=random.Random(1),
+        )
+        assert td.tl_novelty >= 6  # min_tech(vacuum)=8, floor = 8-2
+
+    def test_no_prototype_floor_when_tl_meets_minimum(self):
+        """A standard-atmosphere world (min sustainable TL 0) gets no boost."""
+        td = _gen(
+            tl=10, atmosphere=6, hydrographics=7, population=8,
+            government=6, law_level=5, starport="A", size=6, pcr=4,
+            rng=random.Random(1),
+        )
+        # min_tech(standard)=0 <= tl_high, so the prototype factor contributes
+        # nothing; tl_novelty is driven only by tl_high/subcategory_max.
+        assert td.tl_novelty == max(td.tl_high_common, _subcat_max(td))
+
+
+# ---------------------------------------------------------------------------
+# Novelty TL nearby-worlds floor (issue #137, TravellerMap worlds)
+# ---------------------------------------------------------------------------
+
+class TestNoveltyTLFloor:
+    """Tests for the novelty_tl_floor parameter (issue #137).
+
+    Compares against a same-seed baseline (novelty_tl_floor=None) rather than
+    tl_high_common directly, since factors 2/4 can already raise tl_novelty
+    above tl_high_common independently of the floor.
+    """
+
+    def test_floor_none_keeps_baseline(self):
+        """novelty_tl_floor=None (generated worlds) leaves tl_novelty unchanged."""
+        td = _gen(tl=8, rng=random.Random(1), novelty_tl_floor=None)
+        assert td.tl_novelty == max(td.tl_high_common, _subcat_max(td))
+
+    def test_floor_below_baseline_has_no_effect(self):
+        """A floor lower than the baseline does not lower tl_novelty."""
+        baseline = _gen(tl=10, rng=random.Random(2)).tl_novelty
+        floored = _gen(tl=10, rng=random.Random(2), novelty_tl_floor=3).tl_novelty
+        assert floored == baseline
+
+    def test_floor_above_baseline_raises_novelty(self):
+        """A floor higher than the baseline raises tl_novelty to the floor."""
+        td = _gen(tl=6, rng=random.Random(3), novelty_tl_floor=14)
+        assert td.tl_novelty == 14
+
+    def test_floor_equal_to_baseline_has_no_effect(self):
+        baseline = _gen(tl=9, rng=random.Random(4)).tl_novelty
+        floored = _gen(tl=9, rng=random.Random(4), novelty_tl_floor=baseline).tl_novelty
+        assert floored == baseline
+
+    def test_floor_zero_has_no_effect(self):
+        """A floor of 0 (no qualifying nearby worlds) never lowers tl_novelty."""
+        baseline = _gen(tl=5, rng=random.Random(6)).tl_novelty
+        floored = _gen(tl=5, rng=random.Random(6), novelty_tl_floor=0).tl_novelty
+        assert floored == baseline
+
+    def test_profile_reflects_raised_novelty(self):
+        """The technology_profile suffix reflects a floor-raised tl_novelty."""
+        _EHEX = "0123456789ABCDEFGHIJ"
+        td = _gen(tl=6, rng=random.Random(11), novelty_tl_floor=13)
+        novelty_char = td.technology_profile.split("-")[5]
+        assert _EHEX.index(novelty_char) == 13
+
+
+# ---------------------------------------------------------------------------
+# Relic technology (house rule, issue #137 — no WBH dice mechanic given)
+# ---------------------------------------------------------------------------
+
+class TestRelicTechRule:
+    """Tests for the opt-in relic_tech_rule house rule."""
+
+    def test_disabled_by_default(self):
+        """relic_tech_rule defaults to False — no behaviour change."""
+        off = _gen(tl=8, rng=random.Random(1)).tl_novelty
+        default = _gen(tl=8, rng=random.Random(1), relic_tech_rule=False).tl_novelty
+        assert off == default
+
+    def test_disabled_never_raises_above_baseline(self):
+        """Across many seeds, relic_tech_rule=False never changes tl_novelty."""
+        for seed in range(30):
+            off = _gen(tl=8, rng=random.Random(seed), relic_tech_rule=False).tl_novelty
+            baseline = _gen(tl=8, rng=random.Random(seed)).tl_novelty
+            assert off == baseline
+
+    def test_enabled_can_raise_novelty_above_baseline(self):
+        """Seed 20 rolls a 2D=12 relic find for these inputs, raising tl_novelty."""
+        baseline = _gen(tl=8, rng=random.Random(20)).tl_novelty
+        with_relic = _gen(tl=8, rng=random.Random(20), relic_tech_rule=True).tl_novelty
+        assert with_relic > baseline
+
+    def test_enabled_does_not_change_other_fields_when_it_does_not_trigger(self):
+        """The relic roll happens last — a non-triggering roll changes nothing."""
+        off = _gen(tl=8, rng=random.Random(1), relic_tech_rule=False)
+        on = _gen(tl=8, rng=random.Random(1), relic_tech_rule=True)
+        assert off.tl_high_common == on.tl_high_common
+        assert off.tl_low_common == on.tl_low_common
+        assert off.tl_energy == on.tl_energy
+        assert off.tl_novelty == on.tl_novelty
+
+    def test_enabled_never_lowers_novelty(self):
+        """relic_tech_rule can only raise tl_novelty (via max()), never lower it."""
+        for seed in range(30):
+            off = _gen(tl=8, rng=random.Random(seed)).tl_novelty
+            on = _gen(tl=8, rng=random.Random(seed), relic_tech_rule=True).tl_novelty
+            assert on >= off
 
 
 # ---------------------------------------------------------------------------

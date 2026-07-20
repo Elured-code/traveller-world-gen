@@ -32,9 +32,103 @@ to save it.
 - The save dialog offers two formats: HTML (open it in any browser and print
   from there) or PDF (saved directly, ready to print, no browser step needed).
 
+GEN-UI — FILE > NEW AND FILE > NEW WITH NEW SEED
+--------------------------------------------------
+Two new menu items make it faster to regenerate without touching the seed field
+by hand.
+
+- File > New (Ctrl+N / Cmd+N) regenerates using whatever seed is currently
+  shown in the seed field, with your current options. Useful for re-running
+  the exact same system after changing an option, without having to retype
+  the seed.
+- File > New with New Seed (Ctrl+Shift+N) regenerates with a brand new random
+  seed, keeping your current options — the same as clicking Generate with an
+  empty seed field, available as a menu item and shortcut.
+
+SYSTEM DETAIL CARD — NEW PRIMARY COLUMN IN THE STARS TABLE
+-------------------------------------------------------------
+The Stars table (desktop app System tab, web app, and the A3 poster's full
+system card) now has a Primary column between Desig and Class, showing which
+star each star orbits — "--" for the primary star itself, and the parent
+star's designation for every companion or secondary star.
+
+SYSTEM DETAIL CARD — COMPANION AND SECONDARY STARS NOW LISTED IN THE ORBITAL
+SURVEY TABLE
+-----------------------------------------------------------------------------
+Companion stars and secondary stars (any star other than the primary) now
+appear as a row in the Orbital survey table, listed under their own parent
+star and positioned by orbital distance among the worlds that orbit that
+same star. Previously a secondary star with no worlds of its own — for
+example when its own orbital exclusion zone left it no room to host any —
+was entirely missing from this table, even though it clearly occupied a gap
+in its parent star's own world sequence.
+
+SYSTEM MAP — A SECONDARY STAR'S OWN COMPANION IS NOW SHOWN NEXT TO IT
+------------------------------------------------------------------------
+When a secondary star (for example "B") itself has its own companion star
+(for example "Ba"), the system map now also draws that companion as a small
+satellite next to "B"'s own marker — in addition to its existing, correct
+position in "B"'s own section of the map. The companion's distance from its
+parent and its orbital tilt are both scaled to sit clearly next to the
+parent star it belongs to.
+
+NEW DEFAULT NAMING SCHEME FOR STARS, WORLDS, AND MOONS
+-----------------------------------------------------------
+Placeholder names generated for a system's stars, worlds, and moons follow a
+new, more systematic pattern.
+
+- Stars are named "<system name> <letter>", for example "Unknown A",
+  "Unknown B", "Unknown Ba" — every star gets a name now, including
+  companion stars, which previously had none.
+- The system's main world uses the system name exactly as given (or
+  "Unknown" if you don't type one) — no suffix is added.
+- Every other world (including asteroid belts, which previously used a
+  separate naming pattern) is named "<system name> <star letter>-<number>",
+  numbered in order of distance from its star — for example "Unknown A-1",
+  "Unknown A-2".
+- Moons are named after their world with a phonetic letter added — for
+  example "Unknown A-1 ay", "Unknown A-1 bee" — instead of the previous
+  Greek-letter names (alpha, beta, ...).
+
+NOVELTY TECH LEVEL IS NOW FULLY CALCULATED
+--------------------------------------------
+The technology profile shown for an inhabited world ends in a Novelty Tech
+Level digit, which used to just repeat the world's own tech level as a
+placeholder. It's now genuinely calculated, using the highest of several
+factors:
+
+- A world's own most advanced locally produced prototypes, which can exceed
+  its everyday common tech level.
+- A "survivable prototype" allowance for worlds whose common tech level is
+  below what their environment normally requires — for example, a very low-
+  tech world in a vacuum is now assumed to have at least some higher-tech
+  prototype life support explaining how anyone survives there at all.
+- For worlds looked up from TravellerMap, the tech level of any nearby Rich,
+  Industrial, or Class A starport world within 6 parsecs.
+
+There's also a new optional "Relic technology" checkbox in the desktop app's
+generation options (off by default). When turned on, there's a small chance
+a world has relic technology left behind by a previous, more advanced
+civilization that has since fallen — this is a house rule, not from the
+World Builder's Handbook itself, since the rulebook only describes the idea
+without giving a way to roll for it.
+
 BUG FIXES
 ---------
 - Fixed: the System Map window did not remember your Light/Dark theme or
   Perspective/Top-down view choice. Every newly opened map window reset to
   Dark theme and Top-down view regardless of what you had last selected. Both
   choices are now remembered and applied the next time you open a map window.
+- Fixed: in the system map, a companion of a secondary star (for example
+  "Ba", which orbits secondary star "B") was drawn right next to the
+  primary star instead of next to the star it actually orbits.
+- Fixed: in the Orbital survey table, the "#" numbering for a star's own
+  worlds could incorrectly restart partway through the list instead of
+  counting up continuously, in systems where a companion star's exclusion
+  zone splits a star's worlds into two groups. In rare cases this could
+  also cause a secondary world's generated details to be silently swapped
+  with a different world's.
+- Fixed: the Name field stopped accepting keyboard input (no blinking
+  cursor at all) once you generated a world or system. Clicking into it
+  no longer helped. The read-only result views no longer take keyboard
+  focus away from it.

@@ -270,6 +270,15 @@ def parse_optional_inhospitable(request: Request, body: dict) -> bool:
     return _parse_bool_param(request, body, "optional_inhospitable_rule")
 
 
+def parse_relic_tech(request: Request, body: dict) -> bool:
+    """Extract the 'relic_tech_rule' flag — Novelty TL house rule (issue #137).
+
+    Not transcribed WBH text: the source only gives narrative guidance for
+    "previous fallen culture" relic technology, no dice mechanic.
+    """
+    return _parse_bool_param(request, body, "relic_tech_rule")
+
+
 _VALID_SETTLEMENT_TYPES = frozenset(
     {"standard", "long_settled", "well_settled", "backwater", "unsettled"}
 )

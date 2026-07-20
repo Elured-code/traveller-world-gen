@@ -148,7 +148,7 @@ def _default_options(parent) -> _OptionsDialog:
         parent,
         full_system=False, nhz=False, oxygen_biomass=False,
         runaway_greenhouse=False, independent_government=False,
-        select_mainworld=False, social_detail=False,
+        select_mainworld=False, social_detail=False, relic_tech=False,
         settlement_type="standard",
         eccentricity=True, inclination=True,
     )
@@ -283,7 +283,7 @@ class TestOptionsDialogConstruction:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -295,7 +295,7 @@ class TestOptionsDialogConstruction:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=True, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -306,7 +306,7 @@ class TestOptionsDialogConstruction:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=True, oxygen_biomass=True,
             runaway_greenhouse=True, independent_government=True,
-            select_mainworld=True, social_detail=False,
+            select_mainworld=True, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -333,6 +333,11 @@ class TestOptionsDialogConstruction:
         qtbot.addWidget(dlg)
         assert hasattr(dlg, "_check_social_detail")
 
+    def test_relic_tech_checkbox_present(self, qtbot, app_win):
+        dlg = _default_options(app_win)
+        qtbot.addWidget(dlg)
+        assert hasattr(dlg, "_check_relic_tech")
+
     def test_ok_and_cancel_buttons_present(self, qtbot, app_win):
         dlg = _default_options(app_win)
         qtbot.addWidget(dlg)
@@ -342,7 +347,7 @@ class TestOptionsDialogConstruction:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -363,7 +368,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -381,7 +386,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=False,
         )
         qtbot.addWidget(dlg)
@@ -391,7 +396,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=False, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -402,7 +407,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=False, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -412,7 +417,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=True,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -422,7 +427,7 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=True, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=True, social_detail=False,
+            select_mainworld=True, social_detail=False, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -432,17 +437,32 @@ class TestOptionsDialogProperties:
         dlg = _OptionsDialog(
             app_win, full_system=False, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=True,
+            select_mainworld=False, social_detail=True, relic_tech=False,
             settlement_type="standard", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
         assert dlg.social_detail is True
 
+    def test_relic_tech_property_false(self, qtbot, app_win):
+        dlg = _default_options(app_win)
+        qtbot.addWidget(dlg)
+        assert dlg.relic_tech is False
+
+    def test_relic_tech_property_true(self, qtbot, app_win):
+        dlg = _OptionsDialog(
+            app_win, full_system=False, nhz=False, oxygen_biomass=False,
+            runaway_greenhouse=False, independent_government=False,
+            select_mainworld=False, social_detail=False, relic_tech=True,
+            settlement_type="standard", eccentricity=True, inclination=True,
+        )
+        qtbot.addWidget(dlg)
+        assert dlg.relic_tech is True
+
     def test_settlement_type_long_settled(self, qtbot, app_win):
         dlg = _OptionsDialog(
             app_win, full_system=False, nhz=False, oxygen_biomass=False,
             runaway_greenhouse=False, independent_government=False,
-            select_mainworld=False, social_detail=False,
+            select_mainworld=False, social_detail=False, relic_tech=False,
             settlement_type="long_settled", eccentricity=True, inclination=True,
         )
         qtbot.addWidget(dlg)
@@ -541,6 +561,71 @@ class TestSeedHandling:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# 6b. File > New / New with New Seed
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestFileMenuNewActions:
+    def test_menu_actions_exist_with_expected_labels(self, app_win):
+        assert app_win._act_new.text() == "New"
+        assert app_win._act_new_seed.text() == "New with New Seed"
+
+    def test_new_reuses_current_seed(self, app_win):
+        app_win._seed_entry.setText("777")
+        app_win._generate_btn.click()
+        assert app_win._seed_entry.text() == "777"
+        app_win._act_new.trigger()
+        assert app_win._seed_entry.text() == "777"
+
+    def test_new_reuses_seed_even_after_auto_fill(self, app_win):
+        """Regression: after a plain Generate click, the seed field holds an
+        auto-filled value (_seed_auto=True). File > New must still reuse
+        that displayed value rather than treating it as stale and rerolling
+        a fresh one -- this is exactly the case the plain Generate button
+        does NOT handle (it rerolls), which is why this action exists."""
+        app_win._seed_entry.clear()
+        app_win._generate_btn.click()
+        displayed_seed = app_win._seed_entry.text()
+        assert displayed_seed != ""
+        app_win._act_new.trigger()
+        assert app_win._seed_entry.text() == displayed_seed
+
+    def test_new_with_empty_seed_field_falls_back_to_random(self, app_win):
+        app_win._seed_entry.clear()
+        app_win._act_new.trigger()
+        assert app_win._seed_entry.text() != ""
+        assert app_win._seed_entry.text().lstrip("-").isdigit()
+
+    def test_new_with_new_seed_changes_the_seed(self, app_win):
+        app_win._seed_entry.setText("42")
+        app_win._generate_btn.click()
+        assert app_win._seed_entry.text() == "42"
+        app_win._act_new_seed.trigger()
+        assert app_win._seed_entry.text() != "42"
+        assert app_win._seed_entry.text().lstrip("-").isdigit()
+
+    def test_new_keeps_current_options(self, app_win):
+        app_win._opt_nhz = True
+        app_win._seed_entry.setText("555")
+        app_win._act_new.trigger()
+        assert app_win._opt_nhz is True
+
+    def test_new_with_new_seed_keeps_current_options(self, app_win):
+        app_win._opt_nhz = True
+        app_win._act_new_seed.trigger()
+        assert app_win._opt_nhz is True
+
+    def test_new_invalid_current_seed_shows_error(self, app_win):
+        """File > New validates the current seed field the same way the
+        plain Generate button does, rather than silently discarding
+        whatever the user typed there."""
+        app_win._seed_entry.setText("not-a-number")
+        app_win._act_new.trigger()
+        lbl = app_win.findChild(QLabel, "error-label")
+        assert lbl is not None
+        assert "integer" in lbl.text().lower()
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # 7. TravellerMap error paths (no network required)
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -629,6 +714,16 @@ class TestProceduralWorldGeneration:
         app_win._generate_btn.click()
         assert app_win._current_world.name == "Unknown"
 
+    def test_world_card_view_has_no_focus_policy(self, app_win):
+        # Read-only content display; must not grab native keyboard focus away
+        # from the Name field (a known QWebEngineView/Chromium focus-stealing
+        # quirk).
+        self._gen(app_win)
+        views = app_win.findChildren(_MockWebView)
+        assert views
+        for view in views:
+            assert view.focusPolicy() == Qt.FocusPolicy.NoFocus
+
     def test_different_seeds_produce_different_uwps(self, app_win):
         # Seeds 1 and 2 produce different systems — statistically guaranteed
         self._gen(app_win, seed="1")
@@ -689,6 +784,14 @@ class TestProceduralSystemGeneration:
     def test_mainworld_tab_is_active_by_default(self, system_app_win):
         tabs = system_app_win.findChild(QTabWidget)
         assert tabs.tabText(tabs.currentIndex()) == "Mainworld"
+
+    def test_system_and_mainworld_tab_views_have_no_focus_policy(self, system_app_win):
+        # The System/Mainworld web views are read-only content displays; they
+        # must not be able to grab native keyboard focus away from the Name
+        # field (a known QWebEngineView/Chromium focus-stealing quirk).
+        tabs = system_app_win.findChild(QTabWidget)
+        for i in range(tabs.count()):
+            assert tabs.widget(i).focusPolicy() == Qt.FocusPolicy.NoFocus
 
     def _gen(self, win, seed):
         win._seed_entry.blockSignals(True)
