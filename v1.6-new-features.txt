@@ -90,6 +90,29 @@ new, more systematic pattern.
   example "Unknown A-1 ay", "Unknown A-1 bee" — instead of the previous
   Greek-letter names (alpha, beta, ...).
 
+NOVELTY TECH LEVEL IS NOW FULLY CALCULATED
+--------------------------------------------
+The technology profile shown for an inhabited world ends in a Novelty Tech
+Level digit, which used to just repeat the world's own tech level as a
+placeholder. It's now genuinely calculated, using the highest of several
+factors:
+
+- A world's own most advanced locally produced prototypes, which can exceed
+  its everyday common tech level.
+- A "survivable prototype" allowance for worlds whose common tech level is
+  below what their environment normally requires — for example, a very low-
+  tech world in a vacuum is now assumed to have at least some higher-tech
+  prototype life support explaining how anyone survives there at all.
+- For worlds looked up from TravellerMap, the tech level of any nearby Rich,
+  Industrial, or Class A starport world within 6 parsecs.
+
+There's also a new optional "Relic technology" checkbox in the desktop app's
+generation options (off by default). When turned on, there's a small chance
+a world has relic technology left behind by a previous, more advanced
+civilization that has since fallen — this is a house rule, not from the
+World Builder's Handbook itself, since the rulebook only describes the idea
+without giving a way to roll for it.
+
 BUG FIXES
 ---------
 - Fixed: the System Map window did not remember your Light/Dark theme or

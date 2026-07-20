@@ -44,8 +44,27 @@ order:
    (weapons freely available), its lower bound is raised to Manufacturing TL rather
    than being forced to zero. Both sub-TLs receive DMs from government code, law
    level, population, and trade codes.
-6. **Technology profile string** — formatted as `H-L-QQQQQ-TTTT-MM` using eHex
-   digits (see "The technology profile string" section below).
+6. **Novelty TL** — the highest tech level a world has *any* access to, even if
+   not in common use (WBH §5, issue #137). Computed as the highest of four
+   factors: (a) the highest of the 11 sub-TLs just computed above — sub-TLs can
+   exceed the world's own common TL, so a world can have Novelty items purely
+   from its own locally produced prototypes; (b) a "survivable early prototype"
+   floor of `min_sustainable_tl − 2` when the world's common TL falls short of
+   what its environment requires to be habitable at all (e.g. a TL2 vacuum
+   world, which normally needs TL8, is assumed to have at least TL6 prototype
+   equipment explaining its survival); (c) an optional house-rule chance of
+   relic technology from a previous fallen culture (`relic_tech_rule` — **not**
+   transcribed WBH text, since the source gives only narrative guidance with no
+   dice mechanic; a 2D roll of 12 finds a relic culture, adding 1D above the
+   common TL); and (d) for TravellerMap-fetched worlds only, the highest TL
+   among Rich/Industrial/Class-A-starport worlds within 6 parsecs
+   (`novelty_tl_floor`, fetched via TravellerMap's `jumpworlds` API — see
+   `traveller_map_fetch.py`). Procedurally generated worlds get factors (a),
+   (b), and optionally (c); factor (d) needs a TravellerMap location to look up
+   and so never applies to them.
+7. **Technology profile string** — formatted as `H-L-QQQQQ-TTTT-MM-N` using
+   eHex digits, `N` being Novelty TL (see "The technology profile string"
+   section below).
 
 The function returns `None` when `population == 0` (uninhabited worlds have no
 technology to profile).
@@ -54,10 +73,11 @@ The companion function `attach_tech_detail()` walks a `TravellerSystem` and appl
 tech detail to the mainworld and every inhabited secondary world and moon. A separate
 helper `_tech_detail_for_det()` handles secondary worlds, where atmosphere and
 hydrographics are read from the compact SAH string rather than a full `WorldPhysical`
-object.
+object. It threads `novelty_tl_floor` (read from `system.novelty_tl_floor`, a
+dynamic attribute stamped by `generate_system_from_map()`) and `relic_tech_rule`
+through to every world in the system.
 
-Implements WBH §5 Social Characteristics (tech level breakdown). Novelty TL is
-deferred to issue #137.
+Implements WBH §5 Social Characteristics (tech level breakdown).
 
 ---
 
