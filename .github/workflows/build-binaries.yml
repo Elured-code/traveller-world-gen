@@ -146,6 +146,13 @@ jobs:
             upx
           python3.11 -m ensurepip --upgrade
 
+      # actions/checkout runs as the runner's host UID; inside the container
+      # git sees the checked-out workspace as owned by a different user and
+      # refuses to treat it as a repository ("not a git repository (or any
+      # parent up to mount point /)") unless explicitly marked safe.
+      - name: Mark workspace as a safe git directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - uses: actions/cache@v4
         with:
           path: ~/.cache/pip
