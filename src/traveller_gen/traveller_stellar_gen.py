@@ -775,10 +775,17 @@ def _small_star_age() -> float:
     return round(age, 2)
 
 
-def _generate_system_age(mass: float, ms_lifespan: float) -> float:
+def _generate_system_age(
+        mass: float,
+        ms_lifespan: float,
+        rng: Optional[random.Random] = None,
+) -> float:
     """
     Generate system age (Gyr) based on primary star mass (WBH p.20-22).
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     if mass <= 0:
         return _small_star_age()
 
@@ -1035,13 +1042,19 @@ def _companion_orbit() -> Tuple[float, float]:
     return round(orbit_num, 2), _orbit_to_au(orbit_num)
 
 
-def _secondary_orbit(slot: str) -> Tuple[float, float]:
+def _secondary_orbit(
+        slot: str,
+        rng: Optional[random.Random] = None,
+) -> Tuple[float, float]:
     """
     Secondary star Orbit# ranges (WBH p.27):
       Close  = 1D-1 (0=0.5); range 0.5–5
       Near   = 1D+5; range 6–11
       Far    = 1D+11; range 12–17
     """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
     if slot == "close":
         base = _rng.randint(1, 6) - 1
         orbit_num = max(0.5, float(base))

@@ -499,19 +499,26 @@ def parse_stellar_string(
     return results if results else [("G", 2, "V")]
 
 
-def reconstruct_star_system(stars_str: str) -> StarSystem:  # pylint: disable=too-many-locals
+def reconstruct_star_system(  # pylint: disable=too-many-locals
+        stars_str: str,
+        rng: Optional[random.Random] = None,
+) -> StarSystem:
     """
     Build a StarSystem from a TravellerMap stellar classification string.
 
     Physical properties (mass, luminosity, diameter, temperature) are derived
     from the canonical classification using the same WBH lookup tables as the
-    procedural generator.  System age is rolled randomly (seeded if a seed was
-    set before calling this function).
+    procedural generator.  System age is rolled randomly, seeded by `rng`.
 
     Secondary stars (2nd, 3rd, …) receive designations B, C, … and random
     orbital positions (close → near → far), so their exact Orbit# values
     vary per seed.  The star classifications themselves are fixed by the
     canonical data.
+
+    `rng` must be supplied for reproducible results — without it, age and
+    secondary-orbit rolls fall back to the unseeded global `random` module
+    (issue: same seed produced different secondary star positions across
+    calls, since this function never threaded an rng before).
     """
     parsed = parse_stellar_string(stars_str)
     system = StarSystem()
@@ -520,7 +527,7 @@ def reconstruct_star_system(stars_str: str) -> StarSystem:  # pylint: disable=to
     sp0, sub0, lum0          = parsed[0]
     mass0, temp0, diam0, lum_val0 = _star_properties(sp0, sub0, lum0)
     ms_life0                 = _main_sequence_lifespan(mass0)
-    age                      = _generate_system_age(mass0, ms_life0)
+    age                      = _generate_system_age(mass0, ms_life0, rng=rng)
 
     primary = Star(
         designation   = "A",
@@ -545,7 +552,7 @@ def reconstruct_star_system(stars_str: str) -> StarSystem:  # pylint: disable=to
         mass_s, temp_s, diam_s, lum_s = _star_properties(sp, sub, lum)
         ms_life_s    = _main_sequence_lifespan(mass_s)
         role         = _SECONDARY_ROLES[min(idx, len(_SECONDARY_ROLES) - 1)]
-        orbit_num, orbit_au_val = _secondary_orbit(role)
+        orbit_num, orbit_au_val = _secondary_orbit(role, rng=rng)
         desig        = chr(desig_ord)
         desig_ord   += 1
 
@@ -631,7 +638,8 @@ def reconstruct_world(map_data: MapWorldData) -> World:
 
 def _reconcile_orbit_types(orbits: SystemOrbits,
                             canonical_gg: int,
-                            canonical_belt: int) -> None:
+                            canonical_belt: int,
+                            rng: random.Random) -> None:
     """
     Redistribute world types in non-mainworld, non-empty slots to match
     the canonical gas-giant and belt counts from the PBG field.
@@ -641,6 +649,11 @@ def _reconcile_orbit_types(orbits: SystemOrbits,
     canonical counts can always be honoured.  Excess slots beyond the
     canonical total become terrestrial.  Mainworld slots are left unchanged.
     Call _recount_orbit_metadata() after the mainworld type is resolved.
+
+    `rng` must be the caller's seeded instance, not the bare `random` module
+    — this shuffle previously used `random.shuffle()` directly, which meant
+    world-type assignment for the same seed was not reproducible (it drew
+    from whatever the process-global random state happened to be).
     """
     slots = [o for o in orbits.orbits
              if o.world_type != "empty" and not o.is_mainworld_candidate]
@@ -660,7 +673,7 @@ def _reconcile_orbit_types(orbits: SystemOrbits,
         pool = pool[:n]  # only reachable if no empty slots remain
     else:
         pool += ["terrestrial"] * (n - len(pool))
-    random.shuffle(pool)
+    rng.shuffle(pool)
     for o, wtype in zip(slots, pool):
         o.world_type = wtype
 
@@ -775,7 +788,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     rng = random.Random(seed)
 
     # Step 2: canonical stellar system (types fixed, orbit positions random)
-    stellar = reconstruct_star_system(map_data.stars_str)
+    stellar = reconstruct_star_system(map_data.stars_str, rng=rng)
 
     # Step 3: procedural orbital layout
     orbits  = generate_orbits(stellar, rng=rng,
@@ -796,7 +809,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     # its type is set explicitly to "belt" in Step 6.
     mw_is_belt = world.size == 0
     belt_for_reconcile = max(0, world.belt_count - (1 if mw_is_belt else 0))
-    _reconcile_orbit_types(orbits, world.gas_giant_count, belt_for_reconcile)
+    _reconcile_orbit_types(orbits, world.gas_giant_count, belt_for_reconcile, rng)
 
     # Step 6: resolve mainworld orbit slot; stamp it with the canonical UWP so
     # the orbit table shows the real profile instead of blank/procedural data.

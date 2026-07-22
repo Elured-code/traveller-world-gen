@@ -397,6 +397,8 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "slot_index": o.slot_index,
                 "orbit_num": f"{o.orbit_number:.2f}",
                 "orbit_au": f"{o.orbit_au:.3f}",
+                "_sort_au": o.orbit_au,
+                "_own_desig": None,
                 "ecc_incl": ecc_incl,
                 "world_type": o.world_type,
                 "type_cls": type_cls,
@@ -413,19 +415,25 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
         # happen to have their own orbit slots (companions never do — planets
         # don't orbit them directly under WBH rules; a close/near/far
         # secondary may have none too, e.g. when its own exclusion zone
-        # leaves it no room). List each one under its own immediate parent
-        # star (companions: designation[:-1]; close/near/far: always the
-        # system primary), positioned by orbital radius among the worlds
-        # that orbit that same star — mirrors how system_map.py's SVG
-        # rendering always shows a secondary as context in the primary's
-        # zone regardless of whether it also has its own zone.
-        pri_desig = next(s.designation for s in self.stellar_system.stars
-                          if s.orbit_number == 0)
+        # leaves it no room). Companion stars (Aa, Ab, ...) are filed under
+        # their own immediate parent (designation[:-1]), sorted by their real
+        # orbit_au among that parent's own listings — same group as any
+        # planets that parent has. Close/near/far secondary stars (B, C, ...)
+        # are filed under the system primary, at their own real orbit_au, so
+        # they interleave with the primary's own planets/companions in true
+        # orbital order; `_own_desig` marks these rows so the assembly step
+        # below can splice each secondary's own local sequence (its own
+        # planets and its own companions, in their own orbital order) in
+        # immediately afterward — before any of the primary's other, more
+        # distant planets.
+        pri_desig = self.stellar_system.primary.designation
         for st in self.stellar_system.stars:
             if st.role == "companion":
-                parent_d = st.designation[:-1]
+                parent_d   = st.designation[:-1]
+                own_desig  = None
             elif st.role in ("close", "near", "far"):
-                parent_d = pri_desig
+                parent_d   = pri_desig
+                own_desig  = st.designation
             else:
                 continue  # the primary itself
             comp_ecc_incl = (
@@ -439,6 +447,8 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "slot_index": "",
                 "orbit_num": f"{st.orbit_number:.2f}" if st.orbit_number is not None else "",
                 "orbit_au": f"{st.orbit_au:.3f}" if st.orbit_au is not None else "",
+                "_sort_au": st.orbit_au if st.orbit_au is not None else 0.0,
+                "_own_desig": own_desig,
                 "ecc_incl": comp_ecc_incl,
                 "world_type": "star",
                 "type_cls": "type-star",
@@ -450,7 +460,25 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "moons": [],
                 "biosphere_str": "",
             })
-        orbit_rows.sort(key=lambda r: (r["star_desig"], float(r["orbit_au"] or 0.0)))
+
+        # Assemble the final display order: the primary's own planets,
+        # companion stars, and secondary-star rows interleave by real orbital
+        # radius; each secondary star's own local sequence (recursively built
+        # the same way) is spliced in immediately after its row, before the
+        # primary's next, more distant item.
+        def _local_items(desig: str) -> list:
+            return sorted(
+                (r for r in orbit_rows if r["star_desig"] == desig),
+                key=lambda r: r["_sort_au"],
+            )
+
+        ordered_rows: list = []
+        for row in _local_items(pri_desig):
+            ordered_rows.append(row)
+            own_desig = row.get("_own_desig")
+            if own_desig:
+                ordered_rows.extend(_local_items(own_desig))
+        orbit_rows = ordered_rows
 
         return {
             "title": (mw.name if mw else "Unknown") + " system",
@@ -1118,6 +1146,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
         world.hydrographics, world.size,
         atmosphere=world.atmosphere,
         temperature=world.temperature,
+        rng=rng,
     )
 
     # Step 11: Gas giants and belts — use orbit generation counts (no dice)

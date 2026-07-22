@@ -178,7 +178,11 @@ class TestNoveltyTLEndToEnd(unittest.TestCase):
         assert system.mainworld.tech_detail.tl_novelty == 15
 
     def test_without_compute_flag_novelty_tl_stays_placeholder(self):
-        """Regression: not passing compute_novelty_tl leaves the old placeholder behaviour."""
+        """Regression: not passing compute_novelty_tl means no nearby-worlds
+        floor is fetched or applied (the TravellerMap-only factor) — other
+        always-on Novelty TL factors, e.g. subcategory TL, may still apply
+        independently, so this only checks the nearby-worlds factor itself.
+        """
         from traveller_gen.system_pipeline import run_detail_pipeline, PipelineOptions
 
         data = _make_regina()
@@ -196,9 +200,7 @@ class TestNoveltyTLEndToEnd(unittest.TestCase):
             PipelineOptions(want_detail=True, want_social_detail=True),
         )
         mock_fetch.assert_not_called()
-        assert system.mainworld.tech_detail.tl_novelty == (
-            system.mainworld.tech_detail.tl_high_common
-        )
+        assert getattr(system, "novelty_tl_floor", None) is None
 
 
 if __name__ == "__main__":

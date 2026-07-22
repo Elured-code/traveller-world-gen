@@ -155,6 +155,7 @@ def _attach_physical(  # pylint: disable=too-many-locals,too-many-branches,too-m
         mw.hydrographics, mw.size,
         atmosphere=mw.atmosphere,
         temperature="Boiling",
+        rng=rng,
     )
     pressure_bar = (
         mw.atmosphere_detail.pressure_bar if mw.atmosphere_detail is not None else None

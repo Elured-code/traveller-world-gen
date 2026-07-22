@@ -5943,7 +5943,7 @@ class TestReconcileOrbitTypes:
             self._make_orbit("A", 5.0, "terrestrial", is_mainworld=True),
         ]
         so = self._make_orbits(slots)
-        _reconcile_orbit_types(so, canonical_gg=0, canonical_belt=3)
+        _reconcile_orbit_types(so, canonical_gg=0, canonical_belt=3, rng=random.Random(1))
         _recount_orbit_metadata(so)
         assert so.belt_count == 3, (
             f"Expected 3 belts after shortage fill, got {so.belt_count}"
@@ -5960,7 +5960,7 @@ class TestReconcileOrbitTypes:
             self._make_orbit("A", 4.0, "terrestrial", is_mainworld=True),
         ]
         so = self._make_orbits(slots)
-        _reconcile_orbit_types(so, canonical_gg=3, canonical_belt=0)
+        _reconcile_orbit_types(so, canonical_gg=3, canonical_belt=0, rng=random.Random(1))
         _recount_orbit_metadata(so)
         assert so.gas_giant_count == 3, (
             f"Expected 3 GGs after shortage fill, got {so.gas_giant_count}"
@@ -5981,7 +5981,7 @@ class TestReconcileOrbitTypes:
         ]
         so = self._make_orbits(slots)
         # Simulate the fix: canonical_belt=2, mainworld is a belt → pass 1
-        _reconcile_orbit_types(so, canonical_gg=0, canonical_belt=1)
+        _reconcile_orbit_types(so, canonical_gg=0, canonical_belt=1, rng=random.Random(1))
         # Step 6 equivalent: set mainworld slot to belt
         mw = next(o for o in so.orbits if o.is_mainworld_candidate)
         mw.world_type = "belt"
@@ -6004,7 +6004,7 @@ class TestReconcileOrbitTypes:
             self._make_orbit("A", 5.0, "terrestrial", is_mainworld=True),
         ]
         so = self._make_orbits(slots)
-        _reconcile_orbit_types(so, canonical_gg=2, canonical_belt=1)
+        _reconcile_orbit_types(so, canonical_gg=2, canonical_belt=1, rng=random.Random(1))
         _recount_orbit_metadata(so)
         assert so.gas_giant_count == 2
         assert so.belt_count == 1
@@ -8340,11 +8340,13 @@ class TestToPosterHtml:
 
     def test_orbit_rows_include_companion_star_sorted_by_orbital_radius(self):
         # Seed with a companion of a secondary star: A (primary), B (near
-        # secondary, has its own worlds), Ba (companion of B). B itself is
-        # also close/near/far so it gets its own context row under A, in
-        # addition to Ba's row under B — mirrors system_map.py's SVG, which
-        # always shows a secondary as context in the primary's zone even
-        # when it also has its own zone for its own worlds.
+        # secondary, has its own worlds), Ba (companion of B). A's own
+        # planets and B's row interleave in true orbital order (by
+        # AU-from-primary) — B's row is filed under the primary at its real
+        # orbit_au, with _own_desig="B" marking it for splicing. Immediately
+        # after B's row, B's own local sequence (its own worlds plus Ba, in
+        # their own orbital order around B) is spliced in — before any of
+        # A's other, more distant planets.
         system = generate_full_system(seed=1076570818)
         stars = system.stellar_system.stars
         assert [s.designation for s in stars] == ["A", "B", "Ba"]
@@ -8359,24 +8361,34 @@ class TestToPosterHtml:
         assert len(star_rows) == 2
 
         b_row = next(r for r in star_rows if r["profile"] == b.classification())
-        assert b_row["star_desig"] == "A", "B's own row should be listed under its parent, A"
+        assert b_row["star_desig"] == "A", "B's row interleaves with the primary's own items"
         assert b_row["orbit_au"] == f"{b.orbit_au:.3f}"
+        assert b_row["_own_desig"] == "B", "marks B's row for local-sequence splicing"
 
         ba_row = next(r for r in star_rows if r["profile"] == ba.classification())
-        assert ba_row["star_desig"] == "B", "Ba's row should be listed under its parent, B"
+        assert ba_row["star_desig"] == "B", "Ba's row is listed under its parent, B"
         assert ba_row["orbit_au"] == f"{ba.orbit_au:.3f}"
 
-        # orbit_rows must already be in (star_desig, orbit_au) sorted order —
-        # both star rows correctly interleaved among their parent's own
-        # worlds, not tacked on at the start/end.
-        resorted = sorted(orbit_rows, key=lambda r: (r["star_desig"], float(r["orbit_au"])))
-        assert orbit_rows == resorted
+        # B's row is immediately followed by its own full local sequence
+        # (Ba plus B's own worlds, in their own orbital order) before A's
+        # next, more distant item continues.
+        b_idx = orbit_rows.index(b_row)
+        b_group = [r for r in orbit_rows if r["star_desig"] == "B"]
+        assert orbit_rows[b_idx + 1: b_idx + 1 + len(b_group)] == sorted(
+            b_group, key=lambda r: r["_sort_au"]
+        )
+        # And A's own items (excluding B's spliced-in group) are in AU order.
+        a_items = [r for r in orbit_rows if r["star_desig"] == "A"]
+        assert a_items == sorted(a_items, key=lambda r: r["_sort_au"])
 
     def test_orbit_rows_include_secondary_star_with_no_orbit_slots_of_its_own(self):
         # Seed from the bug report: A (primary), B (close secondary with
         # ZERO orbit slots of its own — its exclusion zone leaves A with an
         # inner zone and an outer zone but B hosts no worlds at all). B was
-        # previously entirely invisible in this table.
+        # previously entirely invisible in this table; B's row now
+        # interleaves with A's own planets in true orbital order (by
+        # AU-from-primary), same as a secondary that does have worlds — it
+        # just has nothing to splice in after it.
         system = generate_full_system(seed=1559916071)
         stars = system.stellar_system.stars
         assert [s.designation for s in stars] == ["A", "B"]
@@ -8392,9 +8404,10 @@ class TestToPosterHtml:
         assert b_row["star_desig"] == "A"
         assert b_row["profile"] == b.classification()
         assert b_row["orbit_au"] == f"{b.orbit_au:.3f}"
+        assert b_row["_own_desig"] == "B"
 
         # B's row must sit between the Orbit# 1.06 (0.418 AU) and Orbit# 6.84
-        # (9.232 AU) world rows, per the bug report.
+        # (9.232 AU) world rows, per the bug report — true orbital order.
         b_idx = orbit_rows.index(b_row)
         assert orbit_rows[b_idx - 1]["orbit_num"] == "1.06"
         assert orbit_rows[b_idx + 1]["orbit_num"] == "6.84"
