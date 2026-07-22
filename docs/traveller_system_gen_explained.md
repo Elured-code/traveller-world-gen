@@ -350,15 +350,27 @@ two main data structures:
   worlds, e.g. when its own exclusion zone leaves it no room). Each such row
   has `world_type == "star"`, `profile` set to the star's classification
   (e.g. `"K1 V"`), and `star_desig` set to its immediate parent (`desig[:-1]`
-  for a companion, the system primary's designation for a secondary). After
-  building the real per-`OrbitSlot` rows, these star rows are appended and the
-  whole `orbit_rows` list is re-sorted once by `(star_desig, orbit_au)` so
-  each star row lands in its correct position among its parent's own worlds —
-  this is also why `OrbitSlot.slot_index` had to be fixed (Session 167) to be
+  for a companion, the system primary's designation for a secondary). This is
+  also why `OrbitSlot.slot_index` had to be fixed (Session 167) to be
   continuous across a star's inner/outer placement zones instead of resetting
   per zone, since `attach_detail()` keys its results by
   `f"{star_designation}-{slot_index}"` and a reset could silently collide two
   different orbits onto the same key.
+
+  **Session 177 reworked the final ordering** from a flat sort into true
+  orbital nesting. Every row carries `_sort_au` (a plain float, separate from
+  the displayed `orbit_au` text) and `_own_desig` (set only on close/near/far
+  secondary-star rows, naming that star's own designation). A local helper
+  `_local_items(desig)` returns all rows sharing that `star_desig`, sorted by
+  `_sort_au`. The assembly walks `_local_items(primary_desig)` once and, for
+  each row whose `_own_desig` is set, splices `_local_items(own_desig)` in
+  immediately afterward — before the primary's next, more distant item. The
+  net effect: a secondary star's own worlds now appear nested exactly where
+  that star sits among the primary's own planets, by real orbital radius,
+  instead of as a disconnected block. (An earlier version of this fix grouped
+  each secondary's worlds under a heading sorted to the front of a flat
+  per-star group; that was replaced with the hierarchical splice above after
+  it didn't match what was wanted.)
 
 The system card shows **stellar data and orbital survey only**. Mainworld detail
 (UWP stats, atmosphere, hydrographic, biological, habitability) appears exclusively

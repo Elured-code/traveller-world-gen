@@ -113,8 +113,24 @@ civilization that has since fallen — this is a house rule, not from the
 World Builder's Handbook itself, since the rulebook only describes the idea
 without giving a way to roll for it.
 
+ORBITAL SURVEY TABLE — TRUE ORBITAL ORDER FOR MULTI-STAR SYSTEMS
+--------------------------------------------------------------------
+In a multi-star system, a secondary star's own worlds now appear immediately
+after that star's own row in the Orbital survey table, positioned exactly
+where that star sits among the primary's own worlds by real orbital
+distance — instead of appearing as a separate, disconnected block further
+down the table.
+
 BUG FIXES
 ---------
+- Fixed: a world fetched from TravellerMap could show its mainworld
+  orbiting a different star depending on which part of the app you looked
+  at, even though everything was supposedly generated from the same seed.
+  Secondary star positions weren't actually using the seed in this code
+  path, so results could vary between requests. This could also
+  occasionally cause the wrong world to be promoted to mainworld when
+  "Select mainworld" was turned on. Both are now fully reproducible given
+  the same seed.
 - Fixed: the System Map window did not remember your Light/Dark theme or
   Perspective/Top-down view choice. Every newly opened map window reset to
   Dark theme and Top-down view regardless of what you had last selected. Both

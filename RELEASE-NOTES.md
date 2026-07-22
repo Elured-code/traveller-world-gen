@@ -1,8 +1,38 @@
-# Release Notes — v1.5.0 (draft)
+# Release Notes — v1.7.0 (draft)
 
-**Branch:** `v1.5.0` → `main`
-**Sessions:** 88–176
+**Branch:** `main`
+**Sessions:** 178–
 **Tests:** 3023
+
+---
+
+# Release Notes — v1.6.0
+
+**Branch:** `v1.6` → `main`
+**Sessions:** 88–177
+**Tests:** 3023
+
+---
+
+## Fix: TravellerMap Systems Could Give Different Results for "the Same" Seed — Session 177
+
+A world fetched from TravellerMap could show its mainworld orbiting a
+different star depending on which part of the app you were looking at (e.g.
+the system map vs. the orbital survey table) — even though both were
+supposedly generated from the same seed. Root cause: secondary star
+positions and system age weren't actually using the seed at all in this
+one code path, so results varied from request to request. Fixed, along with
+two related instances of the same underlying issue found while verifying —
+one of which could occasionally cause the wrong world to be promoted to
+mainworld when "Select mainworld" was enabled. All are now fully
+reproducible given the same seed.
+
+## Orbital Survey Table: True Orbital Order for Multi-Star Systems — Session 177
+
+In a multi-star system, the Orbital survey table now lists a secondary
+star's own worlds immediately after that star's own row, in true orbital
+order — nested exactly where that star sits among the primary's own worlds,
+rather than appearing as a disconnected block elsewhere in the table.
 
 ---
 
