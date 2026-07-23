@@ -256,6 +256,15 @@ def run_detail_pipeline(  # pylint: disable=too-many-branches
     if options is None:
         options = PipelineOptions()
 
+    system.runaway_greenhouse = options.runaway_greenhouse
+    system.independent_government = options.independent_government
+    system.optional_biomass = options.optional_biomass
+    system.optional_inhospitable = options.optional_inhospitable
+    system.relic_tech = options.relic_tech
+    system.settlement_type = options.settlement_type
+    system.select_mainworld = options.want_select_mw
+    system.social_detail = options.want_social_detail
+
     swapped = False
 
     if options.want_detail and system.mainworld is not None:

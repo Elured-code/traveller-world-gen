@@ -1236,7 +1236,38 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._act_export_poster.setEnabled(self._current_world is not None)
         self._show_system_summary(system)
 
+    def _sync_options_from_system(self, system: object) -> None:
+        """Restore the seed field and options dialog state from a loaded system.
+
+        Without this, hitting Generate (or opening Options) after loading a
+        JSON would silently use whatever seed/options this session last had
+        selected, rather than the ones the file was actually produced with.
+        """
+        seed = getattr(system, "seed", None)
+        if seed is not None:
+            self._seed_entry.setText(str(seed))
+        self._opt_full_system = True
+        self._opt_nhz = system.nhz_atmospheres  # type: ignore[attr-defined]
+        self._opt_eccentricity = system.orbital_eccentricity  # type: ignore[attr-defined]
+        self._opt_inclination = system.orbital_inclination  # type: ignore[attr-defined]
+        self._opt_runaway_greenhouse = system.runaway_greenhouse  # type: ignore[attr-defined]
+        self._opt_independent_gov = system.independent_government  # type: ignore[attr-defined]
+        self._opt_oxygen_biomass = system.optional_biomass  # type: ignore[attr-defined]
+        self._opt_relic_tech = system.relic_tech  # type: ignore[attr-defined]
+        self._opt_settlement_type = system.settlement_type  # type: ignore[attr-defined]
+        self._opt_select_mw = system.select_mainworld  # type: ignore[attr-defined]
+        self._opt_social_detail = system.social_detail  # type: ignore[attr-defined]
+
+    def _sync_options_from_world(self, world: object) -> None:
+        """Restore the seed field and settlement type from a loaded standalone world."""
+        seed = getattr(world, "seed", None)
+        if seed is not None:
+            self._seed_entry.setText(str(seed))
+        self._opt_full_system = False
+        self._opt_settlement_type = getattr(world, "settlement_type", "standard")
+
     def _load_system_from_json(self, system: object) -> None:
+        self._sync_options_from_system(system)
         self._current_system = system
         self._current_world = system.mainworld  # type: ignore[attr-defined]
         self._detail_attached = False
@@ -1482,6 +1513,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             self._show_error(f"Invalid world JSON: {exc}")
             return
 
+        self._sync_options_from_world(world)
         self._finish_generation(world)
 
     def _on_save_clicked(self) -> None:

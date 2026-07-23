@@ -152,6 +152,14 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
     nhz_atmospheres: bool = False
     orbital_eccentricity: bool = False
     orbital_inclination: bool = False
+    runaway_greenhouse: bool = False
+    independent_government: bool = False
+    optional_biomass: bool = False
+    optional_inhospitable: bool = False
+    relic_tech: bool = False
+    settlement_type: str = "standard"
+    select_mainworld: bool = False
+    social_detail: bool = False
     seed: Optional[int] = None
 
     def to_dict(self) -> dict:
@@ -162,6 +170,14 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
         d["nhz_atmospheres"] = self.nhz_atmospheres
         d["orbital_eccentricity"] = self.orbital_eccentricity
         d["orbital_inclination"] = self.orbital_inclination
+        d["runaway_greenhouse"] = self.runaway_greenhouse
+        d["independent_government"] = self.independent_government
+        d["optional_biomass"] = self.optional_biomass
+        d["optional_inhospitable"] = self.optional_inhospitable
+        d["relic_tech"] = self.relic_tech
+        d["settlement_type"] = self.settlement_type
+        d["select_mainworld"] = self.select_mainworld
+        d["social_detail"] = self.social_detail
         if self.seed is not None:
             d["seed"] = self.seed
         d["_app_version"] = APP_VERSION
@@ -190,6 +206,14 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             nhz_atmospheres=bool(d.get("nhz_atmospheres", False)),
             orbital_eccentricity=bool(d.get("orbital_eccentricity", False)),
             orbital_inclination=bool(d.get("orbital_inclination", False)),
+            runaway_greenhouse=bool(d.get("runaway_greenhouse", False)),
+            independent_government=bool(d.get("independent_government", False)),
+            optional_biomass=bool(d.get("optional_biomass", False)),
+            optional_inhospitable=bool(d.get("optional_inhospitable", False)),
+            relic_tech=bool(d.get("relic_tech", False)),
+            settlement_type=str(d.get("settlement_type", "standard")),
+            select_mainworld=bool(d.get("select_mainworld", False)),
+            social_detail=bool(d.get("social_detail", False)),
             seed=int(d["seed"]) if "seed" in d else None,
         )
 
@@ -1494,8 +1518,11 @@ def attach_body_names(system: TravellerSystem) -> None:
         star.name = f"{mw_name} {star.designation}"
 
     # Name orbit slots: one ordinal counter per star, combining worlds and
-    # belts in orbital-radius order (empty slots and the mainworld itself
-    # don't consume a number — the mainworld keeps the bare system name).
+    # belts in orbital-radius order. The mainworld still consumes a number
+    # (it occupies a real position in that sequence) even though it keeps
+    # the bare system name instead of a numbered suffix — so a world's
+    # number always reflects its true ordinal position outbound from the
+    # star, not its position among only the non-mainworld bodies.
     orbits_by_star: dict[str, list] = {}
     for orbit in system.system_orbits.orbits:
         if orbit.world_type == "empty":
@@ -1506,12 +1533,12 @@ def attach_body_names(system: TravellerSystem) -> None:
         orbits.sort(key=lambda o: o.orbit_au)
         counter = 0
         for orbit in orbits:
+            counter += 1
             if orbit is system.mainworld_orbit:
                 orbit.name = mw_name
                 # mainworld_orbit and mainworld are always set together.
                 system.mainworld.name = orbit.name  # type: ignore[union-attr]
             else:
-                counter += 1
                 orbit.name = f"{mw_name} {star_desig}-{counter}"
 
             # Propagate name to WorldDetail and assign phonetic moon names.

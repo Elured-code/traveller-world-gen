@@ -7,9 +7,12 @@ OrbitSlot, SystemOrbits, and TravellerSystem.
 
 import pytest
 
+import random
+
 from traveller_gen.traveller_stellar_gen import Star, StarSystem
 from traveller_gen.traveller_orbit_gen import OrbitSlot, SystemOrbits
 from traveller_gen.traveller_system_gen import TravellerSystem, generate_full_system
+from traveller_gen.system_pipeline import run_detail_pipeline, PipelineOptions
 
 
 # ---------------------------------------------------------------------------
@@ -217,9 +220,13 @@ class TestSystemRoundtrip:
         assert d1["stars"] == d2["stars"]
         assert d1["orbits"] == d2["orbits"]
         # Generation flags must survive
-        assert d1["nhz_atmospheres"] == d2["nhz_atmospheres"]
-        assert d1["orbital_eccentricity"] == d2["orbital_eccentricity"]
-        assert d1["orbital_inclination"] == d2["orbital_inclination"]
+        for key in (
+                "nhz_atmospheres", "orbital_eccentricity", "orbital_inclination",
+                "runaway_greenhouse", "independent_government", "optional_biomass",
+                "optional_inhospitable", "relic_tech", "settlement_type",
+                "select_mainworld", "social_detail",
+        ):
+            assert d1[key] == d2[key]
         # Mainworld core fields must survive
         if d1.get("mainworld"):
             assert self._world_core(d1["mainworld"]) == self._world_core(d2["mainworld"])
@@ -249,6 +256,106 @@ class TestSystemRoundtrip:
         assert system2.nhz_atmospheres is True
         assert system2.orbital_eccentricity is False
         assert system2.orbital_inclination is False
+
+    def test_pipeline_options_default_flags(self):
+        # A system that never went through run_detail_pipeline() keeps the
+        # dataclass defaults (all off, "standard" settlement).
+        system = generate_full_system(seed=42)
+        d = system.to_dict()
+        assert d["runaway_greenhouse"] is False
+        assert d["independent_government"] is False
+        assert d["optional_biomass"] is False
+        assert d["optional_inhospitable"] is False
+        assert d["relic_tech"] is False
+        assert d["settlement_type"] == "standard"
+        assert d["select_mainworld"] is False
+        assert d["social_detail"] is False
+
+    def test_pipeline_options_stamped_and_roundtrip(self):
+        # run_detail_pipeline() stamps every PipelineOptions flag onto the
+        # system, and they survive a to_dict()/from_dict() roundtrip.
+        seed = 639112771
+        rng = random.Random(seed)
+        system = generate_full_system(
+            seed=seed, rng=rng,
+            nhz_atmospheres=True, orbital_eccentricity=True, orbital_inclination=True,
+        )
+        run_detail_pipeline(system, rng, PipelineOptions(
+            want_detail=True,
+            want_select_mw=True,
+            runaway_greenhouse=True,
+            independent_government=True,
+            optional_biomass=True,
+            optional_inhospitable=True,
+            relic_tech=True,
+            settlement_type="long_settled",
+            want_social_detail=True,
+        ))
+        d = system.to_dict()
+        assert d["runaway_greenhouse"] is True
+        assert d["independent_government"] is True
+        assert d["optional_biomass"] is True
+        assert d["optional_inhospitable"] is True
+        assert d["relic_tech"] is True
+        assert d["settlement_type"] == "long_settled"
+        assert d["select_mainworld"] is True
+        assert d["social_detail"] is True
+
+        system2 = TravellerSystem.from_dict(d)
+        assert system2.runaway_greenhouse is True
+        assert system2.independent_government is True
+        assert system2.optional_biomass is True
+        assert system2.optional_inhospitable is True
+        assert system2.relic_tech is True
+        assert system2.settlement_type == "long_settled"
+        assert system2.select_mainworld is True
+        assert system2.social_detail is True
+
+    def test_saved_options_reproduce_identical_generation(self):
+        # The scenario that motivated this feature: a saved system's seed +
+        # its stored generation options must be enough to regenerate a
+        # byte-identical mainworld, independent of whatever options someone
+        # else might currently have selected in the UI.
+        seed = 639112771
+        rng = random.Random(seed)
+        system = generate_full_system(
+            seed=seed, rng=rng,
+            nhz_atmospheres=True, orbital_eccentricity=True, orbital_inclination=True,
+        )
+        run_detail_pipeline(system, rng, PipelineOptions(
+            want_detail=True,
+            want_select_mw=True,
+            independent_government=True,
+            optional_biomass=True,
+            settlement_type="long_settled",
+            want_social_detail=True,
+        ))
+        saved = system.to_dict()
+
+        # Reconstruct generation inputs purely from the saved dict, as an
+        # "Open JSON, then Regenerate" flow would.
+        replay_rng = random.Random(saved["seed"])
+        replay_system = generate_full_system(
+            seed=saved["seed"], rng=replay_rng,
+            nhz_atmospheres=saved["nhz_atmospheres"],
+            orbital_eccentricity=saved["orbital_eccentricity"],
+            orbital_inclination=saved["orbital_inclination"],
+        )
+        run_detail_pipeline(replay_system, replay_rng, PipelineOptions(
+            want_detail=True,
+            want_select_mw=saved["select_mainworld"],
+            runaway_greenhouse=saved["runaway_greenhouse"],
+            independent_government=saved["independent_government"],
+            optional_biomass=saved["optional_biomass"],
+            optional_inhospitable=saved["optional_inhospitable"],
+            relic_tech=saved["relic_tech"],
+            settlement_type=saved["settlement_type"],
+            want_social_detail=saved["social_detail"],
+        ))
+
+        assert replay_system.mainworld.uwp() == system.mainworld.uwp()
+        assert (replay_system.mainworld.tech_detail.technology_profile
+                == system.mainworld.tech_detail.technology_profile)
 
     def test_system_no_mainworld(self):
         system = generate_full_system(seed=42)

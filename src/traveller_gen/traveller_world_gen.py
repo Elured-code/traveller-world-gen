@@ -1543,6 +1543,7 @@ class World:  # pylint: disable=too-many-instance-attributes
     travel_zone:    str   = "Green"
     notes:          List[str] = field(default_factory=list)
     seed:           Optional[int] = None
+    settlement_type: str = "standard"
     size_detail:    Optional[Union["WorldPhysical", BeltPhysical]] = field(default=None, init=False)
     biomass_rating:        Optional[int] = field(default=None, init=False)
     biocomplexity_rating:  Optional[int] = field(default=None, init=False)
@@ -1671,6 +1672,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             "trade_codes": self.trade_codes,
             "travel_zone": self.travel_zone,
             "notes": self.notes,
+            "settlement_type": self.settlement_type,
             **({"size_detail": self.size_detail.to_dict()} if self.size_detail else {}),
             **({"biomass_rating": self.biomass_rating} if self.biomass_rating is not None else {}),
             **({"biocomplexity_rating": self.biocomplexity_rating}
@@ -1844,6 +1846,7 @@ class World:  # pylint: disable=too-many-instance-attributes
             trade_codes=list(d.get("trade_codes", [])),
             travel_zone=str(d.get("travel_zone", "Green")),
             notes=list(d.get("notes", [])),
+            settlement_type=str(d.get("settlement_type", "standard")),
         )
 
         atm_block = d.get("atmosphere", {})
@@ -3008,7 +3011,7 @@ def generate_world(  # pylint: disable=too-many-arguments,too-many-positional-ar
         rng = random.Random(seed)
         _rng = rng
     # When neither is given, use current _rng as-is (preserves random.seed() behaviour)
-    world = World(name=name, seed=seed)
+    world = World(name=name, seed=seed, settlement_type=settlement_type)
 
     # --- Step 1: Size ---
     world.size = generate_size()

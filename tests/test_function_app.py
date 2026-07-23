@@ -111,6 +111,7 @@ WORLD_TOP_LEVEL_KEYS = {
     "hydrographics", "population", "government", "law_level", "tech_level",
     "has_gas_giant", "gas_giant_count", "belt_count", "population_multiplier",
     "pbg", "bases", "trade_codes", "travel_zone", "notes", "seed",
+    "settlement_type",
 }
 
 

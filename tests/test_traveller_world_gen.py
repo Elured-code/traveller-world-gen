@@ -2686,7 +2686,7 @@ class TestWorldToDictValues:
             "hydrographics", "population", "government", "law_level",
             "tech_level", "has_gas_giant", "gas_giant_count", "belt_count",
             "population_multiplier", "pbg", "bases", "trade_codes",
-            "travel_zone", "notes",
+            "travel_zone", "notes", "settlement_type",
         }
         d = self._make_world().to_dict()
         assert required == set(d.keys()), (
@@ -2697,7 +2697,7 @@ class TestWorldToDictValues:
     def test_no_extra_keys(self):
         # to_dict should be a closed document — no surprise keys allowed.
         d = self._make_world().to_dict()
-        assert len(d) == 20
+        assert len(d) == 21
 
     # ------------------------------------------------------------------
     # Scalar fields
@@ -3223,7 +3223,7 @@ class TestWorldToDict:
             "hydrographics", "population", "government", "law_level",
             "tech_level", "has_gas_giant", "gas_giant_count", "belt_count",
             "population_multiplier", "pbg", "bases", "trade_codes",
-            "travel_zone", "notes",
+            "travel_zone", "notes", "settlement_type",
         }
         assert required == set(self._world().to_dict().keys())
 
@@ -3234,7 +3234,7 @@ class TestWorldToDict:
             "hydrographics", "population", "government", "law_level",
             "tech_level", "has_gas_giant", "gas_giant_count", "belt_count",
             "population_multiplier", "pbg", "bases", "trade_codes",
-            "travel_zone", "notes",
+            "travel_zone", "notes", "settlement_type",
         }
         extra = set(self._world().to_dict().keys()) - known
         assert extra == set(), f"Unexpected keys: {extra}"
@@ -3608,7 +3608,7 @@ class TestWorldToJson:
             "temperature", "hydrographics", "population", "government",
             "law_level", "tech_level", "has_gas_giant", "gas_giant_count",
             "belt_count", "population_multiplier", "pbg", "bases",
-            "trade_codes", "travel_zone", "notes",
+            "trade_codes", "travel_zone", "notes", "settlement_type",
         }
         assert required == set(parsed.keys())
 
@@ -3767,6 +3767,25 @@ class TestWorldDetailRoundtrip:
         restored2 = World.from_dict(json.loads(w2.to_json()))
         assert restored2.native_sophont is False
         assert restored2.extinct_sophont is True
+
+    def test_settlement_type_roundtrip(self):
+        w = self._base_world()
+        w.settlement_type = "long_settled"
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.settlement_type == "long_settled"
+
+    def test_settlement_type_defaults_to_standard(self):
+        w = self._base_world()
+        restored = World.from_dict(json.loads(w.to_json()))
+        assert restored.settlement_type == "standard"
+
+    def test_generate_world_stamps_settlement_type(self):
+        world = generate_world(name="Test", seed=42, settlement_type="backwater")
+        assert world.settlement_type == "backwater"
+        d = world.to_dict()
+        assert d["settlement_type"] == "backwater"
+        restored = World.from_dict(d)
+        assert restored.settlement_type == "backwater"
 
     def test_detail_absent_leaves_none(self):
         """A world JSON with no detail sub-objects produces None for all fields."""
@@ -4200,7 +4219,7 @@ class TestJsonSchema:
             "hydrographics", "population", "government", "law_level",
             "tech_level", "has_gas_giant", "gas_giant_count", "belt_count",
             "population_multiplier", "pbg", "bases", "trade_codes",
-            "travel_zone", "notes",
+            "travel_zone", "notes", "settlement_type",
         }
         assert expected == required_in_schema
 
@@ -7917,7 +7936,10 @@ class TestBodyNames:
 
     def test_world_names_sequential_per_star(self):
         # Worlds and belts share one ordinal counter per star, in orbital-
-        # radius order; the mainworld doesn't consume a number.
+        # radius order. The mainworld still consumes a number (it occupies
+        # a real slot in that sequence) even though it keeps the bare
+        # system name instead of a numbered suffix, so a later world's
+        # number reflects its true ordinal position outbound from the star.
         system = _name_system()
         orbits_by_star: dict = {}
         for o in system.system_orbits.orbits:
@@ -7931,14 +7953,36 @@ class TestBodyNames:
             orbits.sort(key=lambda o: o.orbit_au)
             counter = 0
             for orbit in orbits:
+                counter += 1
                 if orbit is system.mainworld_orbit:
                     assert orbit.name == system.mainworld.name
                 else:
-                    counter += 1
                     assert orbit.name == f"Test {star_desig}-{counter}"
                     if orbit.world_type == "belt":
                         checked_belt = True
         assert checked_belt, "seed 370 should include a belt in the counted sequence"
+
+    def test_mainworld_consumes_ordinal_number(self):
+        # A world outboard of the mainworld is numbered by its true ordinal
+        # position (counting the mainworld's own slot), not by its position
+        # among only the non-mainworld bodies in that star's sequence.
+        system = _name_system()
+        mw_orbit = system.mainworld_orbit
+        assert mw_orbit is not None
+        same_star = sorted(
+            (o for o in system.system_orbits.orbits
+             if o.world_type != "empty" and o.star_designation == mw_orbit.star_designation),
+            key=lambda o: o.orbit_au,
+        )
+        mw_index = same_star.index(mw_orbit)  # 0-based ordinal position
+        assert mw_index + 1 > 1 or len(same_star) > mw_index + 1, (
+            "seed 370's mainworld star needs a neighbour to make this check meaningful"
+        )
+        for i, orbit in enumerate(same_star):
+            if orbit is mw_orbit:
+                continue
+            expected_number = i + 1  # 1-based ordinal, mainworld's slot included
+            assert orbit.name == f"Test {mw_orbit.star_designation}-{expected_number}"
 
     # ------------------------------------------------------------------
     # Moon naming

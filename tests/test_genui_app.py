@@ -12,6 +12,7 @@ Skip them (e.g. in headless CI without Qt):
 """
 
 import importlib.util
+import json
 import os
 import sys
 from unittest.mock import patch
@@ -623,6 +624,80 @@ class TestFileMenuNewActions:
         lbl = app_win.findChild(QLabel, "error-label")
         assert lbl is not None
         assert "integer" in lbl.text().lower()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 6b. Open JSON restores seed + generation options
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestOpenJsonRestoresOptions:
+    """Opening a saved JSON must restore the seed field and options dialog
+    state used to produce it -- otherwise a subsequent Generate click
+    reproduces nothing (silently uses whatever this session's options
+    happened to be), defeating the point of saving the seed at all."""
+
+    def _open(self, app_win, tmp_path, data: dict, name: str = "saved.json"):
+        path = tmp_path / name
+        path.write_text(json.dumps(data), encoding="utf-8")
+        with patch.object(QFileDialog, "getOpenFileName",
+                           return_value=(str(path), "")):
+            app_win._act_open_json.trigger()
+
+    def test_system_json_restores_seed_and_options(self, app_win, tmp_path):
+        from traveller_gen.traveller_system_gen import generate_full_system  # noqa: PLC0415
+        from traveller_gen.system_pipeline import (  # noqa: PLC0415
+            run_detail_pipeline, PipelineOptions,
+        )
+        import random  # noqa: PLC0415
+
+        seed = 639112771
+        rng = random.Random(seed)
+        system = generate_full_system(
+            seed=seed, rng=rng,
+            nhz_atmospheres=True, orbital_eccentricity=True, orbital_inclination=True,
+        )
+        run_detail_pipeline(system, rng, PipelineOptions(
+            want_detail=True, want_select_mw=True, runaway_greenhouse=True,
+            independent_government=True, optional_biomass=True,
+            relic_tech=True, settlement_type="long_settled",
+            want_social_detail=True,
+        ))
+
+        app_win._opt_full_system = False
+        app_win._opt_nhz = False
+        app_win._opt_settlement_type = "standard"
+
+        self._open(app_win, tmp_path, system.to_dict())
+
+        assert app_win._seed_entry.text() == str(seed)
+        assert app_win._opt_full_system is True
+        assert app_win._opt_nhz is True
+        assert app_win._opt_eccentricity is True
+        assert app_win._opt_inclination is True
+        assert app_win._opt_runaway_greenhouse is True
+        assert app_win._opt_independent_gov is True
+        assert app_win._opt_oxygen_biomass is True
+        assert app_win._opt_relic_tech is True
+        assert app_win._opt_settlement_type == "long_settled"
+        assert app_win._opt_select_mw is True
+        assert app_win._opt_social_detail is True
+
+    def test_world_json_restores_seed_and_settlement_type(self, app_win, tmp_path):
+        from traveller_gen.traveller_world_gen import generate_world  # noqa: PLC0415
+
+        world = generate_world(name="Standalone", seed=99, settlement_type="backwater")
+
+        app_win._opt_full_system = True
+        app_win._opt_settlement_type = "standard"
+
+        # world.to_json() (not to_dict()) is what stamps "_app_version" --
+        # matching what a real Save As produces, and what _on_open_json's
+        # version-mismatch check expects to find.
+        self._open(app_win, tmp_path, json.loads(world.to_json()))
+
+        assert app_win._seed_entry.text() == "99"
+        assert app_win._opt_full_system is False
+        assert app_win._opt_settlement_type == "backwater"
 
 
 # ════════════════════════════════════════════════════════════════════════════
