@@ -377,9 +377,17 @@ New and updated fields in `traveller_world_schema.json`:
 | `extinct_sophont` | boolean | `World` |
 | `fluid_type` | string | `HydrographicDetail` |
 | `habitability_rating` | integer | `World` |
+| `settlement_type` | string enum | `World` (v1.6.1) |
 
 Removed field: `advanced_seismic_temperature_k` (seismic heating now baked into
 `advanced_mean_temperature_k` / `high_temperature_k` / `low_temperature_k`).
+
+Note: this table was not kept in sync for every schema change between v1.5.0
+(Session 124) and v1.6.1 (Session 178) — see the per-version `docs/release-vX.Y.Z.md`
+files (v1.5.29 through v1.6.1) and `RELEASE-NOTES.md` for the fields added in
+between (resource_rating, population_detail, government_detail, law_detail,
+tech_detail, culture_detail, importance_detail/economics fields, starport
+detail, etc.).
 
 ---
 
@@ -393,8 +401,9 @@ Removed field: `advanced_seismic_temperature_k` (seismic heating now baked into
 | v1.5.0 (Sessions 88–112) | **1946** |
 | v1.5.0 (Sessions 113–119) | **2044** |
 | v1.5.0 (Sessions 120–124) | **2250** |
+| v1.6.1 (Sessions 88–178) | **3032** |
 
-All 2250 tests pass.
+All 3032 tests pass.
 
 ---
 

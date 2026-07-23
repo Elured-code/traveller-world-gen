@@ -88,12 +88,30 @@ class TravellerSystem:
     system_orbits: SystemOrbits       # from traveller_orbit_gen.py
     mainworld: Optional[World]        # from traveller_world_gen.py
     mainworld_orbit: Optional[OrbitSlot]
-    seed: Optional[str] = None        # the seed used to generate this system
+    nhz_atmospheres: bool = False
+    orbital_eccentricity: bool = False
+    orbital_inclination: bool = False
+    runaway_greenhouse: bool = False
+    independent_government: bool = False
+    optional_biomass: bool = False
+    optional_inhospitable: bool = False
+    relic_tech: bool = False
+    settlement_type: str = "standard"
+    select_mainworld: bool = False
+    social_detail: bool = False
+    seed: Optional[int] = None        # the seed used to generate this system
 ```
 
 This is the root object for a complete system. Everything else hangs off it.
-`seed` is emitted by `to_dict()` when set, so a saved system always records the
-seed that produced it.
+`seed` and every generation-option flag are emitted unconditionally by
+`to_dict()`, so a saved system always records everything needed to
+reproduce it exactly — not just the seed. The first three flags
+(`nhz_atmospheres`/`orbital_eccentricity`/`orbital_inclination`) are set by
+the entry-point functions (`generate_full_system()` etc.) themselves; the
+remaining eight are stamped onto `system` by `run_detail_pipeline()`
+(`system_pipeline.py`) from its `PipelineOptions` argument, at the very top
+of the function — before anything else runs — so even a request that never
+gets past `want_detail=False` still records what was asked for (Session 178).
 
 ---
 
@@ -226,7 +244,7 @@ deterministic (no dice) and idempotent.
 |------|-------------|---------|
 | Every star, including companions | `<systemname> <designation>` | `"Unknown A"`, `"Unknown Ba"` |
 | Mainworld orbit | `<systemname>` (bare, no suffix) | `"Unknown"`, `"Regina"` |
-| Non-mainworld world or belt | `<systemname> <star_designation>-<n>` — `n` is the body's 1-based position among its own star's non-empty orbit slots, sorted by `orbit_au` ascending. Worlds and belts share one counter (no longer separate) | `"Unknown A-1"`, `"Unknown A-2"` (could be a belt) |
+| Non-mainworld world or belt | `<systemname> <star_designation>-<n>` — `n` is the body's true 1-based ordinal position among its own star's non-empty orbit slots (mainworld included), sorted by `orbit_au` ascending. Worlds and belts share one counter (no longer separate); the mainworld's own slot still consumes a number even though it displays no suffix, so a world past the mainworld is never off-by-one from its real position outbound from the star (Session 178) | `"Unknown A-1"`, `"Unknown A-3"` (if the mainworld occupies A-2) |
 | Non-ring moon | `<orbit_name> <satellite>` — phonetic letter-name sequence (`ay, bee, cee, dee, ee, ef, gee, haich, eye, jay, kay, el, em, en, oh, pee, cue, ar, es, tee, you, vee, double-you, ex, why, zed`; rings skipped) | `"Unknown A-1 ay"`, `"Unknown A-1 bee"` |
 | Ring moon | Not named (`name` stays `""`) | — |
 

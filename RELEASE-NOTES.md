@@ -2,7 +2,41 @@
 
 **Branch:** `main`
 **Sessions:** 178–
-**Tests:** 3023
+**Tests:** 3032
+
+---
+
+## Generation Options Recorded on TravellerSystem/World for Reproducibility — Session 178 (v1.6.1)
+
+A saved system or world JSON already recorded its `seed`, but not the full
+set of generation options used alongside it, so "the same seed" could look
+non-reproducible if different options were selected in the UI than when the
+file was first generated (surfaced by a live investigation earlier this
+session: reproducing a reported seed required matching NHZ Atm, Biomass
+Rule, Independent Government, Select MW, Social Detail, and Settlement Type
+exactly — none of which the saved file recorded). `TravellerSystem` gains
+`runaway_greenhouse`, `independent_government`, `optional_biomass`,
+`optional_inhospitable`, `relic_tech`, `settlement_type`, `select_mainworld`,
+and `social_detail`, stamped from `PipelineOptions` by `run_detail_pipeline()`
+regardless of how far the pipeline actually runs. `World` gains
+`settlement_type` — the only one of these options that genuinely affects a
+standalone mainworld's own rolled values, since the rest only ever apply via
+`attach_detail()`/`attach_tech_detail()`, which require a `TravellerSystem`
+even in endpoints that only return the mainworld. In gen-ui, Open JSON now
+restores the seed field and every option in the Options dialog from the
+loaded file (new `_sync_options_from_system()`/`_sync_options_from_world()`
+helpers), so a subsequent Generate click actually reproduces what was
+loaded instead of silently using whatever options this session last had
+selected. The FastAPI web UI has no JSON-load feature, so nothing to wire
+there. Schema-triggered patch release: APP_VERSION 1.6.0 → 1.6.1.
+
+## Bug Fix: World Numbering Past the Mainworld — Session 178
+
+`attach_body_names()`'s per-star world/belt counter didn't consume a number
+at the mainworld's own orbit slot, so a world past the mainworld was
+numbered one lower than its true ordinal position outbound from the star.
+The mainworld's slot now consumes a number like any other body; it still
+displays no numbered suffix, but later worlds are numbered correctly.
 
 ---
 

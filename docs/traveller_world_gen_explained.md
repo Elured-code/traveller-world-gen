@@ -141,7 +141,15 @@ class World:
     trade_codes: List[str] = field(default_factory=list)
     travel_zone: str = "Green"
     notes:       List[str] = field(default_factory=list)
+    seed:            Optional[int] = None
+    settlement_type: str = "standard"
 ```
+
+`seed` and `settlement_type` are stamped by `generate_world()` itself
+(mirroring `TravellerSystem`'s `seed`/`nhz_atmospheres`/etc.) so a saved
+world JSON records everything needed to reproduce it: pass the same
+`seed` and `settlement_type` back to `generate_world()` for identical
+output (Session 178).
 
 ### `field(default=None, init=False)` — fields set later
 
@@ -163,9 +171,6 @@ created. These use `field(default=..., init=False)`:
 
     # Set by attach_detail() → _apply_habitability()
     habitability_rating:  Optional[int] = field(default=None, init=False)
-
-    # Set when an explicit seed or rng was passed to generate_world():
-    seed: Optional[str] = field(default=None, init=False)
 ```
 
 `init=False` means the field is **not** a parameter to `__init__` — it starts at its
