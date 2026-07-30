@@ -74,7 +74,7 @@ When System detail is on, five sub-options become available:
 | **Oxygen requires biomass** | Free oxygen is unstable without life to replenish it. When checked, oxygen-bearing atmospheres require a biosphere to sustain them. |
 | **Advanced temperature** | Calculates a physics-based mean surface temperature from luminosity, orbit distance, and atmospheric pressure, replacing the basic temperature band. |
 | **Runaway greenhouse** | Applies Venus-like runaway greenhouse conditions to worlds that qualify — raises temperature to Boiling and may alter the atmosphere. |
-| **Independent government** | Secondary worlds may develop their own government independent of the mainworld (WBH Case 2, p.162). When off, secondary worlds default to the mainworld's political authority. |
+| **Independent Secondary World Government** | Secondary worlds may develop their own government independent of the mainworld (WBH p.162 independent case). When off, secondary worlds with Gov 1–3 use the mainworld-authority procedure and Gov 6 worlds use the Captive Government table. |
 
 ### Population detail
 

@@ -42,7 +42,7 @@ nhz_atmospheres            — use WBH Non-Habitable Zone atmosphere tables.
 orbital_eccentricity       — roll orbital eccentricities (WBH p.27).
 orbital_inclination        — roll orbital inclinations (WBH p.28).
 runaway_greenhouse         — optional runaway greenhouse check (WBH p.79).
-independent_government     — Case 2 secondary government (WBH p.162).
+independent_government     — independent secondary world government (WBH p.162); when false, Gov 6 uses Captive table, Gov 1-3 uses mainworld-authority procedure.
 optional_biomass_rule      — raise oxygenated-atmosphere biomass 0→1 (WBH p.131).
 optional_inhospitable_rule — single 2D for all non-HZ secondaries (WBH p.130).
 

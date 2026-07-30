@@ -312,24 +312,42 @@ def _independent_government(population: int, rng: random.Random) -> int:
     return max(0, _roll(2, -7 + population, rng=rng))
 
 
-def _secondary_law_level(government: int, mainworld_law: int,
-                         rng: random.Random,
-                         independent: bool = False) -> int:
+def _secondary_law_level(  # pylint: disable=too-many-return-statements,too-many-positional-arguments,too-many-arguments
+        government: int, mainworld_gov: int, mainworld_law: int,
+        rng: random.Random,
+        independent: bool = False,
+        classification: Optional[str] = None,
+) -> int:
     """
-    Law Level for a secondary world (WBH p.171).
-    For captive governments (6) in Case 1: 1D determines relationship to mainworld.
-    For Case 2 (independent=True) or non-6 governments: standard 2D-7 + Government.
+    Law Level for a secondary world (WBH pp.171-172), three-case procedure.
+
+    Case 1 — Gov 6, under mainworld authority: 1D (DM+1 for Pe/Mb) selects formula.
+    Case 2 — Gov 1-3, under mainworld authority: 2D minus mainworld Gov, then 1D branch.
+    Case 3 — all others (independent or gov 0/4/5): standard 2D-7+Gov; DM-1 for Fp.
     """
     if not independent and government == 6:
-        r = rng.randint(1, 6)
+        # Case 1: Captive Government
+        dm = 1 if classification in ("Pe", "Mb") else 0
+        r = rng.randint(1, 6) + dm
         if r <= 2:
-            return max(0, _roll(2, -7 + 6, rng=rng))   # rerolled for Gov 6
+            return max(0, _roll(2, -1, rng=rng))         # 2D-7+6 = 2D-1
         if r <= 4:
-            return mainworld_law                         # equal to mainworld
+            return mainworld_law                          # equal to mainworld
         if r == 5:
-            return mainworld_law + 1                     # mainworld + 1
-        return mainworld_law + rng.randint(1, 6)
-    return max(0, _roll(2, -7 + government, rng=rng))
+            return max(0, mainworld_law + 1)
+        return max(0, mainworld_law + rng.randint(1, 6))
+    if not independent and government in (1, 2, 3):
+        # Case 2: Gov 1-3 under mainworld authority
+        result = _roll(2, -mainworld_gov, rng=rng)
+        if result <= 0:
+            return mainworld_law
+        r2 = rng.randint(1, 6)
+        if r2 <= 3:
+            return max(0, result)
+        return max(0, _roll(2, -7 + government, rng=rng))
+    # Case 3: Other (independent, or gov 0/4/5)
+    dm = -1 if classification == "Fp" else 0
+    return max(0, _roll(2, -7 + government + dm, rng=rng))
 
 
 def _secondary_tech_level(atmosphere: int, mainworld_tl: int) -> int:
@@ -1167,13 +1185,20 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
             gov, is_indep = _independent_government(pop, rng), True
         else:
             gov, is_indep = _secondary_government(mwc.pop, mwc.gov, rng), False
-        law  = _secondary_law_level(gov, mwc.law, rng, independent=independent_government)
         tl   = _secondary_tech_level(0, mwc.tl)
+        cls  = _secondary_classification(pop=pop, gov=gov, tl=tl, law_level=0,
+                                         atm=0, hyd=0, hz_deviation=hz_deviation,
+                                         is_belt=False, mwc=mwc, rng=rng)
+        law  = _secondary_law_level(gov, mwc.gov, mwc.law, rng,
+                                    independent=independent_government,
+                                    classification=cls)
         port = _spaceport(pop, rng)
-        det = WorldDetail(sah=sah, population=pop, government=gov,
-                          law_level=law, tech_level=tl, spaceport=port,
-                          is_independent_government=is_indep)
-        _apply_classification(det, hz_deviation, is_belt=False, mwc=mwc, rng=rng)
+        det  = WorldDetail(sah=sah, population=pop, government=gov,
+                           law_level=law, tech_level=tl, spaceport=port,
+                           is_independent_government=is_indep)
+        det.classification = cls
+        if cls and cls not in det.trade_codes:
+            det.trade_codes.append(cls)
         return det
 
     # Size 2+: generate atmosphere and hydrographics
@@ -1199,13 +1224,21 @@ def _moon_detail(  # pylint: disable=too-many-arguments,too-many-positional-argu
         gov, is_indep = _independent_government(pop, rng), True
     else:
         gov, is_indep = _secondary_government(mwc.pop, mwc.gov, rng), False
-    law  = _secondary_law_level(gov, mwc.law, rng, independent=independent_government)
     tl   = _secondary_tech_level(atmosphere, mwc.tl)
+    cls  = _secondary_classification(pop=pop, gov=gov, tl=tl, law_level=0,
+                                     atm=atmosphere, hyd=hydrographics,
+                                     hz_deviation=hz_deviation, is_belt=False,
+                                     mwc=mwc, rng=rng)
+    law  = _secondary_law_level(gov, mwc.gov, mwc.law, rng,
+                                independent=independent_government,
+                                classification=cls)
     port = _spaceport(pop, rng)
-    det = WorldDetail(sah=sah, population=pop, government=gov,
-                      law_level=law, tech_level=tl, spaceport=port,
-                      is_independent_government=is_indep)
-    _apply_classification(det, hz_deviation, is_belt=False, mwc=mwc, rng=rng)
+    det  = WorldDetail(sah=sah, population=pop, government=gov,
+                       law_level=law, tech_level=tl, spaceport=port,
+                       is_independent_government=is_indep)
+    det.classification = cls
+    if cls and cls not in det.trade_codes:
+        det.trade_codes.append(cls)
     return det
 
 # ---------------------------------------------------------------------------
@@ -1293,18 +1326,26 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
                     gov, is_indep = _independent_government(pop, rng), True
                 else:
                     gov, is_indep = _secondary_government(mwc.pop, mwc.gov, rng), False
-                law  = _secondary_law_level(gov, mwc.law, rng,
-                                            independent=independent_government)
                 tl   = _secondary_tech_level(belt_atm, mwc.tl)
+                cls  = _secondary_classification(
+                    pop=pop, gov=gov, tl=tl, law_level=0,
+                    atm=belt_atm, hyd=0,
+                    hz_deviation=orbit.hz_deviation, is_belt=True,
+                    mwc=mwc, rng=rng,
+                )
+                law  = _secondary_law_level(gov, mwc.gov, mwc.law, rng,
+                                            independent=independent_government,
+                                            classification=cls)
                 port = _spaceport(pop, rng)
-                result[key] = WorldDetail(
+                det  = WorldDetail(
                     sah="000", population=pop, government=gov,
                     law_level=law, tech_level=tl, spaceport=port,
                     is_independent_government=is_indep,
                 )
-                _apply_classification(
-                    result[key], orbit.hz_deviation, is_belt=True, mwc=mwc, rng=rng,
-                )
+                det.classification = cls
+                if cls and cls not in det.trade_codes:
+                    det.trade_codes.append(cls)
+                result[key] = det
             # Belt physical detail (WBH pp.131-133)
             same_star_outward = sorted(
                 [o for o in orbits.orbits
@@ -1355,18 +1396,26 @@ def generate_system_detail(  # pylint: disable=too-many-locals,too-many-branches
                     gov, is_indep = _independent_government(pop, rng), True
                 else:
                     gov, is_indep = _secondary_government(mwc.pop, mwc.gov, rng), False
-                law  = _secondary_law_level(gov, mwc.law, rng,
-                                            independent=independent_government)
                 tl   = _secondary_tech_level(atm, mwc.tl)
+                cls  = _secondary_classification(
+                    pop=pop, gov=gov, tl=tl, law_level=0,
+                    atm=atm, hyd=hydro,
+                    hz_deviation=orbit.hz_deviation, is_belt=False,
+                    mwc=mwc, rng=rng,
+                )
+                law  = _secondary_law_level(gov, mwc.gov, mwc.law, rng,
+                                            independent=independent_government,
+                                            classification=cls)
                 port = _spaceport(pop, rng)
-                result[key] = WorldDetail(
+                det  = WorldDetail(
                     sah=sah, population=pop, government=gov,
                     law_level=law, tech_level=tl, spaceport=port,
                     is_independent_government=is_indep,
                 )
-                _apply_classification(
-                    result[key], orbit.hz_deviation, is_belt=False, mwc=mwc, rng=rng,
-                )
+                det.classification = cls
+                if cls and cls not in det.trade_codes:
+                    det.trade_codes.append(cls)
+                result[key] = det
 
     # Attach moons and their full detail to every WorldDetail
     for key, world_detail in result.items():
@@ -1717,12 +1766,18 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
     mwc = _mw_context(mainworld)
     max_pop = max(0, mwc.pop - rng.randint(1, 6))
 
-    def _social(det: "WorldDetail", atm: int) -> None:
+    def _social(  # pylint: disable=too-many-branches
+            det: "WorldDetail", atm: int,
+            hz_deviation: float = 0.0, is_belt: bool = False,
+    ) -> None:
         """Re-apply social data to a single non-mainworld WorldDetail."""
         pop = _secondary_population(max_pop, rng)
         if pop > 0 and _minimal_tl(atm) > mwc.tl:
             pop = 0
         det.population = pop
+        sz_ch = det.sah[0] if len(det.sah) > 0 else "0"
+        sz  = 1 if sz_ch == "S" else _ehex_to_int(sz_ch)
+        hyd = _ehex_to_int(det.sah[2]) if len(det.sah) > 2 else 0
         if pop == 0:
             det.government  = 0
             det.law_level   = 0
@@ -1730,24 +1785,32 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
             det.spaceport   = "-"
             det.is_independent_government = False
             det.classification = None
+            det.trade_codes = assign_trade_codes(sz, atm, hyd, 0, 0, 0, 0)
         else:
             if independent_government:
                 gov, is_indep = _independent_government(pop, rng), True
             else:
                 gov, is_indep = _secondary_government(mwc.pop, mwc.gov, rng), False
             det.government = gov
-            det.law_level  = _secondary_law_level(gov, mwc.law, rng,
-                                                   independent=independent_government)
-            det.tech_level = _secondary_tech_level(atm, mwc.tl)
+            tl  = _secondary_tech_level(atm, mwc.tl)
+            cls = _secondary_classification(
+                pop=pop, gov=gov, tl=tl, law_level=0,
+                atm=atm, hyd=hyd, hz_deviation=hz_deviation,
+                is_belt=is_belt, mwc=mwc, rng=rng,
+            )
+            det.law_level  = _secondary_law_level(gov, mwc.gov, mwc.law, rng,
+                                                   independent=independent_government,
+                                                   classification=cls)
+            det.tech_level = tl
             det.spaceport  = _spaceport(pop, rng)
             det.is_independent_government = is_indep
-        sz_ch = det.sah[0] if len(det.sah) > 0 else "0"
-        sz  = 1 if sz_ch == "S" else _ehex_to_int(sz_ch)
-        hyd = _ehex_to_int(det.sah[2]) if len(det.sah) > 2 else 0
-        det.trade_codes = assign_trade_codes(
-            sz, atm, hyd,
-            det.population, det.government, det.law_level, det.tech_level,
-        )
+            det.classification = cls
+            det.trade_codes = assign_trade_codes(
+                sz, atm, hyd,
+                det.population, det.government, det.law_level, det.tech_level,
+            )
+            if cls and cls not in det.trade_codes:
+                det.trade_codes.append(cls)
 
     def _sync_mw(det: "WorldDetail") -> None:
         """Sync mainworld social data into a satellite WorldDetail."""
@@ -1765,10 +1828,7 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
                 continue
             m_det = moon.detail
             m_atm = _ehex_to_int(m_det.sah[1]) if len(m_det.sah) > 1 else 0
-            _social(m_det, m_atm)
-            _apply_classification(
-                m_det, hz_deviation, is_belt=False, mwc=mwc, rng=rng,
-            )
+            _social(m_det, m_atm, hz_deviation=hz_deviation, is_belt=False)
 
     # ── Mainworld orbit ───────────────────────────────────────────────────
     mw_orbit = system.mainworld_orbit
@@ -1801,11 +1861,8 @@ def apply_secondary_social(  # pylint: disable=too-many-branches,too-many-statem
             continue
         # Terrestrial or belt
         atm = _ehex_to_int(det.sah[1]) if len(det.sah) > 1 else 0
-        _social(det, atm)
-        _apply_classification(
-            det, orbit.hz_deviation, is_belt=(orbit.world_type == "belt"),
-            mwc=mwc, rng=rng,
-        )
+        is_belt = orbit.world_type == "belt"
+        _social(det, atm, hz_deviation=orbit.hz_deviation, is_belt=is_belt)
         _moons_social(det.moons, hz_deviation=orbit.hz_deviation)
 
 

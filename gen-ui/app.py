@@ -607,7 +607,7 @@ class _OptionsDialog(QDialog):
         self._check_eccentricity.setChecked(eccentricity)
         self._check_inclination = QCheckBox("Orbital inclination")
         self._check_inclination.setChecked(inclination)
-        self._check_independent_gov = QCheckBox("Independent government")
+        self._check_independent_gov = QCheckBox("Independent Secondary\nWorld Government")
         self._check_independent_gov.setChecked(independent_government)
         self._check_select_mw = QCheckBox("Select mainworld")
         self._check_select_mw.setChecked(select_mainworld)
