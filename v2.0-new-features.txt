@@ -1,0 +1,31 @@
+Traveller World & System Generator — What's New in v2.0
+=========================================================
+
+SECONDARY WORLD LAW LEVEL NOW FOLLOWS THE WBH THREE-CASE PROCEDURE
+--------------------------------------------------------------------
+The law level rolled for secondary worlds (planets and moons that are not the
+mainworld) now uses the full three-case procedure from World Builder's Handbook
+pp.171-172, instead of the simplified captive-table-or-flat-roll approach used
+previously.
+
+- Captive governments (Government Code 6, not independently governed): the law
+  level is determined by rolling 1D and comparing it to the mainworld's own law
+  level. A low roll produces an independently-determined law level, a middling
+  roll matches or is one above the mainworld, and a high roll adds a further
+  1D on top. Penal Colony and Military Base designations shift the 1D roll
+  upward, making extreme outcomes more likely.
+- Low-authority governments (Codes 1-3, not independently governed): roll 2D
+  and subtract the mainworld's government code. On a low result the secondary
+  simply adopts the mainworld's law level; on a higher result a second 1D
+  determines whether the secondary sets its own level or re-rolls independently.
+- All other cases (independently governed worlds, or government codes outside
+  the tables above): roll 2D-7 plus the government code. Freeport worlds
+  (trading hubs with minimal government) get a -1 adjustment.
+
+The "Independent Secondary World Government" checkbox (previously labelled
+"Independent Government" in the desktop app, and "Indep Gov" in the web
+interface) now clearly applies Case 3 across all government codes rather than
+only affecting captive governments.
+
+BUG FIXES
+---------

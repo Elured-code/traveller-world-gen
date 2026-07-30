@@ -2,7 +2,58 @@
 
 **Branch:** `main`
 **Sessions:** 178–
-**Tests:** 3032
+**Tests:** 3046
+
+---
+
+## WBH Three-Case Secondary World Law Level Procedure — Session 179 (issue #135)
+
+`_secondary_law_level()` now implements all three cases from WBH pp.171-172.
+Previously the function handled only captive (Gov 6) and a flat 2D-7+Gov fallback
+(with the `independent` flag routing between them). The updated function adds:
+
+- **Case 1 (Gov 6, under mainworld authority):** 1D+DM determines the formula.
+  DM+1 for Pe or Mb classification. Results: ≤2 → 2D-1; 3-4 → mainworld Law;
+  5 → mainworld Law+1; 6+ → mainworld Law+1D. All outcomes clamped ≥ 0.
+- **Case 2 (Gov 1-3, under mainworld authority):** 2D minus mainworld Gov. If
+  result ≤ 0 → mainworld Law. Otherwise 1D: 1-3 use the result, 4-6 reroll
+  as 2D-7+Gov.
+- **Case 3 (independent, or Gov 0/4/5):** 2D-7+Gov, DM-1 for Fp classification.
+
+New parameter `mainworld_gov: int` added; `classification: Optional[str]`
+added for DM lookup. Updated signature:
+
+```python
+def _secondary_law_level(
+        government: int, mainworld_gov: int, mainworld_law: int,
+        rng: random.Random,
+        independent: bool = False,
+        classification: Optional[str] = None,
+) -> int:
+```
+
+At all 6 call sites (two in `_moon_detail()`, two in `generate_system_detail()`,
+one in `apply_secondary_social()._social()`, one via `_moons_social()`),
+classification is now determined **before** law level using
+`_secondary_classification()` with provisional `law_level=0`, so Pe/Mb/Fp DMs
+have correct classification context. Standalone `_apply_classification()` calls
+replaced with direct `det.classification = cls` assignment; the
+`if cls not in det.trade_codes` guard appends it there too.
+
+`_social()` inner function in `apply_secondary_social()` gains `hz_deviation:
+float = 0.0` and `is_belt: bool = False` parameters so `_moons_social()` can
+pass orbital context in a single call rather than calling `_apply_classification()`
+again after `_social()`.
+
+gen-ui checkbox renamed from "Independent government" to "Independent Secondary\n
+World Government". Web UI label changed from "Indep Gov" to "Indep Sec Gov";
+tooltip updated to describe all three cases. API query-param name
+`independent_government` unchanged (no API breaking change).
+
+Seed-breaking change for secondary worlds (accepted; running on v2.0 branch).
+14 new tests in `TestSecondaryLawLevelWBH` covering all three cases, sub-cases,
+DMs, and the non-negative invariant. 3046 tests pass (up from 3032); pylint
+10.00/10.
 
 ---
 
