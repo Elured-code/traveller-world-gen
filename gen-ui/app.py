@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QDialog,
     QDialogButtonBox,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -59,6 +60,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QMessageBox,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSizePolicy,
     QTabWidget,
     QVBoxLayout,
@@ -106,6 +108,7 @@ QLabel#zone-red     { background-color: #c0392b; color: white;
                       padding: 2px 10px; border-radius: 4px; }
 QLabel#uwp-label    { font-family: monospace; font-size: 18pt; font-weight: bold; }
 QLabel#world-name   { font-size: 16pt; font-weight: bold; }
+QLineEdit#world-name { font-size: 16pt; font-weight: bold; border: none; background: transparent; padding: 0px; }
 QLabel#error-label  { color: #c0392b; font-weight: bold; }
 QLabel#hint-label   { font-style: italic; }
 QLabel#dim-label    { color: #888888; }
@@ -137,6 +140,7 @@ QLabel#zone-red     { background-color: #c0392b; color: white;
                       padding: 2px 10px; border-radius: 4px; }
 QLabel#uwp-label    { font-family: monospace; font-size: 18pt; font-weight: bold; }
 QLabel#world-name   { font-size: 16pt; font-weight: bold; }
+QLineEdit#world-name { font-size: 16pt; font-weight: bold; border: none; background: transparent; padding: 0px; }
 QLabel#error-label  { color: #ff6b6b; font-weight: bold; }
 QLabel#hint-label   { font-style: italic; }
 QLabel#dim-label    { color: #aaaaaa; }
@@ -721,6 +725,129 @@ class _OptionsDialog(QDialog):
 
 
 # ---------------------------------------------------------------------------
+# Edit names dialog
+# ---------------------------------------------------------------------------
+
+_WORLD_TYPE_LABELS: dict[str, str] = {
+    "T": "Terrestrial", "GG": "Gas Giant", "BD": "Belt",
+}
+
+
+class _EditNamesDialog(QDialog):  # pylint: disable=too-few-public-methods
+    """Modal dialog for renaming stars, worlds, and moons in a generated system."""
+    # pylint: disable=missing-function-docstring
+
+    def __init__(  # pylint: disable=too-many-statements,too-many-locals
+            self, parent: QWidget, system: object) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Edit Names")
+        self.resize(520, 450)
+        self._setters: list = []
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        inner = QWidget()
+        form = QFormLayout(inner)
+        form.setSpacing(6)
+        form.setContentsMargins(12, 12, 12, 12)
+        form.setFieldGrowthPolicy(
+            QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow
+        )
+
+        # ── Stars ──────────────────────────────────────────────────────────
+        stars = system.stellar_system.stars  # type: ignore[attr-defined]
+        if stars:
+            form.addRow(QLabel("<b>Stars</b>"))
+            for star in stars:
+                lbl = f"{star.designation}  ({star.classification()})"
+                edit = QLineEdit(star.name)
+                def _star_apply(s=star, e=edit):
+                    s.name = e.text()
+                self._setters.append(_star_apply)
+                form.addRow(lbl, edit)
+
+        # ── Worlds ─────────────────────────────────────────────────────────
+        all_orbits = [
+            o for o in system.system_orbits.orbits  # type: ignore[attr-defined]
+            if o.world_type != "empty"
+        ]
+        if all_orbits:
+            form.addRow(QLabel("<b>Worlds</b>"))
+            mw_orbit = system.mainworld_orbit  # type: ignore[attr-defined]
+            mw = system.mainworld  # type: ignore[attr-defined]
+            for orbit in all_orbits:
+                if orbit is mw_orbit:
+                    name = mw.name if mw is not None else (orbit.name or "")
+                    edit = QLineEdit(name)
+                    def _mw_apply(w=mw, o=orbit, e=edit):
+                        n = e.text()
+                        if w is not None:
+                            w.name = n
+                        o.name = n
+                        if o.detail is not None:
+                            o.detail.name = n
+                    self._setters.append(_mw_apply)
+                    form.addRow("Mainworld", edit)
+                else:
+                    type_lbl = _WORLD_TYPE_LABELS.get(
+                        str(orbit.world_type), str(orbit.world_type)
+                    )
+                    lbl = (
+                        f"{orbit.star_designation}  "
+                        f"#{orbit.orbit_number:.0f}  ({type_lbl})"
+                    )
+                    name = (
+                        (orbit.detail.name if orbit.detail else None)
+                        or orbit.name or ""
+                    )
+                    edit = QLineEdit(name)
+                    def _orbit_apply(o=orbit, e=edit):
+                        n = e.text()
+                        o.name = n
+                        if o.detail is not None:
+                            o.detail.name = n
+                    self._setters.append(_orbit_apply)
+                    form.addRow(lbl, edit)
+
+        # ── Moons ──────────────────────────────────────────────────────────
+        moon_rows = [
+            (orbit, moon)
+            for orbit in system.system_orbits.orbits  # type: ignore[attr-defined]
+            if orbit.detail is not None
+            for moon in orbit.detail.moons
+            if not moon.is_ring
+        ]
+        if moon_rows:
+            form.addRow(QLabel("<b>Moons</b>"))
+            for orbit, moon in moon_rows:
+                lbl = f"Moon of {orbit.name or '?'}  (size {moon.size_code})"
+                edit = QLineEdit(moon.name)
+                def _moon_apply(m=moon, e=edit):
+                    n = e.text()
+                    m.name = n
+                    if m.detail is not None:
+                        m.detail.name = n
+                self._setters.append(_moon_apply)
+                form.addRow(lbl, edit)
+
+        scroll.setWidget(inner)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.addWidget(scroll, stretch=1)
+        main_layout.addWidget(buttons)
+
+    def apply(self) -> None:
+        for setter in self._setters:
+            setter()
+
+
+# ---------------------------------------------------------------------------
 # Main window
 # ---------------------------------------------------------------------------
 
@@ -744,6 +871,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_btn: QPushButton | None = None
         self._survey_btn: QPushButton | None = None
         self._survey_combo: QComboBox | None = None
+        self._mw_name_edit: QLineEdit | None = None
+        self._edit_names_btn: QPushButton | None = None
+        self._system_view: object | None = None
+        self._mw_view: object | None = None
+        self._world_view: object | None = None
         self._generate_btn: QPushButton | None = None
         self._worker: _TravMapWorker | None = None
         self._pending_full_system: bool = False
@@ -1646,6 +1778,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_btn = None
         self._survey_btn = None
         self._survey_combo = None
+        self._mw_name_edit = None
+        self._edit_names_btn = None
+        self._system_view = None
+        self._mw_view = None
+        self._world_view = None
         while self._status_layout.count():
             item = self._status_layout.takeAt(0)
             if item is not None:
@@ -1792,6 +1929,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        self._world_view = view
         self._status_layout.addWidget(view, stretch=1)
 
     def _show_system_summary(self, system: object) -> None:
@@ -1819,6 +1957,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         system_view.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        self._system_view = system_view
         tabs.addTab(system_view, "System")
 
         # Tab 2 — Mainworld: world card HTML view
@@ -1829,6 +1968,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             mw_view.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
             )
+            self._mw_view = mw_view
             tabs.addTab(mw_view, "Mainworld")
             tabs.setCurrentIndex(1)
 
@@ -1842,9 +1982,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         layout.setContentsMargins(0, 0, 0, 0)
 
         if mw is not None:
-            name_lbl = QLabel(mw.name)
-            name_lbl.setObjectName("world-name")
-            layout.addWidget(name_lbl)
+            name_edit = QLineEdit(mw.name)
+            name_edit.setObjectName("world-name")
+            name_edit.setFrame(False)
+            name_edit.setToolTip("Click to rename mainworld")
+            name_edit.editingFinished.connect(self._on_mw_name_edited)
+            self._mw_name_edit = name_edit
+            layout.addWidget(name_edit)
 
             uwp_lbl = QLabel(mw.uwp())
             uwp_lbl.setObjectName("uwp-label")
@@ -1866,6 +2010,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
         layout.addWidget(spacer)
+
+        edit_names_btn = QPushButton("Edit Names…")
+        edit_names_btn.clicked.connect(self._on_edit_names_clicked)
+        self._edit_names_btn = edit_names_btn
+        layout.addWidget(edit_names_btn)
 
         survey_btn = QPushButton("Survey Form")
         survey_btn.clicked.connect(self._on_survey_clicked)
@@ -1893,9 +2042,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         layout.setSpacing(10)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        name_lbl = QLabel(world.name)  # type: ignore[attr-defined]
-        name_lbl.setObjectName("world-name")
-        layout.addWidget(name_lbl)
+        name_edit = QLineEdit(world.name)  # type: ignore[attr-defined]
+        name_edit.setObjectName("world-name")
+        name_edit.setFrame(False)
+        name_edit.setToolTip("Click to rename")
+        name_edit.editingFinished.connect(self._on_mw_name_edited)
+        self._mw_name_edit = name_edit
+        layout.addWidget(name_edit)
 
         uwp_lbl = QLabel(world.uwp())  # type: ignore[attr-defined]
         uwp_lbl.setObjectName("uwp-label")
@@ -1915,6 +2068,65 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         return header
 
+    # ── Name editing helpers ────────────────────────────────────────────────
+
+    def _on_mw_name_edited(self) -> None:
+        if self._mw_name_edit is None:
+            return
+        text = self._mw_name_edit.text()
+        self._mw_name_edit.blockSignals(True)
+        if self._current_system is not None:
+            mw = self._current_system.mainworld  # type: ignore[attr-defined]
+            if mw is not None and text != mw.name:  # type: ignore[attr-defined]
+                mw.name = text  # type: ignore[attr-defined]
+                mw_orbit = self._current_system.mainworld_orbit  # type: ignore[attr-defined]
+                if mw_orbit is not None:
+                    mw_orbit.name = text
+                    if mw_orbit.detail is not None:
+                        mw_orbit.detail.name = text
+                self._refresh_html_views()
+        elif self._current_world is not None:
+            world = self._current_world
+            if text != world.name:  # type: ignore[attr-defined]
+                world.name = text  # type: ignore[attr-defined]
+                self._refresh_html_views()
+        self._mw_name_edit.blockSignals(False)
+
+    def _refresh_html_views(self) -> None:
+        if self._current_system is not None:
+            sys_obj = self._current_system
+            if self._system_view is not None:
+                self._system_view.setHtml(  # type: ignore[attr-defined]
+                    self._themed_html(
+                        sys_obj.to_html(  # type: ignore[attr-defined]
+                            detail_attached=self._detail_attached
+                        )
+                    )
+                )
+            mw = sys_obj.mainworld  # type: ignore[attr-defined]
+            if self._mw_view is not None and mw is not None:
+                self._mw_view.setHtml(  # type: ignore[attr-defined]
+                    self._themed_html(mw.to_html())  # type: ignore[attr-defined]
+                )
+        elif self._current_world is not None and self._world_view is not None:
+            self._world_view.setHtml(  # type: ignore[attr-defined]
+                self._themed_html(
+                    self._current_world.to_html()  # type: ignore[attr-defined]
+                )
+            )
+
+    def _on_edit_names_clicked(self) -> None:
+        if self._current_system is None:
+            return
+        dlg = _EditNamesDialog(self, self._current_system)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            dlg.apply()
+            mw = self._current_system.mainworld  # type: ignore[attr-defined]
+            if self._mw_name_edit is not None and mw is not None:
+                self._mw_name_edit.blockSignals(True)
+                self._mw_name_edit.setText(mw.name)  # type: ignore[attr-defined]
+                self._mw_name_edit.blockSignals(False)
+            self._refresh_html_views()
 
 
 # ---------------------------------------------------------------------------
