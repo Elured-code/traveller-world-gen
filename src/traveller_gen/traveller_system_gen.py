@@ -286,6 +286,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "designation":    desig,
                 "primary":        primary_of,
                 "classification": star.classification(),
+                "name":           star.name,
                 "mass":           f"{star.mass:.2f}",
                 "temperature":    f"{star.temperature:,}",
                 "luminosity":     f"{star.luminosity:.3g}",
@@ -386,6 +387,9 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                     )
                     moons.append({
                         "name": moon.name,
+                        "name_label": (None if moon.is_ring
+                                       else f"Moon of {o.name or '?'}"
+                                            f" (size {moon.size_str})"),
                         "idx": mi,
                         "pd_str": (f"{moon.orbit_pd:.1f} PD"
                                    if moon.orbit_pd is not None else ""),
@@ -415,8 +419,20 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 if bm is not None and bm > 0 and bc is not None:
                     biosphere_str = f"{to_hex(bm)}, {to_hex(bc)}"
 
+            if o.is_mainworld_candidate:
+                name_label = "Mainworld"
+            elif o.world_type == "empty":
+                name_label = None
+            elif o.world_type == "gas_giant":
+                name_label = f"{o.star_designation} #{o.slot_index} (Gas Giant)"
+            elif o.world_type == "belt":
+                name_label = f"{o.star_designation} #{o.slot_index} (Belt)"
+            else:
+                name_label = f"{o.star_designation} #{o.slot_index} (World)"
+
             orbit_rows.append({
                 "name": o.name,
+                "name_label": name_label,
                 "star_desig": o.star_designation,
                 "slot_index": o.slot_index,
                 "orbit_num": f"{o.orbit_number:.2f}",
@@ -467,6 +483,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             )
             orbit_rows.append({
                 "name": st.name,
+                "name_label": None,
                 "star_desig": parent_d,
                 "slot_index": "",
                 "orbit_num": f"{st.orbit_number:.2f}" if st.orbit_number is not None else "",

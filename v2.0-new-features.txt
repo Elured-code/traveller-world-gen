@@ -27,5 +27,20 @@ The "Independent Secondary World Government" checkbox (previously labelled
 interface) now clearly applies Case 3 across all government codes rather than
 only affecting captive governments.
 
+GEN-UI — RENAME STARS, WORLDS, AND MOONS AFTER GENERATING
+-----------------------------------------------------------
+Body names are no longer locked in once you generate a system. You can now
+edit any name directly in the desktop app without regenerating.
+
+- The world or system name shown in the result header is now a text field.
+  Click it, type the new name, and press Enter — the system card and
+  world card both update immediately, with no need to regenerate.
+- An "Edit Names…" button opens a scrollable dialog listing every body in
+  the system: stars, worlds (including the mainworld and asteroid belts),
+  and moons. Each row shows a brief label — star designation and class,
+  orbit position and world type, or which world a moon belongs to — next
+  to a text field you can edit. Click OK to apply all changes at once, or
+  Cancel to discard them.
+
 BUG FIXES
 ---------
