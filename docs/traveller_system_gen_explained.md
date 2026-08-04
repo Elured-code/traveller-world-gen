@@ -358,9 +358,27 @@ two main data structures:
   primary itself, `desig[:-1]` for a companion, or the system primary's
   designation for a close/near/far secondary. Rendered between the Desig and
   Class columns.
+
+  Session 181 added `"name": star.name` to support the web-app Edit Names
+  dialog. The template renders it in a new **Name** column (last column in the
+  Stars table) with `data-name-idx` and `data-name-label` attributes so that
+  the parent page's JS can identify and target it.
+
 - **`orbit_rows`** — one dict per orbit slot, with inline `moons` list. Session 102 added
   `"name"` as the first key in each orbit row and moon sub-dict, so `system_card.html` can
   display it as the leftmost column.
+
+  Session 181 added `"name_label"` to every orbit row and moon sub-dict for the
+  Edit Names dialog. The label is a human-readable hint shown next to each name
+  field:
+  - `"Mainworld"` for the mainworld candidate orbit
+  - `None` for empty slots, companion/secondary-star synthetic rows, and ring moons
+  - `"<desig> #<n> (Gas Giant|Belt|World)"` for non-mainworld bodies
+  - `"Moon of <parent> (size <s>)"` for non-ring moons
+
+  The template wraps each nameable name cell in a conditional that attaches
+  `data-name-idx` (a monotonic counter via `{% set ns = namespace(idx=0) %}`)
+  and `data-name-label` only when `name_label is not none`.
 
   Sessions 166–167 added synthetic rows for non-primary stars — companions and
   close/near/far secondaries alike — so they're visible in this table even
