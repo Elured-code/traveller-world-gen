@@ -2,7 +2,39 @@
 
 **Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3066
+**Tests:** 3068
+
+---
+
+## Horizontal Scroll Bar on Result Panel — Session 182 (issue #174)
+
+`_build_ui()` in `gen-ui/app.py` now wraps `_status_widget` in a `QScrollArea`
+(`setWidgetResizable(True)`) so that the result panel can scroll horizontally when
+the window is narrower than its content. `_status_widget.setMinimumWidth(740)` sets
+the minimum scrollable width; the controls panel (Name, Seed, Generate, Options, source
+radio) sits outside the scroll area and stays fixed in place regardless of window width.
+
+Two new tests in `tests/test_genui_app.py`: `test_status_panel_wrapped_in_scroll_area`
+(asserts `isinstance(_status_widget.parent().parent(), QScrollArea)`) and
+`test_status_scroll_area_is_widget_resizable` (asserts `widgetResizable()` is True).
+The double `.parent()` chain is required because `QScrollArea.setWidget()` parents
+the inner widget to the viewport, not the scroll area directly.
+
+`docs/uat-plan.md` updated: header bumped to Session 182 (was Session 138); scope
+note updated; section 6 Aegir tests renumbered from UAT-100/101 to UAT-146/147,
+resolving an ID collision with the section 15 social detail tests of the same IDs;
+new sections 20–27 added covering all features implemented since Session 138:
+
+- **§20 User Guide window** (UAT-148–152, Session 141)
+- **§21 System Map perspective toggle** (UAT-153–155, Sessions 148–149)
+- **§22 A3 Poster Export** (UAT-156–160, Sessions 148–159)
+- **§23 File > New / New with New Seed** (UAT-161–163, Session 162)
+- **§24 Body name editing / Edit Names dialog** (UAT-164–169, Session 180)
+- **§25 Relic technology option** (UAT-170–172, Sessions 175–176)
+- **§26 Options restored on Open JSON** (UAT-173–174, Session 178)
+- **§27 Horizontal scroll bar** (UAT-175–176, this session)
+
+No schema changes. 3068 tests pass; pylint 10.00/10.
 
 ---
 

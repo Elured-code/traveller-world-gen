@@ -42,5 +42,20 @@ edit any name directly in the desktop app without regenerating.
   to a text field you can edit. Click OK to apply all changes at once, or
   Cancel to discard them.
 
+WEB APP — RENAME STARS, WORLDS, AND MOONS AFTER GENERATING
+-----------------------------------------------------------
+The FastAPI web app now has the same name-editing capability as the desktop app.
+After generating a full system, an "Edit Names…" button appears in the tab bar.
+Clicking it opens a dialog listing every nameable body — stars, worlds, and moons —
+each with a label and a text field. Edit any names you like, click OK, and both the
+System tab and the Mainworld tab update to reflect the new names instantly.
+
+GEN-UI — HORIZONTAL SCROLL BAR IN RESULT PANEL
+-----------------------------------------------
+The desktop app's result panel now scrolls horizontally when the window is narrowed.
+The controls panel (Name, Seed, Generate, Options, source radio) stays fixed and
+always visible. Only the result content — the system card, world card, or onboarding
+placeholder — scrolls.
+
 BUG FIXES
 ---------
