@@ -958,10 +958,14 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         root.addWidget(_make_hsep(margin_v=8))
 
         self._status_widget = QWidget()
+        self._status_widget.setMinimumWidth(740)
         self._status_layout = QVBoxLayout(self._status_widget)
         self._status_layout.setSpacing(10)
         self._status_layout.setContentsMargins(0, 0, 0, 0)
-        root.addWidget(self._status_widget, stretch=1)
+        scroll = QScrollArea()
+        scroll.setWidget(self._status_widget)
+        scroll.setWidgetResizable(True)
+        root.addWidget(scroll, stretch=1)
 
         ver_label = QLabel(_DISPLAY_VERSION)
         ver_label.setObjectName("version-label")

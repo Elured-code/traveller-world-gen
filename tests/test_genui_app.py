@@ -42,7 +42,7 @@ SurveyFormWindow = _mod.SurveyFormWindow
 from PySide6.QtCore import Qt  # noqa: E402
 from PySide6.QtWidgets import (  # noqa: E402
     QCheckBox, QComboBox, QDialog, QDialogButtonBox, QFileDialog,
-    QLabel, QMessageBox, QPushButton, QRadioButton, QTabWidget, QWidget,
+    QLabel, QMessageBox, QPushButton, QRadioButton, QScrollArea, QTabWidget, QWidget,
 )
 
 
@@ -218,6 +218,16 @@ class TestAppWindowStartup:
 
     def test_current_system_none_on_startup(self, app_win):
         assert app_win._current_system is None
+
+    def test_status_panel_wrapped_in_scroll_area(self, app_win):
+        # _status_widget's parent is the viewport; viewport's parent is the QScrollArea
+        scroll = app_win._status_widget.parent().parent()
+        assert isinstance(scroll, QScrollArea)
+
+    def test_status_scroll_area_is_widget_resizable(self, app_win):
+        scroll = app_win._status_widget.parent().parent()
+        assert isinstance(scroll, QScrollArea)
+        assert scroll.widgetResizable()
 
 
 # ════════════════════════════════════════════════════════════════════════════
