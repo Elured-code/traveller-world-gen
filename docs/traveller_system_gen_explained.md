@@ -277,7 +277,7 @@ was a safe, purely cosmetic change.
 
 ---
 
-## `to_survey_form_html_class4()` — IISS Class IV Survey form (Session 140)
+## `to_survey_form_html_class4()` — IISS Class IV Survey form (Session 140, updated Session 185)
 
 `TravellerSystem.to_survey_form_html_class4()` renders the `survey_class4.html`
 Jinja2 template and returns a self-contained HTML page (IISS Form 0407F-IV Part C).
@@ -289,13 +289,22 @@ when the corresponding detail object is not attached.
 | Section | Source on `World` |
 |---------|-----------------|
 | Population | `population_detail` |
-| Government | `government_detail` |
-| Law Level | `law_detail` |
+| Government | `government_detail` (non-balkanised) OR `balkanised_detail` (gov code 7) |
+| Law Level | `law_detail` (world-level) + per-nation from `balkanised_detail` when present |
 | Technology | `tech_detail` |
-| Culture | `culture_detail` |
+| Culture | `culture_detail` (world-level) + per-nation from `balkanised_detail` when present |
 | Economics / Importance | `importance_detail` + `size_detail.resource_factor` |
 | Starport | `starport_detail` |
-| Military | `military_detail` |
+| Military | `military_detail` (world-level) + per-nation from `balkanised_detail` when present |
+
+**Balkanised worlds (gov code 7, Session 185):** When `mw.balkanised_detail` is set,
+the method builds a `balk_ctx` dict (passed to the template as `balk`) containing
+nation-level government profiles and per-nation law, culture, and military contexts.
+The template's Government section branches on `{% if balk %}` to show a nation table
+(type, strength, centralisation, authority, structure, profile/law-level); the
+`{% elif gov %}` path handles all other governments unchanged. The Law Level, Culture,
+and Military sections each append a per-nation sub-table when `balk` is set,
+appearing below the world-level rows.
 
 **Notable implementation details:**
 - `gov_names` is a local snake_case dict (pylint C0103 requires local variable names;
@@ -305,6 +314,8 @@ when the corresponding detail object is not attached.
   instead of `{{ value or "—" }}` — Jinja2's `or` treats the formatted string `"0"`
   as truthy but a numeric `0` as falsy, which caused blank display for zero-GWP worlds.
 - Military branches are rendered in pairs (`branch_pairs`) for a 4-column layout.
+- Per-nation military context omits branch pairs; only summary (budget %, readiness,
+  profile) is stored in `balk_ctx` to keep the table compact.
 
 Called by the same callers as the other survey form methods (FastAPI, gen-ui).
 
