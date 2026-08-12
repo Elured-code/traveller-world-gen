@@ -89,8 +89,14 @@ from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 try:
     from traveller_gen import _version as _gen_ver  # type: ignore[import]  # noqa: E402
     _DISPLAY_VERSION = _gen_ver.__version__
+    _BUILD_NUMBER = getattr(_gen_ver, "__build__", "")
 except ImportError:
     _DISPLAY_VERSION = APP_VERSION
+    _BUILD_NUMBER = ""
+
+_DISPLAY_VERSION_FULL = (
+    f"{APP_VERSION} (build {_BUILD_NUMBER})" if _BUILD_NUMBER else _DISPLAY_VERSION
+)
 
 _REPO_ROOT = pathlib.Path(__file__).parent.parent
 _USER_GUIDE_PATH = _REPO_ROOT / "docs" / "Traveller World Generator User Guide.md"
@@ -857,7 +863,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle(f"Traveller World Generator {_DISPLAY_VERSION}")
+        self.setWindowTitle(f"Traveller World Generator {_DISPLAY_VERSION_FULL}")
         self.resize(1100, 700)
         self.setMinimumSize(780, 500)
         self._current_world: object | None = None
@@ -967,7 +973,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         scroll.setWidgetResizable(True)
         root.addWidget(scroll, stretch=1)
 
-        ver_label = QLabel(_DISPLAY_VERSION)
+        ver_label = QLabel(_DISPLAY_VERSION_FULL)
         ver_label.setObjectName("version-label")
         self.statusBar().addPermanentWidget(ver_label)
 
@@ -1553,7 +1559,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             "<p>A tool for generating star systems, worlds, and survey forms for the "
             "<em>Traveller</em> science-fiction role-playing game, using the rules from the "
             "<em>World Builders' Handbook</em> (Mongoose Publishing).</p>"
-            f"<p><b>Version:</b> {_DISPLAY_VERSION}</p>"
+            f"<p><b>Version:</b> {_DISPLAY_VERSION_FULL}</p>"
             "<p><b>Source code:</b> "
             "<a href='https://github.com/Elured-code/traveller-world-gen'>"
             "github.com/Elured-code/traveller-world-gen</a></p>"
