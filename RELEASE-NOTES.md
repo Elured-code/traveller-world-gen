@@ -1,4 +1,4 @@
-# Release Notes — v1.6.1 (draft)
+# Release Notes — v2.0.0 (draft)
 
 **Branch:** `v2.0`
 **Sessions:** 178–

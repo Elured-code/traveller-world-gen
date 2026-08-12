@@ -1,12 +1,14 @@
-# Traveller World Generator — v1.6.1 Release Notes
+# Traveller World Generator — v2.0.0 Release Notes
 
 **3068 tests pass. Pylint 10.00/10.**
 
-Schema maintenance release — records the full set of generation options used
-to produce a system or world alongside its seed, closing a reproducibility
-gap where the same seed could appear to produce different output depending
-on which options were selected in the UI. Also fixes a world-numbering
-off-by-one past the mainworld.
+Major release. Includes the full v2.0 feature set: secondary world social
+detail, WBH-compliant law/culture/military generation, Balkanised world
+support, survey forms (Class 0/I through IV), system map improvements, body
+name editing, and the complete set of social-detail sub-modules. Also
+includes a schema maintenance fix for generation-option reproducibility
+(originally shipped as v1.6.1 pre-release) and a world-numbering off-by-one
+fix.
 
 ---
 
@@ -65,7 +67,7 @@ numbered correctly.
 
 `World.from_dict()` and `TravellerSystem.from_dict()` default every new
 field (`settlement_type` → `"standard"`, all new booleans → `False`) when
-absent, so JSON saved before v1.6.1 loads without error.
+absent, so JSON saved before v2.0.0 loads without error.
 
 ---
 
