@@ -277,7 +277,7 @@ was a safe, purely cosmetic change.
 
 ---
 
-## `to_survey_form_html_class4()` — IISS Class IV Survey form (Session 140)
+## `to_survey_form_html_class4()` — IISS Class IV Survey form (Session 140, updated Session 185)
 
 `TravellerSystem.to_survey_form_html_class4()` renders the `survey_class4.html`
 Jinja2 template and returns a self-contained HTML page (IISS Form 0407F-IV Part C).
@@ -289,13 +289,22 @@ when the corresponding detail object is not attached.
 | Section | Source on `World` |
 |---------|-----------------|
 | Population | `population_detail` |
-| Government | `government_detail` |
-| Law Level | `law_detail` |
+| Government | `government_detail` (non-balkanised) OR `balkanised_detail` (gov code 7) |
+| Law Level | `law_detail` (world-level) + per-nation from `balkanised_detail` when present |
 | Technology | `tech_detail` |
-| Culture | `culture_detail` |
+| Culture | `culture_detail` (world-level) + per-nation from `balkanised_detail` when present |
 | Economics / Importance | `importance_detail` + `size_detail.resource_factor` |
 | Starport | `starport_detail` |
-| Military | `military_detail` |
+| Military | `military_detail` (world-level) + per-nation from `balkanised_detail` when present |
+
+**Balkanised worlds (gov code 7, Session 185):** When `mw.balkanised_detail` is set,
+the method builds a `balk_ctx` dict (passed to the template as `balk`) containing
+nation-level government profiles and per-nation law, culture, and military contexts.
+The template's Government section branches on `{% if balk %}` to show a nation table
+(type, strength, centralisation, authority, structure, profile/law-level); the
+`{% elif gov %}` path handles all other governments unchanged. The Law Level, Culture,
+and Military sections each append a per-nation sub-table when `balk` is set,
+appearing below the world-level rows.
 
 **Notable implementation details:**
 - `gov_names` is a local snake_case dict (pylint C0103 requires local variable names;
@@ -305,6 +314,8 @@ when the corresponding detail object is not attached.
   instead of `{{ value or "—" }}` — Jinja2's `or` treats the formatted string `"0"`
   as truthy but a numeric `0` as falsy, which caused blank display for zero-GWP worlds.
 - Military branches are rendered in pairs (`branch_pairs`) for a 4-column layout.
+- Per-nation military context omits branch pairs; only summary (budget %, readiness,
+  profile) is stored in `balk_ctx` to keep the table compact.
 
 Called by the same callers as the other survey form methods (FastAPI, gen-ui).
 
@@ -358,9 +369,27 @@ two main data structures:
   primary itself, `desig[:-1]` for a companion, or the system primary's
   designation for a close/near/far secondary. Rendered between the Desig and
   Class columns.
+
+  Session 181 added `"name": star.name` to support the web-app Edit Names
+  dialog. The template renders it in a new **Name** column (last column in the
+  Stars table) with `data-name-idx` and `data-name-label` attributes so that
+  the parent page's JS can identify and target it.
+
 - **`orbit_rows`** — one dict per orbit slot, with inline `moons` list. Session 102 added
   `"name"` as the first key in each orbit row and moon sub-dict, so `system_card.html` can
   display it as the leftmost column.
+
+  Session 181 added `"name_label"` to every orbit row and moon sub-dict for the
+  Edit Names dialog. The label is a human-readable hint shown next to each name
+  field:
+  - `"Mainworld"` for the mainworld candidate orbit
+  - `None` for empty slots, companion/secondary-star synthetic rows, and ring moons
+  - `"<desig> #<n> (Gas Giant|Belt|World)"` for non-mainworld bodies
+  - `"Moon of <parent> (size <s>)"` for non-ring moons
+
+  The template wraps each nameable name cell in a conditional that attaches
+  `data-name-idx` (a monotonic counter via `{% set ns = namespace(idx=0) %}`)
+  and `data-name-label` only when `name_label is not none`.
 
   Sessions 166–167 added synthetic rows for non-primary stars — companions and
   close/near/far secondaries alike — so they're visible in this table even

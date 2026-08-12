@@ -160,15 +160,17 @@ mw_gov=..., mw_law=...` explosion that the original code had.
 
 ---
 
-## Secondary world government: Case 1 vs Case 2
+## Secondary world government and law level
+
+### Government generation
 
 WBH p.162 defines two ways to determine a secondary world's government, and the
 code supports both.
 
-**Case 1 — Dependent/Captive (default):** The secondary world is under direct
-control of the mainworld's government. Roll 1D on the Secondary World Government
-table with DMs based on the mainworld's government code. This produces only
-government codes 0, 1, 2, 3, or 6.
+**Dependent (default):** The secondary world is under direct control of the
+mainworld's government. Roll 1D on the Secondary World Government table with DMs
+based on the mainworld's government code. This produces only government codes 0,
+1, 2, 3, or 6.
 
 ```python
 def _secondary_government(mw_pop: int, mw_gov: int, rng: random.Random) -> int:
@@ -185,7 +187,7 @@ Private helpers receive `rng: random.Random` as a required argument (Session 116
 They no longer read the module-level `_rng` directly — the resolved RNG is threaded
 through from the public entry point (`attach_detail` / `apply_secondary_social`).
 
-**Case 2 — Independent:** The secondary world governs itself. Roll `2D − 7 +
+**Independent:** The secondary world governs itself. Roll `2D − 7 +
 Population`, the same formula used for a mainworld. This can produce any
 government code from 0 upwards.
 
@@ -194,15 +196,61 @@ def _independent_government(pop: int, rng: random.Random) -> int:
     return max(0, _roll(2, -7 + pop, rng=rng))
 ```
 
-The Case 2 path is activated by passing `independent_government=True` to
-`attach_detail()`. When this is enabled, the law-level calculation for government
-code 6 also changes: Case 1 uses a captive-relationship table (is the secondary
-world more or less lawful than the mainworld?), but Case 2 treats government 6 as
-an ordinary Feudal Technocracy and uses the standard `2D − 7 + Government`
-formula.
+The independent path is activated by passing `independent_government=True` to
+`attach_detail()`. The `WorldDetail.is_independent_government` flag records which
+path was used so the information is preserved in saved JSON files.
 
-The `WorldDetail.is_independent_government` flag records which path was used so
-the information is preserved in saved JSON files.
+### Law level generation — WBH three-case procedure (Session 179, issue #135)
+
+After government is rolled, `_secondary_law_level()` implements WBH pp.171-172.
+There are three cases, determined by the government code and whether the
+`independent_government` flag is set:
+
+**Case 1 — Government 6, not independent (Captive Government):**
+
+Roll 1D. Pe (Penal Colony) or Mb (Military Base) classification applies DM+1.
+The result selects the formula:
+
+| 1D + DM | Law level |
+|---------|-----------|
+| ≤ 2 | 2D − 1 (roll for Gov 6) |
+| 3–4 | Mainworld Law |
+| 5 | Mainworld Law + 1 |
+| 6+ | Mainworld Law + 1D |
+
+**Case 2 — Government 1-3, not independent:**
+
+Roll `2D − mainworld Gov`. If the result is ≤ 0, use the mainworld's Law Level
+directly. Otherwise roll 1D: on 1-3 use that result, on 4-6 reroll as
+`2D − 7 + Gov`.
+
+**Case 3 — All others (independent flag set, or Gov 0/4/5):**
+
+Roll `2D − 7 + Government`. DM −1 if the world has a Freeport (Fp) classification.
+
+All outcomes are clamped to ≥ 0.
+
+### Classification before law level
+
+**Classification is determined before law level** at every call site (Session 179).
+`_secondary_classification()` is called first with a provisional `law_level=0`,
+and the result code is passed directly to `_secondary_law_level()` so the
+Pe/Mb DM in Case 1 and the Fp DM in Case 3 have the correct classification
+available. Classification is then assigned directly to the `WorldDetail`:
+
+```python
+cls  = _secondary_classification(pop=pop, gov=gov, tl=tl, law_level=0, ...)
+law  = _secondary_law_level(gov, mwc.gov, mwc.law, rng,
+                             independent=independent_government,
+                             classification=cls)
+det  = WorldDetail(sah=sah, ..., law_level=law, ...)
+det.classification = cls
+if cls and cls not in det.trade_codes:
+    det.trade_codes.append(cls)
+```
+
+This replaces the previous pattern of calling a standalone `_apply_classification()`
+after the `WorldDetail` was already constructed with its law level.
 
 ---
 

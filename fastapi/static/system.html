@@ -323,6 +323,56 @@
     }
     .guide-dialog-close:hover { border-color: var(--accent); color: var(--text); }
     .guide-frame { flex: 1; border: none; }
+
+    /* ── Edit Names modal ──────────────────────────────── */
+    .names-dialog {
+      border: none; border-radius: 8px; padding: 0;
+      width: min(480px, 94vw); max-height: min(640px, 88vh);
+      background: var(--surface); color: var(--text);
+      box-shadow: 0 12px 48px rgba(0,0,0,0.7);
+      overflow: hidden;
+    }
+    .names-dialog[open] { display: flex; flex-direction: column; }
+    .names-dialog::backdrop { background: rgba(0,0,0,0.6); }
+    .names-dialog-hdr {
+      display: flex; align-items: center;
+      padding: 0.6rem 1rem; border-bottom: 1px solid var(--border);
+      background: var(--panel); flex-shrink: 0;
+    }
+    .names-dialog-title {
+      font-size: 0.8rem; font-weight: 600;
+      letter-spacing: 0.07em; text-transform: uppercase; flex: 1;
+    }
+    .names-dialog-close {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); border-radius: 4px;
+      width: 24px; height: 24px; cursor: pointer; font-size: 0.8rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .names-dialog-close:hover { border-color: var(--accent); color: var(--text); }
+    .names-dialog-body { flex: 1; overflow-y: auto; padding: 0.75rem 1rem; }
+    .names-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.35rem 0; border-bottom: 1px solid var(--border);
+    }
+    .names-row:last-child { border-bottom: none; }
+    .names-label {
+      flex: 0 0 auto; font-size: 0.75rem; color: var(--muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 180px;
+    }
+    .names-input {
+      flex: 1; min-width: 0; font-size: 0.85rem;
+      background: var(--surface); color: var(--text);
+      border: 1px solid var(--border); border-radius: 4px;
+      padding: 0.25rem 0.4rem;
+    }
+    .names-input:focus { outline: none; border-color: var(--accent); }
+    .names-dialog-ftr {
+      display: flex; justify-content: flex-end; gap: 0.5rem;
+      padding: 0.6rem 1rem; border-top: 1px solid var(--border);
+      background: var(--panel); flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
@@ -348,6 +398,18 @@
     <button class="guide-dialog-close" id="guide-close" aria-label="Close">✕</button>
   </div>
   <iframe class="guide-frame" id="guide-frame" title="User Guide"></iframe>
+</dialog>
+
+<dialog id="names-dialog" class="names-dialog">
+  <div class="names-dialog-hdr">
+    <span class="names-dialog-title">Edit Names</span>
+    <button class="names-dialog-close" id="names-close" aria-label="Close">✕</button>
+  </div>
+  <div class="names-dialog-body" id="names-dialog-body"></div>
+  <div class="names-dialog-ftr">
+    <button class="btn-icon" id="names-cancel">Cancel</button>
+    <button class="btn-icon" id="names-ok">OK</button>
+  </div>
 </dialog>
 
 <div class="controls">
@@ -445,8 +507,8 @@
     <label class="checkbox-label" id="lbl-rg" title="Hot, wet worlds close to their star may trigger a runaway greenhouse, stripping water and pushing surface temperatures above 500 K (WBH p.79)">
       <input type="checkbox" id="s-rg" disabled> Runaway GH
     </label>
-    <label class="checkbox-label" id="lbl-indep" title="Each secondary world rolls its own government code rather than offsetting from the mainworld, producing more diverse political landscapes (WBH p.162)">
-      <input type="checkbox" id="s-indep" disabled> Indep Gov
+    <label class="checkbox-label" id="lbl-indep" title="Secondary worlds with Gov 1–3 use the WBH mainworld-authority procedure; Gov 6 uses the Captive Government table. When checked, all secondaries roll their own government independently (WBH p.162).">
+      <input type="checkbox" id="s-indep" disabled> Indep Sec Gov
     </label>
 
     <div class="sub-sep"></div>
@@ -504,6 +566,7 @@
     <button class="tab-btn"        data-tab="sys">System</button>
     <button class="tab-btn"        data-tab="map">System Map</button>
     <button class="tab-btn hidden" data-tab="survey" id="tab-btn-survey">Survey Form</button>
+    <button class="btn-icon" id="btn-edit-names" style="margin-left:auto;margin-right:0.5rem;align-self:center;display:none" title="Edit body names">Edit Names…</button>
   </div>
 
   <!-- Mainworld tab -->
@@ -690,7 +753,10 @@
     document.getElementById("map-img").style.display = "none";
     document.getElementById("tab-btn-survey").classList.add("hidden");
     _lastGen = null;
+    _lastMwHtml = null;
+    _lastSysHtml = null;
     _lastSurveyHtmls = {};
+    document.getElementById("btn-edit-names").style.display = "none";
   }
 
   function loadFrame(frameId, html) {
@@ -776,7 +842,75 @@
     document.getElementById("tab-map").classList.remove("active");
     document.getElementById("tab-survey").classList.remove("active");
     document.getElementById("s-tab-bar").classList.add("visible");
+    document.getElementById("btn-edit-names").style.display = "";
     if (seed !== undefined) loadMap(seed);
+  }
+
+  function _applyNamesToHtml(htmlStr, edits) {
+    let result = htmlStr;
+    edits.forEach(({idx, name}) => {
+      const display = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      result = result.replace(
+        new RegExp('(data-name-idx="' + idx + '"[^>]*>)[^<]*(</[Tt][Dd]>)'),
+        "$1" + display + "$2"
+      );
+    });
+    return result;
+  }
+
+  function showEditNamesDialog() {
+    if (!_lastSysHtml) return;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(_lastSysHtml, "text/html");
+    const cells = doc.querySelectorAll("[data-name-idx]");
+    const body = document.getElementById("names-dialog-body");
+    body.innerHTML = "";
+    if (cells.length === 0) {
+      body.textContent = "No named bodies found.";
+    } else {
+      cells.forEach(cell => {
+        const idx   = cell.getAttribute("data-name-idx");
+        const label = cell.getAttribute("data-name-label") || "";
+        const val   = cell.textContent.trim();
+        const row   = document.createElement("div");
+        row.className = "names-row";
+        const lbl = document.createElement("span");
+        lbl.className = "names-label";
+        lbl.textContent = label;
+        lbl.title = label;
+        const inp = document.createElement("input");
+        inp.className = "names-input";
+        inp.type = "text";
+        inp.dataset.nameIdx = idx;
+        inp.dataset.nameLabel = label;
+        inp.value = val === "—" ? "" : val;
+        inp.placeholder = "—";
+        row.appendChild(lbl);
+        row.appendChild(inp);
+        body.appendChild(row);
+      });
+    }
+    document.getElementById("names-dialog").showModal();
+  }
+
+  function applyNameEdits() {
+    const inputs = document.querySelectorAll("#names-dialog-body .names-input");
+    const edits = [];
+    inputs.forEach(inp => {
+      edits.push({ idx: inp.dataset.nameIdx, name: inp.value.trim() || "—" });
+    });
+    if (_lastSysHtml) {
+      _lastSysHtml = _applyNamesToHtml(_lastSysHtml, edits);
+      loadFrame("sys-frame", _lastSysHtml);
+    }
+    const mwInput = document.querySelector('#names-dialog-body .names-input[data-name-label="Mainworld"]');
+    if (mwInput && _lastMwHtml) {
+      const mwName = mwInput.value.trim() || "—";
+      const esc = mwName.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      _lastMwHtml = _lastMwHtml.replace(/(data-role="mw-name"[^>]*>)[^<]*/, "$1" + esc);
+      loadFrame("mw-frame", _lastMwHtml);
+    }
+    document.getElementById("names-dialog").close();
   }
 
   function showJson(data) {
@@ -1028,6 +1162,15 @@
     dialog.addEventListener("click", function (e) {
       if (e.target === dialog) dialog.close();
     });
+  }());
+
+  (function () {
+    const dialog = document.getElementById("names-dialog");
+    document.getElementById("btn-edit-names").addEventListener("click", showEditNamesDialog);
+    document.getElementById("names-close").addEventListener("click", () => dialog.close());
+    document.getElementById("names-cancel").addEventListener("click", () => dialog.close());
+    document.getElementById("names-ok").addEventListener("click", applyNameEdits);
+    dialog.addEventListener("click", e => { if (e.target === dialog) dialog.close(); });
   }());
 
   document.getElementById("theme-toggle").addEventListener("click", function () {

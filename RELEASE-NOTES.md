@@ -1,8 +1,213 @@
-# Release Notes — v1.7.0 (draft)
+# Release Notes — v1.6.1 (draft)
 
-**Branch:** `main`
+**Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3032
+**Tests:** 3068
+
+---
+
+## Build Number Display in Gen-UI — Session 186
+
+`gen-ui/app.py` now reads `__build__` from `traveller_gen._version` (written by CI
+as the GitHub Actions run number) and displays it in the window title, status bar, and
+About dialog as `1.6.1 (build 42)`. Local dev builds where `__build__` is absent fall
+back to the bare version string. Three new module-level constants: `_BUILD_NUMBER`,
+`_DISPLAY_VERSION_FULL`, and the pre-existing `_DISPLAY_VERSION`.
+
+`run-gui.command` gains `export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"`
+before the exec line, ensuring the `src/` layout is on the Python path when launching
+the GUI on macOS via the `.command` file.
+
+No new tests (display-only changes); no schema changes. 3068 tests pass; pylint 10.00/10.
+
+---
+
+## Class IV Survey Form — Balkanised World Display (Session 185)
+
+Balkanised worlds (government code 7) now display full government, social, and
+military detail on the IISS Class IV Survey form. Previously the Government
+section showed the "— no government detail —" stub for these worlds; the
+per-nation law, culture, and military data was generated but not surfaced.
+
+`to_survey_form_html_class4()` builds a `balk_ctx` when the mainworld has a
+`balkanised_detail`. For each nation it collects: government name, strength,
+centralisation, authority, structure, nation profile, law level, and the full
+`LawDetail`, `CultureDetail`, and military summary (budget %, readiness, profile).
+
+`survey_class4.html` changes:
+
+- **Government section**: `{% if balk %}` path renders a nation table (gov type,
+  strength, centralisation, authority, structure, profile/law-level per column).
+  `{% elif gov %}` handles the non-balkanised path unchanged.
+- **Law Level section**: appends a "Nations — Law Detail" sub-table showing each
+  nation's overall law, primary system, uniformity, presumption, death penalty,
+  and law profile.
+- **Culture section**: appends a "Nations — Cultural Detail" sub-table showing
+  cultural profile, HASS extension, diversity, xenophilia, cohesion, and militancy
+  per nation.
+- **Military section**: appends a "Nations — Military Detail" sub-table showing
+  budget %, readiness, and military profile per nation.
+
+World-level law, culture, and military rows remain above their respective
+per-nation sub-tables. 11 new tests in `TestClass4FormBalkanised`; pylint
+10.00/10 on `traveller_system_gen.py`.
+
+## Per-Nation Law, Culture, and Military Detail for Balkanised Worlds — Session 184 (issue #130 follow-up)
+
+Each nation in a Balkanised world now also receives its own law, culture, and
+military detail. `generate_balkanised_detail()` rolls a per-nation law level
+(2D−7+gov_code, clamped 0–9). The three `attach_*` functions each gain a
+Balkanised block:
+
+- `attach_law_detail()` calls `generate_law_detail()` per nation using the
+  nation's own law level and authority code.
+- `attach_culture_detail()` calls `generate_culture_detail()` per nation using
+  the nation's own government type and law level.
+- `attach_military_detail()` calls `generate_military_detail()` per nation using
+  the nation's culture detail for militancy/expansionism.
+
+The world card's Balkanised inner card now shows a compact Law (justice+law
+profile), Culture (cultural profile), and Military (military profile) row under
+each nation, after its government structure rows. `BalkanisedNation.to_dict()`
+serialises the new fields; `from_dict()` reconstructs them via lazy imports.
+12 new tests; pylint 10.00/10 on all touched files.
+
+## Balkanised World Government Detail — Session 183 (issue #130)
+
+Worlds with government code 7 (Balkanisation) now receive full government
+detail. `attach_government_detail()` calls the new `generate_balkanised_detail()`
+for gov-7 worlds, generating 2–4 nations each with their own government type,
+centralisation, authority, structure, and profile string. Nations are ranked by
+strength; Faction I is the dominant (highest-strength) nation. The result is stored
+in the new `balkanised_detail` field on `World` and `WorldDetail` (distinct from
+`government_detail`, which remains `None` for gov code 7). The HTML world card
+displays a "Government detail (Balkanised — N nations)" inner card. JSON output
+includes the `balkanised_detail` key when present, validated by the updated schema.
+57 new tests.
+
+---
+
+## Horizontal Scroll Bar on Result Panel — Session 182 (issue #174)
+
+`_build_ui()` in `gen-ui/app.py` now wraps `_status_widget` in a `QScrollArea`
+(`setWidgetResizable(True)`) so that the result panel can scroll horizontally when
+the window is narrower than its content. `_status_widget.setMinimumWidth(740)` sets
+the minimum scrollable width; the controls panel (Name, Seed, Generate, Options, source
+radio) sits outside the scroll area and stays fixed in place regardless of window width.
+
+Two new tests in `tests/test_genui_app.py`: `test_status_panel_wrapped_in_scroll_area`
+(asserts `isinstance(_status_widget.parent().parent(), QScrollArea)`) and
+`test_status_scroll_area_is_widget_resizable` (asserts `widgetResizable()` is True).
+The double `.parent()` chain is required because `QScrollArea.setWidget()` parents
+the inner widget to the viewport, not the scroll area directly.
+
+`docs/uat-plan.md` updated: header bumped to Session 182 (was Session 138); scope
+note updated; section 6 Aegir tests renumbered from UAT-100/101 to UAT-146/147,
+resolving an ID collision with the section 15 social detail tests of the same IDs;
+new sections 20–27 added covering all features implemented since Session 138:
+
+- **§20 User Guide window** (UAT-148–152, Session 141)
+- **§21 System Map perspective toggle** (UAT-153–155, Sessions 148–149)
+- **§22 A3 Poster Export** (UAT-156–160, Sessions 148–159)
+- **§23 File > New / New with New Seed** (UAT-161–163, Session 162)
+- **§24 Body name editing / Edit Names dialog** (UAT-164–169, Session 180)
+- **§25 Relic technology option** (UAT-170–172, Sessions 175–176)
+- **§26 Options restored on Open JSON** (UAT-173–174, Session 178)
+- **§27 Horizontal scroll bar** (UAT-175–176, this session)
+
+No schema changes. 3068 tests pass; pylint 10.00/10.
+
+---
+
+## Edit Names Dialog in Web App — Session 181 (issue #121, stage 1b)
+
+The FastAPI web app now has the same "Edit Names…" capability added to the desktop app in session 180.
+
+**Template changes.** `system_card.html` gains a `{% set ns = namespace(idx=0) %}` Jinja2 namespace counter and a new **Name** column in the Stars table. Every editable name cell — star names, world/belt/GG names, moon names — carries `data-name-idx` (a monotonic integer) and `data-name-label` (a human-readable label such as `"Mainworld"` or `"A #3 (Gas Giant)"`) attributes. Non-nameable slots (companion/secondary-star rows in the orbital survey, ring moons) get no `data-name-idx`. `world_card.html` gains `data-role="mw-name"` on the world-name paragraph.
+
+**`_system_card_context()` changes.** `star_rows` now includes `"name": star.name`. `orbit_rows` and the moon sub-list both include `"name_label"`, computed as: `"Mainworld"` for the mainworld candidate, `None` for empty slots and companion/secondary-star rows, and `"<desig> #<n> (Gas Giant|Belt|World)"` or `"Moon of <parent> (size <s>)"` for everything else (with a `None` guard for ring moons).
+
+**Web UI.** `fastapi/static/system.html` gains:
+- CSS for `.names-dialog` and related `.names-row` / `.names-label` / `.names-input` classes, matching the guide-dialog visual style.
+- An "Edit Names…" button in the tab bar (hidden until results are available, pushed right with `margin-left:auto`).
+- A `<dialog id="names-dialog">` with a scrollable body, Cancel, and OK buttons.
+- `_applyNamesToHtml(htmlStr, edits)` — string-replaces `data-name-idx` cells in a stored HTML string without a full DOMParser round-trip (avoids DOCTYPE loss).
+- `showEditNamesDialog()` — parses `_lastSysHtml` with DOMParser, collects `[data-name-idx]` cells, builds a labelled row per body.
+- `applyNameEdits()` — applies edits to `_lastSysHtml`, reloads `sys-frame`; finds the Mainworld entry by `data-name-label`, patches `data-role="mw-name"` in `_lastMwHtml`, reloads `mw-frame`.
+- `clearResult()` now nulls `_lastMwHtml` and `_lastSysHtml` explicitly and hides the button.
+
+No schema changes, no new tests (template attribute rendering is covered by the existing Jinja2 render-and-inspect test pattern; targeted tests deferred). 3066 tests pass; pylint 10.00/10.
+
+---
+
+## Body Name Editing in gen-ui — Session 180 (issue #121, stage 1)
+
+Body names generated by `attach_body_names()` can now be edited directly in the desktop app without regenerating.
+
+**Inline mainworld name field.** The world or system result header replaces the static name label with a `QLineEdit` styled to look like a heading (`font-size: 16pt; font-weight: bold; border: none; background: transparent`). Pressing Enter or tabbing away fires `_on_mw_name_edited()`, which writes the new text back to `mw.name`, `mw_orbit.name`, and `mw_orbit.detail.name` (keeping all three in sync), then calls `_refresh_html_views()` to update the displayed cards. In the world-only path the edit writes only to `world.name`.
+
+**Edit Names… dialog.** A new `_EditNamesDialog` (scrollable `QFormLayout`, 520 × 450 px) opens from an "Edit Names…" button in the result header and presents three labelled sections:
+
+- **Stars** — one row per star, labelled with designation and classification (e.g. `"A  (G2 V)"`), editing `star.name`.
+- **Worlds** — one row per non-empty orbit slot. The mainworld row is labelled `"Mainworld"` and writes to `mw.name`, `mw_orbit.name`, and `mw_orbit.detail.name`. Non-mainworld rows are labelled with star designation, orbit number, and world type (Terrestrial/Gas Giant/Belt), writing to `orbit.name` and `orbit.detail.name`.
+- **Moons** — one row per non-ring moon, labelled with parent orbit name and size code, writing to `moon.name` and `moon.detail.name`.
+
+OK commits all edits via `dlg.apply()` (fires all accumulated setter closures), syncs the inline `_mw_name_edit` to the new mainworld name, and refreshes HTML views. Cancel discards every change.
+
+**`_refresh_html_views()`.** New helper that calls `setHtml()` on the stored `_system_view`, `_mw_view`, and `_world_view` references to regenerate the displayed cards from the (mutated) model, without re-running generation or rebuilding the result tab layout. The three view references are stored as `AppWindow` instance attributes after each generation and cleared in `_clear_status()`.
+
+Scoped to gen-ui only (stage 1). No schema changes, no FastAPI/CLI changes. 20 new tests across `TestSystemNameEditing`, `TestWorldNameEditing`, and `TestEditNamesDialog`; 3066 tests pass (up from 3046); pylint 10.00/10.
+
+---
+
+## WBH Three-Case Secondary World Law Level Procedure — Session 179 (issue #135)
+
+`_secondary_law_level()` now implements all three cases from WBH pp.171-172.
+Previously the function handled only captive (Gov 6) and a flat 2D-7+Gov fallback
+(with the `independent` flag routing between them). The updated function adds:
+
+- **Case 1 (Gov 6, under mainworld authority):** 1D+DM determines the formula.
+  DM+1 for Pe or Mb classification. Results: ≤2 → 2D-1; 3-4 → mainworld Law;
+  5 → mainworld Law+1; 6+ → mainworld Law+1D. All outcomes clamped ≥ 0.
+- **Case 2 (Gov 1-3, under mainworld authority):** 2D minus mainworld Gov. If
+  result ≤ 0 → mainworld Law. Otherwise 1D: 1-3 use the result, 4-6 reroll
+  as 2D-7+Gov.
+- **Case 3 (independent, or Gov 0/4/5):** 2D-7+Gov, DM-1 for Fp classification.
+
+New parameter `mainworld_gov: int` added; `classification: Optional[str]`
+added for DM lookup. Updated signature:
+
+```python
+def _secondary_law_level(
+        government: int, mainworld_gov: int, mainworld_law: int,
+        rng: random.Random,
+        independent: bool = False,
+        classification: Optional[str] = None,
+) -> int:
+```
+
+At all 6 call sites (two in `_moon_detail()`, two in `generate_system_detail()`,
+one in `apply_secondary_social()._social()`, one via `_moons_social()`),
+classification is now determined **before** law level using
+`_secondary_classification()` with provisional `law_level=0`, so Pe/Mb/Fp DMs
+have correct classification context. Standalone `_apply_classification()` calls
+replaced with direct `det.classification = cls` assignment; the
+`if cls not in det.trade_codes` guard appends it there too.
+
+`_social()` inner function in `apply_secondary_social()` gains `hz_deviation:
+float = 0.0` and `is_belt: bool = False` parameters so `_moons_social()` can
+pass orbital context in a single call rather than calling `_apply_classification()`
+again after `_social()`.
+
+gen-ui checkbox renamed from "Independent government" to "Independent Secondary\n
+World Government". Web UI label changed from "Indep Gov" to "Indep Sec Gov";
+tooltip updated to describe all three cases. API query-param name
+`independent_government` unchanged (no API breaking change).
+
+Seed-breaking change for secondary worlds (accepted; running on v2.0 branch).
+14 new tests in `TestSecondaryLawLevelWBH` covering all three cases, sub-cases,
+DMs, and the non-negative invariant. 3046 tests pass (up from 3032); pylint
+10.00/10.
 
 ---
 

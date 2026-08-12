@@ -6541,17 +6541,171 @@ class TestIndependentGovernment:
         assert found_inhabited, "No inhabited secondary found in 500 seeds"
 
     def test_law_level_independent_skips_captive_table(self):
-        """With independent=True, gov==6 uses 2D-7+6 = max(0, 2D-1), not captive table."""
+        """With independent=True, gov==6 falls through to Case 3 (2D-7+6 = 2D-1)."""
         from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
         # With mainworld_law=99, the captive table would produce ~99 or higher.
-        # The independent formula must stay in [0, 11] (max 2D-1 = 12-1 = 11).
+        # The independent formula (Case 3: max(0, 2D-1)) must stay in [0, 11].
         mainworld_law = 99
         for seed in range(100):
-            law = _twd._secondary_law_level(6, mainworld_law, random.Random(seed),
+            law = _twd._secondary_law_level(6, 6, mainworld_law, random.Random(seed),
                                              independent=True)
             assert 0 <= law <= 11, (
                 f"seed={seed}: independent law for gov 6 should be in [0,11], got {law}"
             )
+
+
+# ===========================================================================
+# TestSecondaryLawLevelWBH — three-case procedure (issue #135)
+# ===========================================================================
+
+class TestSecondaryLawLevelWBH:
+    """WBH pp.171-172 three-case law level procedure for secondary worlds."""
+
+    @staticmethod
+    def _ll(gov, mw_gov, mw_law, seed, independent=False, classification=None):
+        from traveller_gen import traveller_world_detail as _twd  # pylint: disable=import-outside-toplevel
+        return _twd._secondary_law_level(
+            gov, mw_gov, mw_law, random.Random(seed),
+            independent=independent, classification=classification,
+        )
+
+    # ── Case 1: Captive Government (Gov 6, not independent) ─────────────────
+
+    def test_case1_result_non_negative(self):
+        """Case 1 law level is always >= 0."""
+        for seed in range(200):
+            assert self._ll(6, 6, 0, seed) >= 0
+
+    def test_case1_reroll_sub_case_bounded(self):
+        """Case 1 reroll sub-case (1D<=2) produces max(0, 2D-1) which is in [0, 11]."""
+        # Force 1D roll to land <= 2 by using seed scan; verify result is in [0,11]
+        found = False
+        for seed in range(5000):
+            rng = random.Random(seed)
+            r = rng.randint(1, 6)
+            if r <= 2:
+                result = self._ll(6, 6, 99, seed)
+                # 2D-1 range: min 2-1=1, max 12-1=11
+                assert 0 <= result <= 11, f"seed={seed}: reroll sub-case out of range: {result}"
+                found = True
+                break
+        assert found, "Could not find seed producing Case 1 reroll sub-case"
+
+    def test_case1_mainworld_law_sub_case(self):
+        """Case 1 sub-case 3-4 returns exactly mainworld_law."""
+        mw_law = 7
+        for seed in range(5000):
+            rng = random.Random(seed)
+            r = rng.randint(1, 6)
+            if r in (3, 4):
+                result = self._ll(6, 6, mw_law, seed)
+                assert result == mw_law, f"seed={seed}: expected {mw_law}, got {result}"
+                break
+
+    def test_case1_plus1_sub_case(self):
+        """Case 1 sub-case 5 returns mainworld_law + 1 (min 0)."""
+        mw_law = 3
+        for seed in range(5000):
+            rng = random.Random(seed)
+            r = rng.randint(1, 6)
+            if r == 5:
+                result = self._ll(6, 6, mw_law, seed)
+                assert result == mw_law + 1, f"seed={seed}: expected {mw_law+1}, got {result}"
+                break
+
+    def test_case1_plus1d_sub_case(self):
+        """Case 1 sub-case 6+ returns mainworld_law + 1D (>= mainworld_law + 1)."""
+        mw_law = 2
+        for seed in range(5000):
+            rng = random.Random(seed)
+            r = rng.randint(1, 6)
+            if r == 6:
+                result = self._ll(6, 6, mw_law, seed)
+                assert result >= mw_law + 1, f"seed={seed}: expected >={mw_law+1}, got {result}"
+                assert result <= mw_law + 6, f"seed={seed}: expected <={mw_law+6}, got {result}"
+                break
+
+    def test_case1_pe_mb_dm_shifts_outcomes(self):
+        """DM+1 for Pe/Mb classification pushes some Case 1 results toward higher sub-cases."""
+        mw_law = 5
+        # Over many seeds, Pe classification should raise the average outcome
+        results_no_cls = [self._ll(6, 6, mw_law, s) for s in range(300)]
+        results_pe     = [self._ll(6, 6, mw_law, s, classification="Pe") for s in range(300)]
+        assert sum(results_pe) >= sum(results_no_cls), (
+            "Pe DM+1 should shift Case 1 law level distribution upward"
+        )
+
+    def test_case1_skipped_when_independent(self):
+        """When independent=True, gov==6 falls to Case 3 (2D-1), not Case 1 captive table."""
+        mw_law = 99
+        for seed in range(100):
+            result = self._ll(6, 6, mw_law, seed, independent=True)
+            assert result <= 11, f"seed={seed}: independent gov 6 must use Case 3 (max 11), got {result}"
+
+    # ── Case 2: Gov 1-3, under mainworld authority ───────────────────────────
+
+    def test_case2_applies_to_gov1_gov2_gov3(self):
+        """Gov 1, 2, 3 worlds under mainworld authority use Case 2 (result bounded by mainworld context)."""
+        mw_law = 5
+        mw_gov = 6   # high mainworld gov → 2D-6 shifts result down
+        for gov in (1, 2, 3):
+            for seed in range(50):
+                result = self._ll(gov, mw_gov, mw_law, seed)
+                assert result >= 0, f"gov={gov} seed={seed}: law negative: {result}"
+
+    def test_case2_zero_or_less_returns_mainworld_law(self):
+        """Case 2: when 2D-mainworld_gov <= 0, law == mainworld_law."""
+        mw_law = 4
+        mw_gov = 12   # 2D max=12, so 2D-12 <= 0 always
+        for gov in (1, 2, 3):
+            for seed in range(100):
+                result = self._ll(gov, mw_gov, mw_law, seed)
+                # With mw_gov=12, 2D-12 is always <=0, so all seeds → mainworld_law
+                assert result == mw_law, (
+                    f"gov={gov} seed={seed}: expected mainworld_law={mw_law}, got {result}"
+                )
+
+    def test_case2_skipped_when_independent(self):
+        """Gov 1-3 with independent=True uses Case 3 (2D-7+gov), not Case 2."""
+        mw_law = 99
+        mw_gov = 0   # Case 2 with mw_gov=0 → 2D result always>0; but independent skips it
+        for gov in (1, 2, 3):
+            for seed in range(50):
+                result = self._ll(gov, mw_gov, mw_law, seed, independent=True)
+                # Case 3 for gov 1-3: 2D-7+gov, max = 12-7+3=8
+                assert result <= 8, (
+                    f"gov={gov} seed={seed}: Case 3 max is 8, got {result}"
+                )
+
+    # ── Case 3: Other (gov 0, 4, 5, or independent) ─────────────────────────
+
+    def test_case3_standard_formula(self):
+        """Gov 0 always uses Case 3: max(0, 2D-7+0) = max(0, 2D-7), range [0, 5]."""
+        for seed in range(200):
+            result = self._ll(0, 0, 0, seed)
+            assert 0 <= result <= 5, f"seed={seed}: gov 0 law out of [0,5]: {result}"
+
+    def test_case3_freeport_dm_lowers_law(self):
+        """Case 3 with Fp classification applies DM-1, lowering law distribution."""
+        results_no_cls = [self._ll(0, 0, 0, s) for s in range(500)]
+        results_fp     = [self._ll(0, 0, 0, s, classification="Fp") for s in range(500)]
+        assert sum(results_fp) <= sum(results_no_cls), (
+            "Fp DM-1 should lower the Case 3 law level distribution"
+        )
+
+    def test_case3_gov4_range(self):
+        """Gov 4 uses Case 3: max(0, 2D-7+4) = max(0, 2D-3), range [0, 9]."""
+        for seed in range(200):
+            result = self._ll(4, 0, 0, seed)
+            assert 0 <= result <= 9, f"seed={seed}: gov 4 law out of [0,9]: {result}"
+
+    def test_all_results_non_negative(self):
+        """Law level is never negative for any case or classification."""
+        for gov in range(10):
+            for seed in range(50):
+                for cls in (None, "Pe", "Mb", "Fp"):
+                    result = self._ll(gov, gov, 0, seed, classification=cls)
+                    assert result >= 0, f"gov={gov} cls={cls} seed={seed}: negative law: {result}"
 
 
 # ===========================================================================

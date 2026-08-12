@@ -1,7 +1,7 @@
 # gen-ui User Acceptance Test Plan
 
 **Application:** `gen-ui/app.py` — PySide6 desktop UI for the Traveller World & System Generator  
-**Last updated:** 2026-06-23 (Session 138)  
+**Last updated:** 2026-08-06 (Session 182)  
 **Test type:** Manual (no automated runner)
 
 ---
@@ -9,7 +9,7 @@
 ## Scope
 
 Covers all interactive features of `AppWindow`, `SystemMapWindow`, and `SurveyFormWindow`
-as of Session 123.  Backend generation logic is covered by the automated pytest suite;
+as of Session 182.  Backend generation logic is covered by the automated pytest suite;
 this plan focuses on observable UI behaviour only.
 
 ## Environment
@@ -107,8 +107,8 @@ re-run outcome alongside the original.
 | UAT-037 | Generate without name or hex shows error | TravellerMap source; sector entered; name and hex fields empty | Click "Generate" | Error message "Enter a world name or hex for TravellerMap lookup." | |
 | UAT-038 | Ambiguous world name shows disambiguation dialog | TravellerMap source; internet available | Enter a sector and a name matching multiple worlds | Disambiguation dialog appears listing candidate worlds; selecting one proceeds to generation | |
 | UAT-039 | TravellerMap result shows canonical UWP in orbit table | TravellerMap source; "System detail" checked; internet available | Fetch a known world | Mainworld orbit slot shows the canonical UWP from TravellerMap, not a procedurally generated one | |
-| UAT-100 | Aegir (Solomani Rim 1339) UWP preserved after full pipeline | TravellerMap source; "System detail" + "Social detail" both checked; internet available | Enter sector "Solomani Rim", name "Aegir"; click "Generate" | World card shows UWP **A76A885-D** exactly; starport A, pop 8, gov 8, law 5, TL 13 — none overwritten by procedural dice | |
-| UAT-101 | Aegir UWP deterministic across multiple seeds | TravellerMap source; "System detail" checked; internet available | Fetch Aegir; note UWP; change seed; fetch again | UWP **A76A885-D** displayed identically on every fetch regardless of seed | |
+| UAT-146 | Aegir (Solomani Rim 1339) UWP preserved after full pipeline | TravellerMap source; "System detail" + "Social detail" both checked; internet available | Enter sector "Solomani Rim", name "Aegir"; click "Generate" | World card shows UWP **A76A885-D** exactly; starport A, pop 8, gov 8, law 5, TL 13 — none overwritten by procedural dice | |
+| UAT-147 | Aegir UWP deterministic across multiple seeds | TravellerMap source; "System detail" checked; internet available | Fetch Aegir; note UWP; change seed; fetch again | UWP **A76A885-D** displayed identically on every fetch regardless of seed | |
 
 ---
 
@@ -306,3 +306,88 @@ re-run outcome alongside the original.
 | UAT-143 | World card About modal opens in browser | World card open in browser | Click About button | Native `<dialog>` modal opens with credits content | |
 | UAT-144 | World card About modal dismissed with OK | World card About modal open | Click OK button inside modal | Modal closes; page remains as-is | |
 | UAT-145 | World card About modal respects dark mode | World card viewed in browser with OS dark mode active | Click About button | Modal background and text use dark-mode CSS variables, matching page theme | |
+
+---
+
+## 20. User Guide window (issue #159 follow-up, Session 141)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-148 | Help menu contains User Guide action | App running | Click "Help" menu | "User Guide" entry visible above or below "About" | |
+| UAT-149 | User Guide opens a dedicated window | App running | Click Help → User Guide | A new `UserGuideWindow` opens with readable documentation content | |
+| UAT-150 | User Guide window title is correct | UserGuideWindow open | Observe window title bar | Title reads "Traveller World & System Generator — User Guide" or similar | |
+| UAT-151 | User Guide window can be closed independently | UserGuideWindow open; main window visible | Press Cmd+W (macOS) or Ctrl+W | User Guide window closes; main window unaffected | |
+| UAT-152 | User Guide follows current Dark Mode setting | Dark Mode active | Open Help → User Guide | Window background and text reflect dark theme | |
+
+---
+
+## 21. System Map perspective view (Sessions 148–149)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-153 | Perspective toggle button present in System Map window | SystemMapWindow open | Observe toolbar | A "Perspective" or "Top-down / Perspective" toggle button is visible | |
+| UAT-154 | Toggling perspective changes SVG layout | SystemMapWindow open | Click the perspective toggle | SVG redraws showing bodies at different vertical offsets or angles; toggle label reflects the new mode | |
+| UAT-155 | Perspective state retained within session | SystemMapWindow open; perspective toggled | Close and reopen System Map for the same system | Map opens in the previously selected perspective mode | |
+
+---
+
+## 22. A3 Poster Export (HTML + PDF, Sessions 148–159)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-156 | File > Save As… includes A3 Poster option | World or system result visible | Open File > Save As… | A3 Poster (HTML) format listed as a save option | |
+| UAT-157 | A3 Poster HTML saved correctly | World or system result; A3 Poster option available | Choose A3 Poster (HTML); confirm path | File saved; opening in browser shows poster layout at A3 proportions (297 × 420 mm) | |
+| UAT-158 | A3 Poster HTML includes system map SVG | System result; "System detail" checked | Save A3 Poster HTML | System map SVG embedded in the poster HTML; visible in browser | |
+| UAT-159 | A3 Poster HTML respects dark mode setting | Dark Mode active | Save A3 Poster HTML | Poster background and text use dark-mode styles | |
+| UAT-160 | A3 Poster HTML prints without layout overflow | A3 Poster HTML open in browser | Use browser Print (Cmd+P/Ctrl+P); set paper to A3 | Print preview shows content contained within A3 page boundaries with no overflow | |
+
+---
+
+## 23. File > New and New with New Seed (Session 162)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-161 | File menu contains New and New with New Seed actions | App running; result visible | Click "File" menu | Both "New" and "New with New Seed" entries present | |
+| UAT-162 | File > New clears result and resets to current seed | World result visible; seed field contains a value | Click File → New | Result panel resets to onboarding card; seed field value unchanged | |
+| UAT-163 | File > New with New Seed clears result and empties seed | World result visible; seed field contains a value | Click File → New with New Seed | Result panel resets to onboarding card; seed field cleared | |
+
+---
+
+## 24. Body name editing (inline field + Edit Names dialog, Session 180)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-164 | Inline name field present in world card | World result visible | Observe world card header | An editable text field for the world name is displayed alongside or below the UWP | |
+| UAT-165 | Inline name field accepts and displays edited name | World result visible | Click the name field; clear contents; type "Bellatrix"; press Return or Tab | World card header updates to show "Bellatrix" without regenerating | |
+| UAT-166 | Edit Names… button present after system generation | System result visible; "System detail" checked | Observe result panel header/toolbar | "Edit Names…" button visible | |
+| UAT-167 | Edit Names dialog lists all nameable bodies | System result visible | Click "Edit Names…" | Dialog opens listing stars, planets, gas giants, and moons with editable name fields; belts and empty slots absent | |
+| UAT-168 | Editing a name in the dialog updates the system card | Edit Names dialog open | Change at least one body name; click OK | System Orbits table in the "System" tab reflects the new name(s) | |
+| UAT-169 | Cancelling the Edit Names dialog discards changes | Edit Names dialog open; name changed | Click Cancel | Dialog closes; no names changed in the system card | |
+
+---
+
+## 25. Novelty tech level / Relic technology option (Sessions 175–176)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-170 | "Relic technology" checkbox present in Options dialog | App running | Open Options; observe sub-options under System detail | "Relic technology" (or similar label) checkbox present | |
+| UAT-171 | Relic technology option produces novelty TL world | "System detail" + "Relic technology" both checked | Generate multiple systems until a world with novelty TL appears | World card shows a tech level above the standard ceiling for the world's characteristics; a note or badge indicates relic/novelty status | |
+| UAT-172 | Relic technology option disabled by default | App freshly launched | Open Options | "Relic technology" checkbox is unchecked; no novelty TL worlds generated without it | |
+
+---
+
+## 26. Generation options restored on Open JSON (Session 178)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-173 | Opening a saved JSON file restores generation options used | World or system generated with non-default options (e.g. Social detail + Government detail checked); saved as JSON | Restart app; File → Open JSON…; select saved file | Options dialog re-opened after load shows the same option state that was active when the JSON was saved | |
+| UAT-174 | Options not silently overwritten on subsequent generation | JSON loaded (options restored) | Immediately click "Generate" without changing options | New generation uses the restored options, not the previous session's defaults | |
+
+---
+
+## 27. Horizontal scroll bar on result panel (issue #174, Session 182)
+
+| ID | Description | Pre-conditions | Steps | Expected result | Result |
+|----|-------------|----------------|-------|-----------------|--------|
+| UAT-175 | Result panel has horizontal scroll bar when content is wide | App window narrowed below content width | Resize main window to be narrower than the result card | Horizontal scroll bar appears at the bottom of the result panel; controls panel does not scroll | |
+| UAT-176 | Controls panel remains visible and fixed during result scroll | Result panel scrolled horizontally | Scroll result panel to the right | Controls (Generate button, seed field, source radio) stay in place and are not affected by the scroll | |

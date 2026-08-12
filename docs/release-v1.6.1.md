@@ -1,6 +1,6 @@
 # Traveller World Generator — v1.6.1 Release Notes
 
-**3032 tests pass. Pylint 10.00/10.**
+**3068 tests pass. Pylint 10.00/10.**
 
 Schema maintenance release — records the full set of generation options used
 to produce a system or world alongside its seed, closing a reproducibility

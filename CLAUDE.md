@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-07-23 (Session 178)  
+**Last updated:** 2026-08-12 (Session 186)  
 **Branch:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
