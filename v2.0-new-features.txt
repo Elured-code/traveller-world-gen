@@ -81,5 +81,12 @@ Now the form shows:
   nation's military budget as a percentage of GWP, state of readiness, and
   military profile code — appearing below the world-level military summary.
 
+GEN-UI — BUILD NUMBER IN TITLE BAR AND ABOUT DIALOG
+-----------------------------------------------------
+The desktop app now shows the build number alongside the version wherever the
+version is displayed: the window title, the status bar, and the About dialog.
+On a CI-built release this reads as "2.0.0 (build 42)". On a local dev build
+it shows the bare version string ("2.0.0") as before.
+
 BUG FIXES
 ---------

@@ -83,7 +83,7 @@ back to the bare version string. Three new module-level constants: `_BUILD_NUMBE
 before the exec line, ensuring the `src/` layout is on the Python path when launching
 the GUI on macOS via the `.command` file.
 
-No new tests (display-only changes); no schema changes. 3068 tests pass; pylint 10.00/10.
+No new tests (display-only changes); no schema changes. 3112 tests pass; pylint 10.00/10.
 
 ---
 
