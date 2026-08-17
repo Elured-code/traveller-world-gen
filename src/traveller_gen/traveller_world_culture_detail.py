@@ -804,6 +804,20 @@ def attach_culture_detail(
                 rng=None,
             )
 
+        balk = getattr(mw, "balkanised_detail", None)
+        if balk is not None:
+            for nation in balk.nations:
+                nation.culture_detail = generate_culture_detail(
+                    population=mw.population,   # type: ignore[attr-defined]
+                    government=nation.government_type,
+                    law_level=nation.law_level,
+                    pcr=pcr,
+                    starport=mw.starport,       # type: ignore[attr-defined]
+                    tech_level=mw.tech_level,   # type: ignore[attr-defined]
+                    importance=getattr(mw, "importance", 0),
+                    rng=None,
+                )
+
     for orbit in system.system_orbits.orbits:
         if orbit.is_mainworld_candidate:
             continue

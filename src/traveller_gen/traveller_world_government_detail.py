@@ -10,9 +10,10 @@ Implements:
   - Step 3: Government Structure (Demos / Single Council / Multiple Councils / Ruler)
   - Government profile string in WBH format G-CAS (or G-CB-LS-ES-JS for Balanced)
   - Internal factions: count, government type, strength, and relationship to ruling body
+  - Balkanised worlds (gov code 7): BalkanisedNation / BalkanisedDetail (issue #130)
 
 Government code 0 (no government structure) returns None — no procedures apply.
-Government code 7 (Balkanisation) returns None — procedure deferred to issue #130.
+Government code 7 (Balkanisation) uses generate_balkanised_detail() instead.
 
 Licence
 -------
@@ -221,20 +222,142 @@ class GovernmentDetail:  # pylint: disable=too-many-instance-attributes
         )
 
 
+@dataclass
+class BalkanisedNation:  # pylint: disable=too-many-instance-attributes
+    """One nation/faction in a Balkanised world, with its own government profile."""
+    numeral: str              # "I" = ruling (highest strength), "II", "III", "IV"
+    government_type: int      # UWP gov code (0–13, never 7)
+    government_name: str
+    strength_code: str        # O|F|M|N|S|P
+    strength_label: str
+    centralisation_code: str  # "C"|"F"|"U"
+    centralisation: str
+    authority_code: str       # "L"|"E"|"J"|"B"
+    authority: str
+    structure_code: str       # primary structure code; "" when Balanced
+    structure: str            # "" when Balanced
+    structure_leg_code: str   # "" when not Balanced
+    structure_leg: str
+    structure_exec_code: str
+    structure_exec: str
+    structure_jud_code: str
+    structure_jud: str
+    nation_profile: str       # e.g. "4-FES" or "4-FB-LM-ES-JS"
+    law_level: int = 0
+    law_detail: Optional[object] = None
+    culture_detail: Optional[object] = None
+    military_detail: Optional[object] = None
+
+    def to_dict(self) -> dict:
+        """Serialise to a plain dict."""
+        d: dict = {
+            "numeral": self.numeral,
+            "government_type": self.government_type,
+            "government_name": self.government_name,
+            "strength_code": self.strength_code,
+            "strength_label": self.strength_label,
+            "centralisation_code": self.centralisation_code,
+            "centralisation": self.centralisation,
+            "authority_code": self.authority_code,
+            "authority": self.authority,
+            "structure_code": self.structure_code,
+            "structure": self.structure,
+            "nation_profile": self.nation_profile,
+            "law_level": self.law_level,
+        }
+        if self.structure_leg_code:
+            d["structure_leg_code"] = self.structure_leg_code
+            d["structure_leg"] = self.structure_leg
+            d["structure_exec_code"] = self.structure_exec_code
+            d["structure_exec"] = self.structure_exec
+            d["structure_jud_code"] = self.structure_jud_code
+            d["structure_jud"] = self.structure_jud
+        if self.law_detail is not None:
+            d["law_detail"] = self.law_detail.to_dict()  # type: ignore[attr-defined]
+        if self.culture_detail is not None:
+            d["culture_detail"] = self.culture_detail.to_dict()  # type: ignore[attr-defined]
+        if self.military_detail is not None:
+            d["military_detail"] = self.military_detail.to_dict()  # type: ignore[attr-defined]
+        return d
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "BalkanisedNation":
+        """Reconstruct from a dict produced by to_dict()."""
+        nation = cls(
+            numeral=str(d.get("numeral", "I")),
+            government_type=int(d.get("government_type", 0)),
+            government_name=str(d.get("government_name", "")),
+            strength_code=str(d.get("strength_code", "O")),
+            strength_label=str(d.get("strength_label", "")),
+            centralisation_code=str(d.get("centralisation_code", "F")),
+            centralisation=str(d.get("centralisation", "Federal")),
+            authority_code=str(d.get("authority_code", "L")),
+            authority=str(d.get("authority", "Legislative")),
+            structure_code=str(d.get("structure_code", "")),
+            structure=str(d.get("structure", "")),
+            structure_leg_code=str(d.get("structure_leg_code", "")),
+            structure_leg=str(d.get("structure_leg", "")),
+            structure_exec_code=str(d.get("structure_exec_code", "")),
+            structure_exec=str(d.get("structure_exec", "")),
+            structure_jud_code=str(d.get("structure_jud_code", "")),
+            structure_jud=str(d.get("structure_jud", "")),
+            nation_profile=str(d.get("nation_profile", "")),
+            law_level=int(d.get("law_level", 0)),
+        )
+        if d.get("law_detail") is not None:
+            from .traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
+            nation.law_detail = _LD.from_dict(d["law_detail"])
+        if d.get("culture_detail") is not None:
+            from .traveller_world_culture_detail import CultureDetail as _CD  # pylint: disable=import-outside-toplevel
+            nation.culture_detail = _CD.from_dict(d["culture_detail"])
+        if d.get("military_detail") is not None:
+            from .traveller_world_military_detail import MilitaryDetail as _MD  # pylint: disable=import-outside-toplevel
+            nation.military_detail = _MD.from_dict(d["military_detail"])
+        return nation
+
+
+@dataclass
+class BalkanisedDetail:
+    """Full Balkanised government profile: N nations each with own structure."""
+    nation_count: int
+    ruling_nation_numeral: str  # always "I" — highest-strength nation
+    nations: list               # List[BalkanisedNation], sorted strength desc
+
+    def to_dict(self) -> dict:
+        """Serialise to a plain dict."""
+        return {
+            "nation_count": self.nation_count,
+            "ruling_nation_numeral": self.ruling_nation_numeral,
+            "nations": [n.to_dict() for n in self.nations],
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "BalkanisedDetail":
+        """Reconstruct from a dict produced by to_dict()."""
+        return cls(
+            nation_count=int(d.get("nation_count", 0)),
+            ruling_nation_numeral=str(d.get("ruling_nation_numeral", "I")),
+            nations=[BalkanisedNation.from_dict(n) for n in d.get("nations", [])],
+        )
+
+
 # ---------------------------------------------------------------------------
 # Private helpers — Centralisation
 # ---------------------------------------------------------------------------
 
-def _centralisation_dm(gov_code: int, pcr: int) -> int:
-    """Accumulate DMs for the centralisation roll (WBH §3 Step 1)."""
-    dm = 0
+def _centralisation_dm(gov_code: int, pcr: int, balkanised_dm: int = 0) -> int:
+    """Accumulate DMs for the centralisation roll (WBH §3 Step 1).
+
+    balkanised_dm: extra DM applied when rolling centralisation for a nation
+    within a Balkanised world (WBH §3: +1 per nation on the world).
+    """
+    dm = balkanised_dm
     if 2 <= gov_code <= 5:
         dm -= 1
     elif gov_code in (6, 8, 9, 10, 11):   # Government 6, 8–B
         dm += 1
     elif gov_code >= 12:                   # Government C+
         dm += 2
-    # Government 7 (Balkanised) also gets DM+1 per faction, but that case is deferred
     if pcr <= 3:
         dm -= 1
     elif 7 <= pcr <= 8:
@@ -357,15 +480,17 @@ def _roll_faction_relationship(same_gov_code: bool) -> tuple[str, str]:
 
 def generate_centralisation(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         gov_code: int, pcr: int = 0,
+        balkanised_dm: int = 0,
         rng: Optional[random.Random] = None) -> tuple[str, str]:
     """Roll Degree of Centralisation (WBH §3 Step 1).
 
     Returns (centralisation_code, centralisation_label).
+    balkanised_dm: extra DM for nations within a Balkanised world (WBH §3).
     """
     global _rng  # pylint: disable=global-statement
     if rng is not None:
         _rng = rng
-    dm = _centralisation_dm(gov_code, pcr)
+    dm = _centralisation_dm(gov_code, pcr, balkanised_dm=balkanised_dm)
     result = _rng.randint(1, 6) + _rng.randint(1, 6) + dm
     if result <= 5:
         return "C", "Confederal"
@@ -503,6 +628,105 @@ def generate_government_detail(  # pylint: disable=too-many-locals
     )
 
 
+def generate_balkanised_detail(  # pylint: disable=too-many-locals
+        pop_code: int,
+        pcr: int = 0,
+        rng: Optional[random.Random] = None,
+) -> BalkanisedDetail:
+    """Generate Balkanised government detail (WBH §3 — gov code 7).
+
+    Rolls nation/faction count (D3+1 = 2–4), then for each nation rolls
+    government type, strength, and a full centralisation/authority/structure
+    profile.  The nation with highest strength becomes Faction I (ruling).
+    Each nation's centralisation roll receives DM+1 per nation on the world
+    (WBH §3 Balkanised provision).
+
+    Parameters
+    ----------
+    pop_code : int
+        UWP population code; used when rolling each nation's government type.
+    pcr : int
+        Population Concentration Rating from §2; used for centralisation DMs.
+    rng : random.Random, optional
+        Injectable RNG; writes to module-level sentinel when provided.
+    """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
+
+    nation_count = _d3() + _faction_count_dm(7)   # D3+1 = 2–4
+
+    # Strength rank order for sorting (higher rank = stronger)
+    _strength_rank = {"O": 0, "F": 1, "M": 2, "N": 3, "S": 4, "P": 5}
+
+    # Build raw nation data before assigning numerals
+    raw_nations = []
+    for _ in range(nation_count):
+        nat_gov = _roll_faction_gov(pop_code)
+        s_code, s_label = _roll_faction_strength()
+        raw_nations.append((nat_gov, s_code, s_label))
+
+    # Sort by strength descending; ties broken by insertion order (stable sort)
+    raw_nations.sort(key=lambda x: _strength_rank[x[1]], reverse=True)
+
+    nations = []
+    for idx, (nat_gov, s_code, s_label) in enumerate(raw_nations):
+        numeral = _ROMAN[idx] if idx < len(_ROMAN) else f"N{idx + 1}"
+        # Law level: 2D-7+gov_code, clamped 0–9
+        nat_law = max(0, min(9, _rng.randint(1, 6) + _rng.randint(1, 6) - 7 + nat_gov))
+        # Centralisation: nation's own gov code DM + balkanised DM (+1 per nation)
+        c_code, c_label = generate_centralisation(
+            nat_gov, pcr, balkanised_dm=nation_count)
+        a_code, a_label = generate_authority(nat_gov, c_code)
+
+        if a_code == "B":
+            sl = _roll_one_structure(nat_gov, is_legislative=True)
+            se = _roll_one_structure(nat_gov, is_legislative=False)
+            sj = _roll_one_structure(nat_gov, is_legislative=False)
+            struct_code, struct_label = "", ""
+            sl_code, sl_lbl = sl, _STRUCTURE_NAMES[sl]
+            se_code, se_lbl = se, _STRUCTURE_NAMES[se]
+            sj_code, sj_lbl = sj, _STRUCTURE_NAMES[sj]
+        else:
+            s = _roll_one_structure(nat_gov, is_legislative=a_code == "L")
+            struct_code, struct_label = s, _STRUCTURE_NAMES[s]
+            sl_code = sl_lbl = se_code = se_lbl = sj_code = sj_lbl = ""
+
+        g_hex = _EHEX[nat_gov] if nat_gov < len(_EHEX) else str(nat_gov)
+        if a_code == "B":
+            profile = f"{g_hex}-{c_code}B-L{sl_code}-E{se_code}-J{sj_code}"
+        else:
+            profile = f"{g_hex}-{c_code}{a_code}{struct_code}"
+
+        nations.append(BalkanisedNation(
+            numeral=numeral,
+            government_type=nat_gov,
+            government_name=_GOV_NAMES.get(nat_gov, "Unknown"),
+            strength_code=s_code,
+            strength_label=s_label,
+            centralisation_code=c_code,
+            centralisation=c_label,
+            authority_code=a_code,
+            authority=a_label,
+            structure_code=struct_code,
+            structure=struct_label,
+            structure_leg_code=sl_code,
+            structure_leg=sl_lbl,
+            structure_exec_code=se_code,
+            structure_exec=se_lbl,
+            structure_jud_code=sj_code,
+            structure_jud=sj_lbl,
+            nation_profile=profile,
+            law_level=nat_law,
+        ))
+
+    return BalkanisedDetail(
+        nation_count=nation_count,
+        ruling_nation_numeral="I",
+        nations=nations,
+    )
+
+
 def _gov_detail_for_det(det: object) -> Optional[GovernmentDetail]:  # type: ignore[type-arg]
     """Generate GovernmentDetail for a WorldDetail object (secondary world)."""
     gov_code: int = getattr(det, "government", 0)
@@ -514,11 +738,27 @@ def _gov_detail_for_det(det: object) -> Optional[GovernmentDetail]:  # type: ign
 
 def _attach_det_government(det: object) -> None:  # type: ignore[type-arg]
     """Attach government detail to one WorldDetail and its inhabited moons."""
-    det.government_detail = _gov_detail_for_det(det)  # type: ignore[attr-defined]
+    gov_code: int = getattr(det, "government", 0)
+    pop_code: int = getattr(det, "population", 0)
+    pop_detail = getattr(det, "population_detail", None)
+    pcr: int = pop_detail.pcr if pop_detail is not None else 0
+    if gov_code == 7:
+        det.balkanised_detail = generate_balkanised_detail(  # type: ignore[attr-defined]
+            pop_code, pcr=pcr)
+    else:
+        det.government_detail = _gov_detail_for_det(det)  # type: ignore[attr-defined]
     for moon in getattr(det, "moons", []):
         moon_det = getattr(moon, "detail", None)
         if moon_det is not None and getattr(moon_det, "inhabited", False):
-            moon_det.government_detail = _gov_detail_for_det(moon_det)
+            moon_gov: int = getattr(moon_det, "government", 0)
+            moon_pop: int = getattr(moon_det, "population", 0)
+            moon_pd = getattr(moon_det, "population_detail", None)
+            moon_pcr: int = moon_pd.pcr if moon_pd is not None else 0
+            if moon_gov == 7:
+                balk = generate_balkanised_detail(moon_pop, pcr=moon_pcr)
+                moon_det.balkanised_detail = balk  # type: ignore[attr-defined]
+            else:
+                moon_det.government_detail = _gov_detail_for_det(moon_det)
 
 
 def attach_government_detail(
@@ -527,8 +767,8 @@ def attach_government_detail(
 ) -> None:
     """Attach government detail to mainworld and all inhabited secondaries.
 
-    Calls generate_government_detail() for system.mainworld when inhabited.
-    Also applies to each inhabited secondary WorldDetail and moon WorldDetail.
+    Gov code 0: no detail.  Gov code 7: sets balkanised_detail.
+    All other codes: sets government_detail.
     Uses population_detail.pcr when available; falls back to pcr=0.
     """
     global _rng  # pylint: disable=global-statement
@@ -538,9 +778,14 @@ def attach_government_detail(
     mw = system.mainworld
     if mw is not None and mw.population > 0:
         pcr = mw.population_detail.pcr if mw.population_detail is not None else 0
-        mw.government_detail = generate_government_detail(
-            mw.government, mw.population, pcr=pcr, rng=None,
-        )
+        if mw.government == 7:
+            mw.balkanised_detail = generate_balkanised_detail(
+                mw.population, pcr=pcr, rng=None,
+            )
+        else:
+            mw.government_detail = generate_government_detail(
+                mw.government, mw.population, pcr=pcr, rng=None,
+            )
 
     for orbit in system.system_orbits.orbits:
         if orbit.is_mainworld_candidate:

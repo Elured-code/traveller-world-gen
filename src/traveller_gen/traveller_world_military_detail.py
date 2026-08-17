@@ -849,3 +849,28 @@ def attach_military_detail(
         gwp_total_mcr     = gwp,
         rng               = rng,
     )
+
+    balk = getattr(world, "balkanised_detail", None)
+    if balk is not None:
+        for nation in balk.nations:
+            nat_cult = nation.culture_detail
+            nat_militancy    = nat_cult.militancy    if nat_cult is not None else 6
+            nat_expansionism = nat_cult.expansionism if nat_cult is not None else 6
+            nation.military_detail = generate_military_detail(
+                starport          = world.starport,
+                has_highport      = "H" in world.bases,
+                has_naval_base    = "N" in world.bases,
+                has_military_base = "M" in world.bases,
+                population        = world.population,
+                government        = nation.government_type,
+                law_level         = nation.law_level,
+                tech_level        = world.tech_level,
+                atmosphere        = world.atmosphere,
+                hydrographics     = world.hydrographics,
+                pcr               = pcr,
+                militancy         = nat_militancy,
+                expansionism      = nat_expansionism,
+                efficiency_factor = ef,
+                gwp_total_mcr     = gwp,
+                rng               = None,
+            )

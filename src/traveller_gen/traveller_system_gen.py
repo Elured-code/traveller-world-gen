@@ -879,6 +879,91 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 ],
             }
 
+        # Balkanised government context (gov code 7 only)
+        balk_ctx = None
+        if mw and mw.balkanised_detail is not None:
+            bd = mw.balkanised_detail
+            balk_nations = []
+            for n in bd.nations:
+                n_structure = n.structure or (
+                    f"{n.structure_leg}/{n.structure_exec}/{n.structure_jud}"
+                    if n.authority == "Balanced" else ""
+                )
+                n_law = None
+                if n.law_detail is not None:
+                    n_ld = n.law_detail
+                    n_law = {
+                        "overall": n.law_level,
+                        "primary_system": n_ld.judicial_primary,
+                        "primary_label": n_ld.judicial_primary_label,
+                        "secondary_system": (
+                            f"{n_ld.judicial_secondary} {n_ld.judicial_secondary_label}"
+                            if n_ld.judicial_secondary != n_ld.judicial_primary else "—"
+                        ),
+                        "uniformity": n_ld.law_uniformity,
+                        "uniformity_label": n_ld.law_uniformity_label,
+                        "presumption": "Yes" if n_ld.presumption_of_innocence else "No",
+                        "death_penalty": "Yes" if n_ld.death_penalty else "No",
+                        "justice_profile": n_ld.justice_profile,
+                        "law_weapons": n_ld.law_weapons,
+                        "law_economic": n_ld.law_economic,
+                        "law_criminal": n_ld.law_criminal,
+                        "law_private": n_ld.law_private,
+                        "law_personal_rights": n_ld.law_personal_rights,
+                        "law_profile": n_ld.law_profile,
+                    }
+                n_cult = None
+                if n.culture_detail is not None:
+                    n_cd = n.culture_detail
+                    n_cult = {
+                        "diversity": n_cd.diversity,
+                        "diversity_label": n_cd.diversity_label,
+                        "xenophilia": n_cd.xenophilia,
+                        "xenophilia_label": n_cd.xenophilia_label,
+                        "uniqueness": n_cd.uniqueness,
+                        "uniqueness_label": n_cd.uniqueness_label,
+                        "symbology": n_cd.symbology,
+                        "symbology_label": n_cd.symbology_label,
+                        "cohesion": n_cd.cohesion,
+                        "cohesion_label": n_cd.cohesion_label,
+                        "progressiveness": n_cd.progressiveness,
+                        "progressiveness_label": n_cd.progressiveness_label,
+                        "expansionism": n_cd.expansionism,
+                        "expansionism_label": n_cd.expansionism_label,
+                        "militancy": n_cd.militancy,
+                        "militancy_label": n_cd.militancy_label,
+                        "cultural_profile": n_cd.cultural_profile,
+                        "cultural_extension": n_cd.cultural_extension,
+                    }
+                n_mil = None
+                if n.military_detail is not None:
+                    n_md = n.military_detail
+                    n_mil = {
+                        "budget_pct": f"{n_md.military_budget_pct:.1f}%",
+                        "readiness": n_md.state_of_readiness,
+                        "military_profile": n_md.military_profile,
+                    }
+                balk_nations.append({
+                    "numeral": n.numeral,
+                    "government_type": n.government_type,
+                    "government_name": n.government_name,
+                    "strength_code": n.strength_code,
+                    "strength_label": n.strength_label,
+                    "centralisation": n.centralisation,
+                    "authority": n.authority,
+                    "structure": n_structure,
+                    "nation_profile": n.nation_profile,
+                    "law_level": n.law_level,
+                    "law": n_law,
+                    "culture": n_cult,
+                    "military": n_mil,
+                })
+            balk_ctx = {
+                "nation_count": bd.nation_count,
+                "ruling_numeral": bd.ruling_nation_numeral,
+                "nations": balk_nations,
+            }
+
         # Law context
         law_ctx = None
         if mw and mw.law_detail is not None:
@@ -1049,6 +1134,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             primary_star=primary_star,
             pop=pop_ctx,
             gov=gov_ctx,
+            balk=balk_ctx,
             law=law_ctx,
             tech=tech_ctx,
             cult=cult_ctx,

@@ -144,9 +144,12 @@ from traveller_gen.traveller_world_government_detail import (
     generate_authority,
     generate_factions,
     generate_government_detail,
+    generate_balkanised_detail,
     attach_government_detail,
     Faction,
     GovernmentDetail,
+    BalkanisedNation,
+    BalkanisedDetail,
 )
 from traveller_gen.traveller_world_detail import (
     attach_detail, _ehex_to_int, generate_biomass_rating, WorldDetail,
@@ -8006,6 +8009,419 @@ class TestGovernmentDetail:
         mw = system.mainworld
         if mw is not None and mw.government in (0, 7):
             assert mw.government_detail is None
+
+
+# ===========================================================================
+# TestBalkanisedDetail — generate_balkanised_detail() / BalkanisedDetail
+# ===========================================================================
+
+class TestBalkanisedDetail:
+    """Tests for Balkanised world government detail (issue #130)."""
+
+    def _detail(self, pop_code=6, pcr=0, rng=None):
+        return generate_balkanised_detail(pop_code, pcr=pcr, rng=rng)
+
+    # ------------------------------------------------------------------
+    # Existing test must still pass
+    # ------------------------------------------------------------------
+
+    def test_gov7_still_returns_none_from_generate_government_detail(self):
+        assert generate_government_detail(7, 6) is None
+
+    # ------------------------------------------------------------------
+    # Basic generation
+    # ------------------------------------------------------------------
+
+    def test_returns_balkanised_detail_instance(self):
+        det = self._detail()
+        assert isinstance(det, BalkanisedDetail)
+
+    def test_nation_count_in_range(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            assert 2 <= det.nation_count <= 4, f"seed {seed}: nation_count {det.nation_count}"
+
+    def test_nations_list_length_matches_count(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            assert len(det.nations) == det.nation_count
+
+    def test_all_nations_are_balkanised_nation_instances(self):
+        det = self._detail(rng=random.Random(7))
+        for n in det.nations:
+            assert isinstance(n, BalkanisedNation)
+
+    # ------------------------------------------------------------------
+    # Nation government codes
+    # ------------------------------------------------------------------
+
+    def test_no_nation_has_gov_code_7(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            det = self._detail(pop_code=6, rng=rng)
+            for n in det.nations:
+                assert n.government_type != 7, (
+                    f"seed {seed}: nation {n.numeral} has gov 7 (cascading Balkanised)")
+
+    def test_nation_gov_codes_in_valid_range(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            det = self._detail(pop_code=6, rng=rng)
+            for n in det.nations:
+                assert 0 <= n.government_type <= 13
+
+    # ------------------------------------------------------------------
+    # Ruling nation
+    # ------------------------------------------------------------------
+
+    def test_ruling_nation_numeral_is_always_I(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            assert det.ruling_nation_numeral == "I"
+
+    def test_first_nation_has_numeral_I(self):
+        for seed in range(50):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            assert det.nations[0].numeral == "I"
+
+    def test_nations_sorted_strength_descending(self):
+        _rank = {"O": 0, "F": 1, "M": 2, "N": 3, "S": 4, "P": 5}
+        for seed in range(100):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            ranks = [_rank[n.strength_code] for n in det.nations]
+            assert ranks == sorted(ranks, reverse=True), (
+                f"seed {seed}: nations not sorted by strength: {ranks}")
+
+    # ------------------------------------------------------------------
+    # Profile format
+    # ------------------------------------------------------------------
+
+    def test_nation_profile_format(self):
+        import re
+        profile_re = re.compile(r"^[0-9A-F]-[CFU][LEJB]|^[0-9A-F]-[CFU]B-L[DSMR]-E[DSMR]-J[DSMR]")
+        for seed in range(80):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            for n in det.nations:
+                assert n.nation_profile != "", f"seed {seed}: empty nation_profile"
+
+    def test_centralisation_code_valid(self):
+        for seed in range(80):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            for n in det.nations:
+                assert n.centralisation_code in ("C", "F", "U")
+
+    def test_authority_code_valid(self):
+        for seed in range(80):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            for n in det.nations:
+                assert n.authority_code in ("L", "E", "J", "B")
+
+    def test_balanced_authority_has_branch_codes(self):
+        found_balanced = False
+        for seed in range(200):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            for n in det.nations:
+                if n.authority_code == "B":
+                    found_balanced = True
+                    assert n.structure_leg_code in ("D", "S", "M", "R")
+                    assert n.structure_exec_code in ("D", "S", "M", "R")
+                    assert n.structure_jud_code in ("D", "S", "M", "R")
+        assert found_balanced, "No Balanced authority encountered in 200 seeds — sample too small"
+
+    # ------------------------------------------------------------------
+    # Serialisation round-trip
+    # ------------------------------------------------------------------
+
+    def test_to_dict_from_dict_round_trip(self):
+        rng = random.Random(42)
+        det = self._detail(rng=rng)
+        restored = BalkanisedDetail.from_dict(det.to_dict())
+        assert restored.nation_count == det.nation_count
+        assert restored.ruling_nation_numeral == det.ruling_nation_numeral
+        assert len(restored.nations) == len(det.nations)
+        for orig, rest in zip(det.nations, restored.nations):
+            assert rest.numeral == orig.numeral
+            assert rest.government_type == orig.government_type
+            assert rest.nation_profile == orig.nation_profile
+            assert rest.strength_code == orig.strength_code
+
+    def test_to_dict_keys(self):
+        det = self._detail(rng=random.Random(1))
+        d = det.to_dict()
+        assert set(d.keys()) == {"nation_count", "ruling_nation_numeral", "nations"}
+        assert isinstance(d["nations"], list)
+        for n in d["nations"]:
+            assert "numeral" in n
+            assert "nation_profile" in n
+            assert "strength_code" in n
+
+    # ------------------------------------------------------------------
+    # World integration
+    # ------------------------------------------------------------------
+
+    def test_world_balkanised_detail_defaults_none(self):
+        w = World(name="Test", size=8, atmosphere=6)
+        assert w.balkanised_detail is None
+
+    def test_world_to_dict_emits_balkanised_detail_for_gov7(self):
+        w = World(name="Balk", size=6, atmosphere=6)
+        w.government = 7
+        w.balkanised_detail = generate_balkanised_detail(6, rng=random.Random(99))
+        d = w.to_dict()
+        assert "balkanised_detail" in d
+        assert "government_detail" not in d
+
+    def test_world_from_dict_restores_balkanised_detail(self):
+        w = World(name="Balk", size=6, atmosphere=6)
+        w.government = 7
+        w.balkanised_detail = generate_balkanised_detail(6, rng=random.Random(99))
+        restored = World.from_dict(w.to_dict())
+        assert restored.balkanised_detail is not None
+        assert isinstance(restored.balkanised_detail, BalkanisedDetail)
+        assert restored.balkanised_detail.nation_count == w.balkanised_detail.nation_count
+
+    def test_attach_government_detail_sets_balkanised_on_gov7(self):
+        system = generate_full_system("BalkWorld", seed=42)
+        mw = system.mainworld
+        if mw is None:
+            return
+        mw.government = 7
+        mw.population = 6
+        rng = random.Random(42)
+        attach_government_detail(system, rng=rng)
+        assert mw.balkanised_detail is not None
+        assert mw.government_detail is None
+        assert isinstance(mw.balkanised_detail, BalkanisedDetail)
+
+    def test_attach_government_detail_non_gov7_unaffected(self):
+        system = generate_full_system("NormWorld", seed=7)
+        mw = system.mainworld
+        if mw is None or mw.population == 0 or mw.government in (0, 7):
+            return
+        rng = random.Random(7)
+        attach_government_detail(system, rng=rng)
+        assert mw.government_detail is not None
+        assert mw.balkanised_detail is None
+
+    # ------------------------------------------------------------------
+    # Per-nation law level
+    # ------------------------------------------------------------------
+
+    def test_nation_law_level_in_range(self):
+        for seed in range(100):
+            rng = random.Random(seed)
+            det = self._detail(rng=rng)
+            for n in det.nations:
+                assert 0 <= n.law_level <= 9, (
+                    f"seed {seed}: nation {n.numeral} law_level {n.law_level} out of range")
+
+    def test_nation_law_level_serialised_in_to_dict(self):
+        det = self._detail(rng=random.Random(5))
+        for n in det.nations:
+            d = n.to_dict()
+            assert "law_level" in d
+            assert isinstance(d["law_level"], int)
+
+    def test_round_trip_preserves_law_level(self):
+        det = self._detail(rng=random.Random(42))
+        restored = BalkanisedDetail.from_dict(det.to_dict())
+        for orig, rest in zip(det.nations, restored.nations):
+            assert rest.law_level == orig.law_level
+
+    # ------------------------------------------------------------------
+    # Per-nation law detail (attach_law_detail)
+    # ------------------------------------------------------------------
+
+    def _gov7_system(self, seed=42):
+        from traveller_gen.traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        system = generate_full_system("BalkWorld", seed=seed)
+        mw = system.mainworld
+        if mw is None:
+            return system, None
+        mw.government = 7
+        mw.population = 6
+        rng = random.Random(seed)
+        attach_government_detail(system, rng=rng)
+        apply_mainworld_social(mw)
+        attach_detail(system)
+        return system, mw
+
+    def test_attach_law_detail_fills_per_nation_law_detail(self):
+        from traveller_gen.traveller_world_law_detail import attach_law_detail, LawDetail  # pylint: disable=import-outside-toplevel
+        system, mw = self._gov7_system()
+        if mw is None:
+            return
+        attach_law_detail(system)
+        balk = mw.balkanised_detail
+        assert balk is not None
+        for n in balk.nations:
+            if n.law_level == 0:
+                assert n.law_detail is None
+            else:
+                assert isinstance(n.law_detail, LawDetail), (
+                    f"nation {n.numeral} law_level={n.law_level}: expected LawDetail")
+
+    def test_attach_law_detail_justice_profile_format(self):
+        from traveller_gen.traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        import re  # pylint: disable=import-outside-toplevel
+        system, mw = self._gov7_system(seed=17)
+        if mw is None:
+            return
+        attach_law_detail(system)
+        profile_re = re.compile(r"^[IAT][IAT][PTU]-[YN]-[YN]$")
+        for n in (mw.balkanised_detail or BalkanisedDetail(0, "I", [])).nations:
+            if n.law_detail is not None:
+                assert profile_re.match(n.law_detail.justice_profile), (
+                    f"justice_profile '{n.law_detail.justice_profile}' format wrong")
+
+    def test_round_trip_preserves_law_detail(self):
+        from traveller_gen.traveller_world_law_detail import attach_law_detail, LawDetail  # pylint: disable=import-outside-toplevel
+        system, mw = self._gov7_system(seed=33)
+        if mw is None:
+            return
+        attach_law_detail(system)
+        balk = mw.balkanised_detail
+        if balk is None:
+            return
+        restored_balk = BalkanisedDetail.from_dict(balk.to_dict())
+        for orig, rest in zip(balk.nations, restored_balk.nations):
+            if orig.law_detail is None:
+                assert rest.law_detail is None
+            else:
+                assert isinstance(rest.law_detail, LawDetail)
+                assert rest.law_detail.justice_profile == orig.law_detail.justice_profile
+
+    # ------------------------------------------------------------------
+    # Per-nation culture detail (attach_culture_detail)
+    # ------------------------------------------------------------------
+
+    def test_attach_culture_detail_fills_per_nation_culture_detail(self):
+        from traveller_gen.traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_culture_detail import attach_culture_detail, CultureDetail  # pylint: disable=import-outside-toplevel
+        system, mw = self._gov7_system()
+        if mw is None:
+            return
+        attach_law_detail(system)
+        attach_culture_detail(system)
+        balk = mw.balkanised_detail
+        assert balk is not None
+        for n in balk.nations:
+            assert isinstance(n.culture_detail, CultureDetail), (
+                f"nation {n.numeral}: culture_detail is not CultureDetail")
+
+    def test_attach_culture_detail_profile_format(self):
+        from traveller_gen.traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_culture_detail import attach_culture_detail  # pylint: disable=import-outside-toplevel
+        import re  # pylint: disable=import-outside-toplevel
+        system, mw = self._gov7_system(seed=55)
+        if mw is None:
+            return
+        attach_law_detail(system)
+        attach_culture_detail(system)
+        profile_re = re.compile(r"^[0-9A-Z]{4}-[0-9A-Z]{4}$")
+        for n in (mw.balkanised_detail or BalkanisedDetail(0, "I", [])).nations:
+            if n.culture_detail is not None:
+                assert profile_re.match(n.culture_detail.cultural_profile), (
+                    f"cultural_profile '{n.culture_detail.cultural_profile}' format wrong")
+
+    def test_round_trip_preserves_culture_detail(self):
+        from traveller_gen.traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_culture_detail import attach_culture_detail, CultureDetail  # pylint: disable=import-outside-toplevel
+        system, mw = self._gov7_system(seed=77)
+        if mw is None:
+            return
+        attach_law_detail(system)
+        attach_culture_detail(system)
+        balk = mw.balkanised_detail
+        if balk is None:
+            return
+        restored_balk = BalkanisedDetail.from_dict(balk.to_dict())
+        for orig, rest in zip(balk.nations, restored_balk.nations):
+            if orig.culture_detail is None:
+                assert rest.culture_detail is None
+            else:
+                assert isinstance(rest.culture_detail, CultureDetail)
+                assert rest.culture_detail.cultural_profile == orig.culture_detail.cultural_profile
+
+    # ------------------------------------------------------------------
+    # Per-nation military detail (attach_military_detail)
+    # ------------------------------------------------------------------
+
+    def _full_pipeline_gov7(self, seed=42):
+        from traveller_gen.traveller_world_gen import apply_mainworld_social  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_law_detail import attach_law_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_culture_detail import attach_culture_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_starport_detail import attach_starport_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_population_detail import attach_population_detail  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_importance import attach_importance_detail  # pylint: disable=import-outside-toplevel
+        system = generate_full_system("BalkWorld", seed=seed)
+        mw = system.mainworld
+        if mw is None:
+            return system, None
+        mw.government = 7
+        mw.population = 6
+        rng = random.Random(seed)
+        attach_government_detail(system, rng=rng)
+        apply_mainworld_social(mw)
+        attach_detail(system)
+        attach_population_detail(system)
+        attach_law_detail(system)
+        attach_culture_detail(system)
+        attach_importance_detail(system)
+        attach_starport_detail(system)
+        return system, mw
+
+    def test_attach_military_detail_fills_per_nation_military_detail(self):
+        from traveller_gen.traveller_world_military_detail import attach_military_detail, MilitaryDetail  # pylint: disable=import-outside-toplevel
+        system, mw = self._full_pipeline_gov7()
+        if mw is None:
+            return
+        attach_military_detail(system)
+        balk = mw.balkanised_detail
+        assert balk is not None
+        for n in balk.nations:
+            assert isinstance(n.military_detail, MilitaryDetail), (
+                f"nation {n.numeral}: military_detail is not MilitaryDetail")
+
+    def test_attach_military_detail_profile_format(self):
+        from traveller_gen.traveller_world_military_detail import attach_military_detail  # pylint: disable=import-outside-toplevel
+        import re  # pylint: disable=import-outside-toplevel
+        system, mw = self._full_pipeline_gov7(seed=88)
+        if mw is None:
+            return
+        attach_military_detail(system)
+        profile_re = re.compile(r"^[0-9A-Z]")
+        for n in (mw.balkanised_detail or BalkanisedDetail(0, "I", [])).nations:
+            if n.military_detail is not None:
+                assert n.military_detail.military_profile, (
+                    f"nation {n.numeral}: empty military_profile")
+
+    def test_round_trip_preserves_military_detail(self):
+        from traveller_gen.traveller_world_military_detail import attach_military_detail, MilitaryDetail  # pylint: disable=import-outside-toplevel
+        system, mw = self._full_pipeline_gov7(seed=99)
+        if mw is None:
+            return
+        attach_military_detail(system)
+        balk = mw.balkanised_detail
+        if balk is None:
+            return
+        restored_balk = BalkanisedDetail.from_dict(balk.to_dict())
+        for orig, rest in zip(balk.nations, restored_balk.nations):
+            if orig.military_detail is None:
+                assert rest.military_detail is None
+            else:
+                assert isinstance(rest.military_detail, MilitaryDetail)
+                assert (rest.military_detail.military_profile
+                        == orig.military_detail.military_profile)
 
 
 # ===========================================================================

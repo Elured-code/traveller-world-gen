@@ -57,7 +57,7 @@ from .tables import (
 if TYPE_CHECKING:
     from .traveller_world_physical import WorldPhysical
     from .traveller_world_population_detail import PopulationDetail
-    from .traveller_world_government_detail import GovernmentDetail
+    from .traveller_world_government_detail import GovernmentDetail, BalkanisedDetail
     from .traveller_world_law_detail import LawDetail
     from .traveller_world_tech_detail import TechDetail
     from .traveller_world_culture_detail import CultureDetail
@@ -1555,6 +1555,11 @@ class World:  # pylint: disable=too-many-instance-attributes
     habitability_rating:  Optional[int] = field(default=None, init=False)
     population_detail: Optional["PopulationDetail"] = field(default=None, init=False)
     government_detail: Optional["GovernmentDetail"] = field(default=None, init=False)
+    balkanised_detail: Optional["BalkanisedDetail"] = field(default=None, init=False)
+                                    # WBH §3 Balkanised government: per-nation profiles.
+                                    # Set by attach_government_detail() when gov code 7.
+                                    # None for all other government codes.
+                                    # government_detail is always None when this is set.
     law_detail:        Optional["LawDetail"]         = field(default=None, init=False)
     tech_detail:       Optional["TechDetail"]        = field(default=None, init=False)
                                     # WBH Social Characteristics tech level profile.
@@ -1692,6 +1697,8 @@ class World:  # pylint: disable=too-many-instance-attributes
                if self.population_detail is not None else {}),
             **({"government_detail": self.government_detail.to_dict()}
                if self.government_detail is not None else {}),
+            **({"balkanised_detail": self.balkanised_detail.to_dict()}
+               if self.balkanised_detail is not None else {}),
             **({"law_detail": self.law_detail.to_dict()}
                if self.law_detail is not None else {}),
             **({"tech_detail": self.tech_detail.to_dict()}
@@ -1888,6 +1895,9 @@ class World:  # pylint: disable=too-many-instance-attributes
         if d.get("government_detail") is not None:
             from .traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
             world.government_detail = _GD.from_dict(d["government_detail"])
+        if d.get("balkanised_detail") is not None:
+            from .traveller_world_government_detail import BalkanisedDetail as _BD  # pylint: disable=import-outside-toplevel
+            world.balkanised_detail = _BD.from_dict(d["balkanised_detail"])
         if d.get("law_detail") is not None:
             from .traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
             world.law_detail = _LD.from_dict(d["law_detail"])
@@ -2208,6 +2218,7 @@ def _world_html_ctx(world: "World") -> dict:  # pylint: disable=too-many-locals,
              for i, c in enumerate(world.population_detail.cities)]
             if world.population_detail is not None else []),
         "gov_detail": world.government_detail,
+        "balkanised_detail": world.balkanised_detail,
         "law_detail": world.law_detail,
         "tech_detail": world.tech_detail,
         "culture_detail": world.culture_detail,

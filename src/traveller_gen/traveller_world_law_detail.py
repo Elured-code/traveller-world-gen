@@ -355,3 +355,14 @@ def attach_law_detail(
         gov_authority_code=gov_auth,
         rng=None,
     )
+
+    balk = getattr(mw, "balkanised_detail", None)
+    if balk is not None:
+        for nation in balk.nations:
+            nation.law_detail = generate_law_detail(
+                nation.law_level, nation.government_type,
+                mw.tech_level,  # type: ignore[attr-defined]
+                pcr=pcr,
+                gov_authority_code=nation.authority_code,
+                rng=None,
+            )

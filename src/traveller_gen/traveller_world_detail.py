@@ -871,8 +871,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
                  "is_independent_government", "native_sophont", "classification",
-                 "population_detail", "government_detail", "law_detail",
-                 "tech_detail", "culture_detail", "name", "runaway_greenhouse")
+                 "population_detail", "government_detail", "balkanised_detail",
+                 "law_detail", "tech_detail", "culture_detail", "name", "runaway_greenhouse")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -892,6 +892,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.population_detail: Optional[object] = None
         # traveller_world_government_detail.GovernmentDetail — set by attach_government_detail()
         self.government_detail: Optional[object] = None
+        # traveller_world_government_detail.BalkanisedDetail — set when gov code 7
+        self.balkanised_detail: Optional[object] = None
         # traveller_world_law_detail.LawDetail — set by attach_law_detail()
         self.law_detail: Optional[object] = None
         # traveller_world_tech_detail.TechDetail — set by attach_tech_detail()
@@ -989,6 +991,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["population_detail"] = self.population_detail.to_dict()  # type: ignore[attr-defined]
         if self.government_detail is not None:
             d["government_detail"] = self.government_detail.to_dict()  # type: ignore[attr-defined]
+        if self.balkanised_detail is not None:
+            d["balkanised_detail"] = self.balkanised_detail.to_dict()  # type: ignore[attr-defined]
         if self.law_detail is not None:
             d["law_detail"] = self.law_detail.to_dict()  # type: ignore[attr-defined]
         if self.tech_detail is not None:
@@ -1035,6 +1039,9 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         if d.get("government_detail") is not None:
             from .traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
             obj.government_detail = _GD.from_dict(d["government_detail"])
+        if d.get("balkanised_detail") is not None:
+            from .traveller_world_government_detail import BalkanisedDetail as _BD  # pylint: disable=import-outside-toplevel
+            obj.balkanised_detail = _BD.from_dict(d["balkanised_detail"])
         if d.get("law_detail") is not None:
             from .traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
             obj.law_detail = _LD.from_dict(d["law_detail"])
