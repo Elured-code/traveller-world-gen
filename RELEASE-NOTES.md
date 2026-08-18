@@ -6,6 +6,13 @@
 
 ---
 
+## Pyright Type-Check Fix (Session 189)
+
+`traveller_world_detail.py`: two accesses to `culture_detail.cultural_profile`
+inside `system_body_table()` replaced with `getattr()` calls. `WorldDetail.culture_detail`
+is typed as `Optional[object]`, so direct attribute access was rejected by pyright
+(`reportAttributeAccessIssue`). No behaviour change; CI type-check now passes.
+
 ## Secondary World Cultural Profiles — Display (Session 188, Issue #142)
 
 Cultural profiles (DXUS-CPEM format) for inhabited secondary worlds and moons
