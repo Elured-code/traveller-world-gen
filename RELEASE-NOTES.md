@@ -2,9 +2,28 @@
 
 **Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3124
+**Tests:** 3131
 
 ---
+
+## Secondary World Cultural Profiles — Display (Session 188, Issue #142)
+
+Cultural profiles (DXUS-CPEM format) for inhabited secondary worlds and moons
+are now surfaced in the system card HTML and text table. The generation has
+been in place since session 129; this session wires it into the display layer.
+
+`_system_card_context()` in `traveller_system_gen.py` now adds a
+`cultural_profile` key to each orbit row dict and each moon sub-dict when the
+secondary/moon has a `CultureDetail` attached. `system_card.html` renders
+"Culture: DXUS-CPEM" in the Notes column for orbit rows and in the last cell
+for moon rows.
+
+`system_body_table()` now calls `attach_culture_detail(system)` immediately
+after `attach_detail(system)` so culture profiles are available when building
+the text table. The notes suffix for inhabited secondary orbit rows and moon
+sub-rows is extended with "Culture: DXUS-CPEM".
+
+7 new tests in `TestSecondaryCultureDisplay`. No schema change; no version bump.
 
 ## City Spaceports on Mainworld (Session 187, Issue #160)
 

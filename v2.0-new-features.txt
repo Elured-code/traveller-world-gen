@@ -81,6 +81,17 @@ Now the form shows:
   nation's military budget as a percentage of GWP, state of readiness, and
   military profile code — appearing below the world-level military summary.
 
+CULTURAL PROFILES ON SECONDARY WORLDS AND MOONS
+-------------------------------------------------
+Inhabited secondary worlds and moons now show their cultural profile
+(DXUS-CPEM format) in the orbital survey table.
+
+- The profile appears in the Notes column of the orbital survey table for
+  each inhabited secondary world.
+- Moon sub-rows show the profile in the rightmost column.
+- The text output from system_body_table() also includes the profile in the
+  notes field for inhabited secondary orbits and moons.
+
 CITY SPACEPORTS ON THE MAINWORLD
 ---------------------------------
 Major cities on the mainworld may now have their own spaceport facility,
