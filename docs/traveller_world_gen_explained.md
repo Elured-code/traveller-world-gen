@@ -8,8 +8,10 @@ captures everything about a planet: its atmosphere, population, starport, and so
 
 ## How the file is laid out
 
-The file is about 2,800 lines long. It is divided into clear sections (look for the
-dashed comment banners like `# -----`). Reading top-to-bottom, the sections are:
+The file is about 1,924 lines long (reduced from ~3,185 in Session 190 when WBH
+atmosphere phase 1–5 generation was extracted to `traveller_world_atmosphere_gen.py`).
+It is divided into clear sections (look for the dashed comment banners like `# -----`).
+Reading top-to-bottom, the sections are:
 
 | Section | What it contains |
 |---------|-----------------|
@@ -17,7 +19,6 @@ dashed comment banners like `# -----`). Reading top-to-bottom, the sections are:
 | Dice helpers | `roll()` — how virtual dice work |
 | eHex helper | `to_hex()` — Traveller's unusual number encoding |
 | Lookup tables | Python dicts mapping codes → descriptions |
-| Atmosphere detail | Functions that compute pressure, oxygen, taints |
 | Social application | `apply_mainworld_social()` — deferred social steps |
 | `World` class | The main data structure |
 | Generator functions | One function per world characteristic |
@@ -29,6 +30,7 @@ Several related modules work alongside this file:
 | Module | Role |
 |--------|------|
 | `world_codes.py` | Shared enums (`StarportCode`, `TradeCode`, `AtmosphereCode`, etc.) and `APP_VERSION` |
+| `traveller_world_atmosphere_gen.py` | WBH atmosphere phase 1–5 generation (taints, gas mix, unusual subtype, NHZ) |
 | `traveller_world_physical.py` | Physical characteristics (diameter, gravity, temperature, day length) |
 | `traveller_belt_physical.py` | Asteroid belt characteristics (span, composition, bulk) |
 | `traveller_hydro_detail.py` | Hydrographic detail (surface liquid percentage, fluid type) |

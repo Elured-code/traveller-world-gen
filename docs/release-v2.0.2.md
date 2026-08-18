@@ -1,6 +1,6 @@
 # Traveller World Generator — v2.0.2 Release Notes
 
-**3124 tests pass (5 skipped). Pylint 10.00/10.**
+**3131 tests pass (5 skipped). Pylint 10.00/10.**
 
 Feature release implementing issue #160: city spaceport generation for mainworld
 major cities (WBH §8 p.196).
@@ -45,6 +45,6 @@ is absent, so JSON produced by v2.0.1 loads without error.
 
 ## Tests
 
-3124 tests pass (5 skipped). 12 new tests in `TestCitySpaceports` covering:
+3131 tests pass (5 skipped). 12 new tests in `TestCitySpaceports` covering:
 DM helper, empty-cities edge case, Y-exclusion, class assignment, city rank
 ordering, serialisation round-trip, and `attach_starport_detail()` integration.
