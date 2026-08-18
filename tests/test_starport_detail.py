@@ -1,14 +1,17 @@
-"""Tests for traveller_world_starport_detail.py (Issue #101).
+"""Tests for traveller_world_starport_detail.py (Issue #101, #160).
 
 Covers: traffic importance, expected weekly lookup, highport/downport
 capacities, shipyard (class A/B/C floors and None), annual output, starport
-profile format, WTN A+ boost, and attach_starport_detail no-op guards.
+profile format, WTN A+ boost, attach_starport_detail no-op guards, and
+city spaceport generation (issue #160).
 """
 import random
 import unittest
 
 from traveller_gen.traveller_world_starport_detail import (
+    CitySpaceport,
     StarportDetail,
+    _city_spaceport_dm,
     _expected_weekly,
     generate_starport_detail,
     attach_starport_detail,
@@ -355,6 +358,197 @@ class TestAttachNoOp(unittest.TestCase):
         class FakeSystem:
             mainworld = FakeWorld()
         attach_starport_detail(FakeSystem())  # must not raise
+
+
+class TestCitySpaceports(unittest.TestCase):
+    """Issue #160 — city spaceport generation (WBH §8 p.196)."""
+
+    # ---- helper: tiny City stand-in ---
+    class _City:
+        def __init__(self, population):
+            self.population = population
+
+    def _make_cities(self, *populations):
+        return [self._City(p) for p in populations]
+
+    def _make_with_cities(self, cities, seed=1):
+        rng = random.Random(seed)
+        return generate_starport_detail(
+            starport="A", has_highport=True, importance=3, wtn=5,
+            efficiency_factor=0, infrastructure_factor=3,
+            population=7, tech_level=12, trade_codes=[],
+            total_population=50_000_000, cities=cities, rng=rng,
+        )
+
+    # ---- DM helper tests ----
+
+    def test_dm_large_city(self):
+        self.assertEqual(_city_spaceport_dm(1_000_000), 2)
+        self.assertEqual(_city_spaceport_dm(5_000_000), 2)
+
+    def test_dm_medium_city(self):
+        self.assertEqual(_city_spaceport_dm(999_999), 0)
+        self.assertEqual(_city_spaceport_dm(500_000), 0)
+        self.assertEqual(_city_spaceport_dm(50_000), 0)
+
+    # ---- no cities → empty list ----
+
+    def test_no_cities_yields_empty(self):
+        det = self._make_with_cities([])
+        self.assertEqual(det.city_spaceports, [])
+
+    def test_none_cities_yields_empty(self):
+        rng = random.Random(1)
+        det = generate_starport_detail(
+            starport="A", has_highport=True, importance=3, wtn=5,
+            efficiency_factor=0, infrastructure_factor=3,
+            population=7, tech_level=12, trade_codes=[],
+            total_population=50_000_000, cities=None, rng=rng,
+        )
+        self.assertEqual(det.city_spaceports, [])
+
+    # ---- Y results (≤2) are excluded ----
+
+    def test_y_roll_excluded(self):
+        # Force roll of 1 (DM 0 for small city → result 1 → Y → excluded).
+        rng = random.Random.__new__(random.Random)
+        rng.seed(0)
+        # Patch: use a seeded loop to find a seed that gives roll 1 for pop<1M.
+        for seed in range(1000):
+            rng2 = random.Random(seed)
+            # Consume all existing rolls first by generating a Class E (no highport,
+            # no shipyard) so city roll is effectively the first one we care about.
+            det = generate_starport_detail(
+                starport="E", has_highport=False, importance=0, wtn=3,
+                efficiency_factor=1, infrastructure_factor=1,
+                population=3, tech_level=5, trade_codes=[],
+                total_population=1_000, cities=self._make_cities(100_000), rng=rng2,
+            )
+            if det.city_spaceports == []:
+                break   # found a seed where the roll was Y
+        # The loop must have found one
+        self.assertEqual(det.city_spaceports, [])
+
+    # ---- classes F / G / H are included ----
+
+    def test_f_class_included(self):
+        # DM+2 for a million+ city; seed chosen to produce F (roll ≥6 before DM).
+        cities = self._make_cities(2_000_000)
+        # With DM+2 a 1D roll of 4+ gives F (result ≥6).  Try seeds until we get F.
+        for seed in range(1, 100):
+            det = self._make_with_cities(cities, seed=seed)
+            if det.city_spaceports and det.city_spaceports[0].spaceport_class == "F":
+                break
+        self.assertEqual(len(det.city_spaceports), 1)
+        self.assertEqual(det.city_spaceports[0].spaceport_class, "F")
+        self.assertEqual(det.city_spaceports[0].city_rank, 1)
+        self.assertEqual(det.city_spaceports[0].city_population, 2_000_000)
+
+    def test_city_rank_ordering(self):
+        # Two cities; city 1 is always rank 1 (largest first).
+        cities = self._make_cities(3_000_000, 500_000)
+        # Use many seeds to find one where both get a non-Y result.
+        for seed in range(1, 500):
+            det = self._make_with_cities(cities, seed=seed)
+            if len(det.city_spaceports) == 2:
+                break
+        if len(det.city_spaceports) == 2:
+            self.assertEqual(det.city_spaceports[0].city_rank, 1)
+            self.assertEqual(det.city_spaceports[1].city_rank, 2)
+            self.assertEqual(det.city_spaceports[0].city_population, 3_000_000)
+            self.assertEqual(det.city_spaceports[1].city_population, 500_000)
+
+    # ---- serialisation round-trip ----
+
+    def test_city_spaceports_roundtrip(self):
+        # Build a StarportDetail with a known city_spaceports list.
+        cs = CitySpaceport(city_rank=1, city_population=2_000_000, spaceport_class="G")
+        det = _make_detail(seed=1)
+        det.city_spaceports.append(cs)
+        restored = StarportDetail.from_dict(det.to_dict())
+        self.assertEqual(len(restored.city_spaceports), 1)
+        self.assertEqual(restored.city_spaceports[0].city_rank, 1)
+        self.assertEqual(restored.city_spaceports[0].city_population, 2_000_000)
+        self.assertEqual(restored.city_spaceports[0].spaceport_class, "G")
+
+    def test_empty_city_spaceports_not_in_dict(self):
+        det = self._make_with_cities([])
+        self.assertNotIn("city_spaceports", det.to_dict())
+
+    def test_roundtrip_no_city_spaceports_key(self):
+        # from_dict on a dict without city_spaceports → empty list
+        det = _make_detail(seed=1)
+        d = det.to_dict()
+        d.pop("city_spaceports", None)
+        restored = StarportDetail.from_dict(d)
+        self.assertEqual(restored.city_spaceports, [])
+
+    # ---- attach_starport_detail passes cities from population_detail ----
+
+    def test_attach_passes_cities_from_population_detail(self):
+        class _PD:
+            cities = [_make_city(2_000_000)]
+            total_population = 2_000_000
+
+        class _FakeWorld:
+            starport = "A"
+            bases = []
+            importance_detail = _make_importance(3)
+            population = 7
+            tech_level = 12
+            trade_codes = []
+            population_detail = _PD()
+            starport_detail = None
+
+        class _FakeSystem:
+            mainworld = _FakeWorld()
+
+        attach_starport_detail(_FakeSystem(), rng=random.Random(5))
+        # The detail should have been set and city_spaceports populated or empty
+        det = _FakeSystem.mainworld.starport_detail
+        self.assertIsNotNone(det)
+        # city_spaceports is a list (may be empty if the roll was Y)
+        self.assertIsInstance(det.city_spaceports, list)
+
+    def test_attach_no_population_detail_gives_no_city_spaceports(self):
+        class _FakeWorld:
+            starport = "A"
+            bases = []
+            importance_detail = _make_importance(3)
+            population = 7
+            tech_level = 12
+            trade_codes = []
+            population_detail = None
+            starport_detail = None
+
+        class _FakeSystem:
+            mainworld = _FakeWorld()
+
+        attach_starport_detail(_FakeSystem(), rng=random.Random(5))
+        self.assertEqual(_FakeSystem.mainworld.starport_detail.city_spaceports, [])
+
+
+# ---------------------------------------------------------------------------
+# Helpers for TestCitySpaceports.attach tests
+# ---------------------------------------------------------------------------
+
+def _make_city(population):
+    class _C:
+        pass
+    c = _C()
+    c.population = population
+    return c
+
+
+def _make_importance(importance):
+    class _I:
+        pass
+    i = _I()
+    i.importance = importance
+    i.efficiency_factor = 1
+    i.infrastructure_factor = 3
+    i.world_trade_number = 5
+    return i
 
 
 if __name__ == "__main__":

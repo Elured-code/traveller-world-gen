@@ -451,6 +451,13 @@
     {{ drow("Largest bay", "{:,}".format(ctx.starport_detail.shipyard_largest_bay) ~ " t") }}
     {{ drow("Annual output", "{:,}".format(ctx.starport_detail.shipyard_annual_output) ~ " t/yr") }}
     {% endif %}
+    {% if ctx.starport_detail.city_spaceports %}
+    {% set _ccls = {"F": "Good facility", "G": "Basic facility", "H": "Landing area"} %}
+    {% for cs in ctx.starport_detail.city_spaceports %}
+    {{ drow("City " ~ cs.city_rank ~ " spaceport (pop " ~ "{:,}".format(cs.city_population) ~ ")",
+            "Class " ~ cs.spaceport_class ~ " — " ~ _ccls.get(cs.spaceport_class, "")) }}
+    {% endfor %}
+    {% endif %}
   </div>
   {% endif %}
 

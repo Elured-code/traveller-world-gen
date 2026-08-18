@@ -1154,6 +1154,20 @@
         "starport_profile": {
           "type": "string",
           "description": "WBH starport profile string: 'C-HX:DX:±#' where C=class, H=highport Y/N, D=downport Y/N, ±#=traffic importance. Example: 'A-HY:DY:+3'."
+        },
+        "city_spaceports": {
+          "type": "array",
+          "description": "Spaceport facilities at major cities on the mainworld (WBH §8 p.196). Absent when no cities qualify (all roll Y). City rank 1 = largest city. Each city rolls 1D + population DM on the WBH p.195 spaceport class table; Y results are excluded.",
+          "items": {
+            "type": "object",
+            "required": ["city_rank", "city_population", "spaceport_class"],
+            "additionalProperties": false,
+            "properties": {
+              "city_rank":       { "type": "integer", "minimum": 1, "description": "Rank by city population; 1 = largest city." },
+              "city_population": { "type": "integer", "minimum": 0, "description": "City population (approximate, rounded to significant figures)." },
+              "spaceport_class": { "type": "string", "enum": ["F", "G", "H"], "description": "Spaceport class: F (good facility), G (basic facility), H (cleared landing area). Y results are omitted." }
+            }
+          }
         }
       }
     }
