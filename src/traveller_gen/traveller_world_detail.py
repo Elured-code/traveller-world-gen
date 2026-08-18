@@ -2318,7 +2318,7 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
             notes_suffix = f"  Profile: {detail.physical.profile_str}"
         if (not o.is_mainworld_candidate and detail is not None
                 and not detail.is_gas_giant and detail.culture_detail is not None):
-            notes_suffix += f"  Culture: {detail.culture_detail.cultural_profile}"
+            notes_suffix += f"  Culture: {getattr(detail.culture_detail, 'cultural_profile', '')}"
         lines.append(
             f"  {o.star_designation:<5} {o.slot_index:<4} "
             f"{o.orbit_number:<8.2f} {o.orbit_au:<9.3f} "
@@ -2344,7 +2344,7 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
                     else ""
                 )
                 moon_culture = (
-                    f"  Culture: {d.culture_detail.cultural_profile}"
+                    f"  Culture: {getattr(d.culture_detail, 'cultural_profile', '')}"
                     if d.culture_detail is not None else ""
                 )
                 moon_sah_str = f"size {moon.size_str}{moon_cl}{moon_culture}"
