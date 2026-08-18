@@ -69,15 +69,18 @@ from .traveller_world_gen import (
     World,
     generate_size,
     generate_atmosphere,
-    generate_nhz_atmosphere,
-    generate_atmosphere_detail,
-    generate_gas_mix,
-    generate_unusual_subtype,
     temperature_category,
     generate_hydrographics,
     to_hex,
     TEMPERATURE_DM,
 )
+from .traveller_world_atmosphere_gen import (
+    generate_nhz_atmosphere,
+    generate_atmosphere_detail,
+    generate_gas_mix,
+    generate_unusual_subtype,
+)
+from . import traveller_world_atmosphere_gen as _twag
 
 
 # ---------------------------------------------------------------------------
@@ -1187,6 +1190,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     if rng is not None:
         _twg._rng = rng  # pylint: disable=protected-access
+        _twag._rng = rng  # pylint: disable=protected-access
     world = World(name=name)
 
     # If the mainworld orbit is a belt, the physical characteristics are
@@ -1413,6 +1417,7 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
 
     from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     _twg._rng = rng  # pylint: disable=protected-access
+    _twag._rng = rng  # pylint: disable=protected-access
 
     # Reconcile PBG: honour the world's canonical gas giant and belt counts
     # rather than the freshly generated orbit counts.
@@ -1603,7 +1608,8 @@ def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-m
     winner_orbit.detail = None
 
     # e. Commit to system
-    _twg._rng           = rng if rng is not None else _twg._rng  # pylint: disable=protected-access
+    _twg._rng  = rng if rng is not None else _twg._rng   # pylint: disable=protected-access
+    _twag._rng = rng if rng is not None else _twag._rng  # pylint: disable=protected-access
     system.mainworld       = new_mw
     system.mainworld_orbit = winner_orbit
     return True

@@ -59,9 +59,6 @@ from traveller_gen.traveller_world_gen import (
     temperature_category,
     generate_size,
     generate_atmosphere,
-    generate_nhz_atmosphere,
-    generate_atmosphere_detail,
-    generate_gas_mix,
     generate_temperature,
     generate_hydrographics,
     generate_population,
@@ -79,16 +76,27 @@ from traveller_gen.traveller_world_gen import (
     generate_world,
     format_atmosphere_profile,
     AtmosphereDetail,
-    GasMixComponent,
-    Taint,
     World,
     ATMOSPHERE_MIN_TL,
     ATMOSPHERE_NAMES,
-    ATMOSPHERE_PRESSURE_SPAN_BAR,
-    SIZE_GRAVITY_G,
     BASE_THRESHOLDS,
     _highport_dm,
     _corsair_dm,
+    _population_settlement_dm,
+    _SETTLEMENT_DMS,
+    _SETTLEMENT_DEFAULT_DM,
+)
+from traveller_gen.traveller_world_atmosphere_gen import (
+    generate_nhz_atmosphere,
+    generate_atmosphere_detail,
+    generate_gas_mix,
+    generate_unusual_subtype,
+    GasMixComponent,
+    Taint,
+    UnusualSubtype,
+    InsidiousHazard,
+    ATMOSPHERE_PRESSURE_SPAN_BAR,
+    SIZE_GRAVITY_G,
     _TAINTED_CODES,
     _TAINT_SUBTYPE_TABLE,
     _TAINT_SEVERITY_TABLE,
@@ -98,7 +106,6 @@ from traveller_gen.traveller_world_gen import (
     _roll_single_taint,
     _taint_severity_code,
     _taint_persistence_code,
-    InsidiousHazard,
     _EXOTIC_CODES,
     _CI_CODES,
     _EXOTIC_SUBTYPE_TABLE,
@@ -124,11 +131,6 @@ from traveller_gen.traveller_world_gen import (
     _d26,
     _roll_unusual_subtype,
     _UNUSUAL_SUBTYPE_TABLE,
-    generate_unusual_subtype,
-    UnusualSubtype,
-    _population_settlement_dm,
-    _SETTLEMENT_DMS,
-    _SETTLEMENT_DEFAULT_DM,
 )
 from traveller_gen.traveller_system_gen import generate_full_system, select_mainworld, attach_body_names
 from traveller_gen.traveller_world_population_detail import (
@@ -914,14 +916,14 @@ class TestTaintSubtypeRoll:
 
     def test_biologic_produced_on_roll_4(self):
         """Forced subtype roll of 4 (DM 0 for atm code 2) → Biologic."""
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=[4, 6, 6]):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=[4, 6, 6]):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "B"
         assert taint.subtype == "Biologic"
 
     def test_biologic_produced_on_roll_9(self):
         """Forced subtype roll of 9 (DM 0 for atm code 2) → Biologic."""
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=[9, 6, 6]):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=[9, 6, 6]):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "B"
         assert taint.subtype == "Biologic"
@@ -947,27 +949,27 @@ class TestTaintSubtypeRoll:
 
     def test_needs_second_only_on_result_10(self):
         # With DM-2 on code 4, raw 2D of 12 → 10 → needs_second.
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=12):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=12):
             taint, needs_second = _roll_single_taint(4)
         assert taint.subtype_code == "P"
         assert needs_second is True
 
     def test_no_second_roll_needed_for_non_10(self):
         # Force raw 2D of 8 on code 4 → 8-2=6 → Particulates (no second).
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=8):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=8):
             taint, needs_second = _roll_single_taint(4)
         assert taint.subtype_code == "P"
         assert needs_second is False
 
     def test_dm_minus_2_applied_for_code_4(self):
         # With DM-2, a raw roll of 4 → Low Oxygen; ppo < 0.1 so L is accepted.
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=4):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=4):
             taint, _ = _roll_single_taint(4, ppo=0.05)
         assert taint.subtype_code == "L"
 
     def test_dm_plus_2_applied_for_code_9(self):
         # With DM+2, a raw roll of 10 → 12 → High Oxygen; ppo > 0.5 so H is accepted.
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=10):
             taint, _ = _roll_single_taint(9, ppo=0.6)
         assert taint.subtype_code == "H"
 
@@ -1001,33 +1003,33 @@ class TestTaintPpoValidation:
     def test_high_oxygen_rerolled_when_ppo_normal(self):
         # Force a 2D roll of 12 (H) but ppo is in the normal range → must reroll.
         rolls = iter([12, 6, 6, 6])  # first → H (rejected), second → result 6 (Gas Mix)
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=rolls):
             taint, _ = _roll_single_taint(7, ppo=0.3)
         assert taint.subtype_code != "H"
 
     def test_high_oxygen_accepted_when_ppo_above_threshold(self):
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=10):
             taint, _ = _roll_single_taint(9, ppo=0.6)
         assert taint.subtype_code == "H"
 
     def test_low_oxygen_rerolled_when_ppo_normal(self):
         # Force a 2D roll of 2 (L) but ppo is in the normal range → must reroll.
         rolls = iter([2, 6, 6, 6])  # first → L (rejected), second → result 6 (Gas Mix)
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=rolls):
             taint, _ = _roll_single_taint(7, ppo=0.3)
         assert taint.subtype_code != "L"
 
     def test_low_oxygen_accepted_when_ppo_below_threshold(self):
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=4):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=4):
             taint, _ = _roll_single_taint(4, ppo=0.05)
         assert taint.subtype_code == "L"
 
     def test_h_and_l_allowed_when_ppo_none(self):
         # ppo=None disables the constraint — H and L must be reachable.
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=10):
             taint_h, _ = _roll_single_taint(9, ppo=None)
         assert taint_h.subtype_code == "H"
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=4):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=4):
             taint_l, _ = _roll_single_taint(4, ppo=None)
         assert taint_l.subtype_code == "L"
 
@@ -1068,7 +1070,7 @@ class TestTaintSeverityAndPersistence:
         # Force Low Oxygen subtype (roll 2 on code 2 → raw 2 → L).
         # Then roll 2 for severity → raw 2+4=6 → code 3.
         rolls = iter([2, 2, 5])   # subtype=2→L, severity=2→2+4=6→code3, persistence=5
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=rolls):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "L"
         assert taint.severity_code == 3    # 2+4=6 → code 3
@@ -1079,7 +1081,7 @@ class TestTaintSeverityAndPersistence:
         # Severity roll=9 → 9+4=13 → clamped to 9.
         # Persistence roll=2 → 2+6=8 → code 8.
         rolls = iter([2, 9, 2])
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=rolls):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "L"
         assert taint.severity_code == 9
@@ -1089,7 +1091,7 @@ class TestTaintSeverityAndPersistence:
         # L subtype, severity code < 8 → persistence DM is +4.
         # Force: subtype=2→L, severity=2→2+4=6→code3, persistence=2→2+4=6→code6.
         rolls = iter([2, 2, 2])
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=rolls):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "L"
         assert taint.severity_code == 3
@@ -1099,7 +1101,7 @@ class TestTaintSeverityAndPersistence:
         # Force Gas Mix (roll 5 on code 2 → raw 5 → G).
         # Severity roll=7, no DM → raw 7 → code 4.
         rolls = iter([5, 7, 3])
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=rolls):
             taint, _ = _roll_single_taint(2)
         assert taint.subtype_code == "G"
         assert taint.severity_code == 4   # 7-3=4, no DM
@@ -1430,7 +1432,7 @@ class TestAtmosphereDetailTaints:
         # Three calls to roll: subtype(12), severity(5), persistence(3),
         # then second taint subtype(6), severity(4), persistence(2).
         rolls = iter([12, 5, 3, 5, 4, 2])
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=rolls):
             detail = generate_atmosphere_detail(4, size=5)
         assert len(detail.taints) == 2
         assert detail.taints[0].subtype_code == "P"
@@ -1438,7 +1440,7 @@ class TestAtmosphereDetailTaints:
     def test_second_taint_has_valid_fields(self):
         # Verify second taint from result-10 is fully populated.
         rolls = iter([12, 5, 3, 7, 6, 4])
-        with patch("traveller_gen.traveller_world_gen.roll", side_effect=rolls):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", side_effect=rolls):
             detail = generate_atmosphere_detail(4, size=5)
         second = detail.taints[1]
         assert 1 <= second.severity_code <= 9
@@ -5158,14 +5160,14 @@ class TestUnusualSubtypeRoll:
         def side_effect():
             call_count[0] += 1
             return 16 if call_count[0] <= 5 else 26
-        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._d26", side_effect=side_effect):
             result = _roll_unusual_subtype(5, 7)
         assert result.subtype_code != "6"
 
     def test_layered_accepted_when_gravity_gt_1_2(self):
         """Size 9 → gravity=1.25 > 1.2, Layered should be accepted."""
         from unittest.mock import patch
-        with patch("traveller_gen.traveller_world_gen._d26", return_value=16):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._d26", return_value=16):
             result = _roll_unusual_subtype(9, 7)
         assert result.subtype_code == "6"
         assert result.subtype_name == "Layered"
@@ -5176,7 +5178,7 @@ class TestUnusualSubtypeRoll:
         def side_effect():
             call_count[0] += 1
             return 21 if call_count[0] <= 5 else 26
-        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._d26", side_effect=side_effect):
             result = _roll_unusual_subtype(10, 8)
         assert result.subtype_code != "7"
 
@@ -5186,7 +5188,7 @@ class TestUnusualSubtypeRoll:
         def side_effect():
             call_count[0] += 1
             return 22 if call_count[0] <= 5 else 26
-        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._d26", side_effect=side_effect):
             result = _roll_unusual_subtype(8, 3)
         assert result.subtype_code != "8"
 
@@ -5196,13 +5198,13 @@ class TestUnusualSubtypeRoll:
         def side_effect():
             call_count[0] += 1
             return 25 if call_count[0] <= 3 else 26
-        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._d26", side_effect=side_effect):
             result = _roll_unusual_subtype(8, 7, allow_combination=False)
         assert result.subtype_code != ""
 
     def test_combination_allowed_returns_empty_code(self):
         from unittest.mock import patch
-        with patch("traveller_gen.traveller_world_gen._d26", return_value=25):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._d26", return_value=25):
             result = _roll_unusual_subtype(8, 7, allow_combination=True)
         assert result.subtype_code == ""
 
@@ -5234,22 +5236,22 @@ class TestGenerateUnusualSubtype:
             if call_count[0] == 1:
                 return 25  # Combination on first roll
             return 26      # "Other" for both subsequent rolls
-        with patch("traveller_gen.traveller_world_gen._d26", side_effect=side_effect):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._d26", side_effect=side_effect):
             generate_unusual_subtype(detail, 15, 8, 7)
         assert len(detail.unusual_subtypes) == 2
 
     def test_combination_no_entry_with_empty_code(self):
         from unittest.mock import patch
         detail = AtmosphereDetail()
-        with patch("traveller_gen.traveller_world_gen._d26", side_effect=[25, 26, 23]):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._d26", side_effect=[25, 26, 23]):
             generate_unusual_subtype(detail, 15, 8, 7)
         for sub in detail.unusual_subtypes:
             assert sub.subtype_code != ""
 
     def test_unusual_subtypes_exported(self):
-        from traveller_gen import traveller_world_gen as twg
-        assert hasattr(twg, "generate_unusual_subtype")
-        assert hasattr(twg, "UnusualSubtype")
+        from traveller_gen import traveller_world_atmosphere_gen as twag
+        assert hasattr(twag, "generate_unusual_subtype")
+        assert hasattr(twag, "UnusualSubtype")
 
 
 class TestUnusualSubtypeProfile:
@@ -5406,14 +5408,14 @@ class TestNhzAtmosphereTableLookup:
 
     def test_hot_a_none_for_low_roll(self):
         # Hot A (hz ≤ -2.01), roll result 0 → entry 0 → atm 0 (None)
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=0):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=2):
             atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
         assert atm == 0
         assert key is None
 
     def test_hot_a_exotic_base_when_irritant_not_rolled(self):
         # Hot A, result 5 → (10, 5, 4, True, False), 1D=3 < 4 → base_key 5 (Thin)
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=5):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=7):
             with patch("traveller_gen.traveller_world_gen.random.randint", return_value=3):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
         assert atm == 10
@@ -5421,7 +5423,7 @@ class TestNhzAtmosphereTableLookup:
 
     def test_hot_a_exotic_irritant_when_roll_ge_4(self):
         # Hot A, result 5 → (10, 5, 4, True, False), 1D=4 → irr_key 4 (Thin Irritant)
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=5):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=7):
             with patch("traveller_gen.traveller_world_gen.random.randint", return_value=4):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
         assert atm == 10
@@ -5429,21 +5431,21 @@ class TestNhzAtmosphereTableLookup:
 
     def test_hot_a_corrosive_for_result_10(self):
         # Hot A, result 10 → (11, None, None, False, False)
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=12):
             atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.0)
         assert atm == 11
         assert key is None
 
     def test_hot_b_fixed_exotic_no_irritant_roll(self):
         # Hot B (hz -1.01 to -2.0), result 6 → (10, 6, None, False, False) — Standard, no roll
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=6):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=8):
             atm, key = generate_nhz_atmosphere(5, hz_deviation=-1.5)
         assert atm == 10
         assert key == 6
 
     def test_hot_b_very_dense_with_irritant_roll(self):
         # Hot B, result 10 → (10, 10, 11, True, False), 1D=4 → irr_key 11 (VD Irritant)
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=10):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=12):
             with patch("traveller_gen.traveller_world_gen.random.randint", return_value=4):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-1.5)
         assert atm == 10
@@ -5451,28 +5453,28 @@ class TestNhzAtmosphereTableLookup:
 
     def test_cold_a_trace_for_result_2(self):
         # Cold A (hz +1.01 to +3.0), result 2 → (1, None, None, False, False) → Trace
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=2):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=4):
             atm, key = generate_nhz_atmosphere(5, hz_deviation=2.0)
         assert atm == 1
         assert key is None
 
     def test_cold_a_very_dense_d_for_result_13(self):
         # Cold A, result 13 → (13, None, None, False, False) → Very Dense
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=13):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=10):
             atm, key = generate_nhz_atmosphere(10, hz_deviation=2.0)
         assert atm == 13
         assert key is None
 
     def test_cold_b_gas_helium_for_result_13(self):
         # Cold B (hz ≥ +3.01), result 13 → (16, None, None, False, False) → Gas Helium
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=13):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=10):
             atm, key = generate_nhz_atmosphere(10, hz_deviation=4.0)
         assert atm == 16
         assert key is None
 
     def test_cold_b_gas_hydrogen_for_result_14(self):
         # Cold B, result 14 → (17, None, None, False, False) → Gas Hydrogen
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=14):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=11):
             atm, key = generate_nhz_atmosphere(10, hz_deviation=4.0)
         assert atm == 17
         assert key is None
@@ -5480,7 +5482,7 @@ class TestNhzAtmosphereTableLookup:
     def test_dagger_dm_triggers_irritant_on_roll_3(self):
         # Hot A, result 7 → (10, 8, 9, True, True), hz=-3.5 (dagger applies)
         # 1D=3, DM+1 → 4 ≥ 4 → irr_key 9 (Dense Irritant)
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=7):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=9):
             with patch("traveller_gen.traveller_world_gen.random.randint", return_value=3):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-3.5)
         assert atm == 10
@@ -5489,7 +5491,7 @@ class TestNhzAtmosphereTableLookup:
     def test_dagger_dm_absent_when_hz_gt_minus3(self):
         # Hot A, result 7 → (10, 8, 9, True, True), hz=-2.5 (dagger does NOT apply)
         # 1D=3, no DM → 3 < 4 → base_key 8 (Dense)
-        with patch("traveller_gen.traveller_world_gen.roll", return_value=7):
+        with patch("traveller_gen.traveller_world_atmosphere_gen._dice", return_value=9):
             with patch("traveller_gen.traveller_world_gen.random.randint", return_value=3):
                 atm, key = generate_nhz_atmosphere(5, hz_deviation=-2.5)
         assert atm == 10

@@ -6,6 +6,18 @@
 
 ---
 
+## Module Refactor: Atmosphere Generation Extracted (Session 190, Issue #41)
+
+WBH atmosphere phase 1–5 generation (~1,231 lines) has been extracted from
+`traveller_world_gen.py` into a new `traveller_world_atmosphere_gen.py` module.
+`traveller_world_gen.py` is now ~1,973 lines (down from 3,185).
+
+Public API moved: `generate_atmosphere_detail`, `generate_gas_mix`,
+`generate_unusual_subtype`, `generate_nhz_atmosphere`, `format_atmosphere_profile`,
+and all related dataclasses (`AtmosphereDetail`, `GasMixComponent`, `Taint`,
+`InsidiousHazard`, `UnusualSubtype`) and constants. All callers updated to import
+directly from `traveller_world_atmosphere_gen`. No behaviour change; 3131 tests pass.
+
 ## Pyright Type-Check Fix (Session 189)
 
 `traveller_world_detail.py`: two accesses to `culture_detail.cultural_profile`

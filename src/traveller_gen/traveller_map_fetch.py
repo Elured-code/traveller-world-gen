@@ -87,9 +87,11 @@ from .traveller_stellar_gen import (
 )
 from .traveller_orbit_gen import SystemOrbits, generate_orbits
 from .traveller_system_gen import TravellerSystem, generate_temperature_from_orbit
-from .traveller_world_gen import (
-    World, generate_atmosphere_detail, generate_gas_mix, generate_unusual_subtype,
+from .traveller_world_gen import World
+from .traveller_world_atmosphere_gen import (
+    generate_atmosphere_detail, generate_gas_mix, generate_unusual_subtype,
 )
+from . import traveller_world_atmosphere_gen as _twag
 from .traveller_world_detail import attach_detail
 from .traveller_hydro_detail import generate_hydrographic_detail
 from .world_codes import StarportCode
@@ -839,6 +841,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
             f"HZ dev {mw_orbit.hz_deviation:+.2f}"
         )
 
+    _twag._rng = rng  # pylint: disable=protected-access
     world.atmosphere_detail = generate_atmosphere_detail(
         world.atmosphere,
         world.size,

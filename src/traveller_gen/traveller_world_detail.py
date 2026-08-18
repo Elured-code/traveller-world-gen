@@ -118,10 +118,10 @@ from .traveller_system_gen import TravellerSystem, generate_temperature_from_orb
 from .traveller_world_gen import (
     assign_trade_codes,
     generate_atmosphere,
-    generate_nhz_atmosphere,
     generate_hydrographics,
     to_hex,
 )
+from .traveller_world_atmosphere_gen import generate_nhz_atmosphere
 from .traveller_moon_gen import generate_moons, moons_str, Moon, place_moon_orbit
 from .traveller_belt_physical import generate_belt_physical, BeltPhysical
 from .world_codes import gg_diameter_from_sah

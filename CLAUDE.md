@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-08-18 (Session 189)  
+**Last updated:** 2026-08-18 (Session 190)  
 **Branch:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -23,7 +23,7 @@ read only the context files listed below for the specific task at hand.
 | Understanding the generation pipeline, entry points, or RNG/seed behaviour | [`context/generation-pipeline.md`](context/generation-pipeline.md) |
 | `traveller_stellar_gen.py` or `traveller_orbit_gen.py` | [`context/stellar-orbit.md`](context/stellar-orbit.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_system_gen.py`, `traveller_world_gen.py`, `traveller_world_physical.py`, or `traveller_hydro_detail.py` | [`context/system-world.md`](context/system-world.md) + [`context/data-structures.md`](context/data-structures.md) + [`context/generation-pipeline.md`](context/generation-pipeline.md) |
-| `traveller_world_atmosphere_detail.py` | [`context/atmosphere-detail.md`](context/atmosphere-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
+| `traveller_world_atmosphere_detail.py` or `traveller_world_atmosphere_gen.py` | [`context/atmosphere-detail.md`](context/atmosphere-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_world_detail.py`, `traveller_moon_gen.py`, or `traveller_belt_physical.py` | [`context/detail-moon.md`](context/detail-moon.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_world_starport_detail.py` | [`context/starport-detail.md`](context/starport-detail.md) + [`context/data-structures.md`](context/data-structures.md) |
 | `traveller_world_population_detail.py` | [`context/social-detail.md`](context/social-detail.md) + [`context/data-structures.md`](context/data-structures.md) |

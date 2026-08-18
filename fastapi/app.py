@@ -42,7 +42,9 @@ nhz_atmospheres            — use WBH Non-Habitable Zone atmosphere tables.
 orbital_eccentricity       — roll orbital eccentricities (WBH p.27).
 orbital_inclination        — roll orbital inclinations (WBH p.28).
 runaway_greenhouse         — optional runaway greenhouse check (WBH p.79).
-independent_government     — independent secondary world government (WBH p.162); when false, Gov 6 uses Captive table, Gov 1-3 uses mainworld-authority procedure.
+independent_government     — independent secondary world government (WBH p.162);
+                             when false, Gov 6 uses Captive table,
+                             Gov 1-3 uses mainworld-authority procedure.
 optional_biomass_rule      — raise oxygenated-atmosphere biomass 0→1 (WBH p.131).
 optional_inhospitable_rule — single 2D for all non-HZ secondaries (WBH p.130).
 
@@ -149,9 +151,12 @@ except ImportError:
 _PALETTE_LIGHT = dataclasses.replace(PALETTE_LIGHT, bg="#f4f0e4")
 
 from traveller_gen.traveller_world_gen import (
-    World, generate_world, generate_atmosphere_detail, generate_gas_mix,
-    generate_unusual_subtype, generate_hydrographics, apply_mainworld_social,
+    World, generate_world, generate_hydrographics, apply_mainworld_social,
 )
+from traveller_gen.traveller_world_atmosphere_gen import (
+    generate_atmosphere_detail, generate_gas_mix, generate_unusual_subtype,
+)
+from traveller_gen import traveller_world_atmosphere_gen as _twag
 from traveller_gen.traveller_belt_physical import BeltPhysical
 from traveller_gen.traveller_world_physical import (
     generate_world_physical, apply_moon_tidal_effects, attach_resource_factor,
@@ -684,6 +689,7 @@ async def _get_body(request: Request) -> dict:
 def _build_world(name: str, seed: int, rng) -> World:
     """Run the full mainworld generation pipeline and return a World object."""
     world = generate_world(name=name, seed=seed, rng=rng)
+    _twag._rng = rng  # pylint: disable=protected-access
     world.atmosphere_detail = generate_atmosphere_detail(
         world.atmosphere, world.size, temperature=world.temperature
     )
@@ -1008,6 +1014,7 @@ async def generate_world_card(request: Request) -> Response:  # pylint: disable=
             # Minimal path: matches gen-ui with system detail and population detail off.
             # Atmosphere and hydrographic detail are always generated; physical is not.
             world = generate_world(name=name or "World-1", seed=seed, rng=rng)
+            _twag._rng = rng  # pylint: disable=protected-access
             world.atmosphere_detail = generate_atmosphere_detail(
                 world.atmosphere, world.size, temperature=world.temperature,
             )
