@@ -2,9 +2,29 @@
 
 **Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3112
+**Tests:** 3124
 
 ---
+
+## City Spaceports on Mainworld (Session 187, Issue #160)
+
+Major cities on the mainworld now receive individual spaceport facility rolls
+following WBH §8 p.196. Each city in `population_detail.cities` rolls 1D on
+the spaceport class table (same table as secondary worlds, WBH p.195).
+Cities with population ≥ 1,000,000 receive DM+2; smaller cities get DM 0.
+Results ≤ 2 (Class Y — no facility) are excluded from output.
+
+New additions in `traveller_world_starport_detail.py`:
+- `CitySpaceport` dataclass: `city_rank`, `city_population`, `spaceport_class`.
+- `_city_spaceport_dm()`, `_roll_city_spaceport_class()`, `_generate_city_spaceports()` helpers.
+- `StarportDetail.city_spaceports: list` field (default `[]`).
+- `generate_starport_detail()` gains optional `cities` parameter.
+- `attach_starport_detail()` reads cities from `population_detail` automatically.
+
+`world_card.html`: city spaceport rows added under the starport inner-card.
+`traveller_world_schema.json`: `starport_detail.city_spaceports` array added.
+
+12 new tests in `TestCitySpaceports`. Pylint 10.00/10. Version bumped to 2.0.2.
 
 ## Class IV Survey Form — Balkanised World Display (Session 185)
 

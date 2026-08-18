@@ -81,6 +81,19 @@ Now the form shows:
   nation's military budget as a percentage of GWP, state of readiness, and
   military profile code — appearing below the world-level military summary.
 
+CITY SPACEPORTS ON THE MAINWORLD
+---------------------------------
+Major cities on the mainworld may now have their own spaceport facility,
+following World Builder's Handbook §8 p.196. Each city rolls on the same
+1D+DM table used for secondary worlds:
+
+- Cities with a population of one million or more receive a DM +2 on the roll.
+- A cleared landing area (Class H), basic facility (Class G), or good facility
+  (Class F) may result. Cities that roll no facility (Class Y) are omitted.
+
+City spaceports appear on the world card under the starport section, listing
+the city rank, population, and spaceport class for each qualifying city.
+
 GEN-UI — BUILD NUMBER IN TITLE BAR AND ABOUT DIALOG
 -----------------------------------------------------
 The desktop app now shows the build number alongside the version wherever the
