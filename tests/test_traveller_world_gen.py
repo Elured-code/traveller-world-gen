@@ -9065,3 +9065,143 @@ class TestToPosterHtml:
                 assert system.mainworld.uwp() in html
                 return
         pytest.skip("No gas-giant-satellite mainworld found in 300 seeds")
+
+
+class TestSecondaryCultureDisplay:
+    """Issue #142 — cultural profile display for inhabited secondary worlds and moons."""
+
+    @staticmethod
+    def _detailed_system(seed):
+        from traveller_gen import system_pipeline as _sp  # pylint: disable=import-outside-toplevel
+        system = generate_full_system("Culture", seed=seed, rng=random.Random(seed))
+        if system.mainworld is None:
+            return None
+        _sp.run_detail_pipeline(
+            system, random.Random(seed),
+            _sp.PipelineOptions(want_detail=True, want_social_detail=True),
+        )
+        return system
+
+    def _find_system_with_inhabited_secondary(self):
+        for seed in range(1, 500):
+            system = self._detailed_system(seed)
+            if system is None:
+                continue
+            for o in system.system_orbits.orbits:
+                if o.is_mainworld_candidate:
+                    continue
+                det = getattr(o, "detail", None)
+                if det is not None and det.inhabited and det.culture_detail is not None:
+                    return system, o
+        return None, None
+
+    def _find_system_with_inhabited_moon(self):
+        for seed in range(1, 500):
+            system = self._detailed_system(seed)
+            if system is None:
+                continue
+            for o in system.system_orbits.orbits:
+                det = getattr(o, "detail", None)
+                if det is None:
+                    continue
+                for moon in (det.moons or []):
+                    md = getattr(moon, "detail", None)
+                    if md is not None and md.inhabited and md.culture_detail is not None:
+                        return system
+            continue
+        return None
+
+    # ---- system_body_table() ----
+
+    def test_system_body_table_secondary_culture_in_notes(self):
+        from traveller_gen.traveller_world_detail import system_body_table  # pylint: disable=import-outside-toplevel
+        system, _ = self._find_system_with_inhabited_secondary()
+        if system is None:
+            pytest.skip("No inhabited secondary with culture found in 500 seeds")
+        table = system_body_table(system)
+        assert "Culture:" in table
+
+    def test_system_body_table_culture_format(self):
+        import re  # pylint: disable=import-outside-toplevel
+        from traveller_gen.traveller_world_detail import system_body_table  # pylint: disable=import-outside-toplevel
+        system, _ = self._find_system_with_inhabited_secondary()
+        if system is None:
+            pytest.skip("No inhabited secondary with culture found in 500 seeds")
+        table = system_body_table(system)
+        # DXUS-CPEM: 4 hex digits, hyphen, 4 hex digits
+        assert re.search(r"Culture: [0-9A-Z]{4}-[0-9A-Z]{4}", table)
+
+    # ---- _system_card_context() orbit_rows ----
+
+    def test_orbit_row_cultural_profile_set_for_inhabited_secondary(self):
+        system, _ = self._find_system_with_inhabited_secondary()
+        if system is None:
+            pytest.skip("No inhabited secondary with culture found in 500 seeds")
+        ctx = system._system_card_context()  # pylint: disable=protected-access
+        inhabited_rows = [
+            r for r in ctx["orbit_rows"]
+            if r.get("row_cls") != "mw-row"
+            and r.get("world_type") not in ("star", "gas_giant", "belt", "empty")
+            and r.get("cultural_profile")
+        ]
+        assert inhabited_rows, "Expected at least one inhabited secondary row with cultural_profile"
+        import re  # pylint: disable=import-outside-toplevel
+        profile_re = re.compile(r"^[0-9A-Z]{4}-[0-9A-Z]{4}$")
+        for row in inhabited_rows:
+            assert profile_re.match(row["cultural_profile"]), (
+                f"cultural_profile '{row['cultural_profile']}' not in DXUS-CPEM format"
+            )
+
+    def test_orbit_row_mainworld_no_cultural_profile(self):
+        system, _ = self._find_system_with_inhabited_secondary()
+        if system is None:
+            pytest.skip("No inhabited secondary found in 500 seeds")
+        ctx = system._system_card_context()  # pylint: disable=protected-access
+        mw_rows = [r for r in ctx["orbit_rows"] if r.get("row_cls") == "mw-row"]
+        for row in mw_rows:
+            assert row.get("cultural_profile", "") == "", (
+                "Mainworld orbit row should not carry secondary cultural_profile"
+            )
+
+    def test_orbit_row_uninhabited_no_cultural_profile(self):
+        for seed in range(1, 200):
+            system = self._detailed_system(seed)
+            if system is None:
+                continue
+            ctx = system._system_card_context()  # pylint: disable=protected-access
+            for row in ctx["orbit_rows"]:
+                if row.get("row_cls") == "mw-row":
+                    continue
+                if row.get("world_type") in ("star", "gas_giant", "belt", "empty"):
+                    continue
+                if not row.get("cultural_profile"):
+                    return  # found a row with no cultural profile (uninhabited)
+        pytest.skip("No uninhabited secondary orbit row found in 200 seeds")
+
+    # ---- moon sub-dicts ----
+
+    def test_moon_dict_cultural_profile_set_for_inhabited_moon(self):
+        import re  # pylint: disable=import-outside-toplevel
+        system = self._find_system_with_inhabited_moon()
+        if system is None:
+            pytest.skip("No inhabited moon with culture found in 500 seeds")
+        ctx = system._system_card_context()  # pylint: disable=protected-access
+        profile_re = re.compile(r"^[0-9A-Z]{4}-[0-9A-Z]{4}$")
+        inhabited_moon_profiles = [
+            moon["cultural_profile"]
+            for row in ctx["orbit_rows"]
+            for moon in row.get("moons", [])
+            if moon.get("cultural_profile")
+        ]
+        assert inhabited_moon_profiles, "Expected at least one moon with cultural_profile"
+        for cp in inhabited_moon_profiles:
+            assert profile_re.match(cp), f"Moon cultural_profile '{cp}' not in DXUS-CPEM format"
+
+    # ---- system card HTML ----
+
+    def test_system_card_html_contains_culture_for_inhabited_secondary(self):
+        system, _ = self._find_system_with_inhabited_secondary()
+        if system is None:
+            pytest.skip("No inhabited secondary with culture found in 500 seeds")
+        html = system.to_html()
+        assert "Culture:" in html

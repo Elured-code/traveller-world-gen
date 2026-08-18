@@ -385,6 +385,12 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                              or moon.orbit_inclination > 0)
                         else ""
                     )
+                    moon_culture_profile = (
+                        moon.detail.culture_detail.cultural_profile
+                        if moon.detail is not None
+                        and moon.detail.culture_detail is not None
+                        else ""
+                    )
                     moons.append({
                         "name": moon.name,
                         "name_label": (None if moon.is_ring
@@ -404,6 +410,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                         "temp_zone": moon.temperature_zone,
                         "biosphere_str": moon_biosphere,
                         "ecc_incl": moon_ecc_incl,
+                        "cultural_profile": moon_culture_profile,
                     })
 
             # Biosphere: biomass, biocomplexity for terrestrial worlds
@@ -430,6 +437,14 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             else:
                 name_label = f"{o.star_designation} #{o.slot_index} (World)"
 
+            cultural_profile = (
+                detail.culture_detail.cultural_profile
+                if not o.is_mainworld_candidate
+                and detail is not None
+                and not detail.is_gas_giant
+                and detail.culture_detail is not None
+                else ""
+            )
             orbit_rows.append({
                 "name": o.name,
                 "name_label": name_label,
@@ -449,6 +464,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "row_cls": "mw-row" if o.is_mainworld_candidate else "",
                 "moons": moons,
                 "biosphere_str": biosphere_str,
+                "cultural_profile": cultural_profile,
             })
 
         # Non-primary stars are otherwise invisible in this table unless they
