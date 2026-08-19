@@ -6,6 +6,26 @@
 
 ---
 
+## Code-Review Bug Fixes (Session 191)
+
+Four correctness bugs identified by automated code review and fixed:
+
+- **Dice roll order** (`traveller_world_atmosphere_gen.py`): `_oxygen_partial_pressure()`
+  was drawing 2D before 1D after the session 190 atmosphere extraction, shifting RNG
+  state for any world with a breathable atmosphere code (2–9, 13, 14). Roll order
+  restored to 1D → 2D, matching the original in `traveller_world_gen.py`.
+- **`getattr()` for cultural profile** (`traveller_system_gen.py`): two direct
+  `.cultural_profile` accesses on `Optional[object]`-typed `culture_detail` in
+  `_system_card_context()` replaced with `getattr(…, 'cultural_profile', '')`,
+  matching the session 189 fix pattern. Pyright `reportAttributeAccessIssue` resolved.
+- **Edit Names type labels** (`gen-ui/app.py`): `_WORLD_TYPE_LABELS` keys corrected
+  from `'T'/'GG'/'BD'` to `'terrestrial'/'gas_giant'/'belt'`; Edit Names dialog now
+  shows "Gas Giant" / "Terrestrial" / "Belt" instead of raw type strings.
+- **Duplicate RELEASE-NOTES sections**: Session 185/184/183 blocks that appeared twice
+  removed.
+
+3131 tests pass; pylint 10.00/10 on all touched files.
+
 ## Module Refactor: Atmosphere Generation Extracted (Session 190, Issue #41)
 
 WBH atmosphere phase 1–5 generation (~1,231 lines) has been extracted from

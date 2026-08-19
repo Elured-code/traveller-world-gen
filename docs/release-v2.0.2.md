@@ -43,6 +43,16 @@ is absent, so JSON produced by v2.0.1 loads without error.
 
 ---
 
+## Bug Fixes (Session 191)
+
+| File | Fix |
+|------|-----|
+| `traveller_world_atmosphere_gen.py` | Dice roll order in `_oxygen_partial_pressure()` restored to 1D → 2D (session 190 extraction had reversed it, shifting RNG for breathable atmosphere codes 2–9, 13, 14). |
+| `traveller_system_gen.py` | Two direct `.cultural_profile` attribute accesses on `Optional[object]`-typed `culture_detail` replaced with `getattr()` in `_system_card_context()`. |
+| `gen-ui/app.py` | `_WORLD_TYPE_LABELS` keys corrected from `'T'/'GG'/'BD'` to `'terrestrial'/'gas_giant'/'belt'`; Edit Names dialog now shows human-readable type labels. |
+
+---
+
 ## Tests
 
 3131 tests pass (5 skipped). 12 new tests in `TestCitySpaceports` covering:

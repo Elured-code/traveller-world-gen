@@ -114,3 +114,19 @@ it shows the bare version string ("2.0.0") as before.
 
 BUG FIXES
 ---------
+
+GEN-UI — EDIT NAMES DIALOG NOW SHOWS CORRECT TYPE LABELS
+
+In the Edit Names dialog, non-mainworld orbits are now correctly labelled
+"Gas Giant", "Terrestrial", or "Belt". Previously the type was shown as the
+raw internal code ("gas_giant", "terrestrial", or "belt") due to a key
+mismatch in the label lookup table.
+
+ATMOSPHERE OXYGEN PARTIAL PRESSURE SEED FIX
+
+Worlds with breathable atmospheres (codes 2-9, D, E) now produce the same
+oxygen partial pressure values as they did before v2.0's atmosphere refactor.
+The extraction in session 190 inadvertently reversed the order of two dice
+rolls inside the calculation, shifting all subsequent RNG results for those
+worlds. The correct 1D-then-2D roll order has been restored.
+
