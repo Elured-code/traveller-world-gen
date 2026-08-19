@@ -228,6 +228,10 @@
                   "description":  { "type": "string" }
                 }
               }
+            },
+            "gas_retention_applied": {
+              "type": "boolean",
+              "description": "True when the WBH p.87 gas retention filter removed one or more components from gas_mix based on escape velocity and temperature. Absent when no components were removed."
             }
           }
         },

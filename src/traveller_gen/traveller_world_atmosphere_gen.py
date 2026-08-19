@@ -365,6 +365,73 @@ _GAS_CODES: dict = {
     "Sulphuric Acid":     "H₂SO₄",
 }
 
+# WBH p.87 gas escape values (km/s)²/K — derived from molar mass via
+# gas_escape_value = 40 / M_g where M_g is molar mass in g/mol.
+# Retention condition: gas_escape_value ≤ v_e² × 8 / T_K.
+# Silicates and Metal Vapours are not in the WBH p.87 table; they are
+# assigned conservatively small values so they are always retained.
+_GAS_ESCAPE_VALUES: dict[str, float] = {
+    "Silicates":          0.40,   # SiO₂-family particulates; very heavy
+    "Metal Vapours":      0.35,   # Mixed metals; very heavy
+    "Hydrogen":           20.0,   # H₂,  M=2
+    "Helium":             10.0,   # He,  M=4
+    "Methane":             2.50,  # CH₄, M=16
+    "Ammonia":             2.35,  # NH₃, M=17
+    "Water Vapour":        2.22,  # H₂O, M=18
+    "Hydrofluoric Acid":   2.00,  # HF,  M=20
+    "Neon":                1.98,  # Ne,  M≈20.2
+    "Sodium":              1.74,  # Na,  M=23
+    "Hydrogen Cyanide":    1.48,  # HCN, M=27
+    "Nitrogen":            1.43,  # N₂,  M=28
+    "Carbon Monoxide":     1.43,  # CO,  M=28
+    "Ethane":              1.33,  # C₂H₆, M=30
+    "Hydrochloric Acid":   1.10,  # HCl, M=36.5
+    "Fluorine":            1.05,  # F₂,  M=38
+    "Argon":               1.00,  # Ar,  M=40
+    "Carbon Dioxide":      0.91,  # CO₂, M=44
+    "Formamide":           0.89,  # CH₃NO, M=45
+    "Formic Acid":         0.87,  # CH₂O₂, M=46
+    "Sulphur Dioxide":     0.63,  # SO₂, M=64
+    "Chlorine":            0.56,  # Cl₂, M=71
+    "Krypton":             0.48,  # Kr,  M=84
+    "Sulphuric Acid":      0.41,  # H₂SO₄, M=98
+}
+
+
+def _world_escape_value(escape_velocity_km_s: float, temperature_k: int) -> float:
+    """Return WBH p.87 world escape value: v_e² × 8 / T_K."""
+    return escape_velocity_km_s ** 2 * 8.0 / temperature_k
+
+
+def apply_gas_retention_filter(
+    detail: "AtmosphereDetail",
+    escape_velocity_km_s: float,
+    temperature_k: int,
+) -> None:
+    """Remove gas-mix components that cannot be retained at the given conditions.
+
+    WBH p.87: a gas component is retained when its escape value ≤ v_e² × 8 / T_K.
+    Components whose gas_name is absent from ``_GAS_ESCAPE_VALUES`` are kept
+    (unknown/heavy gases are conservatively assumed retained).
+    Sets ``detail.gas_retention_applied = True`` when at least one component
+    is removed.  No-op when gas_mix is empty or temperature_k ≤ 0.
+    """
+    if not detail.gas_mix or temperature_k <= 0:
+        return
+    wev = _world_escape_value(escape_velocity_km_s, temperature_k)
+    retained = []
+    removed_any = False
+    for component in detail.gas_mix:
+        gev = _GAS_ESCAPE_VALUES.get(component.gas_name)
+        if gev is None or gev <= wev:
+            retained.append(component)
+        else:
+            removed_any = True
+    if removed_any:
+        detail.gas_mix = retained
+        detail.gas_retention_applied = True
+
+
 # Each table maps a 2D+DM result to {A: gas_name, B: gas_name, C: gas_name}
 # where A=Exotic, B=Corrosive, C=Insidious.  Carbon Monoxide entries
 # (CO*) are replaced by _roll_single_gas() per the CO* footnote.
@@ -881,6 +948,7 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
     min_safe_altitude_km:    Optional[float] = None
     no_safe_altitude:        bool = field(default=False)
     unusual_subtypes:        list = field(default_factory=list)
+    gas_retention_applied:   bool = field(default=False)
 
     def to_dict(self) -> dict:
         """Return the detail as a JSON-friendly dict.
@@ -912,6 +980,8 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
             out["no_safe_altitude"] = True
         if self.unusual_subtypes:
             out["unusual_subtypes"] = [s.to_dict() for s in self.unusual_subtypes]
+        if self.gas_retention_applied:
+            out["gas_retention_applied"] = True
         return out
 
     @classmethod
@@ -931,6 +1001,7 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
             min_safe_altitude_km=_f("min_safe_altitude_km"),
             no_safe_altitude=bool(d.get("no_safe_altitude", False)),
             unusual_subtypes=[UnusualSubtype.from_dict(s) for s in d.get("unusual_subtypes", [])],
+            gas_retention_applied=bool(d.get("gas_retention_applied", False)),
         )
 
 

@@ -155,6 +155,7 @@ from traveller_gen.traveller_world_gen import (
 )
 from traveller_gen.traveller_world_atmosphere_gen import (
     generate_atmosphere_detail, generate_gas_mix, generate_unusual_subtype,
+    apply_gas_retention_filter,
 )
 from traveller_gen import traveller_world_atmosphere_gen as _twag
 from traveller_gen.traveller_belt_physical import BeltPhysical
@@ -772,6 +773,11 @@ def _attach_mainworld_physical(  # pylint: disable=too-many-branches
     )
 
     if not runaway_greenhouse:
+        adv_temp = mw.size_detail.advanced_mean_temperature_k
+        if mw.atmosphere_detail is not None and adv_temp is not None and adv_temp > 0:
+            apply_gas_retention_filter(
+                mw.atmosphere_detail, mw.size_detail.escape_velocity, adv_temp
+            )
         return
     if mw.size_detail.advanced_mean_temperature_k is None:
         return
@@ -784,6 +790,11 @@ def _attach_mainworld_physical(  # pylint: disable=too-many-branches
         size=mw.size,
     )
     if rg is None:
+        adv_temp = mw.size_detail.advanced_mean_temperature_k
+        if mw.atmosphere_detail is not None and adv_temp is not None and adv_temp > 0:
+            apply_gas_retention_filter(
+                mw.atmosphere_detail, mw.size_detail.escape_velocity, adv_temp
+            )
         return
     mw.size_detail.runaway_greenhouse = True
     if rg.new_atmosphere is not None:
@@ -810,6 +821,11 @@ def _attach_mainworld_physical(  # pylint: disable=too-many-branches
         orbit_eccentricity=orbit_ecc,
         star_mass=stars[0].mass if stars else 1.0,
     )
+    adv_temp = mw.size_detail.advanced_mean_temperature_k
+    if mw.atmosphere_detail is not None and adv_temp is not None and adv_temp > 0:
+        apply_gas_retention_filter(
+            mw.atmosphere_detail, mw.size_detail.escape_velocity, adv_temp
+        )
     # Sync the orbit slot WorldDetail SAH with any atmosphere/hydro mutations
     # (e.g. runaway greenhouse).  No-op when attach_detail() hasn't run yet.
     if mw_orbit.world_type == "gas_giant":
