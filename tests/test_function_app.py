@@ -749,10 +749,13 @@ class TestDeterminism:
         rng = random.Random(seed)
         from traveller_gen.traveller_world_gen import (  # pylint: disable=import-outside-toplevel
             generate_world as _gen,
+        )
+        from traveller_gen.traveller_world_atmosphere_gen import (  # pylint: disable=import-outside-toplevel
             generate_atmosphere_detail as _gen_atm,
             generate_gas_mix as _gen_gas,
             generate_unusual_subtype as _gen_unusual,
         )
+        from traveller_gen import traveller_world_atmosphere_gen as _twag  # pylint: disable=import-outside-toplevel
         from traveller_gen.traveller_world_physical import (  # pylint: disable=import-outside-toplevel
             generate_world_physical as _gen_phys,
         )
@@ -762,6 +765,7 @@ class TestDeterminism:
         sequential_uwps = []
         for i in range(count):
             world = _gen(name=f"World-{i+1}", seed=seed, rng=rng)
+            _twag._rng = rng
             world.atmosphere_detail = _gen_atm(
                 world.atmosphere, world.size, temperature=world.temperature
             )

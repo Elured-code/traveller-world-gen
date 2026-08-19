@@ -81,5 +81,52 @@ Now the form shows:
   nation's military budget as a percentage of GWP, state of readiness, and
   military profile code — appearing below the world-level military summary.
 
+CULTURAL PROFILES ON SECONDARY WORLDS AND MOONS
+-------------------------------------------------
+Inhabited secondary worlds and moons now show their cultural profile
+(DXUS-CPEM format) in the orbital survey table.
+
+- The profile appears in the Notes column of the orbital survey table for
+  each inhabited secondary world.
+- Moon sub-rows show the profile in the rightmost column.
+- The text output from system_body_table() also includes the profile in the
+  notes field for inhabited secondary orbits and moons.
+
+CITY SPACEPORTS ON THE MAINWORLD
+---------------------------------
+Major cities on the mainworld may now have their own spaceport facility,
+following World Builder's Handbook §8 p.196. Each city rolls on the same
+1D+DM table used for secondary worlds:
+
+- Cities with a population of one million or more receive a DM +2 on the roll.
+- A cleared landing area (Class H), basic facility (Class G), or good facility
+  (Class F) may result. Cities that roll no facility (Class Y) are omitted.
+
+City spaceports appear on the world card under the starport section, listing
+the city rank, population, and spaceport class for each qualifying city.
+
+GEN-UI — BUILD NUMBER IN TITLE BAR AND ABOUT DIALOG
+-----------------------------------------------------
+The desktop app now shows the build number alongside the version wherever the
+version is displayed: the window title, the status bar, and the About dialog.
+On a CI-built release this reads as "2.0.0 (build 42)". On a local dev build
+it shows the bare version string ("2.0.0") as before.
+
 BUG FIXES
 ---------
+
+GEN-UI — EDIT NAMES DIALOG NOW SHOWS CORRECT TYPE LABELS
+
+In the Edit Names dialog, non-mainworld orbits are now correctly labelled
+"Gas Giant", "Terrestrial", or "Belt". Previously the type was shown as the
+raw internal code ("gas_giant", "terrestrial", or "belt") due to a key
+mismatch in the label lookup table.
+
+ATMOSPHERE OXYGEN PARTIAL PRESSURE SEED FIX
+
+Worlds with breathable atmospheres (codes 2-9, D, E) now produce the same
+oxygen partial pressure values as they did before v2.0's atmosphere refactor.
+The extraction in session 190 inadvertently reversed the order of two dice
+rolls inside the calculation, shifting all subsequent RNG results for those
+worlds. The correct 1D-then-2D roll order has been restored.
+

@@ -1,26 +1,88 @@
-# Release Notes — v1.6.1 (draft)
+# Release Notes — v2.0.0 (draft)
 
 **Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3068
+**Tests:** 3131
 
 ---
 
-## Build Number Display in Gen-UI — Session 186
+## Code-Review Bug Fixes (Session 191)
 
-`gen-ui/app.py` now reads `__build__` from `traveller_gen._version` (written by CI
-as the GitHub Actions run number) and displays it in the window title, status bar, and
-About dialog as `1.6.1 (build 42)`. Local dev builds where `__build__` is absent fall
-back to the bare version string. Three new module-level constants: `_BUILD_NUMBER`,
-`_DISPLAY_VERSION_FULL`, and the pre-existing `_DISPLAY_VERSION`.
+Four correctness bugs identified by automated code review and fixed:
 
-`run-gui.command` gains `export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"`
-before the exec line, ensuring the `src/` layout is on the Python path when launching
-the GUI on macOS via the `.command` file.
+- **Dice roll order** (`traveller_world_atmosphere_gen.py`): `_oxygen_partial_pressure()`
+  was drawing 2D before 1D after the session 190 atmosphere extraction, shifting RNG
+  state for any world with a breathable atmosphere code (2–9, 13, 14). Roll order
+  restored to 1D → 2D, matching the original in `traveller_world_gen.py`.
+- **`getattr()` for cultural profile** (`traveller_system_gen.py`): two direct
+  `.cultural_profile` accesses on `Optional[object]`-typed `culture_detail` in
+  `_system_card_context()` replaced with `getattr(…, 'cultural_profile', '')`,
+  matching the session 189 fix pattern. Pyright `reportAttributeAccessIssue` resolved.
+- **Edit Names type labels** (`gen-ui/app.py`): `_WORLD_TYPE_LABELS` keys corrected
+  from `'T'/'GG'/'BD'` to `'terrestrial'/'gas_giant'/'belt'`; Edit Names dialog now
+  shows "Gas Giant" / "Terrestrial" / "Belt" instead of raw type strings.
+- **Duplicate RELEASE-NOTES sections**: Session 185/184/183 blocks that appeared twice
+  removed.
 
-No new tests (display-only changes); no schema changes. 3068 tests pass; pylint 10.00/10.
+3131 tests pass; pylint 10.00/10 on all touched files.
 
----
+## Module Refactor: Atmosphere Generation Extracted (Session 190, Issue #41)
+
+WBH atmosphere phase 1–5 generation (~1,231 lines) has been extracted from
+`traveller_world_gen.py` into a new `traveller_world_atmosphere_gen.py` module.
+`traveller_world_gen.py` is now ~1,973 lines (down from 3,185).
+
+Public API moved: `generate_atmosphere_detail`, `generate_gas_mix`,
+`generate_unusual_subtype`, `generate_nhz_atmosphere`, `format_atmosphere_profile`,
+and all related dataclasses (`AtmosphereDetail`, `GasMixComponent`, `Taint`,
+`InsidiousHazard`, `UnusualSubtype`) and constants. All callers updated to import
+directly from `traveller_world_atmosphere_gen`. No behaviour change; 3131 tests pass.
+
+## Pyright Type-Check Fix (Session 189)
+
+`traveller_world_detail.py`: two accesses to `culture_detail.cultural_profile`
+inside `system_body_table()` replaced with `getattr()` calls. `WorldDetail.culture_detail`
+is typed as `Optional[object]`, so direct attribute access was rejected by pyright
+(`reportAttributeAccessIssue`). No behaviour change; CI type-check now passes.
+
+## Secondary World Cultural Profiles — Display (Session 188, Issue #142)
+
+Cultural profiles (DXUS-CPEM format) for inhabited secondary worlds and moons
+are now surfaced in the system card HTML and text table. The generation has
+been in place since session 129; this session wires it into the display layer.
+
+`_system_card_context()` in `traveller_system_gen.py` now adds a
+`cultural_profile` key to each orbit row dict and each moon sub-dict when the
+secondary/moon has a `CultureDetail` attached. `system_card.html` renders
+"Culture: DXUS-CPEM" in the Notes column for orbit rows and in the last cell
+for moon rows.
+
+`system_body_table()` now calls `attach_culture_detail(system)` immediately
+after `attach_detail(system)` so culture profiles are available when building
+the text table. The notes suffix for inhabited secondary orbit rows and moon
+sub-rows is extended with "Culture: DXUS-CPEM".
+
+7 new tests in `TestSecondaryCultureDisplay`. No schema change; no version bump.
+
+## City Spaceports on Mainworld (Session 187, Issue #160)
+
+Major cities on the mainworld now receive individual spaceport facility rolls
+following WBH §8 p.196. Each city in `population_detail.cities` rolls 1D on
+the spaceport class table (same table as secondary worlds, WBH p.195).
+Cities with population ≥ 1,000,000 receive DM+2; smaller cities get DM 0.
+Results ≤ 2 (Class Y — no facility) are excluded from output.
+
+New additions in `traveller_world_starport_detail.py`:
+- `CitySpaceport` dataclass: `city_rank`, `city_population`, `spaceport_class`.
+- `_city_spaceport_dm()`, `_roll_city_spaceport_class()`, `_generate_city_spaceports()` helpers.
+- `StarportDetail.city_spaceports: list` field (default `[]`).
+- `generate_starport_detail()` gains optional `cities` parameter.
+- `attach_starport_detail()` reads cities from `population_detail` automatically.
+
+`world_card.html`: city spaceport rows added under the starport inner-card.
+`traveller_world_schema.json`: `starport_detail.city_spaceports` array added.
+
+12 new tests in `TestCitySpaceports`. Pylint 10.00/10. Version bumped to 2.0.2.
 
 ## Class IV Survey Form — Balkanised World Display (Session 185)
 
@@ -84,6 +146,22 @@ in the new `balkanised_detail` field on `World` and `WorldDetail` (distinct from
 displays a "Government detail (Balkanised — N nations)" inner card. JSON output
 includes the `balkanised_detail` key when present, validated by the updated schema.
 57 new tests.
+
+---
+
+## Build Number Display in Gen-UI — Session 186
+
+`gen-ui/app.py` now reads `__build__` from `traveller_gen._version` (written by CI
+as the GitHub Actions run number) and displays it in the window title, status bar, and
+About dialog as `1.6.1 (build 42)`. Local dev builds where `__build__` is absent fall
+back to the bare version string. Three new module-level constants: `_BUILD_NUMBER`,
+`_DISPLAY_VERSION_FULL`, and the pre-existing `_DISPLAY_VERSION`.
+
+`run-gui.command` gains `export PYTHONPATH="$SCRIPT_DIR/src${PYTHONPATH:+:$PYTHONPATH}"`
+before the exec line, ensuring the `src/` layout is on the Python path when launching
+the GUI on macOS via the `.command` file.
+
+No new tests (display-only changes); no schema changes. 3112 tests pass; pylint 10.00/10.
 
 ---
 

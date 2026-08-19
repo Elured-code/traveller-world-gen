@@ -69,15 +69,18 @@ from .traveller_world_gen import (
     World,
     generate_size,
     generate_atmosphere,
-    generate_nhz_atmosphere,
-    generate_atmosphere_detail,
-    generate_gas_mix,
-    generate_unusual_subtype,
     temperature_category,
     generate_hydrographics,
     to_hex,
     TEMPERATURE_DM,
 )
+from .traveller_world_atmosphere_gen import (
+    generate_nhz_atmosphere,
+    generate_atmosphere_detail,
+    generate_gas_mix,
+    generate_unusual_subtype,
+)
+from . import traveller_world_atmosphere_gen as _twag
 
 
 # ---------------------------------------------------------------------------
@@ -385,6 +388,12 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                              or moon.orbit_inclination > 0)
                         else ""
                     )
+                    moon_culture_profile = (
+                        getattr(moon.detail.culture_detail, "cultural_profile", "")
+                        if moon.detail is not None
+                        and moon.detail.culture_detail is not None
+                        else ""
+                    )
                     moons.append({
                         "name": moon.name,
                         "name_label": (None if moon.is_ring
@@ -404,6 +413,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                         "temp_zone": moon.temperature_zone,
                         "biosphere_str": moon_biosphere,
                         "ecc_incl": moon_ecc_incl,
+                        "cultural_profile": moon_culture_profile,
                     })
 
             # Biosphere: biomass, biocomplexity for terrestrial worlds
@@ -430,6 +440,14 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             else:
                 name_label = f"{o.star_designation} #{o.slot_index} (World)"
 
+            cultural_profile = (
+                getattr(detail.culture_detail, "cultural_profile", "")
+                if not o.is_mainworld_candidate
+                and detail is not None
+                and not detail.is_gas_giant
+                and detail.culture_detail is not None
+                else ""
+            )
             orbit_rows.append({
                 "name": o.name,
                 "name_label": name_label,
@@ -449,6 +467,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "row_cls": "mw-row" if o.is_mainworld_candidate else "",
                 "moons": moons,
                 "biosphere_str": biosphere_str,
+                "cultural_profile": cultural_profile,
             })
 
         # Non-primary stars are otherwise invisible in this table unless they
@@ -879,6 +898,91 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 ],
             }
 
+        # Balkanised government context (gov code 7 only)
+        balk_ctx = None
+        if mw and mw.balkanised_detail is not None:
+            bd = mw.balkanised_detail
+            balk_nations = []
+            for n in bd.nations:
+                n_structure = n.structure or (
+                    f"{n.structure_leg}/{n.structure_exec}/{n.structure_jud}"
+                    if n.authority == "Balanced" else ""
+                )
+                n_law = None
+                if n.law_detail is not None:
+                    n_ld = n.law_detail
+                    n_law = {
+                        "overall": n.law_level,
+                        "primary_system": n_ld.judicial_primary,
+                        "primary_label": n_ld.judicial_primary_label,
+                        "secondary_system": (
+                            f"{n_ld.judicial_secondary} {n_ld.judicial_secondary_label}"
+                            if n_ld.judicial_secondary != n_ld.judicial_primary else "—"
+                        ),
+                        "uniformity": n_ld.law_uniformity,
+                        "uniformity_label": n_ld.law_uniformity_label,
+                        "presumption": "Yes" if n_ld.presumption_of_innocence else "No",
+                        "death_penalty": "Yes" if n_ld.death_penalty else "No",
+                        "justice_profile": n_ld.justice_profile,
+                        "law_weapons": n_ld.law_weapons,
+                        "law_economic": n_ld.law_economic,
+                        "law_criminal": n_ld.law_criminal,
+                        "law_private": n_ld.law_private,
+                        "law_personal_rights": n_ld.law_personal_rights,
+                        "law_profile": n_ld.law_profile,
+                    }
+                n_cult = None
+                if n.culture_detail is not None:
+                    n_cd = n.culture_detail
+                    n_cult = {
+                        "diversity": n_cd.diversity,
+                        "diversity_label": n_cd.diversity_label,
+                        "xenophilia": n_cd.xenophilia,
+                        "xenophilia_label": n_cd.xenophilia_label,
+                        "uniqueness": n_cd.uniqueness,
+                        "uniqueness_label": n_cd.uniqueness_label,
+                        "symbology": n_cd.symbology,
+                        "symbology_label": n_cd.symbology_label,
+                        "cohesion": n_cd.cohesion,
+                        "cohesion_label": n_cd.cohesion_label,
+                        "progressiveness": n_cd.progressiveness,
+                        "progressiveness_label": n_cd.progressiveness_label,
+                        "expansionism": n_cd.expansionism,
+                        "expansionism_label": n_cd.expansionism_label,
+                        "militancy": n_cd.militancy,
+                        "militancy_label": n_cd.militancy_label,
+                        "cultural_profile": n_cd.cultural_profile,
+                        "cultural_extension": n_cd.cultural_extension,
+                    }
+                n_mil = None
+                if n.military_detail is not None:
+                    n_md = n.military_detail
+                    n_mil = {
+                        "budget_pct": f"{n_md.military_budget_pct:.1f}%",
+                        "readiness": n_md.state_of_readiness,
+                        "military_profile": n_md.military_profile,
+                    }
+                balk_nations.append({
+                    "numeral": n.numeral,
+                    "government_type": n.government_type,
+                    "government_name": n.government_name,
+                    "strength_code": n.strength_code,
+                    "strength_label": n.strength_label,
+                    "centralisation": n.centralisation,
+                    "authority": n.authority,
+                    "structure": n_structure,
+                    "nation_profile": n.nation_profile,
+                    "law_level": n.law_level,
+                    "law": n_law,
+                    "culture": n_cult,
+                    "military": n_mil,
+                })
+            balk_ctx = {
+                "nation_count": bd.nation_count,
+                "ruling_numeral": bd.ruling_nation_numeral,
+                "nations": balk_nations,
+            }
+
         # Law context
         law_ctx = None
         if mw and mw.law_detail is not None:
@@ -1049,6 +1153,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             primary_star=primary_star,
             pop=pop_ctx,
             gov=gov_ctx,
+            balk=balk_ctx,
             law=law_ctx,
             tech=tech_ctx,
             cult=cult_ctx,
@@ -1085,6 +1190,7 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
     from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     if rng is not None:
         _twg._rng = rng  # pylint: disable=protected-access
+        _twag._rng = rng  # pylint: disable=protected-access
     world = World(name=name)
 
     # If the mainworld orbit is a belt, the physical characteristics are
@@ -1311,6 +1417,7 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
 
     from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     _twg._rng = rng  # pylint: disable=protected-access
+    _twag._rng = rng  # pylint: disable=protected-access
 
     # Reconcile PBG: honour the world's canonical gas giant and belt counts
     # rather than the freshly generated orbit counts.
@@ -1501,7 +1608,8 @@ def select_mainworld(  # pylint: disable=too-many-locals,too-many-branches,too-m
     winner_orbit.detail = None
 
     # e. Commit to system
-    _twg._rng           = rng if rng is not None else _twg._rng  # pylint: disable=protected-access
+    _twg._rng  = rng if rng is not None else _twg._rng   # pylint: disable=protected-access
+    _twag._rng = rng if rng is not None else _twag._rng  # pylint: disable=protected-access
     system.mainworld       = new_mw
     system.mainworld_orbit = winner_orbit
     return True

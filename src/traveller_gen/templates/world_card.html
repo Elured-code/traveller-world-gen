@@ -451,10 +451,17 @@
     {{ drow("Largest bay", "{:,}".format(ctx.starport_detail.shipyard_largest_bay) ~ " t") }}
     {{ drow("Annual output", "{:,}".format(ctx.starport_detail.shipyard_annual_output) ~ " t/yr") }}
     {% endif %}
+    {% if ctx.starport_detail.city_spaceports %}
+    {% set _ccls = {"F": "Good facility", "G": "Basic facility", "H": "Landing area"} %}
+    {% for cs in ctx.starport_detail.city_spaceports %}
+    {{ drow("City " ~ cs.city_rank ~ " spaceport (pop " ~ "{:,}".format(cs.city_population) ~ ")",
+            "Class " ~ cs.spaceport_class ~ " — " ~ _ccls.get(cs.spaceport_class, "")) }}
+    {% endfor %}
+    {% endif %}
   </div>
   {% endif %}
 
-  {% if ctx.military_detail is not none %}
+  {% if ctx.military_detail is not none and ctx.balkanised_detail is none %}
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Military detail</p>
     {{ drow("Military profile", ctx.military_detail.military_profile, highlight=true) }}
@@ -523,7 +530,37 @@
   </div>
   {% endif %}
 
-  {% if ctx.law_detail is not none %}
+  {% if ctx.balkanised_detail is not none %}
+  <div class="inner-card" style="margin-top:12px">
+    <p class="inner-label">Government detail (Balkanised — {{ ctx.balkanised_detail.nation_count }} nations)</p>
+    {% for n in ctx.balkanised_detail.nations %}
+    {{ drow("Nation " ~ n.numeral,
+            n.nation_profile ~ " — " ~ n.government_name
+            ~ " (" ~ n.strength_label ~ ")"
+            ~ (" [ruling]" if n.numeral == "I" else "")) }}
+    {{ drow("Centralisation", n.centralisation) }}
+    {{ drow("Authority", n.authority) }}
+    {% if n.authority_code == "B" %}
+    {{ drow("Legislative structure", n.structure_leg) }}
+    {{ drow("Executive structure", n.structure_exec) }}
+    {{ drow("Judicial structure", n.structure_jud) }}
+    {% else %}
+    {{ drow("Structure", n.structure) }}
+    {% endif %}
+    {% if n.law_detail is not none %}
+    {{ drow("Law", n.law_detail.justice_profile ~ " / " ~ n.law_detail.law_profile) }}
+    {% endif %}
+    {% if n.culture_detail is not none %}
+    {{ drow("Culture", n.culture_detail.cultural_profile) }}
+    {% endif %}
+    {% if n.military_detail is not none %}
+    {{ drow("Military", n.military_detail.military_profile) }}
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if ctx.law_detail is not none and ctx.balkanised_detail is none %}
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Law detail</p>
     {{ drow("Justice profile", ctx.law_detail.justice_profile) }}
@@ -562,7 +599,7 @@
   </div>
   {% endif %}
 
-  {% if ctx.culture_detail is not none %}
+  {% if ctx.culture_detail is not none and ctx.balkanised_detail is none %}
   <div class="inner-card" style="margin-top:12px">
     <p class="inner-label">Culture detail</p>
     {{ drow("Cultural profile", ctx.culture_detail.cultural_profile) }}

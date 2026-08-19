@@ -74,13 +74,13 @@ from traveller_gen.traveller_map_fetch import (  # noqa: E402
     AmbiguousWorldError, generate_system_from_map,
 )
 from traveller_gen.traveller_system_gen import generate_full_system, TravellerSystem  # noqa: E402
-from traveller_gen.traveller_world_gen import (  # noqa: E402
-    World,
+from traveller_gen.traveller_world_gen import World, generate_world  # noqa: E402
+from traveller_gen.traveller_world_atmosphere_gen import (  # noqa: E402
     generate_atmosphere_detail,
     generate_gas_mix,
     generate_unusual_subtype,
-    generate_world,
 )
+from traveller_gen import traveller_world_atmosphere_gen as _twag  # noqa: E402
 from traveller_gen.tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
@@ -735,7 +735,7 @@ class _OptionsDialog(QDialog):
 # ---------------------------------------------------------------------------
 
 _WORLD_TYPE_LABELS: dict[str, str] = {
-    "T": "Terrestrial", "GG": "Gas Giant", "BD": "Belt",
+    "terrestrial": "Terrestrial", "gas_giant": "Gas Giant", "belt": "Belt",
 }
 
 

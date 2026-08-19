@@ -118,10 +118,10 @@ from .traveller_system_gen import TravellerSystem, generate_temperature_from_orb
 from .traveller_world_gen import (
     assign_trade_codes,
     generate_atmosphere,
-    generate_nhz_atmosphere,
     generate_hydrographics,
     to_hex,
 )
+from .traveller_world_atmosphere_gen import generate_nhz_atmosphere
 from .traveller_moon_gen import generate_moons, moons_str, Moon, place_moon_orbit
 from .traveller_belt_physical import generate_belt_physical, BeltPhysical
 from .world_codes import gg_diameter_from_sah
@@ -871,8 +871,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
                  "tech_level", "spaceport", "moons", "trade_codes", "physical",
                  "biomass_rating", "biocomplexity_rating", "habitability_rating",
                  "is_independent_government", "native_sophont", "classification",
-                 "population_detail", "government_detail", "law_detail",
-                 "tech_detail", "culture_detail", "name", "runaway_greenhouse")
+                 "population_detail", "government_detail", "balkanised_detail",
+                 "law_detail", "tech_detail", "culture_detail", "name", "runaway_greenhouse")
 
     def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
             self, sah: str, population: int = 0, government: int = 0,
@@ -892,6 +892,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         self.population_detail: Optional[object] = None
         # traveller_world_government_detail.GovernmentDetail — set by attach_government_detail()
         self.government_detail: Optional[object] = None
+        # traveller_world_government_detail.BalkanisedDetail — set when gov code 7
+        self.balkanised_detail: Optional[object] = None
         # traveller_world_law_detail.LawDetail — set by attach_law_detail()
         self.law_detail: Optional[object] = None
         # traveller_world_tech_detail.TechDetail — set by attach_tech_detail()
@@ -989,6 +991,8 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
             d["population_detail"] = self.population_detail.to_dict()  # type: ignore[attr-defined]
         if self.government_detail is not None:
             d["government_detail"] = self.government_detail.to_dict()  # type: ignore[attr-defined]
+        if self.balkanised_detail is not None:
+            d["balkanised_detail"] = self.balkanised_detail.to_dict()  # type: ignore[attr-defined]
         if self.law_detail is not None:
             d["law_detail"] = self.law_detail.to_dict()  # type: ignore[attr-defined]
         if self.tech_detail is not None:
@@ -1035,6 +1039,9 @@ class WorldDetail:  # pylint: disable=too-many-instance-attributes
         if d.get("government_detail") is not None:
             from .traveller_world_government_detail import GovernmentDetail as _GD  # pylint: disable=import-outside-toplevel
             obj.government_detail = _GD.from_dict(d["government_detail"])
+        if d.get("balkanised_detail") is not None:
+            from .traveller_world_government_detail import BalkanisedDetail as _BD  # pylint: disable=import-outside-toplevel
+            obj.balkanised_detail = _BD.from_dict(d["balkanised_detail"])
         if d.get("law_detail") is not None:
             from .traveller_world_law_detail import LawDetail as _LD  # pylint: disable=import-outside-toplevel
             obj.law_detail = _LD.from_dict(d["law_detail"])
@@ -2272,7 +2279,10 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
     Mainworld shows full UWP; inhabited secondaries show spaceport+SAH+PGL+TL;
     uninhabited worlds show SAH only.
     """
+    # pylint: disable=import-outside-toplevel
+    from .traveller_world_culture_detail import attach_culture_detail
     attach_detail(system)
+    attach_culture_detail(system)
     orbits = system.system_orbits
 
     lines = [
@@ -2306,6 +2316,9 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
         notes_suffix = ""
         if detail is not None and isinstance(detail.physical, BeltPhysical):
             notes_suffix = f"  Profile: {detail.physical.profile_str}"
+        if (not o.is_mainworld_candidate and detail is not None
+                and not detail.is_gas_giant and detail.culture_detail is not None):
+            notes_suffix += f"  Culture: {getattr(detail.culture_detail, 'cultural_profile', '')}"
         lines.append(
             f"  {o.star_designation:<5} {o.slot_index:<4} "
             f"{o.orbit_number:<8.2f} {o.orbit_au:<9.3f} "
@@ -2330,7 +2343,11 @@ def system_body_table(system: TravellerSystem) -> str:  # pylint: disable=too-ma
                     if d.classification and d.classification in _CLASSIFICATION_NAMES
                     else ""
                 )
-                moon_sah_str = f"size {moon.size_str}{moon_cl}"
+                moon_culture = (
+                    f"  Culture: {getattr(d.culture_detail, 'cultural_profile', '')}"
+                    if d.culture_detail is not None else ""
+                )
+                moon_sah_str = f"size {moon.size_str}{moon_cl}{moon_culture}"
             else:
                 moon_profile = f"size {moon.size_str}"
                 moon_codes_str = ""

@@ -203,12 +203,92 @@ def _starport_profile(
 
 
 # ---------------------------------------------------------------------------
+# City spaceport generation
+# WBH §8 p.196 — cities on any world may have public spaceports.
+# Roll 1D + population DM using the same p.195 spaceport class table.
+# ---------------------------------------------------------------------------
+
+@dataclass
+class CitySpaceport:
+    """Spaceport at a major city on the mainworld (WBH §8 p.196).
+
+    Cities roll on the same 1D+DM table used for secondary worlds (WBH p.195).
+    Class Y results (≤2) indicate no spaceport infrastructure and are excluded
+    from the list — only cities that roll H, G, or F appear here.
+    """
+
+    city_rank: int          # 1 = largest city in population_detail.cities
+    city_population: int    # from City.population (approximate, rounded)
+    spaceport_class: str    # "F" (good), "G" (basic), or "H" (landing area only)
+
+    def to_dict(self) -> dict:
+        """Serialise to a plain dict for JSON output."""
+        return {
+            "city_rank":       self.city_rank,
+            "city_population": self.city_population,
+            "spaceport_class": self.spaceport_class,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CitySpaceport":
+        """Reconstruct from a to_dict() output."""
+        return cls(
+            city_rank       = int(d["city_rank"]),
+            city_population = int(d["city_population"]),
+            spaceport_class = str(d["spaceport_class"]),
+        )
+
+
+def _city_spaceport_dm(city_population: int) -> int:
+    """Population DM for a city spaceport roll (WBH p.195 table).
+
+    Cities with ≥ 1,000,000 population are treated as pop-code 6+ (DM+2).
+    Smaller cities carry no DM (pop codes 2–5 have no DM row in the table).
+    """
+    return 2 if city_population >= 1_000_000 else 0
+
+
+def _roll_city_spaceport_class(city_population: int) -> Optional[str]:
+    """Roll 1D + DM for a city spaceport class.
+
+    Returns the class letter (F, G, or H) or None when the result is Y
+    (no spaceport infrastructure — city is omitted from the list).
+    """
+    r = _rng.randint(1, 6) + _city_spaceport_dm(city_population)
+    if r <= 2:
+        return None    # Y — no safe landing zone identified
+    if r == 3:
+        return "H"
+    if r <= 5:
+        return "G"
+    return "F"
+
+
+def _generate_city_spaceports(cities: list) -> list:
+    """Roll spaceport class for each major city; omit Y results.
+
+    ``cities`` is the List[City] from PopulationDetail.  Order is preserved
+    so that city_rank == 1 is always the most-populous city.
+    """
+    result = []
+    for rank, city in enumerate(cities, start=1):
+        cls = _roll_city_spaceport_class(city.population)
+        if cls is not None:
+            result.append(CitySpaceport(
+                city_rank       = rank,
+                city_population = city.population,
+                spaceport_class = cls,
+            ))
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Dataclass
 # ---------------------------------------------------------------------------
 
 @dataclass
 class StarportDetail:  # pylint: disable=too-many-instance-attributes
-    """WBH §8 starport detail: traffic, docking capacities, and shipyard.
+    """WBH §8 starport detail: traffic, docking capacities, shipyard, and city spaceports.
 
     Fields
     ------
@@ -222,6 +302,7 @@ class StarportDetail:  # pylint: disable=too-many-instance-attributes
     shipyard_largest_bay   : largest single bay (10% of capacity); None when no shipyard
     shipyard_annual_output : annual ship production (tonnes/year); None when no shipyard
     starport_profile       : WBH profile string, e.g. 'A-HY:DY:+3'
+    city_spaceports        : spaceports at major cities (WBH §8 p.196); [] when none qualify
     """
 
     traffic_importance:     int
@@ -234,6 +315,7 @@ class StarportDetail:  # pylint: disable=too-many-instance-attributes
     shipyard_largest_bay:   Optional[int]
     shipyard_annual_output: Optional[int]
     starport_profile:       str
+    city_spaceports:        list  # List[CitySpaceport]
 
     def to_dict(self) -> dict:
         """Serialise to a plain dict for JSON output."""
@@ -251,6 +333,8 @@ class StarportDetail:  # pylint: disable=too-many-instance-attributes
             d["shipyard_capacity"]      = self.shipyard_capacity
             d["shipyard_largest_bay"]   = self.shipyard_largest_bay
             d["shipyard_annual_output"] = self.shipyard_annual_output
+        if self.city_spaceports:
+            d["city_spaceports"] = [cs.to_dict() for cs in self.city_spaceports]
         return d
 
     @classmethod
@@ -271,6 +355,8 @@ class StarportDetail:  # pylint: disable=too-many-instance-attributes
             shipyard_largest_bay   = int(sb) if sb is not None else None,
             shipyard_annual_output = int(so) if so is not None else None,
             starport_profile       = str(d.get("starport_profile", "")),
+            city_spaceports        = [CitySpaceport.from_dict(c)
+                                      for c in d.get("city_spaceports", [])],
         )
 
 
@@ -289,6 +375,7 @@ def generate_starport_detail(  # pylint: disable=too-many-arguments,too-many-pos
     tech_level: int,
     trade_codes: list,
     total_population: int,
+    cities: Optional[list] = None,
     rng: Optional[random.Random] = None,
 ) -> StarportDetail:
     """Generate detailed starport characteristics (WBH §8).
@@ -305,6 +392,7 @@ def generate_starport_detail(  # pylint: disable=too-many-arguments,too-many-pos
     tech_level            : tech level (0–15+)
     trade_codes           : list of trade code strings
     total_population      : actual population count (used in shipyard formula)
+    cities                : List[City] from PopulationDetail; None → [] (no city spaceports)
     rng                   : injectable RNG; when provided sets module _rng
     """
     global _rng  # pylint: disable=global-statement
@@ -342,6 +430,9 @@ def generate_starport_detail(  # pylint: disable=too-many-arguments,too-many-pos
             ship_bay = max(100, _round100(ship_cap / 10.0))
             ship_out = _compute_annual_output(starport, ship_cap, importance)
 
+    # City spaceports — rolls placed after all other rolls (pipeline end rule)
+    city_ports = _generate_city_spaceports(cities or [])
+
     return StarportDetail(
         traffic_importance     = traffic_imp,
         expected_weekly        = ew,
@@ -353,6 +444,7 @@ def generate_starport_detail(  # pylint: disable=too-many-arguments,too-many-pos
         shipyard_largest_bay   = ship_bay,
         shipyard_annual_output = ship_out,
         starport_profile       = _starport_profile(starport, has_highport, traffic_imp),
+        city_spaceports        = city_ports,
     )
 
 
@@ -385,6 +477,9 @@ def attach_starport_detail(
     else:
         twp = 0
 
+    cities = (world.population_detail.cities
+              if world.population_detail is not None else [])
+
     world.starport_detail = generate_starport_detail(
         starport              = world.starport,
         has_highport          = "H" in world.bases,
@@ -396,5 +491,6 @@ def attach_starport_detail(
         tech_level            = world.tech_level,
         trade_codes           = list(world.trade_codes),
         total_population      = twp,
+        cities                = cities,
         rng                   = rng,
     )

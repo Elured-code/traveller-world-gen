@@ -845,6 +845,51 @@
         "technology_profile":   { "type": "string", "description": "WBH technology profile string in format H-L-QQQQQ-TTTT-MM-N (all eHex digits). Example: 'C-8-BBA98-9870-A8-C'. The trailing -N segment is the Novelty TL (placeholder)." }
       }
     },
+    "balkanised_detail": {
+      "type": "object",
+      "description": "WBH §3 Balkanised government: N nations each with own government structure. Present only for gov code 7 worlds when government detail has been requested. government_detail is absent when this is present.",
+      "required": ["nation_count", "ruling_nation_numeral", "nations"],
+      "additionalProperties": false,
+      "properties": {
+        "nation_count":          { "type": "integer", "minimum": 2, "maximum": 4 },
+        "ruling_nation_numeral": { "type": "string", "const": "I" },
+        "nations": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "description": "One nation/faction in a Balkanised world, with its own government type, strength, and structural profile.",
+            "required": ["numeral", "government_type", "government_name", "strength_code", "strength_label", "centralisation_code", "centralisation", "authority_code", "authority", "structure_code", "structure", "nation_profile", "law_level"],
+            "additionalProperties": false,
+            "properties": {
+              "numeral":            { "type": "string", "description": "Roman numeral; I = ruling (highest strength)." },
+              "government_type":    { "type": "integer", "minimum": 0, "maximum": 15 },
+              "government_name":    { "type": "string" },
+              "strength_code":      { "type": "string", "enum": ["O", "F", "M", "N", "S", "P"] },
+              "strength_label":     { "type": "string" },
+              "centralisation_code":{ "type": "string", "enum": ["C", "F", "U"] },
+              "centralisation":     { "type": "string" },
+              "authority_code":     { "type": "string", "enum": ["L", "E", "J", "B"] },
+              "authority":          { "type": "string" },
+              "structure_code":     { "type": "string" },
+              "structure":          { "type": "string" },
+              "structure_leg_code": { "type": "string" },
+              "structure_leg":      { "type": "string" },
+              "structure_exec_code":{ "type": "string" },
+              "structure_exec":     { "type": "string" },
+              "structure_jud_code": { "type": "string" },
+              "structure_jud":      { "type": "string" },
+              "nation_profile":     { "type": "string", "description": "WBH government profile for this nation, e.g. '4-FES' or '4-FB-LM-ES-JS'." },
+              "law_level":          { "type": "integer", "minimum": 0, "maximum": 9, "description": "Per-nation law level (2D-7+gov_code, clamped 0–9)." },
+              "law_detail":         { "type": "object", "description": "Per-nation law detail; present only when law detail has been generated." },
+              "culture_detail":     { "type": "object", "description": "Per-nation cultural detail; present only when culture detail has been generated." },
+              "military_detail":    { "type": "object", "description": "Per-nation military detail; present only when military detail has been generated." }
+            }
+          }
+        }
+      }
+    },
     "culture_detail": {
       "type": "object",
       "description": "WBH Social Characteristics culture profile. Present only when culture detail generation has been explicitly requested. Includes 8 cultural traits (Diversity, Xenophilia, Uniqueness, Symbology, Cohesion, Progressiveness, Expansionism, Militancy) with labels and a compressed DXUS-CPEM profile string.",
@@ -1109,6 +1154,20 @@
         "starport_profile": {
           "type": "string",
           "description": "WBH starport profile string: 'C-HX:DX:±#' where C=class, H=highport Y/N, D=downport Y/N, ±#=traffic importance. Example: 'A-HY:DY:+3'."
+        },
+        "city_spaceports": {
+          "type": "array",
+          "description": "Spaceport facilities at major cities on the mainworld (WBH §8 p.196). Absent when no cities qualify (all roll Y). City rank 1 = largest city. Each city rolls 1D + population DM on the WBH p.195 spaceport class table; Y results are excluded.",
+          "items": {
+            "type": "object",
+            "required": ["city_rank", "city_population", "spaceport_class"],
+            "additionalProperties": false,
+            "properties": {
+              "city_rank":       { "type": "integer", "minimum": 1, "description": "Rank by city population; 1 = largest city." },
+              "city_population": { "type": "integer", "minimum": 0, "description": "City population (approximate, rounded to significant figures)." },
+              "spaceport_class": { "type": "string", "enum": ["F", "G", "H"], "description": "Spaceport class: F (good facility), G (basic facility), H (cleared landing area). Y results are omitted." }
+            }
+          }
         }
       }
     }

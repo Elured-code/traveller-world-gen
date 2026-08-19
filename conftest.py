@@ -72,6 +72,7 @@ def reset_module_rngs():  # pylint: disable=too-many-locals
     from traveller_gen import traveller_world_tech_detail
     from traveller_gen import traveller_world_culture_detail
     from traveller_gen import traveller_world_atmosphere_detail
+    from traveller_gen import traveller_world_atmosphere_gen
     # pylint: enable=import-outside-toplevel
 
     _modules = [
@@ -89,6 +90,7 @@ def reset_module_rngs():  # pylint: disable=too-many-locals
         traveller_world_tech_detail,
         traveller_world_culture_detail,
         traveller_world_atmosphere_detail,
+        traveller_world_atmosphere_gen,
     ]
 
     for mod in _modules:

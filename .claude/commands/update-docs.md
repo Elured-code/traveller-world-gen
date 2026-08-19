@@ -65,15 +65,23 @@ Use this routing table (mirrors the CLAUDE.md routing table):
 | `function_app.py` | `context/api-layer.md` |
 | `shared/helpers.py` | `context/api-layer.md` |
 | `gen-ui/app.py` | `context/gen-ui.md` |
-| `traveller_world_schema.json` | `docs/release-v1.4.0.md` (JSON schema table) |
+| `traveller_world_schema.json` | `docs/release-v{APP_VERSION}.md` (JSON schema table — derive filename from `world_codes.py`) |
 | Any data-structure change | `context/data-structures.md` |
 
 Always update regardless of what changed:
 - `context/session-history.md` — add one row for this session
 - `RELEASE-NOTES.md` — append to the current draft section
-- `docs/release-v1.4.0.md` — update test count and feature list
-- `v1.4-new-features.txt` — add any user-facing features (see format below)
+- The **current release notes file** (`docs/release-vX.Y.Z.md`) — update test count and feature list
+- The **current new-features file** (`vX.Y-new-features.txt`) — add any user-facing features (see format below)
 - `CLAUDE.md` — update `**Last updated:**` line and session number
+
+**Determining the current version files:** Read `APP_VERSION` from the fallback line in
+`src/traveller_gen/world_codes.py` (the string literal in the `except ImportError` block,
+e.g. `APP_VERSION = "2.0.0"`). Then:
+- Release notes file: `docs/release-v{APP_VERSION}.md` (e.g. `docs/release-v2.0.0.md`)
+- New-features file: `v{MAJOR}.{MINOR}-new-features.txt` (e.g. `v2.0-new-features.txt`)
+
+Do **not** hardcode version numbers in this skill — always derive them from `world_codes.py`.
 
 ---
 
@@ -93,10 +101,11 @@ For each `docs/*_explained.md` that needs updating:
 
 ---
 
-## Step 5 — Update v1.4-new-features.txt
+## Step 5 — Update the current new-features file
 
-This file is the user-facing "what's new" list for non-technical readers. It
-lives in the project root alongside `v1.3-new-features.txt`.
+The user-facing "what's new" list lives in the project root as
+`v{MAJOR}.{MINOR}-new-features.txt` (e.g. `v2.0-new-features.txt`). Determine
+the correct filename from `APP_VERSION` in `world_codes.py` as described above.
 
 **Format rules:**
 - One entry per user-visible change (new feature, changed display, removed
@@ -194,10 +203,11 @@ If the schema did **not** change, skip 6a–6c entirely.
 
 ---
 
-## Step 7 — Update RELEASE-NOTES.md and docs/release-v1.4.0.md
+## Step 7 — Update RELEASE-NOTES.md and the current release notes file
 
 `RELEASE-NOTES.md` is the AI-context release log (detailed, technical).
-`docs/release-v1.4.0.md` is the human-facing release document.
+`docs/release-v{APP_VERSION}.md` is the human-facing release document.
+Determine the correct filename from `APP_VERSION` in `world_codes.py`.
 
 For each change:
 1. Add a `## Feature Name (Session N)` section to the **top** of the draft area
@@ -205,8 +215,8 @@ For each change:
    sections).
 2. Update the test count in both files to match the current passing total
    (`pytest tests/ -q` last line).
-3. In `docs/release-v1.4.0.md`, add any new JSON schema fields to the schema
-   table and update the test coverage table.
+3. In `docs/release-v{APP_VERSION}.md`, add any new JSON schema fields to the
+   schema table and update the test coverage table.
 
 ---
 
@@ -227,7 +237,7 @@ Stage only documentation and context files — never source code (source was
 committed separately in Step 2 and, if applicable, Step 6):
 
 ```bash
-git add CLAUDE.md RELEASE-NOTES.md v1.4-new-features.txt
+git add CLAUDE.md RELEASE-NOTES.md v{MAJOR}.{MINOR}-new-features.txt   # use the correct version file
 git add context/*.md
 git add docs/*.md
 git add .claude/commands/*.md        # if the command file itself was updated

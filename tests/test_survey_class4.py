@@ -241,5 +241,92 @@ class TestClass4FormEconomics(unittest.TestCase):
         assert "WTN" in self.html
 
 
+def _make_balkanised_world_data():
+    from traveller_gen.traveller_map_fetch import MapWorldData
+    return MapWorldData(
+        name="Ragnar",
+        sector="Solomani Rim",
+        hex_pos="1340",
+        uwp="A76A775-B",  # Government 7 = Balkanisation
+        bases="",
+        remarks="Ri",
+        zone="",
+        pbg="502",
+        stars_str="M2 V",
+        worlds=5,
+        cx="6B3B",
+        importance=2,
+    )
+
+
+def _build_balkanised_system(seed: int = 42):
+    from traveller_gen.traveller_map_fetch import generate_system_from_map
+    from traveller_gen.system_pipeline import run_detail_pipeline, PipelineOptions
+    data = _make_balkanised_world_data()
+    with mock.patch("traveller_gen.traveller_map_fetch.fetch_world_data", return_value=data):
+        sys = generate_system_from_map("Ragnar", sector="Solomani Rim", seed=seed)
+    rng = random.Random(seed)
+    run_detail_pipeline(sys, rng, PipelineOptions(
+        want_detail=True, want_social_detail=True,
+    ))
+    return sys
+
+
+class TestClass4FormBalkanised(unittest.TestCase):
+    """Class IV Survey form for Balkanised (gov 7) worlds."""
+
+    def setUp(self):
+        self.sys = _build_balkanised_system()
+        self.html = self.sys.to_survey_form_html_class4()
+
+    def test_renders_without_error(self):
+        assert isinstance(self.html, str) and len(self.html) > 100
+
+    def test_balkanisation_shown_in_government_section(self):
+        assert "Balkanisation" in self.html
+
+    def test_nation_table_present(self):
+        assert "Nation I" in self.html or "Ruling Nation" in self.html
+
+    def test_nations_law_subheader(self):
+        assert "Nations — Law Detail" in self.html
+
+    def test_nations_culture_subheader(self):
+        assert "Nations — Cultural Detail" in self.html
+
+    def test_nations_military_subheader(self):
+        assert "Nations — Military Detail" in self.html
+
+    def test_no_no_government_detail_stub(self):
+        assert "no government detail" not in self.html
+
+    def test_per_nation_profile_present(self):
+        mw = self.sys.mainworld
+        assert mw.balkanised_detail is not None
+        first_nation = mw.balkanised_detail.nations[0]
+        assert first_nation.nation_profile in self.html
+
+    def test_per_nation_law_profile_present(self):
+        mw = self.sys.mainworld
+        for nation in mw.balkanised_detail.nations:
+            if nation.law_detail is not None:
+                assert nation.law_detail.law_profile in self.html
+                break
+
+    def test_per_nation_culture_profile_present(self):
+        mw = self.sys.mainworld
+        for nation in mw.balkanised_detail.nations:
+            if nation.culture_detail is not None:
+                assert nation.culture_detail.cultural_profile in self.html
+                break
+
+    def test_per_nation_military_profile_present(self):
+        mw = self.sys.mainworld
+        for nation in mw.balkanised_detail.nations:
+            if nation.military_detail is not None:
+                assert nation.military_detail.military_profile in self.html
+                break
+
+
 if __name__ == "__main__":
     unittest.main()

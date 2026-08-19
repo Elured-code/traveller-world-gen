@@ -427,6 +427,30 @@ FASTAPI WEB APP — HELP BUTTON AND USER GUIDE
 - The modal follows the app's current dark/light theme and updates
   automatically if you toggle the theme while it is open.
 
+CLASS IV SURVEY FORM — BALKANISED WORLD DETAIL
+------------------------------------------------
+The IISS Class IV Survey form now displays full government, social, and
+military detail for Balkanised worlds (government code 7).
+
+Previously the Government section of the Class IV form showed "— no
+government detail —" for Balkanised worlds, and the per-nation law, culture,
+and military data generated internally was not shown anywhere on the form.
+
+Now the form shows:
+
+- Government section: a nation table listing each nation's government type,
+  relative strength, degree of centralisation, primary authority,
+  governmental structure, profile code, and law level.
+- Law Level section: a "Nations — Law Detail" sub-table showing each nation's
+  own judicial system, law uniformity, presumption of innocence, death penalty
+  status, and law profile code — appearing below the world-level law summary.
+- Culture section: a "Nations — Cultural Detail" sub-table showing each
+  nation's cultural profile (DXUS-CPEM), T5 HASS extension, and key trait
+  values — appearing below the world-level culture summary.
+- Military section: a "Nations — Military Detail" sub-table showing each
+  nation's military budget as a percentage of GWP, state of readiness, and
+  military profile code — appearing below the world-level military summary.
+
 BUG FIXES
 ---------
 - Fixed: The mainworld card in the Full System page sometimes displayed as blank on
