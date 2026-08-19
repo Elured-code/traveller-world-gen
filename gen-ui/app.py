@@ -735,7 +735,7 @@ class _OptionsDialog(QDialog):
 # ---------------------------------------------------------------------------
 
 _WORLD_TYPE_LABELS: dict[str, str] = {
-    "T": "Terrestrial", "GG": "Gas Giant", "BD": "Belt",
+    "terrestrial": "Terrestrial", "gas_giant": "Gas Giant", "belt": "Belt",
 }
 
 

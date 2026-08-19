@@ -389,7 +389,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                         else ""
                     )
                     moon_culture_profile = (
-                        moon.detail.culture_detail.cultural_profile
+                        getattr(moon.detail.culture_detail, "cultural_profile", "")
                         if moon.detail is not None
                         and moon.detail.culture_detail is not None
                         else ""
@@ -441,7 +441,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 name_label = f"{o.star_designation} #{o.slot_index} (World)"
 
             cultural_profile = (
-                detail.culture_detail.cultural_profile
+                getattr(detail.culture_detail, "cultural_profile", "")
                 if not o.is_mainworld_candidate
                 and detail is not None
                 and not detail.is_gas_giant

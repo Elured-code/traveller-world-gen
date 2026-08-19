@@ -134,8 +134,9 @@ def _oxygen_partial_pressure(
     if code not in _PPO_CODES or total_pressure_bar is None:
         return None
     dm = 1 if (system_age_gyr is not None and system_age_gyr > 4.0) else 0
+    raw_1d = _rng.randint(1, 6)
     raw_2d = _rng.randint(1, 6) + _rng.randint(1, 6)
-    fraction = (_rng.randint(1, 6) + dm) / 20 + (raw_2d - 7) / 100
+    fraction = (raw_1d + dm) / 20 + (raw_2d - 7) / 100
     if fraction <= 0:
         fraction = _rng.randint(1, 6) * 0.01
     return round(fraction * total_pressure_bar, 3)
