@@ -81,6 +81,7 @@ from .traveller_world_atmosphere_gen import (
     generate_unusual_subtype,
 )
 from . import traveller_world_atmosphere_gen as _twag
+from .traveller_world_atmosphere_detail import compute_basic_temperature_k
 
 
 # ---------------------------------------------------------------------------
@@ -1238,6 +1239,9 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
             generate_gas_mix(
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, orbit.hz_deviation, world.hydrographics,
+                temperature_k=compute_basic_temperature_k(
+                    orbit.hz_deviation, world.atmosphere
+                ),
             )
             generate_unusual_subtype(
                 world.atmosphere_detail, world.atmosphere,
@@ -1282,6 +1286,9 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
             generate_gas_mix(
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, orbit.hz_deviation, world.hydrographics,
+                temperature_k=compute_basic_temperature_k(
+                    orbit.hz_deviation, world.atmosphere
+                ),
             )
             generate_unusual_subtype(
                 world.atmosphere_detail, world.atmosphere,
@@ -1452,11 +1459,11 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
         hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
     )
     if world.atmosphere_detail is not None:
+        _mw_hz_dev = mw_orbit.hz_deviation if mw_orbit is not None else None
         generate_gas_mix(
             world.atmosphere_detail, world.atmosphere, world.size,
-            world.temperature,
-            mw_orbit.hz_deviation if mw_orbit is not None else None,
-            world.hydrographics,
+            world.temperature, _mw_hz_dev, world.hydrographics,
+            temperature_k=compute_basic_temperature_k(_mw_hz_dev, world.atmosphere),
         )
         generate_unusual_subtype(
             world.atmosphere_detail, world.atmosphere,
