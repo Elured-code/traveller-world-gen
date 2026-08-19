@@ -2,13 +2,13 @@
 # Computes the semantic version and writes _version.py to the repo root.
 #
 # Version scheme:
-#   Major.Minor — from branch name (v1.5.x → 1.5), fallback to VERSION file
-#   Patch       — extracted from APP_VERSION fallback in world_codes.py
-#                 (single source of truth for the manually-maintained version)
-#   Build       — total git commit count (git rev-list --count HEAD); always
-#                 the same for a given commit regardless of which workflow runs
-#                 this script, so all artefacts from the same commit share an
-#                 identical version string.  Requires full history (fetch-depth: 0).
+#   Major.Minor.Patch — all three components read from the APP_VERSION fallback
+#                       line in world_codes.py (single source of truth).
+#   Build             — total git commit count (git rev-list --count HEAD); always
+#                       the same for a given commit regardless of which workflow
+#                       runs this script, so all artefacts from the same commit
+#                       share an identical version string.
+#                       Requires full history (fetch-depth: 0).
 #
 # Usage (local):   bash scripts/compute_version.sh
 # Usage (CI):      bash scripts/compute_version.sh
@@ -17,26 +17,16 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# ── Major.Minor ───────────────────────────────────────────────────────────────
-BRANCH=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
-if [[ "$BRANCH" =~ ^v([0-9]+)\.([0-9]+) ]]; then
-    MAJOR="${BASH_REMATCH[1]}"
-    MINOR="${BASH_REMATCH[2]}"
-elif [[ -f "$REPO_ROOT/VERSION" ]]; then
-    # VERSION file contains "major.minor" — used on main after merge
-    IFS='.' read -r MAJOR MINOR _ < "$REPO_ROOT/VERSION"
-else
-    MAJOR=0; MINOR=0
-fi
-
-# ── Patch: read from world_codes.py (single source of truth) ─────────────────
-# Extracts the patch digit from the APP_VERSION fallback line, e.g. "1.5.33" → 33
+# ── Major.Minor.Patch: read from world_codes.py (single source of truth) ──────
 WORLD_CODES="$REPO_ROOT/src/traveller_gen/world_codes.py"
-PATCH=$(python3 -c "
+VERSION=$(python3 -c "
 import re, sys
-m = re.search(r'APP_VERSION\s*=\s*\"[0-9]+\.[0-9]+\.([0-9]+)\"', open(sys.argv[1]).read())
-print(m.group(1) if m else '0')
+m = re.search(r'APP_VERSION\s*=\s*\"([0-9]+\.[0-9]+\.[0-9]+)\"', open(sys.argv[1]).read())
+print(m.group(1) if m else '0.0.0')
 " "$WORLD_CODES")
+MAJOR=$(echo "$VERSION" | cut -d. -f1)
+MINOR=$(echo "$VERSION" | cut -d. -f2)
+PATCH=$(echo "$VERSION" | cut -d. -f3)
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 # Total commit count — same for every workflow that checks out the same commit.
