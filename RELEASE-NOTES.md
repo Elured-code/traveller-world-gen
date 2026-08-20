@@ -2,9 +2,34 @@
 
 **Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3131
+**Tests:** 3179
 
 ---
+
+## Atmospheric Gas Retention Filter (Session 192, Issue #44)
+
+Implements WBH p.87–88 gas retention check for Exotic/Corrosive/Insidious atmosphere gas mixes.
+
+**Stage 1:** `compute_basic_temperature_k(hz_deviation, atmosphere)` added to
+`traveller_world_atmosphere_detail.py` — dice-free lookup returning mean temperature K for use
+at gas-mix generation time. `_select_gas_mix_table()`, `_roll_gas_mix()`, and `generate_gas_mix()`
+updated with optional `temperature_k` parameter. Frozen Deep DM+3 now conditional on
+`70 ≤ T_K ≤ 100`; Boiling very-hot ≥ 700 K threshold evaluated against computed temperature.
+Three call sites in `traveller_system_gen.py` and one in `traveller_map_fetch.py` updated.
+
+**Stages 2+3:** `_GAS_ESCAPE_VALUES` dict (24 gases, values from molar mass formula `40/M_g`)
+and `_world_escape_value(v_e, T_K)` added to `traveller_world_atmosphere_gen.py`.
+`apply_gas_retention_filter(detail, escape_velocity_km_s, temperature_k)` removes components
+where `gas_escape_value > world_escape_value`; unknown gas names conservatively kept;
+`gas_retention_applied: bool` field added to `AtmosphereDetail` (emitted only when `True`).
+Filter integrated at all three exit points of `system_pipeline._attach_physical()` (normal,
+no-runaway-greenhouse, and post-runaway-greenhouse paths) via `_maybe_apply_gas_retention()`
+helper. Same three integration points in `fastapi/app.py._attach_mainworld_physical()`.
+
+**Schema:** `gas_retention_applied` boolean added to atmosphere `detail` object. Version bumped
+2.0.2 → 2.0.3.
+
+48 new tests (27 Stage 1, 21 Stages 2+3). 3179 tests pass; pylint 10.00/10 on all files.
 
 ## Code-Review Bug Fixes (Session 191)
 
