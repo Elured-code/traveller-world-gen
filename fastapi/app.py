@@ -145,7 +145,7 @@ try:
     from traveller_gen import _version as _ver  # type: ignore[import]
     _APP_VERSION = _ver.__version__
 except ImportError:
-    _APP_VERSION = "2.0.2"
+    _APP_VERSION = "2.0.3"
 
 # FastAPI light-mode background matches the page (#f4f0e4), not pure white.
 _PALETTE_LIGHT = dataclasses.replace(PALETTE_LIGHT, bg="#f4f0e4")
