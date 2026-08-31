@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -63,6 +64,8 @@ from PySide6.QtWidgets import (  # noqa: E402
     QScrollArea,
     QSizePolicy,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -84,6 +87,7 @@ from traveller_gen import traveller_world_atmosphere_gen as _twag  # noqa: E402
 from traveller_gen.tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
+from traveller_gen.traveller_world_cargo_gen import generate_cargo_manifest  # noqa: E402
 from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 
 try:
@@ -134,6 +138,17 @@ QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 QFrame#onboard-card { border: 1px solid #cccccc; border-radius: 8px; }
 QLabel#version-label { font-size: 9pt; color: #888888; }
+QTableWidget, QTableView {
+    gridline-color: #d0d0d0;
+    selection-background-color: #3584e4;
+    selection-color: #ffffff;
+}
+QHeaderView::section {
+    background-color: #f0f0f0;
+    color: #333333;
+    border: 1px solid #d0d0d0;
+    padding: 4px 6px;
+}
 """
 
 _CSS_DARK = """
@@ -165,6 +180,21 @@ QLabel#table-dim    { font-size: 10pt; color: #6b7280; }
 QLabel#table-moon   { font-size: 9pt; color: #aaaaaa; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 QFrame#onboard-card { border: 1px solid #444444; border-radius: 8px; }
+QTableWidget, QTableView {
+    background-color: #252526;
+    alternate-background-color: #2a2a2a;
+    color: #e0e0e0;
+    gridline-color: #3d3d3d;
+    selection-background-color: #264f78;
+    selection-color: #e0e0e0;
+    border: none;
+}
+QHeaderView::section {
+    background-color: #2d2d2d;
+    color: #c0c0c0;
+    border: 1px solid #3d3d3d;
+    padding: 4px 6px;
+}
 """
 
 # ---------------------------------------------------------------------------
@@ -498,6 +528,62 @@ class SurveyFormWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self._view.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setCentralWidget(self._view)
         self._view.setHtml(html)
+
+
+class CargoWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many-locals
+    """Non-modal window that displays a speculative trade cargo manifest."""
+
+    _HEADERS = ("D66", "Trade Good", "Tons", "Base Cr", "DM", "Purchase Cr")
+
+    def __init__(  # pylint: disable=too-many-locals
+        self, world_name: str, manifest: object
+    ) -> None:
+        super().__init__()
+        self.setWindowTitle(f"Cargo — {world_name}")
+        self.resize(700, 440)
+
+        lots = manifest.lots  # type: ignore[attr-defined]
+        table = QTableWidget(len(lots), len(self._HEADERS))
+        table.setHorizontalHeaderLabels(list(self._HEADERS))
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setAlternatingRowColors(True)
+        hdr = table.horizontalHeader()
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for col in (0, 2, 3, 4, 5):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        for row, lot in enumerate(lots):
+            dm_str = f"+{lot.purchase_dm}" if lot.purchase_dm >= 0 else str(lot.purchase_dm)
+            values = (
+                str(lot.d66),
+                lot.trade_good,
+                str(lot.tons),
+                f"{lot.base_price_cr:,}",
+                dm_str,
+                f"{lot.purchase_price_cr:,}",
+            )
+            for col, val in enumerate(values):
+                item = QTableWidgetItem(val)
+                if col not in (1,):
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                table.setItem(row, col, item)
+
+        summary = QLabel(
+            f"{world_name} — {manifest.total_tons:,} tons available"  # type: ignore[attr-defined]
+        )
+        summary.setObjectName("dim-label")
+
+        central = QWidget()
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        layout.addWidget(summary)
+        layout.addWidget(table, stretch=1)
+        self.setCentralWidget(central)
 
 
 class UserGuideWindow(QMainWindow):  # pylint: disable=too-few-public-methods
@@ -872,10 +958,12 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto: bool = False
         self._map_windows: list[object] = []
         self._survey_windows: list[object] = []
+        self._cargo_windows: list[object] = []
         self._poster_pdf_exports: list[object] = []
         self._user_guide_windows: list[object] = []
         self._map_btn: QPushButton | None = None
         self._survey_btn: QPushButton | None = None
+        self._cargo_btn: QPushButton | None = None
         self._survey_combo: QComboBox | None = None
         self._mw_name_edit: QLineEdit | None = None
         self._edit_names_btn: QPushButton | None = None
@@ -1472,6 +1560,21 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_windows.append(win)
         win.show()
 
+    def _on_cargo_clicked(self) -> None:
+        world = (
+            self._current_system.mainworld  # type: ignore[attr-defined]
+            if self._current_system is not None and
+               self._current_system.mainworld is not None  # type: ignore[attr-defined]
+            else self._current_world
+        )
+        if world is None:
+            return
+        rng = random.Random(self._pending_seed) if self._pending_seed else random.Random()
+        manifest = generate_cargo_manifest(world, rng=rng)  # type: ignore[arg-type]
+        win = CargoWindow(world.name, manifest)  # type: ignore[attr-defined]
+        win.show()
+        self._cargo_windows.append(win)
+
     def _on_survey_clicked(self) -> None:
         if self._current_system is None:
             return
@@ -1787,6 +1890,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _clear_status(self) -> None:
         self._map_btn = None
         self._survey_btn = None
+        self._cargo_btn = None
         self._survey_combo = None
         self._mw_name_edit = None
         self._edit_names_btn = None
@@ -1984,7 +2088,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         self._status_layout.addWidget(tabs, stretch=1)
 
-    def _build_system_summary_header(self, system: object) -> QWidget:
+    def _build_system_summary_header(  # pylint: disable=too-many-locals,too-many-statements
+        self, system: object
+    ) -> QWidget:
         mw = system.mainworld  # type: ignore[attr-defined]
         header = QWidget()
         layout = QHBoxLayout(header)
@@ -2044,6 +2150,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_btn = map_btn
         layout.addWidget(map_btn)
 
+        cargo_btn = QPushButton("Cargo")
+        cargo_btn.clicked.connect(self._on_cargo_clicked)
+        self._cargo_btn = cargo_btn
+        layout.addWidget(cargo_btn)
+
         return header
 
     def _build_summary_header(self, world: object) -> QWidget:
@@ -2075,6 +2186,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
         layout.addWidget(spacer)
+
+        cargo_btn = QPushButton("Cargo")
+        cargo_btn.clicked.connect(self._on_cargo_clicked)
+        self._cargo_btn = cargo_btn
+        layout.addWidget(cargo_btn)
 
         return header
 

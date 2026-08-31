@@ -2,9 +2,63 @@
 
 **Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3179
+**Tests:** 3229
 
 ---
+
+## Cargo Integration — FastAPI and gen-ui (Session 194)
+
+Makes speculative trade cargo generation accessible from both UIs.
+
+**FastAPI (`POST /api/cargo`):** Upgraded to use seeded RNG — pass `seed` integer
+in the request body alongside the world JSON for deterministic results. Fixed
+docstring (previously said "2D+DM"; now correctly says "3D+DM"). `include_mw_card`
+responses from `/api/system/full` and `/api/map/system/full` now include `"mw_json"`
+(the mainworld `World.to_dict()`) so the web UI can pass it to `/api/cargo`.
+
+**FastAPI web UI (`fastapi/static/system.html`):** A **Cargo** button appears in the
+seed/save badge bar after a **Full** system generation (disabled for non-Full because
+the world JSON is not returned in basic mode). Clicking it posts the mainworld JSON
+(plus the current seed) to `/api/cargo` and displays an inline table — D66, Trade Good,
+Tons, Base Cr, DM, Purchase Cr — in a new Cargo tab that becomes visible.
+
+**gen-ui desktop app (`gen-ui/app.py`):** A **Cargo** button is added to the header row
+in both system mode and world-only mode. Clicking opens a `CargoWindow` — a native
+`QTableWidget` (no WebEngine) showing the same 6 columns. Multiple windows can be open
+simultaneously (held in `_cargo_windows` for GC safety). The button uses `_pending_seed`
+to re-seed the cargo RNG so results are reproducible.
+
+## Speculative Trade Cargo Generation (Session 193, Issues #181 closed)
+
+Implements CRB pp.244-245 speculative trade goods generation for a mainworld.
+
+**Module:** New `traveller_world_cargo_gen.py` with `CargoManifest`, `CargoLot`,
+`generate_cargo_manifest(world, rng)`.
+
+**Trade goods table:** 36 D66 entries correctly matching CRB pp.244-245:
+- D66 11-16: Common Goods (always available — Common Electronics, Industrial Goods,
+  Manufactured Goods, Raw Materials, Consumables, Ore).
+- D66 21-56: Trade Goods (available on worlds with matching trade code).
+- D66 61-65: Illegal/black-market goods (always excluded from normal suppliers via `illegal_law=0`).
+- D66 66: Exotics (appears only via random supplier roll, not yet implemented).
+
+**Price roll mechanics (CRB p.244):**
+- Roll 3D (not 2D); apply largest purchase DM from matching codes; subtract largest
+  sale DM from matching codes; subtract supplier broker skill (assumed Broker 2).
+- Look up result (clamped to [−3, 25]) in Modified Price table (300% → 15% of base).
+
+**API:** `POST /api/cargo` added to `fastapi/app.py`.
+
+**Note:** Values marked `# verify` in the trade goods table were read from photographed
+CRB pages; confirm against a physical copy before treating as authoritative.
+
+## Multi-Star Tidal DM (Session 193, Issue #179 closed)
+
+Implements WBH pp.105-106: worlds orbiting multiple stars receive a reduced tidal stress
+floor (DM − number of stars orbited).
+
+**`count_stars_orbited(orbit, stellar_system) → int`** added to `traveller_orbit_gen.py`.
+Wired into `system_pipeline._apply_moon_tidal()` and `fastapi._apply_mainworld_moon_tidal()`.
 
 ## Atmospheric Gas Retention Filter (Session 192, Issue #44)
 

@@ -39,6 +39,7 @@ from .traveller_world_importance import attach_importance_detail
 from .traveller_world_starport_detail import attach_starport_detail
 from .traveller_world_military_detail import attach_military_detail
 from .traveller_system_gen import select_mainworld, attach_body_names
+from .traveller_orbit_gen import count_stars_orbited
 
 
 @dataclass
@@ -235,6 +236,7 @@ def _apply_moon_tidal(system) -> None:
         orbit_au=mw_orbit.orbit_au,
         star_mass=system.stellar_system.primary.mass,
         orbit_eccentricity=mw_orbit.eccentricity,
+        num_stars_orbited=count_stars_orbited(mw_orbit, system.stellar_system),
         is_moon=is_moon,
         gg_mass_earth=gg_mass_earth,
         gg_satellite_moon=gg_sat_moon,
