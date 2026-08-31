@@ -1121,8 +1121,8 @@ async def generate_cargo(request: Request) -> Response:
             return error("Request body is not valid JSON.", ERR_INVALID_BODY)
 
     world_dict, err = parse_world_json(body_raw, body)
-    if err:
-        return err
+    if err or world_dict is None:
+        return err or error("Missing world data.", ERR_INVALID_BODY)
 
     seed_val, seed_err = parse_seed(request, body)
     if seed_err:
