@@ -298,6 +298,68 @@ class CargoManifest:
         return json.dumps(self.to_dict(), indent=2)
 
 
+@dataclass
+class FreightLots:
+    """Count of available lots at each size tier."""
+    incidental: int
+    minor: int
+    major: int
+
+    def to_dict(self) -> dict:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "incidental": self.incidental,
+            "minor": self.minor,
+            "major": self.major,
+        }
+
+
+@dataclass
+class FreightManifest:
+    """Available freight lots (fixed-rate cargo) at a mainworld (CRB p.239)."""
+    world_name: str
+    lots: FreightLots
+    total_incidental_tons: int
+    total_minor_tons: int
+    total_major_tons: int
+    mail_containers: int
+    total_tons: int
+
+    def to_dict(self) -> dict:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "world_name": self.world_name,
+            "lots": self.lots.to_dict(),
+            "total_incidental_tons": self.total_incidental_tons,
+            "total_minor_tons": self.total_minor_tons,
+            "total_major_tons": self.total_major_tons,
+            "mail_containers": self.mail_containers,
+            "total_tons": self.total_tons,
+        }
+
+    def to_json(self) -> str:
+        """Serialise to a JSON string."""
+        return json.dumps(self.to_dict(), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Freight Traffic table (CRB p.239) — 2D roll → number of dice for lot count
+# ---------------------------------------------------------------------------
+
+_FREIGHT_TABLE: List[Tuple[int, int]] = [
+    (1, 0), (3, 1), (5, 2), (8, 3), (11, 4),
+    (14, 5), (16, 6), (17, 7), (18, 8), (19, 9),
+]  # (max_roll_inclusive, ndice); roll > 19 → 10 dice
+
+
+def _freight_lots_count(roll: int, rng) -> int:
+    """Roll ndice×D6 to get the number of lots for a freight tier roll result."""
+    for threshold, ndice in _FREIGHT_TABLE:
+        if roll <= threshold:
+            return sum(rng.randint(1, 6) for _ in range(ndice))
+    return sum(rng.randint(1, 6) for _ in range(10))
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -360,4 +422,75 @@ def generate_cargo_manifest(
         world_name=world.name,
         lots=lots,
         total_tons=sum(lot.tons for lot in lots),
+    )
+
+
+def generate_freight_lots(  # pylint: disable=too-many-locals
+        world: "World",
+        rng: Optional[random.Random] = None,
+) -> FreightManifest:
+    """Generate available freight lots (fixed-rate cargo) at a mainworld.
+
+    Rolls the Freight Traffic table (CRB p.239) three times — once each for
+    Incidental (1D tons), Minor (1D×5 tons), and Major (1D×10 tons) lots.
+    Per-lot tonnages are rolled and summed at generation time.
+
+    Mail (CRB p.239): a fourth 2D+DMs check with no tier DM; on a result of
+    12+ roll 1D containers (each 5 tons, Cr25,000 flat rate).
+
+    Destination-world DM (−1 per parsec beyond first) and Naval/Scout base
+    bonuses on mail are deferred — only source-world DMs are applied.
+    """
+    _rng = rng if rng is not None else random
+
+    # --- World-stat DMs ---
+    pop = world.population
+    if pop <= 1:
+        pop_dm = -4
+    elif pop >= 8:
+        pop_dm = 4
+    elif pop >= 6:
+        pop_dm = 2
+    else:
+        pop_dm = 0
+
+    starport_dm = {"A": 2, "B": 1, "E": -1, "X": -3}.get(world.starport, 0)
+
+    tl = world.tech_level
+    tl_dm = -1 if tl <= 6 else (2 if tl >= 9 else 0)
+
+    zone_dm = -2 if world.travel_zone == "Amber" else (
+              -6 if world.travel_zone == "Red" else 0)
+
+    base_dm = pop_dm + starport_dm + tl_dm + zone_dm
+
+    def _roll2d() -> int:
+        return _rng.randint(1, 6) + _rng.randint(1, 6)
+
+    # --- Lot counts per tier ---
+    incidental_count = _freight_lots_count(_roll2d() + base_dm + 2, _rng)
+    minor_count      = _freight_lots_count(_roll2d() + base_dm,     _rng)
+    major_count      = _freight_lots_count(_roll2d() + base_dm - 4, _rng)
+
+    # --- Roll tonnage for every lot ---
+    total_incidental_tons = sum(_rng.randint(1, 6)      for _ in range(incidental_count))
+    total_minor_tons      = sum(_rng.randint(1, 6) * 5  for _ in range(minor_count))
+    total_major_tons      = sum(_rng.randint(1, 6) * 10 for _ in range(major_count))
+
+    # --- Mail availability: separate 2D + base_dm, no tier DM ---
+    mail_containers = _rng.randint(1, 6) if _roll2d() + base_dm >= 12 else 0
+
+    return FreightManifest(
+        world_name=world.name,
+        lots=FreightLots(
+            incidental=incidental_count,
+            minor=minor_count,
+            major=major_count,
+        ),
+        total_incidental_tons=total_incidental_tons,
+        total_minor_tons=total_minor_tons,
+        total_major_tons=total_major_tons,
+        mail_containers=mail_containers,
+        total_tons=(total_incidental_tons + total_minor_tons + total_major_tons
+                    + mail_containers * 5),
     )

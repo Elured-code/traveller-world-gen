@@ -181,7 +181,7 @@ from traveller_gen.traveller_world_importance import attach_importance_detail
 from traveller_gen.traveller_map_fetch import generate_system_from_map
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline
 from traveller_gen.traveller_orbit_gen import count_stars_orbited
-from traveller_gen.traveller_world_cargo_gen import generate_cargo_manifest
+from traveller_gen.traveller_world_cargo_gen import generate_cargo_manifest, generate_freight_lots
 
 logger = logging.getLogger(__name__)
 
@@ -1135,6 +1135,55 @@ async def generate_cargo(request: Request) -> Response:
     except Exception as exc:
         logger.exception("Error generating cargo manifest: %s", exc)
         return error("An unexpected error occurred while generating cargo.",
+                     ERR_INTERNAL, status_code=500)
+
+    return ok(manifest.to_dict())
+
+
+# ===========================================================================
+# Endpoint 4c:  POST /api/freight
+# ===========================================================================
+
+@app.post("/api/freight")
+@limiter.limit(_RATE_LIMIT)
+async def generate_freight(request: Request) -> Response:
+    """Generate available freight lots (fixed-rate cargo) for a mainworld.
+
+    Request body: a World object in the shape produced by World.to_dict() or
+    /api/world.  The world's population, starport, tech level, and travel zone
+    determine lot counts.  An optional integer ``seed`` key controls the RNG.
+
+    Returns: FreightManifest with incidental/minor/major lot counts, per-tier
+    total tonnage, mail containers, and overall total tons (CRB p.239).
+    Destination-world DM (per parsec) is deferred; only source-world DMs apply.
+    """
+    logger.info("generate_freight called")
+    body_raw = await request.body()
+    body: dict = {}
+    if body_raw:
+        try:
+            parsed = await request.json()
+            if not isinstance(parsed, dict):
+                return error("Request body must be a JSON object.", ERR_INVALID_BODY)
+            body = parsed
+        except (ValueError, TypeError):
+            return error("Request body is not valid JSON.", ERR_INVALID_BODY)
+
+    world_dict, err = parse_world_json(body_raw, body)
+    if err or world_dict is None:
+        return err or error("Missing world data.", ERR_INVALID_BODY)
+
+    seed_val, seed_err = parse_seed(request, body)
+    if seed_err:
+        return seed_err
+    _, rng = apply_seed(seed_val)
+
+    try:
+        world = World.from_dict(world_dict)
+        manifest = generate_freight_lots(world, rng=rng)
+    except Exception as exc:
+        logger.exception("Error generating freight manifest: %s", exc)
+        return error("An unexpected error occurred while generating freight.",
                      ERR_INTERNAL, status_code=500)
 
     return ok(manifest.to_dict())
