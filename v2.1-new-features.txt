@@ -1,0 +1,53 @@
+Traveller World & System Generator — What's New in v2.1
+=========================================================
+
+SPECULATIVE TRADE CARGO GENERATION
+------------------------------------
+The generator can now produce a cargo manifest of available speculative trade
+lots for any mainworld, following the Mongoose Traveller 2e Core Rulebook
+pp.244-245.
+
+Common goods (D66 11-16) — electronics, industrial goods, manufactured goods,
+raw materials, consumables, and ore — are always listed at worlds with a
+functioning starport. Trade goods (D66 21-56) appear only when the world has
+a matching trade code. Worlds with Starport X have no cargo infrastructure
+and return an empty manifest.
+
+For each available lot the generator rolls:
+- 1D (or more) for tonnage, multiplied by the lot's unit factor.
+- 3D + the best purchase DM matching the world's trade codes, minus the best
+  sale DM for those codes, minus Broker 2 (assumed supplier skill). The
+  combined roll determines the purchase price as a percentage of the base
+  price, ranging from 300% (on a very low roll) down to 15% (on a very high
+  roll).
+
+WEB APP — CARGO TAB
+--------------------
+After generating a Full system in the web interface, a Cargo button appears
+in the seed/save bar. Clicking it calls the cargo endpoint with the current
+seed and the mainworld's data, then displays the results in a new Cargo tab.
+The tab lists every available lot with six columns: D66, Trade Good, Tons,
+Base Cr, DM (purchase modifier), and Purchase Cr (actual price at this world
+with this seed).
+
+Results are deterministic — the same seed always produces the same manifest
+for the same world. The Cargo button is disabled for basic (non-Full) system
+generations, since no world JSON is available in that mode.
+
+GEN-UI — CARGO WINDOW
+-----------------------
+The desktop app gains a Cargo button in both system mode and world-only mode.
+Clicking it opens a Cargo window — a native table with D66, Trade Good, Tons,
+Base Cr, DM, and Purchase Cr columns. Multiple cargo windows can be open at
+once. Results are seeded from the current seed for reproducibility.
+
+BUG FIXES
+---------
+
+MULTI-STAR TIDAL STRESS DM NOW APPLIED CORRECTLY
+
+Worlds in systems with multiple stars now receive the correct tidal stress
+floor reduction. The World Builder's Handbook (pp.105-106) specifies that the
+tidal stress floor for a world orbiting N stars should be reduced by N-1. This
+DM was previously not applied. A world orbiting both a primary and one close
+secondary star, for example, now receives a -1 floor reduction.
