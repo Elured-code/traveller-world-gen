@@ -552,6 +552,7 @@
   </select>
   <div class="badge-divider"></div>
   <button class="btn-save" id="s-cargo-btn" disabled title="Generate a speculative trade cargo manifest for the mainworld (requires Full system)">Cargo</button>
+  <button class="btn-save" id="s-freight-btn" disabled title="Generate available freight lots for the mainworld (requires Full system)">Freight</button>
 </div>
 
 <div class="result" id="s-result">
@@ -568,7 +569,8 @@
     <button class="tab-btn"        data-tab="sys">System</button>
     <button class="tab-btn"        data-tab="map">System Map</button>
     <button class="tab-btn hidden" data-tab="survey" id="tab-btn-survey">Survey Form</button>
-    <button class="tab-btn hidden" data-tab="cargo"  id="tab-btn-cargo">Cargo</button>
+    <button class="tab-btn hidden" data-tab="cargo"   id="tab-btn-cargo">Cargo</button>
+    <button class="tab-btn hidden" data-tab="freight" id="tab-btn-freight">Freight</button>
     <button class="btn-icon" id="btn-edit-names" style="margin-left:auto;margin-right:0.5rem;align-self:center;display:none" title="Edit body names">Edit Names…</button>
   </div>
 
@@ -604,6 +606,11 @@
   <!-- Cargo tab -->
   <div class="tab-panel" id="tab-cargo">
     <div id="cargo-content" style="padding:1rem;overflow:auto;flex:1;font-size:0.82rem;"></div>
+  </div>
+
+  <!-- Freight tab -->
+  <div class="tab-panel" id="tab-freight">
+    <div id="freight-content" style="padding:1rem;overflow:auto;flex:1;font-size:0.82rem;"></div>
   </div>
 
   <!-- Non-HTML output (no tabs) -->
@@ -754,6 +761,7 @@
     document.getElementById("tab-map").classList.remove("active");
     document.getElementById("tab-survey").classList.remove("active");
     document.getElementById("tab-cargo").classList.remove("active");
+    document.getElementById("tab-freight").classList.remove("active");
     document.getElementById("mw-frame").classList.remove("visible");
     document.getElementById("sys-frame").classList.remove("visible");
     document.getElementById("survey-frame").classList.remove("visible");
@@ -763,7 +771,9 @@
     document.getElementById("map-img").style.display = "none";
     document.getElementById("tab-btn-survey").classList.add("hidden");
     document.getElementById("tab-btn-cargo").classList.add("hidden");
+    document.getElementById("tab-btn-freight").classList.add("hidden");
     document.getElementById("s-cargo-btn").disabled = true;
+    document.getElementById("s-freight-btn").disabled = true;
     _lastGen = null;
     _lastMwHtml = null;
     _lastSysHtml = null;
@@ -848,6 +858,7 @@
     _lastSurveyHtmls = surveyHtmls || {};
     _lastWorldJson = worldJson || null;
     document.getElementById("s-cargo-btn").disabled = !_lastWorldJson;
+    document.getElementById("s-freight-btn").disabled = !_lastWorldJson;
     document.getElementById("s-empty").style.display = "none";
     loadFrame("mw-frame", mwHtml);
     loadFrame("sys-frame", sysHtml);
@@ -857,6 +868,7 @@
     document.getElementById("tab-map").classList.remove("active");
     document.getElementById("tab-survey").classList.remove("active");
     document.getElementById("tab-cargo").classList.remove("active");
+    document.getElementById("tab-freight").classList.remove("active");
     document.getElementById("s-tab-bar").classList.add("visible");
     document.getElementById("btn-edit-names").style.display = "";
     if (seed !== undefined) loadMap(seed);
@@ -1062,7 +1074,8 @@
     document.getElementById("tab-sys").classList.toggle("active",    tab === "sys");
     document.getElementById("tab-map").classList.toggle("active",    tab === "map");
     document.getElementById("tab-survey").classList.toggle("active", tab === "survey");
-    document.getElementById("tab-cargo").classList.toggle("active",  tab === "cargo");
+    document.getElementById("tab-cargo").classList.toggle("active",   tab === "cargo");
+    document.getElementById("tab-freight").classList.toggle("active", tab === "freight");
   });
 
   document.getElementById("s-survey-btn").addEventListener("click", () => {
@@ -1132,6 +1145,7 @@
       document.getElementById("tab-sys").classList.remove("active");
       document.getElementById("tab-map").classList.remove("active");
       document.getElementById("tab-survey").classList.remove("active");
+      document.getElementById("tab-freight").classList.remove("active");
       document.getElementById("tab-cargo").classList.add("active");
     } catch (e) {
       setStatus("Cargo failed: " + e.message, "error");
@@ -1141,6 +1155,67 @@
   }
 
   document.getElementById("s-cargo-btn").addEventListener("click", showCargo);
+
+  // ── Freight lots ─────────────────────────────────────
+
+  async function showFreight() {
+    if (!_lastWorldJson) return;
+    const btn = document.getElementById("s-freight-btn");
+    btn.disabled = true;
+    try {
+      const body = _lastGen ? Object.assign({}, _lastWorldJson, { seed: _lastGen.seed }) : _lastWorldJson;
+      const resp = await fetch("/api/freight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err.error && err.error.message) || `HTTP ${resp.status}`);
+      }
+      const manifest = await resp.json();
+      const panel = document.getElementById("freight-content");
+      const total = manifest.total_tons;
+      const mail = manifest.mail_containers;
+      const tiers = [
+        ["Incidental (1D t)", manifest.lots.incidental, manifest.total_incidental_tons],
+        ["Minor (1D×5 t)",    manifest.lots.minor,      manifest.total_minor_tons],
+        ["Major (1D×10 t)",   manifest.lots.major,      manifest.total_major_tons],
+      ];
+      if (mail > 0) tiers.push([`Mail (5 t ea.)`, mail, mail * 5]);
+      const rows = tiers.map(([tier, lots, tons]) =>
+        `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:0.3rem 0.5rem">${tier}</td>
+          <td style="padding:0.3rem 0.5rem;text-align:right">${lots}</td>
+          <td style="padding:0.3rem 0.5rem;text-align:right">${tons.toLocaleString()}</td>
+        </tr>`
+      ).join("");
+      panel.innerHTML =
+        `<p style="margin-bottom:0.75rem;color:var(--muted)">${manifest.world_name} — ${total.toLocaleString()} tons total</p>` +
+        `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">` +
+        `<thead><tr style="border-bottom:2px solid var(--border);color:var(--muted);text-align:left">` +
+        `<th style="padding:0.3rem 0.5rem">Tier</th>` +
+        `<th style="padding:0.3rem 0.5rem;text-align:right">Lots</th>` +
+        `<th style="padding:0.3rem 0.5rem;text-align:right">Total Tons</th>` +
+        `</tr></thead><tbody>${rows}</tbody></table></div>`;
+      document.getElementById("tab-btn-freight").classList.remove("hidden");
+      document.querySelectorAll(".tab-btn").forEach(b =>
+        b.classList.toggle("active", b.id === "tab-btn-freight")
+      );
+      document.getElementById("tab-mw").classList.remove("active");
+      document.getElementById("tab-sys").classList.remove("active");
+      document.getElementById("tab-map").classList.remove("active");
+      document.getElementById("tab-survey").classList.remove("active");
+      document.getElementById("tab-cargo").classList.remove("active");
+      document.getElementById("tab-freight").classList.add("active");
+    } catch (e) {
+      setStatus("Freight failed: " + e.message, "error");
+    } finally {
+      btn.disabled = !_lastWorldJson;
+    }
+  }
+
+  document.getElementById("s-freight-btn").addEventListener("click", showFreight);
 
   // ── Perspective toggle re-fetches the map ────────────
   document.getElementById("map-perspective").addEventListener("change", () => {

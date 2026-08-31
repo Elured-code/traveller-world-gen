@@ -87,7 +87,10 @@ from traveller_gen import traveller_world_atmosphere_gen as _twag  # noqa: E402
 from traveller_gen.tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
-from traveller_gen.traveller_world_cargo_gen import generate_cargo_manifest  # noqa: E402
+from traveller_gen.traveller_world_cargo_gen import (  # noqa: E402
+    generate_cargo_manifest,
+    generate_freight_lots,
+)
 from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 
 try:
@@ -586,6 +589,63 @@ class CargoWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-ma
         self.setCentralWidget(central)
 
 
+class FreightWindow(QMainWindow):  # pylint: disable=too-few-public-methods
+    """Non-modal window that displays a freight lot manifest (CRB p.239)."""
+
+    _HEADERS = ("Tier", "Lots", "Total Tons")
+
+    def __init__(self, world_name: str, manifest: object) -> None:  # pylint: disable=too-many-locals
+        super().__init__()
+        self.setWindowTitle(f"Freight — {world_name}")
+        self.resize(420, 200)
+
+        lots = manifest.lots  # type: ignore[attr-defined]
+        inc_t = manifest.total_incidental_tons  # type: ignore[attr-defined]
+        min_t = manifest.total_minor_tons       # type: ignore[attr-defined]
+        maj_t = manifest.total_major_tons       # type: ignore[attr-defined]
+        rows_data = [
+            ("Incidental (1D t)", lots.incidental, inc_t),
+            ("Minor (1D×5 t)",    lots.minor,      min_t),
+            ("Major (1D×10 t)",   lots.major,      maj_t),
+        ]
+        mail = manifest.mail_containers  # type: ignore[attr-defined]
+        if mail > 0:
+            rows_data.append(("Mail (5 t ea.)", mail, mail * 5))
+
+        table = QTableWidget(len(rows_data), len(self._HEADERS))
+        table.setHorizontalHeaderLabels(list(self._HEADERS))
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setAlternatingRowColors(True)
+        hdr = table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col in (1, 2):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        for row, (tier, count, tons) in enumerate(rows_data):
+            for col, val in enumerate((tier, str(count), f"{tons:,}")):
+                item = QTableWidgetItem(val)
+                if col != 0:
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                table.setItem(row, col, item)
+
+        summary = QLabel(
+            f"{world_name} — {manifest.total_tons:,} tons total"  # type: ignore[attr-defined]
+        )
+        summary.setObjectName("dim-label")
+
+        central = QWidget()
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        layout.addWidget(summary)
+        layout.addWidget(table, stretch=1)
+        self.setCentralWidget(central)
+
+
 class UserGuideWindow(QMainWindow):  # pylint: disable=too-few-public-methods
     """Non-modal window that displays the rendered User Guide."""
 
@@ -959,11 +1019,13 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_windows: list[object] = []
         self._survey_windows: list[object] = []
         self._cargo_windows: list[object] = []
+        self._freight_windows: list[object] = []
         self._poster_pdf_exports: list[object] = []
         self._user_guide_windows: list[object] = []
         self._map_btn: QPushButton | None = None
         self._survey_btn: QPushButton | None = None
         self._cargo_btn: QPushButton | None = None
+        self._freight_btn: QPushButton | None = None
         self._survey_combo: QComboBox | None = None
         self._mw_name_edit: QLineEdit | None = None
         self._edit_names_btn: QPushButton | None = None
@@ -1575,6 +1637,21 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         win.show()
         self._cargo_windows.append(win)
 
+    def _on_freight_clicked(self) -> None:
+        world = (
+            self._current_system.mainworld  # type: ignore[attr-defined]
+            if self._current_system is not None and
+               self._current_system.mainworld is not None  # type: ignore[attr-defined]
+            else self._current_world
+        )
+        if world is None:
+            return
+        rng = random.Random(self._pending_seed) if self._pending_seed else random.Random()
+        manifest = generate_freight_lots(world, rng=rng)  # type: ignore[arg-type]
+        win = FreightWindow(world.name, manifest)  # type: ignore[attr-defined]
+        win.show()
+        self._freight_windows.append(win)
+
     def _on_survey_clicked(self) -> None:
         if self._current_system is None:
             return
@@ -1891,6 +1968,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_btn = None
         self._survey_btn = None
         self._cargo_btn = None
+        self._freight_btn = None
         self._survey_combo = None
         self._mw_name_edit = None
         self._edit_names_btn = None
@@ -2155,6 +2233,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._cargo_btn = cargo_btn
         layout.addWidget(cargo_btn)
 
+        freight_btn = QPushButton("Freight")
+        freight_btn.clicked.connect(self._on_freight_clicked)
+        self._freight_btn = freight_btn
+        layout.addWidget(freight_btn)
+
         return header
 
     def _build_summary_header(self, world: object) -> QWidget:
@@ -2191,6 +2274,11 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         cargo_btn.clicked.connect(self._on_cargo_clicked)
         self._cargo_btn = cargo_btn
         layout.addWidget(cargo_btn)
+
+        freight_btn = QPushButton("Freight")
+        freight_btn.clicked.connect(self._on_freight_clicked)
+        self._freight_btn = freight_btn
+        layout.addWidget(freight_btn)
 
         return header
 
