@@ -20,6 +20,7 @@ from unittest.mock import call, patch
 from traveller_gen.traveller_orbit_gen import (
     _ANOM_ECC_DM,
     OrbitSlot,
+    count_stars_orbited,
     roll_eccentricity,
     roll_inclination,
 )
@@ -179,3 +180,99 @@ class TestSlotIndexContinuity:
         a_slots = [o.slot_index for o in system.system_orbits.orbits
                    if o.star_designation == "A"]
         assert sorted(a_slots) == list(range(1, len(a_slots) + 1))
+
+
+# ---------------------------------------------------------------------------
+# TestCountStarsOrbited — WBH pp.105-106 multi-star tidal DM
+# ---------------------------------------------------------------------------
+
+def _make_star(designation, role, orbit_number=None):
+    from traveller_gen.traveller_stellar_gen import Star  # pylint: disable=import-outside-toplevel
+    return Star(
+        designation=designation, role=role,
+        spectral_type="G", subtype=5, lum_class="V",
+        mass=1.0, temperature=5800, diameter=1.0, luminosity=1.0,
+        orbit_number=orbit_number, orbit_au=None,
+    )
+
+
+def _make_star_system(*stars):
+    """Wrap a sequence of Stars in a minimal StarSystem-like object."""
+    class _SS:
+        pass
+    ss = _SS()
+    ss.stars = list(stars)
+    return ss
+
+
+def _make_slot(star_designation, orbit_number):
+    return OrbitSlot(
+        star_designation=star_designation,
+        orbit_number=orbit_number,
+        orbit_au=1.0,
+        slot_index=1,
+        world_type="terrestrial",
+        is_habitable_zone=True,
+        hz_deviation=0.0,
+        temperature_zone="temperate",
+    )
+
+
+class TestCountStarsOrbited:
+    """count_stars_orbited() — WBH pp.105-106 multi-star tidal DM."""
+
+    def test_single_star_system_returns_one(self):
+        primary = _make_star("A", "primary", orbit_number=0.0)
+        ss = _make_star_system(primary)
+        slot = _make_slot("A", orbit_number=3.0)
+        assert count_stars_orbited(slot, ss) == 1
+
+    def test_companion_only_system_returns_one(self):
+        """Companion stars are co-located; a world orbiting A+Aa is still 1-star
+        in the tidal sense — companions don't count as separate orbital centres."""
+        primary = _make_star("A", "primary", orbit_number=0.0)
+        companion = _make_star("Aa", "companion", orbit_number=0.0)
+        ss = _make_star_system(primary, companion)
+        slot = _make_slot("A", orbit_number=3.0)
+        assert count_stars_orbited(slot, ss) == 1
+
+    def test_binary_world_inside_secondary_orbit_returns_one(self):
+        """World orbiting A at orbit 2.0 is inside B's orbit 5.0 — S-type, 1 star."""
+        primary = _make_star("A", "primary", orbit_number=0.0)
+        secondary = _make_star("B", "close", orbit_number=5.0)
+        ss = _make_star_system(primary, secondary)
+        slot = _make_slot("A", orbit_number=2.0)
+        assert count_stars_orbited(slot, ss) == 1
+
+    def test_binary_world_beyond_secondary_orbit_returns_two(self):
+        """World orbiting A at orbit 8.0 is beyond B's orbit 5.0 — P-type, 2 stars."""
+        primary = _make_star("A", "primary", orbit_number=0.0)
+        secondary = _make_star("B", "close", orbit_number=5.0)
+        ss = _make_star_system(primary, secondary)
+        slot = _make_slot("A", orbit_number=8.0)
+        assert count_stars_orbited(slot, ss) == 2
+
+    def test_trinary_world_beyond_both_secondaries_returns_three(self):
+        """World at orbit 12 beyond B (orbit 5) and C (orbit 9) — 3 stars."""
+        primary = _make_star("A", "primary", orbit_number=0.0)
+        sec_b = _make_star("B", "near", orbit_number=5.0)
+        sec_c = _make_star("C", "far", orbit_number=9.0)
+        ss = _make_star_system(primary, sec_b, sec_c)
+        slot = _make_slot("A", orbit_number=12.0)
+        assert count_stars_orbited(slot, ss) == 3
+
+    def test_world_orbiting_secondary_returns_one(self):
+        """Worlds in S-type orbits around B are only bound to B, not to A."""
+        primary = _make_star("A", "primary", orbit_number=0.0)
+        secondary = _make_star("B", "near", orbit_number=5.0)
+        ss = _make_star_system(primary, secondary)
+        slot = _make_slot("B", orbit_number=2.0)
+        assert count_stars_orbited(slot, ss) == 1
+
+    def test_world_at_exact_secondary_orbit_not_counted(self):
+        """orbit_number == secondary's orbit_number is not strictly less — not counted."""
+        primary = _make_star("A", "primary", orbit_number=0.0)
+        secondary = _make_star("B", "close", orbit_number=5.0)
+        ss = _make_star_system(primary, secondary)
+        slot = _make_slot("A", orbit_number=5.0)
+        assert count_stars_orbited(slot, ss) == 1

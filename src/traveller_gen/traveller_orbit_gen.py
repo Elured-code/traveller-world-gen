@@ -995,6 +995,24 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
     return result
 
 
+def count_stars_orbited(orbit: "OrbitSlot", stellar_system: "StarSystem") -> int:
+    """Count stars gravitationally orbited by a world slot (WBH pp.105-106).
+
+    A primary-star world in the outer zone (beyond a close/near/far secondary)
+    orbits the primary plus each such secondary with orbit_number < the world's.
+    Worlds orbiting a secondary star are always 1 (S-type circumsecondary orbit).
+    """
+    primary_desig = stellar_system.stars[0].designation
+    if orbit.star_designation != primary_desig:
+        return 1
+    return 1 + sum(
+        1 for s in stellar_system.stars
+        if s.role in ("close", "near", "far")
+        and s.orbit_number is not None
+        and s.orbit_number < orbit.orbit_number
+    )
+
+
 def generate_full_system(seed=None, orbital_eccentricity: bool = False,
                          orbital_inclination: bool = False):
     """Generate a stellar system with orbits, optionally seeding the RNG."""

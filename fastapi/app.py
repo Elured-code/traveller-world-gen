@@ -180,6 +180,8 @@ from traveller_gen.traveller_world_culture_detail import attach_culture_detail
 from traveller_gen.traveller_world_importance import attach_importance_detail
 from traveller_gen.traveller_map_fetch import generate_system_from_map
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline
+from traveller_gen.traveller_orbit_gen import count_stars_orbited
+from traveller_gen.traveller_world_cargo_gen import generate_cargo_manifest
 
 logger = logging.getLogger(__name__)
 
@@ -883,6 +885,7 @@ def _apply_mainworld_moon_tidal(system) -> None:
         orbit_au=mw_orbit.orbit_au,
         star_mass=system.stellar_system.primary.mass,
         orbit_eccentricity=mw_orbit.eccentricity,
+        num_stars_orbited=count_stars_orbited(mw_orbit, system.stellar_system),
         is_moon=is_moon,
         gg_mass_earth=gg_mass_earth,
         gg_satellite_moon=gg_sat_moon,
@@ -1089,6 +1092,55 @@ async def generate_named_world(request: Request) -> Response:
 
 
 # ===========================================================================
+# Endpoint 4b:  POST /api/cargo
+# ===========================================================================
+
+@app.post("/api/cargo")
+@limiter.limit(_RATE_LIMIT)
+async def generate_cargo(request: Request) -> Response:
+    """Generate a cargo manifest (available lots + purchase prices) for a mainworld.
+
+    Request body: a World object in the shape produced by World.to_dict() or
+    /api/world.  The world's trade codes, law level, and starport class
+    determine which goods are available and at what price.  An optional
+    integer ``seed`` key controls the purchase-roll RNG.
+
+    Returns: CargoManifest with lots sorted by D66, total tonnage, and
+    per-lot purchase price after 3D+DM roll (CRB pp.244-247).
+    """
+    logger.info("generate_cargo called")
+    body_raw = await request.body()
+    body: dict = {}
+    if body_raw:
+        try:
+            parsed = await request.json()
+            if not isinstance(parsed, dict):
+                return error("Request body must be a JSON object.", ERR_INVALID_BODY)
+            body = parsed
+        except (ValueError, TypeError):
+            return error("Request body is not valid JSON.", ERR_INVALID_BODY)
+
+    world_dict, err = parse_world_json(body_raw, body)
+    if err:
+        return err
+
+    seed_val, seed_err = parse_seed(request, body)
+    if seed_err:
+        return seed_err
+    _, rng = apply_seed(seed_val)
+
+    try:
+        world = World.from_dict(world_dict)
+        manifest = generate_cargo_manifest(world, rng=rng)
+    except Exception as exc:
+        logger.exception("Error generating cargo manifest: %s", exc)
+        return error("An unexpected error occurred while generating cargo.",
+                     ERR_INTERNAL, status_code=500)
+
+    return ok(manifest.to_dict())
+
+
+# ===========================================================================
 # Endpoint 5:  GET/POST /api/system/full
 # (registered before /api/system/{name} to avoid shadowing)
 # ===========================================================================
@@ -1158,6 +1210,7 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
             return JSONResponse({
                 "sys_html": sys_html,
                 "mw_html": mw.to_html(),
+                "mw_json": mw.to_dict(),
                 "survey_class0i_html": system.to_survey_form_html(),
                 "survey_class2iii_html": system.to_survey_form_html_class2(),
                 "survey_class4_html": system.to_survey_form_html_class4(),
@@ -1735,6 +1788,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
             return JSONResponse({
                 "sys_html": sys_html,
                 "mw_html": mw.to_html(),
+                "mw_json": mw.to_dict(),
                 "survey_class0i_html": system.to_survey_form_html(),
                 "survey_class2iii_html": system.to_survey_form_html_class2(),
                 "survey_class4_html": system.to_survey_form_html_class4(),
