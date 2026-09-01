@@ -164,6 +164,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
     settlement_type: str = "standard"
     select_mainworld: bool = False
     social_detail: bool = False
+    unusual_stars: bool = False
     seed: Optional[int] = None
 
     def to_dict(self) -> dict:
@@ -182,6 +183,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
         d["settlement_type"] = self.settlement_type
         d["select_mainworld"] = self.select_mainworld
         d["social_detail"] = self.social_detail
+        d["unusual_stars"] = self.unusual_stars
         if self.seed is not None:
             d["seed"] = self.seed
         d["_app_version"] = APP_VERSION
@@ -218,6 +220,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             settlement_type=str(d.get("settlement_type", "standard")),
             select_mainworld=bool(d.get("select_mainworld", False)),
             social_detail=bool(d.get("social_detail", False)),
+            unusual_stars=bool(d.get("unusual_stars", False)),
             seed=int(d["seed"]) if "seed" in d else None,
         )
 
@@ -1326,6 +1329,7 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
     nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
+    unusual_stars: bool = False,
     rng: Optional[random.Random] = None,
 ) -> TravellerSystem:
     """
@@ -1353,7 +1357,7 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
         rng = random.Random(seed)
 
     # Step 1: Stars
-    stellar = generate_stellar_data(rng=rng)
+    stellar = generate_stellar_data(rng=rng, unusual_stars=unusual_stars)
 
     # Step 2: Orbits and mainworld orbit selection
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
@@ -1381,6 +1385,7 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
         nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
+        unusual_stars=unusual_stars,
         seed=seed,
     )
 
@@ -1391,6 +1396,7 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
     nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
+    unusual_stars: bool = False,
     rng: Optional[random.Random] = None,
 ) -> TravellerSystem:
     """
@@ -1418,7 +1424,7 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
             seed = secrets.randbelow(2 ** 31)
         rng = random.Random(seed)
 
-    stellar = generate_stellar_data(rng=rng)
+    stellar = generate_stellar_data(rng=rng, unusual_stars=unusual_stars)
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
                              orbital_inclination=orbital_inclination, rng=rng)
 
@@ -1478,6 +1484,7 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
         nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
+        unusual_stars=unusual_stars,
         seed=seed,
     )
 

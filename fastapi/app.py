@@ -133,7 +133,7 @@ from helpers import (
     apply_seed, error, ok,
     parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
     parse_nhz_atmospheres, parse_orbital_eccentricity, parse_orbital_inclination,
-    parse_runaway_greenhouse, parse_independent_government,
+    parse_runaway_greenhouse, parse_independent_government, parse_unusual_stars,
     parse_optional_biomass, parse_optional_inhospitable, parse_relic_tech,
     parse_social_detail, parse_settlement_type, parse_include_mw_card,
     parse_seed, parse_sector, parse_world_json,
@@ -1225,13 +1225,15 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
     want_settlement = parse_settlement_type(request, body)
     want_social_detail = parse_social_detail(request, body)
     want_mw_card = parse_include_mw_card(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
                                       seed=seed, rng=rng,
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=True,
             want_select_mw=True,
@@ -1315,13 +1317,15 @@ async def generate_system_from_existing_world(request: Request) -> Response:  # 
     want_indep = parse_independent_government(request, body)
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         world = World.from_dict(world_dict)
         system = generate_system_from_world(world, seed=seed, rng=rng,
                                             nhz_atmospheres=want_nhz,
                                             orbital_eccentricity=want_ecc,
-                                            orbital_inclination=want_incl)
+                                            orbital_inclination=want_incl,
+                                            unusual_stars=want_unusual)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg, rng=rng)
         if want_detail:
             attach_detail(system, rng=rng,
@@ -1385,13 +1389,15 @@ async def generate_single_system(request: Request) -> Response:  # pylint: disab
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_social_detail = parse_social_detail(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
                                       seed=seed, rng=rng,
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=want_detail,
             want_select_mw=True,
@@ -1452,11 +1458,13 @@ async def generate_system_svg(request: Request) -> Response:  # pylint: disable=
     white_bg      = _parse_bool_flag(params.get("white_bg", False))
     want_ecc      = _parse_bool_flag(params.get("orbital_eccentricity", False))
     want_incl     = _parse_bool_flag(params.get("orbital_inclination",  False))
+    want_unusual  = _parse_bool_flag(params.get("unusual_stars", False))
 
     try:
         system = generate_full_system(name, seed=seed_val, rng=rng,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         if system.mainworld is None:
             return error("No mainworld in generated system.", ERR_INTERNAL, 500)
         apply_mainworld_social(system.mainworld, rng=rng)
@@ -1506,13 +1514,15 @@ async def generate_system_card(request: Request) -> Response:  # pylint: disable
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_social_detail = parse_social_detail(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
                                       seed=seed, rng=rng,
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=want_detail,
             want_select_mw=True,
@@ -1564,13 +1574,15 @@ async def generate_named_system(request: Request) -> Response:  # pylint: disabl
     want_indep = parse_independent_government(request, body)
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
                                       seed=seed, rng=rng,
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=want_detail,
             want_select_mw=False,

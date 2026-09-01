@@ -734,6 +734,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
     nhz_atmospheres:      bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination:  bool = False,
+    unusual_stars:        bool = False,
     compute_novelty_tl:   bool = False,
 ) -> TravellerSystem:
     """
@@ -876,6 +877,7 @@ def generate_system_from_map(  # pylint: disable=too-many-arguments,too-many-loc
         nhz_atmospheres      = nhz_atmospheres,
         orbital_eccentricity = orbital_eccentricity,
         orbital_inclination  = orbital_inclination,
+        unusual_stars        = unusual_stars,
         seed                 = seed,
     )
     if novelty_tl_floor is not None:

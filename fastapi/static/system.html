@@ -496,6 +496,9 @@
     <label class="checkbox-label" title="Rolls inclination for each orbit slot (WBH p.28); orbits tilt out of the reference plane on the perspective map">
       <input type="checkbox" id="s-incl"> Inclination
     </label>
+    <label class="checkbox-label" title="Uses the Unusual Stars column instead of the Special column when the primary type roll is ≤ 2, enabling brown dwarfs, white dwarfs, and peculiar environments (WBH p.219)">
+      <input type="checkbox" id="s-unusual"> Unusual Stars
+    </label>
     <div class="sub-sep"></div>
     <span class="sub-label">System</span>
     <label class="checkbox-label" id="lbl-nhz" title="Applies specialised atmosphere tables to worlds outside the habitable zone, producing more varied exotic and trace atmospheres (WBH pp.42–48)">
@@ -659,7 +662,7 @@
 
   const _PREF_KEY = "traveller-sys-prefs";
   const _PREF_IDS = ["s-format", "s-detail", "s-full", "s-select-mw",
-                     "s-ecc", "s-incl",
+                     "s-ecc", "s-incl", "s-unusual",
                      "s-nhz", "s-bio", "s-rg", "s-indep",
                      "s-social-detail", "s-settlement", "s-sector",
                      "map-perspective"];
@@ -813,6 +816,7 @@
       if (persp)   p.set("perspective", "true");
       if (ecc)     p.set("orbital_eccentricity", "true");
       if (incl)    p.set("orbital_inclination",  "true");
+      if (unusual) p.set("unusual_stars",        "true");
       if (lightBg) p.set("white_bg", "true");
       return `/api/map/system/svg?${p.toString()}`;
     }
@@ -821,6 +825,7 @@
     if (persp)   p.set("perspective", "true");
     if (ecc)     p.set("orbital_eccentricity", "true");
     if (incl)    p.set("orbital_inclination",  "true");
+    if (unusual) p.set("unusual_stars",        "true");
     if (lightBg) p.set("white_bg", "true");
     return `/api/system/svg?${p.toString()}`;
   }
@@ -970,6 +975,7 @@
       if (hex)    p.set("hex",    hex);
       if (ecc)         p.set("orbital_eccentricity",   "true");
       if (incl)        p.set("orbital_inclination",    "true");
+      if (unusual)     p.set("unusual_stars",          "true");
       if (nhz)         p.set("nhz_atmospheres",        "true");
       if (bio)         p.set("optional_biomass_rule",  "true");
       if (rg)          p.set("runaway_greenhouse",     "true");
@@ -991,6 +997,7 @@
       if (selectMw)    p.set("select_mainworld",       "true");
       if (ecc)         p.set("orbital_eccentricity",   "true");
       if (incl)        p.set("orbital_inclination",    "true");
+      if (unusual)     p.set("unusual_stars",          "true");
       if (nhz)         p.set("nhz_atmospheres",        "true");
       if (bio)         p.set("optional_biomass_rule",  "true");
       if (rg)          p.set("runaway_greenhouse",     "true");
@@ -1004,6 +1011,7 @@
       if (selectMw)    p.set("select_mainworld",       "true");
       if (ecc)         p.set("orbital_eccentricity",   "true");
       if (incl)        p.set("orbital_inclination",    "true");
+      if (unusual)     p.set("unusual_stars",          "true");
       if (nhz)         p.set("nhz_atmospheres",        "true");
       if (bio)         p.set("optional_biomass_rule",  "true");
       if (rg)          p.set("runaway_greenhouse",     "true");
@@ -1017,6 +1025,7 @@
     if (selectMw)    p.set("select_mainworld",       "true");
     if (ecc)         p.set("orbital_eccentricity",   "true");
     if (incl)        p.set("orbital_inclination",    "true");
+    if (unusual)     p.set("unusual_stars",          "true");
     if (nhz)         p.set("nhz_atmospheres",        "true");
     if (bio)         p.set("optional_biomass_rule",  "true");
     if (rg)          p.set("runaway_greenhouse",     "true");
@@ -1345,6 +1354,7 @@
     const selectMw   = document.getElementById("s-select-mw").checked;
     const ecc        = document.getElementById("s-ecc").checked;
     const incl       = document.getElementById("s-incl").checked;
+    const unusual    = document.getElementById("s-unusual").checked;
     const nhz        = document.getElementById("s-nhz").checked;
     const bio        = document.getElementById("s-bio").checked;
     const rg         = document.getElementById("s-rg").checked;
@@ -1377,6 +1387,7 @@
     function sysParams(base) {
       if (ecc)          base.set("orbital_eccentricity",   "true");
       if (incl)         base.set("orbital_inclination",    "true");
+      if (unusual)      base.set("unusual_stars",          "true");
       if (nhz)          base.set("nhz_atmospheres",        "true");
       if (bio)          base.set("optional_biomass_rule",  "true");
       if (rg)           base.set("runaway_greenhouse",     "true");

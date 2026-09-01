@@ -683,6 +683,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
         seed: int,
         orbital_eccentricity: bool = True,
         orbital_inclination: bool = True,
+        unusual_stars: bool = False,
         compute_novelty_tl: bool = False,
     ) -> None:
         super().__init__()
@@ -692,6 +693,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
         self._seed = seed
         self._orbital_eccentricity = orbital_eccentricity
         self._orbital_inclination = orbital_inclination
+        self._unusual_stars = unusual_stars
         self._compute_novelty_tl = compute_novelty_tl
 
     def run(self) -> None:
@@ -704,6 +706,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
                 seed=self._seed,
                 orbital_eccentricity=self._orbital_eccentricity,
                 orbital_inclination=self._orbital_inclination,
+                unusual_stars=self._unusual_stars,
                 compute_novelty_tl=self._compute_novelty_tl,
             )
             self.result.emit(system)
@@ -737,6 +740,7 @@ class _OptionsDialog(QDialog):
         settlement_type: str,
         eccentricity: bool = True,
         inclination: bool = True,
+        unusual_stars: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Generation Options")
@@ -763,6 +767,13 @@ class _OptionsDialog(QDialog):
         self._check_eccentricity.setChecked(eccentricity)
         self._check_inclination = QCheckBox("Orbital inclination")
         self._check_inclination.setChecked(inclination)
+        self._check_unusual_stars = QCheckBox("Unusual Stars column (WBH p.219)")
+        self._check_unusual_stars.setChecked(unusual_stars)
+        self._check_unusual_stars.setToolTip(
+            "Uses the Unusual Stars column instead of the Special column when the "
+            "primary type roll is ≤ 2, enabling brown dwarfs, white dwarfs, and "
+            "peculiar environments (Nebula, Protostar, Star Cluster, Anomaly)."
+        )
         self._check_independent_gov = QCheckBox("Independent Secondary\nWorld Government")
         self._check_independent_gov.setChecked(independent_government)
         self._check_select_mw = QCheckBox("Select mainworld")
@@ -772,6 +783,7 @@ class _OptionsDialog(QDialog):
         checks_layout.addWidget(self._check_runaway_greenhouse)
         checks_layout.addWidget(self._check_eccentricity)
         checks_layout.addWidget(self._check_inclination)
+        checks_layout.addWidget(self._check_unusual_stars)
         checks_layout.addWidget(self._check_independent_gov)
         checks_layout.addWidget(self._check_select_mw)
         layout.addWidget(self._sub_widget)
@@ -826,6 +838,7 @@ class _OptionsDialog(QDialog):
                 self._check_nhz, self._check_oxygen_biomass,
                 self._check_runaway_greenhouse,
                 self._check_eccentricity, self._check_inclination,
+                self._check_unusual_stars,
                 self._check_independent_gov, self._check_select_mw,
             ):
                 cb.setChecked(False)
@@ -853,6 +866,10 @@ class _OptionsDialog(QDialog):
     @property
     def inclination(self) -> bool:
         return self._check_inclination.isChecked()
+
+    @property
+    def unusual_stars(self) -> bool:
+        return self._check_unusual_stars.isChecked()
 
     @property
     def independent_government(self) -> bool:
@@ -1066,6 +1083,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         self._opt_inclination: bool = (
             str(_s.value("opt_inclination", True)).lower() != "false"
+        )
+        self._opt_unusual_stars: bool = (
+            str(_s.value("opt_unusual_stars", False)).lower() == "true"
         )
         self._opt_settlement_type: str = str(_s.value("opt_settlement_type", "standard"))
         self._apply_theme()
@@ -1301,6 +1321,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             settlement_type=self._opt_settlement_type,
             eccentricity=self._opt_eccentricity,
             inclination=self._opt_inclination,
+            unusual_stars=self._opt_unusual_stars,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1315,6 +1336,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_settlement_type = dialog.settlement_type
         self._opt_eccentricity = dialog.eccentricity
         self._opt_inclination = dialog.inclination
+        self._opt_unusual_stars = dialog.unusual_stars
         _s = QSettings("traveller-world-gen", "AppWindow")
         _s.setValue("opt_full_system", self._opt_full_system)
         _s.setValue("opt_nhz", self._opt_nhz)
@@ -1327,6 +1349,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_settlement_type", self._opt_settlement_type)
         _s.setValue("opt_eccentricity", self._opt_eccentricity)
         _s.setValue("opt_inclination", self._opt_inclination)
+        _s.setValue("opt_unusual_stars", self._opt_unusual_stars)
         self._on_detail_toggled(self._opt_full_system)
 
     def _on_menu_new(self) -> None:
@@ -1400,6 +1423,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 sector, search_name, hex_pos, seed,
                 orbital_eccentricity=self._opt_eccentricity,
                 orbital_inclination=self._opt_inclination,
+                unusual_stars=self._opt_unusual_stars,
             )
         else:
             if full_system:
@@ -1409,6 +1433,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     nhz_atmospheres=self._opt_nhz,
                     orbital_eccentricity=self._opt_eccentricity,
                     orbital_inclination=self._opt_inclination,
+                    unusual_stars=self._opt_unusual_stars,
                 )
                 self._finish_system_generation(system, attach_detail_flag, rng=rng)
             else:
@@ -1542,6 +1567,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_nhz = system.nhz_atmospheres  # type: ignore[attr-defined]
         self._opt_eccentricity = system.orbital_eccentricity  # type: ignore[attr-defined]
         self._opt_inclination = system.orbital_inclination  # type: ignore[attr-defined]
+        self._opt_unusual_stars = system.unusual_stars  # type: ignore[attr-defined]
         self._opt_runaway_greenhouse = system.runaway_greenhouse  # type: ignore[attr-defined]
         self._opt_independent_gov = system.independent_government  # type: ignore[attr-defined]
         self._opt_oxygen_biomass = system.optional_biomass  # type: ignore[attr-defined]
@@ -1613,6 +1639,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     error.sector, None, selected, seed,
                     orbital_eccentricity=self._opt_eccentricity,
                     orbital_inclination=self._opt_inclination,
+                    unusual_stars=self._opt_unusual_stars,
                 )
 
     def _on_map_clicked(self) -> None:
@@ -2059,6 +2086,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         seed: int,
         orbital_eccentricity: bool = True,
         orbital_inclination: bool = True,
+        unusual_stars: bool = False,
     ) -> None:
         display = search_name or hex_pos or "world"
         self._show_loading(f"Looking up {display} in {sector}…")
@@ -2066,6 +2094,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         worker = _TravMapWorker(sector, search_name, hex_pos, seed,
                                 orbital_eccentricity=orbital_eccentricity,
                                 orbital_inclination=orbital_inclination,
+                                unusual_stars=unusual_stars,
                                 compute_novelty_tl=self._opt_social_detail)
         worker.result.connect(self._on_worker_result)
         worker.failed.connect(self._on_worker_error)
