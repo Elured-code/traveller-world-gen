@@ -41,6 +41,37 @@ Clicking it opens a Cargo window — a native table with D66, Trade Good, Tons,
 Base Cr, DM, and Purchase Cr columns. Multiple cargo windows can be open at
 once. Results are seeded from the current seed for reproducibility.
 
+FREIGHT LOT GENERATION
+-----------------------
+The generator can now calculate how much freight is available to ship at any
+mainworld, following the Mongoose Traveller 2e Core Rulebook p.239.
+
+Freight is divided into three tiers:
+- Incidental lots (small: 1D tons each).
+- Minor lots (medium: 1D×5 tons each).
+- Major lots (large: 1D×10 tons each).
+
+The number of lots in each tier is determined by a 2D roll modified by the
+world's population, starport rating, tech level, and travel zone. Mail
+(5 tons per container) may also appear on a high roll.
+
+WEB APP — FREIGHT TAB
+----------------------
+After generating a Full system in the web interface, a Freight button appears
+in the seed/save bar alongside the Cargo button. Clicking it calls the freight
+endpoint with the current seed and the mainworld's data, then displays a
+summary table in a new Freight tab. The table shows each tier (Incidental,
+Minor, Major, and Mail if present) with the number of lots and total tonnage.
+
+The button is disabled for basic (non-Full) system generations.
+
+GEN-UI — FREIGHT WINDOW
+-------------------------
+The desktop app gains a Freight button in both system mode and world-only mode,
+next to the Cargo button. Clicking it opens a Freight window — a compact table
+with Tier, Lots, and Total Tons columns. Multiple freight windows can be open
+at once.
+
 BUG FIXES
 ---------
 

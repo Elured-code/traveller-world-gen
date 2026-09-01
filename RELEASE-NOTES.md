@@ -6,6 +6,33 @@
 
 ---
 
+## Freight Lot Generation — FastAPI, gen-ui (Session 195, Issue #180)
+
+Implements CRB p.239 freight lot generation.
+
+**Module (`traveller_world_cargo_gen.py`):** `FreightLots` dataclass (`incidental`, `minor`,
+`major` int fields) and `FreightManifest` dataclass (`world_name`, `lots: FreightLots`,
+`total_incidental_tons`, `total_minor_tons`, `total_major_tons`, `mail_containers`,
+`total_tons`; both support `.to_dict()` / `.to_json()`).
+
+**`generate_freight_lots(world, rng=None) → FreightManifest`:** DMs from population, starport,
+TL, and travel zone are summed. Three tier rolls (base_dm+2 for incidental, base_dm for minor,
+base_dm-4 for major) look up ndice in `_FREIGHT_TABLE`; each lot rolls ndice×D6 tons (×1/×5/×10
+for respective tiers). Mail: a 4th 2D+base_dm roll ≥ 12 yields 1D containers (5 t each).
+
+**FastAPI (`POST /api/freight`):** Identical pattern to `/api/cargo` — accepts world JSON + optional
+seed, returns `FreightManifest.to_dict()`. 42 new tests in `test_cargo_gen.py`.
+
+**FastAPI web UI (`system.html`):** Freight button and tab added alongside Cargo. `showFreight()`
+posts `_lastWorldJson` to `/api/freight` and renders a 3-or-4-row tier table (Incidental / Minor /
+Major / Mail if >0) in the Freight tab. Freight button enabled only after Full system generation.
+
+**gen-ui (`gen-ui/app.py`):** `FreightWindow(QMainWindow)` with compact `QTableWidget` (3–4 rows:
+Tier / Lots / Total Tons); Freight button in both system and world-only header rows; `_freight_windows`
+list keeps windows alive against GC.
+
+Tests: 3271 pass (42 new), 5 skipped.
+
 ## Cargo Integration — FastAPI and gen-ui (Session 194)
 
 Makes speculative trade cargo generation accessible from both UIs.
