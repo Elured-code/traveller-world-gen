@@ -79,6 +79,15 @@ class WorldDetail:
         self.biocomplexity_rating: Optional[int] = None
         self.habitability_rating: Optional[int] = None
         self.native_sophont: bool = False
+        self.runaway_greenhouse: bool = False
+        self.name: str = ""  # set by attach_body_names()
+        # Set by the attach_*_detail() functions:
+        self.population_detail: Optional[object] = None
+        self.government_detail: Optional[object] = None
+        self.balkanised_detail: Optional[object] = None
+        self.law_detail: Optional[object] = None
+        self.tech_detail: Optional[object] = None
+        self.culture_detail: Optional[object] = None
 ```
 
 `trade_codes`, `physical`, the rating fields, `is_independent_government`,

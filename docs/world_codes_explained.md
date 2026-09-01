@@ -78,7 +78,7 @@ for readability while still working with numeric lookup tables that use integer 
 | `TradeCode` | `StrEnum` | All standard Traveller trade classification codes |
 | `TravelZone` | `StrEnum` | Green / Amber / Red |
 | `AtmosphereCode` | `IntEnum` | All atmosphere codes 0–17 including NHZ codes 16 (G) and 17 (H) |
-| `APP_VERSION` | `str` | `"1.5.1"` — used when saving JSON files |
+| `APP_VERSION` | `str` | `"2.1.0"` — used when saving JSON files |
 | `gg_diameter_from_sah` | `function` | Decode the eHex diameter digit from a gas-giant SAH string (e.g. `"GM9"` → 9) |
 
 ---
@@ -86,13 +86,13 @@ for readability while still working with numeric lookup tables that use integer 
 ## `APP_VERSION`
 
 ```python
-APP_VERSION = "1.5.1"
+APP_VERSION = "2.1.0"
 ```
 
 When a world or system is saved to JSON, the file includes:
 
 ```json
-{ "_app_version": "1.5.0", ... }
+{ "_app_version": "2.1.0", ... }
 ```
 
 When a JSON is loaded, the GUI checks the saved version against `APP_VERSION` and

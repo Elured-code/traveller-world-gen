@@ -173,6 +173,17 @@ created. These use `field(default=..., init=False)`:
 
     # Set by attach_detail() → _apply_habitability()
     habitability_rating:  Optional[int] = field(default=None, init=False)
+
+    # Set by the attach_*_detail() functions (each is a separate optional step):
+    population_detail: Optional["PopulationDetail"] = field(default=None, init=False)
+    government_detail: Optional["GovernmentDetail"] = field(default=None, init=False)
+    balkanised_detail: Optional["BalkanisedDetail"] = field(default=None, init=False)
+    law_detail:        Optional["LawDetail"]         = field(default=None, init=False)
+    tech_detail:       Optional["TechDetail"]        = field(default=None, init=False)
+    culture_detail:    Optional["CultureDetail"]     = field(default=None, init=False)
+    importance_detail: Optional["WorldImportance"]   = field(default=None, init=False)
+    starport_detail:   Optional["StarportDetail"]    = field(default=None, init=False)
+    military_detail:   Optional["MilitaryDetail"]    = field(default=None, init=False)
 ```
 
 `init=False` means the field is **not** a parameter to `__init__` — it starts at its

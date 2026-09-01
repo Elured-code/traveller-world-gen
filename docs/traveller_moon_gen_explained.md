@@ -51,6 +51,9 @@ class Moon:
     orbit_eccentricity: float = 0.0
     orbit_inclination: float = 0.0            # > 90° means retrograde
 
+    # Set by attach_body_names():
+    name: str = field(default="", init=False)
+
     # Set if the moon has its own WorldDetail (habitable moons):
     detail: Optional[WorldDetail] = None
 ```

@@ -260,7 +260,7 @@ pseudo-3D view:
 TravellerSystem   (generated + detail attached)
         │
         ▼
-build_svg(system, name, canvas_w, palette, perspective)
+build_svg(system, canvas_w, palette, perspective)
         │
         ▼
 (svg_string, canvas_h)

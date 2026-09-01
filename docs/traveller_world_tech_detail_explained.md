@@ -92,7 +92,7 @@ Implements WBH §5 Social Characteristics (tech level breakdown).
 | `_TLM_TABLE` | Dict: 2D result → TL Modifier (−3 to +3); missing keys return 0 |
 | `_STARPORT_MED_FLOOR` | Dict: starport letter → medical TL lower bound |
 | Helpers | `_tlm()`, `_ehex()`, `_clamp()`, `_min_tl()` |
-| `TechDetail` dataclass | 14 fields: two common TLs, 11 sub-TLs, one profile string |
+| `TechDetail` dataclass | 15 fields: two common TLs, 11 sub-TLs, one novelty TL, one profile string |
 | `generate_tech_detail()` | Main public entry point |
 | `_tech_detail_for_det()` | Secondary-world wrapper (reads from SAH string) |
 | `_attach_det_tech()` | Attaches tech detail to one WorldDetail and its moons |
@@ -222,7 +222,7 @@ capability rather than none (some worlds have other liquids, or subsurface ocean
 
 ## The technology profile string
 
-The profile string is formatted as `H-L-QQQQQ-TTTT-MM` where each character is a
+The profile string is formatted as `H-L-QQQQQ-TTTT-MM-N` where each character is a
 single eHex digit (0–9, then A–Z for values 10–35):
 
 | Group | Positions | What it covers |
@@ -232,13 +232,15 @@ single eHex digit (0–9, then A–Z for values 10–35):
 | QQQQQ | 5 digits | Quality: Energy, Electronics, Manufacturing, Medical, Environmental |
 | TTTT | 4 digits | Transport: Land, Sea, Air, Space |
 | MM | 2 digits | Military: Personal, Heavy |
+| N | 1 digit | Novelty TL (highest of tl_high, prototype, relic, or neighbouring world floor) |
 
-Example: `C-9-A9A87-9079-95`
+Example: `C-9-A9A87-9079-95-D`
 
 - High TL: C (=12), Low TL: 9
 - Energy: A (=10), Electronics: 9, Manufacturing: A (=10), Medical: 8, Environmental: 7
 - Land: 9, Sea: 0 (dry world), Air: 7, Space: 9
 - Personal military: 9, Heavy military: 5
+- Novelty TL: D (=13)
 
 ---
 
@@ -246,9 +248,9 @@ Example: `C-9-A9A87-9079-95`
 
 | Method / function | What it does |
 |-------------------|-------------|
-| `generate_tech_detail(tl, atmosphere, hydrographics, population, government, law_level, starport, size=0, pcr=0, habitability_rating=None, trade_codes=None, rng=None)` | Main entry point: computes all 13 TL values and the profile string; returns `TechDetail` or `None` for pop 0 |
+| `generate_tech_detail(tl, atmosphere, hydrographics, population, government, law_level, starport, size=0, pcr=0, habitability_rating=None, trade_codes=None, novelty_tl_floor=None, relic_tech_rule=False, rng=None)` | Main entry point: computes all 14 sub-TL values plus `tl_novelty` and the profile string; returns `TechDetail` or `None` for pop 0 |
 | `attach_tech_detail(system, rng=None)` | Walks the system, attaching tech detail to the mainworld and all inhabited secondaries and moons |
-| `TechDetail.to_dict()` | Serialises all 14 fields to a JSON-compatible dict |
+| `TechDetail.to_dict()` | Serialises all 15 fields to a JSON-compatible dict |
 | `TechDetail.from_dict(d)` | Reconstructs from a saved dict |
 
 ### DM summary

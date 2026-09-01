@@ -192,6 +192,7 @@ inside the Roche limit (see `traveller_moon_gen_explained.md`).
 | `generate_orbits(star_system, ...)` | module | Entry point; accepts optional `rng` |
 | `roll_eccentricity(rng=None)` | module | Rolls one eccentricity value; accepts optional `rng` |
 | `roll_inclination(rng=None)` | module | Rolls one inclination value; accepts optional `rng` |
+| `count_stars_orbited(orbit, stellar_system) → int` | module | Returns how many stars a given orbit slot orbits (1 for circumsecondary; 1 + inner secondaries for primary orbits). Used for multi-star tidal DM (Session 193, Issue #179). |
 
 ---
 
