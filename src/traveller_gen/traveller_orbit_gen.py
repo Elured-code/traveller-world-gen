@@ -130,7 +130,9 @@ def _interp(
 
 def get_mao(star: Star) -> float:
     """Return the Minimum Allowable Orbit# for this star (WBH p.38)."""
-    if star.spectral_type in ("D","BD"):
+    if star.spectral_type in ("NS", "BH", "PSR"):
+        return 0.001
+    if star.spectral_type in ("D", "BD"):
         return 0.01
     st = star.subtype if star.subtype is not None else 0
     return _interp(star.spectral_type, st, star.lum_class, MAO_TABLE)
@@ -299,6 +301,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
     gg_mass_earth: Optional[float] = field(default=None, init=False)
     name: str = field(default="", init=False)  # set by attach_body_names()
     detail: Optional["WorldDetail"] = field(default=None, init=False)
+    radiation_zone: bool = field(default=False, init=False)  # PSR/magnetar systems
 
     def to_dict(self) -> dict:
         """Serialise this orbit slot to a JSON-compatible dict."""
@@ -332,6 +335,8 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
             d["inclination"] = round(self.inclination, 2)
         if self.name:
             d["name"] = self.name
+        if self.radiation_zone:
+            d["radiation_zone"] = True
         # Include secondary world / satellite detail if attach_detail() has run
         if self.detail is not None:
             d["detail"] = self.detail.to_dict()
@@ -363,6 +368,7 @@ class OrbitSlot:  # pylint: disable=too-many-instance-attributes
         slot.inclination = float(d.get("inclination", 0.0))
         slot.gg_mass_earth = float(d["gg_mass_earth"]) if "gg_mass_earth" in d else None
         slot.name = str(d.get("name", ""))
+        slot.radiation_zone = bool(d.get("radiation_zone", False))
         detail_d = d.get("detail")
         if detail_d:
             from .traveller_world_detail import WorldDetail  # pylint: disable=import-outside-toplevel
@@ -527,17 +533,30 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
     primary_stars = [s for s in system.stars if s.role != "companion"]
     has_companion = any(s.role == "companion" for s in system.stars)
     secondary_count = sum(1 for s in primary_stars if s.role != "primary")
+
+    # Dead star systems: check planetary system existence first (WBH p.219+)
+    primary = system.primary
+    is_dead_star_primary = primary.spectral_type in _DEAD_STAR_TYPES
+    if is_dead_star_primary and not dead_star_system_exists(primary, system):
+        return result  # empty system
+
     # World counts (WBH p.36-37)
-    if roll(2) <= 9:
-        r = roll(2)
-        gg = 1 if r<=4 else 2 if r<=6 else 3 if r<=8 else 4 if r<=11 else 5 if r==12 else 6
+    if is_dead_star_primary:
+        # Dead star: gas giant absent on 6+, belt absent on 6+, terrestrial 1D-2
+        gg = 0 if roll(2) >= 6 else 1
+        belts = 0 if roll(2) >= 6 else 1
+        tp = max(0, _rng.randint(1, 6) - 2)
     else:
-        gg = 0
-    belts = 0
-    if roll(2) >= 8:
-        r = roll(2, 1 if gg>0 else 0)
-        belts = 1 if r<=6 else 2 if r<=11 else 3
-    tp = max(1, roll(2) - 2)
+        if roll(2) <= 9:
+            r = roll(2)
+            gg = 1 if r<=4 else 2 if r<=6 else 3 if r<=8 else 4 if r<=11 else 5 if r==12 else 6
+        else:
+            gg = 0
+        belts = 0
+        if roll(2) >= 8:
+            r = roll(2, 1 if gg>0 else 0)
+            belts = 1 if r<=6 else 2 if r<=11 else 3
+        tp = max(1, roll(2) - 2)
     result.gas_giant_count = gg
     result.belt_count = belts
     result.terrestrial_count = tp
@@ -992,6 +1011,12 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
             if s.role in ("close", "near", "far") and s.orbit_number is not None:
                 s.orbit_inclination = roll_inclination()
 
+    # ── Radiation zones for pulsar/magnetar systems (also magnetars; PSR covers both) ──
+    if primary.spectral_type == "PSR":
+        for o in result.orbits:
+            if o.world_type != "empty":
+                o.radiation_zone = True
+
     return result
 
 
@@ -1011,6 +1036,32 @@ def count_stars_orbited(orbit: "OrbitSlot", stellar_system: "StarSystem") -> int
         and s.orbit_number is not None
         and s.orbit_number < orbit.orbit_number
     )
+
+
+_DEAD_STAR_TYPES = frozenset(("NS", "BH", "PSR", "D"))
+
+
+def dead_star_system_exists(primary: Star, star_system: StarSystem,
+                             rng: Optional[random.Random] = None) -> bool:
+    """Roll 2D + DMs to check if a planetary system exists around a dead star.
+
+    WBH p.219+: target 8+. Natural 12 (raw 2D = 12) always succeeds.
+    """
+    global _rng  # pylint: disable=global-statement
+    if rng is not None:
+        _rng = rng
+    dead_count = sum(1 for s in star_system.stars if s.spectral_type in _DEAD_STAR_TYPES)
+    dm = 0
+    if dead_count > 1:
+        dm -= 2
+    if primary.spectral_type in ("NS", "PSR"):
+        dm -= 2
+    elif primary.spectral_type == "BH":
+        dm -= 4
+    raw = _rng.randint(1, 6) + _rng.randint(1, 6)
+    if raw == 12:
+        return True
+    return (raw + dm) >= 8
 
 
 def generate_full_system(seed=None, orbital_eccentricity: bool = False,
