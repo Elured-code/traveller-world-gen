@@ -41,6 +41,29 @@ Clicking it opens a Cargo window — a native table with D66, Trade Good, Tons,
 Base Cr, DM, and Purchase Cr columns. Multiple cargo windows can be open at
 once. Results are seeded from the current seed for reproducibility.
 
+UNUSUAL STARS COLUMN AND POST-STELLAR REMNANTS
+-----------------------------------------------
+The generator now supports the Unusual Stars option from the Worlds Beyond the
+Horizon supplement (WBH p.219). When this option is enabled, the primary star
+can be a post-stellar remnant or exotic environment instead of a normal star.
+
+Possible results include:
+- White Dwarf (D) — dice-rolled mass, diameter, temperature, and luminosity.
+- Neutron Star (NS) — dice-rolled mass and diameter; very hot and tiny.
+- Pulsar (PSR) — a fast-rotating neutron star; all orbiting worlds are in a
+  radiation zone.
+- Black Hole (BH) — exploding-die mass roll; Schwarzschild diameter calculated
+  from mass; no temperature or luminosity.
+- Nebula, Protostar, Star Cluster, Anomaly — exotic environments with a
+  Giants-class host star and descriptive notes.
+
+When the primary is a dead star, the generator first checks whether a planetary
+system survived the stellar death event. If it did, world counts are adjusted
+downward — fewer gas giants, belts, and terrestrials than around a living star.
+
+The Unusual Stars option appears as a checkbox in the web app (Orbital options
+row) and in the gen-ui Options dialog. The setting is remembered across sessions.
+
 FREIGHT LOT GENERATION
 -----------------------
 The generator can now calculate how much freight is available to ship at any

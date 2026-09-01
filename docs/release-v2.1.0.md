@@ -1,10 +1,42 @@
 # Traveller World Generator — v2.1.0 Release Notes
 
-**3271 tests pass (5 skipped). Pylint 10.00/10.**
+**3388 tests pass (5 skipped). Pylint 10.00/10.**
 
 Feature release adding speculative trade cargo generation (CRB pp.244-245),
 freight lot generation (CRB p.239), multi-star tidal DM correction (WBH pp.105-106),
-and cargo/freight UI in both the FastAPI web app and the gen-ui desktop app.
+cargo/freight UI in both the FastAPI web app and the gen-ui desktop app, and
+Unusual Stars column with full post-stellar remnant characterization (WBH p.219).
+
+---
+
+## New Feature — Unusual Stars Column and Post-Stellar Remnants (Sessions 196, Issue #21)
+
+Implements the Unusual Stars column (WBH p.219) with full physical characterization
+of white dwarfs, neutron stars, black holes, and pulsars.
+
+When the **Unusual Stars** option is enabled, the primary star type determination
+table routes low rolls through the Unusual column, which can produce sub-stellar
+and post-stellar objects — including dead star types (NS/BH/PSR) and environment
+types (Nebula, Protostar, Star Cluster, Anomaly).
+
+**White dwarf physical properties** are now dice-rolled for all white dwarfs
+(primary and non-primary): mass from a (2D−1)/10 + d10/100 formula, diameter
+derived from mass, temperature interpolated from the WBH aging table scaled by
+mass, and luminosity from the Stefan-Boltzmann formula.
+
+**Neutron stars and pulsars** get dice-rolled mass (1.1–2.1 ☉), a diameter of
+19–25 km, and temperature from the WD aging table as an approximation.
+
+**Black holes** get an exploding-die mass roll (minimum ~2.2 ☉) and a
+Schwarzschild diameter (`5.9 × mass` km). Temperature and luminosity are zero.
+
+**Dead star orbital systems:** the generator now checks whether a planetary system
+survived around the remnant (2D + DMs ≥ 8), adjusts world counts (fewer gas
+giants, belts, and terrestrials), and flags all orbits in pulsar systems as
+radiation zones.
+
+**Unusual Stars option** is exposed as a checkbox in both the FastAPI web UI and
+the gen-ui desktop app, with localStorage / QSettings persistence.
 
 ---
 
@@ -161,8 +193,15 @@ plus an optional `seed` integer. Returns `CargoManifest.to_dict()`.
 
 ## Tests
 
-3271 tests pass (5 skipped). New tests since v2.0.3:
+3388 tests pass (5 skipped). New tests since v2.0.3:
 
+- `tests/test_unusual_stars.py` — 57 tests: table coverage, column routing,
+  Peculiar env notes, flag threading through `TravellerSystem`, to_dict/from_dict
+  round-trip, 30-seed fuzz confirming no sentinel types leak.
+- `tests/test_unusual_stars_phases234.py` — 60 tests: WD mass/diameter/temp/lum
+  ranges and formulae, NS/PSR/BH physical properties, bh_schwarzschild_km field,
+  MAO=0.001 for dead stars, radiation_zone flag, dead_star_system_exists() logic,
+  modified world counts, OrbitSlot round-trip.
 - `tests/test_cargo_gen.py` — 85 tests (43 cargo + 42 freight): availability rules,
   price mechanics, starport-X empty manifest, trade code matching, DM accumulation
   (max not sum), supplier broker DM, price table clamping, serialisation roundtrip;

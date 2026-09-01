@@ -2,7 +2,89 @@
 
 **Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3229
+**Tests:** 3388
+
+---
+
+## Post-Stellar Remnant Characterization and Dead Star Orbits (Session 196, Issue #21 Phases 2–4)
+
+Completes the WBH p.219 Unusual Stars implementation with dice-rolled physical properties
+for white dwarfs, neutron stars, black holes, and pulsars, plus modified orbit generation
+for dead star systems.
+
+**Phase 2 — White dwarf physical characterization (`traveller_stellar_gen.py`):**
+- `_WD_AGING_TABLE`: nine breakpoints (0–13 Gyr) with base temperatures for 0.6 ☉.
+- `_wd_temperature(age_gyr, mass)`: linearly interpolates the table, then scales by
+  `mass / 0.6`. Clamped to [3800, 100000] K.
+- `_characterize_white_dwarf(age_gyr)`: rolls mass = `(2D − 1)/10 + d10/100` ☉
+  (range 0.11–1.20, cap 1.44); diameter = `0.01 / mass` solar; temperature from aging
+  table; luminosity via Stefan-Boltzmann. Replaces the previous hard-coded
+  `(mass=0.6, temp=25000, diam=0.013)` for all WDs, both primary and non-primary.
+
+**Phase 3 — NS, BH, PSR as real star types (`traveller_stellar_gen.py`):**
+- `_characterize_neutron_star(age_gyr)`: mass = `1 + 1D/10`; if first roll = 6,
+  add `(1D − 1)/10`; diameter = `(19 + 1D)` km ÷ 695700; temperature from WD aging
+  table scaled by mass/0.6; luminosity via Stefan-Boltzmann.
+- `_characterize_black_hole()`: mass = `2.1 + exploding_1D − 1 + d10/10`; Schwarzschild
+  diameter = `5.9 × mass` km ÷ 695700; temperature = 0; luminosity = 0.0.
+- PSR uses NS physical properties; `spectral_type="PSR"`, `lum_class="PSR"`.
+- `_generate_peculiar_star()` dispatches NS/PSR/BH to real characterization (Phase 3
+  replaces Phase 1 Giants placeholder). Environment types still use Giants fallback.
+- `Star.bh_schwarzschild_km: Optional[float]` field (`init=False`); emitted in
+  `to_dict()` only when set; restored in `from_dict()`.
+- `SPECTRAL_COLOUR` extended with NS/PSR/BH entries.
+- `_multiple_star_dm` treats NS/BH/PSR like D for companion type DM.
+
+**Phase 4 — Dead star orbit generation (`traveller_orbit_gen.py`):**
+- `get_mao(star)`: returns 0.001 for NS/BH/PSR (flat WBH rule; unchanged for D = 0.01).
+- `OrbitSlot.radiation_zone: bool = False` field (`init=False`); emitted in `to_dict()`
+  only when True; restored in `from_dict()`.
+- `dead_star_system_exists(primary, star_system, rng=None) → bool`: 2D + DMs ≥ 8
+  (natural 12 always succeeds). DMs: multiple dead stars −2; NS/PSR primary −2;
+  BH primary −4. Returns False → empty `SystemOrbits`.
+- `generate_orbits()`: dead star primaries (NS/BH/PSR/D) trigger existence check
+  before world counts; if check passes, modified counts apply (GG absent 6+, belt
+  absent 6+, terrestrial = max(0, 1D − 2)). PSR primaries flag all occupied slots
+  `radiation_zone = True` after placement.
+
+**Tests:** 60 new tests in `tests/test_unusual_stars_phases234.py`. 3388 tests pass.
+
+---
+
+## Unusual Stars Column — Stellar Gen, API, UI (Session 196, Issue #21 Phase 1)
+
+Implements the Unusual Stars column from WBH p.219 as an opt-in flag.
+
+**`traveller_stellar_gen.py`:** Added `UNUSUAL_COLUMN` (2D→result) and `PECULIAR_COLUMN`
+(2D→environment/remnant type) table dicts. `_generate_primary_star_type(unusual_stars=False)` now
+routes roll ≤ 2 through Unusual column instead of Special column when the flag is set. BD and D
+results are handled by existing paths; Peculiar column NS/BH/PSR results fall back to a Giants-class
+star with a Phase 2 placeholder `special_notes`; environment types (Nebula, Protostar, Star Cluster,
+Anomaly) use Giants fallback with a descriptive `special_notes` (permanent — WBH implies no
+dedicated host star). `generate_primary_star()` and `generate_stellar_data()` updated with the flag.
+
+**`traveller_system_gen.py`:** `TravellerSystem.unusual_stars: bool = False` field added; emitted in
+`to_dict()` and restored in `from_dict()`. `generate_full_system()` and
+`generate_system_from_world()` both accept and pass the flag.
+
+**`traveller_map_fetch.py`:** `generate_system_from_map()` accepts `unusual_stars` for serialization
+consistency (stellar data is canonical from TravellerMap; flag has no generation effect but is stored).
+
+**FastAPI (`fastapi/helpers.py`, `fastapi/app.py`):** `parse_unusual_stars()` helper; all system
+generation endpoints pass `unusual_stars` to `generate_full_system()` or `generate_system_from_world()`.
+
+**Web UI (`fastapi/static/system.html`):** "Unusual Stars" checkbox added to the Orbital sub-row
+(after Inclination); persisted in localStorage; wired into all URL-builder paths and `sysParams()`.
+
+**gen-ui (`gen-ui/app.py`):** `_OptionsDialog` gains an "Unusual Stars column" checkbox with tooltip;
+`_opt_unusual_stars` persisted in QSettings; wired into `generate_full_system()` and
+`_start_travellermap_worker()`.
+
+**Tests (`tests/test_unusual_stars.py`):** 57 new tests covering table coverage, column routing,
+Peculiar env notes, flag threading through `TravellerSystem`, `to_dict`/`from_dict` round-trip, and
+a 30-seed fuzz confirming no sentinel types leak into generated stars.
+
+**Seed impact:** Zero when `unusual_stars=False` (default). New column dice only fire when flag is on.
 
 ---
 
