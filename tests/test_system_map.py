@@ -227,17 +227,18 @@ class TestPulsarMapRendering:
             "PSR beam line (stroke-linecap=round) not found in SVG"
         )
 
-    def test_psr_beam_is_horizontal(self):
-        # Beam is a <line y1="..." y2="..."> where y1 == y2 (horizontal)
+    def test_psr_beam_is_vertical(self):
+        # Jets are perpendicular to the orbital plane — vertical in the SVG
+        # (x1 == x2, y varies)
         m = re.search(
             r'<line[^>]*stroke-linecap="round"[^>]*/>', self.svg
         )
         assert m is not None, "Beam line element not found"
-        y1 = re.search(r'y1="([\d.]+)"', m.group())
-        y2 = re.search(r'y2="([\d.]+)"', m.group())
-        assert y1 and y2, "Beam line missing y1 or y2"
-        assert abs(float(y1.group(1)) - float(y2.group(1))) < 1.0, (
-            f"Beam line is not horizontal: y1={y1.group(1)}, y2={y2.group(1)}"
+        x1 = re.search(r'x1="([\d.]+)"', m.group())
+        x2 = re.search(r'x2="([\d.]+)"', m.group())
+        assert x1 and x2, "Beam line missing x1 or x2"
+        assert abs(float(x1.group(1)) - float(x2.group(1))) < 1.0, (
+            f"Beam line is not vertical: x1={x1.group(1)}, x2={x2.group(1)}"
         )
 
     def test_psr_corona_and_sphere_circles(self):

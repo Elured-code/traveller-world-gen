@@ -1266,7 +1266,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         if star.lum_class == "PSR":
             beam = star_r * 8
             s.append(
-                f'<line x1="{cx - beam}" y1="{cy}" x2="{cx + beam}" y2="{cy}" '
+                f'<line x1="{cx}" y1="{cy - beam}" x2="{cx}" y2="{cy + beam}" '
                 f'stroke="{star_color}" stroke-width="2" opacity="0.55" '
                 f'stroke-linecap="round"/>'
             )
@@ -1340,8 +1340,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 if st.lum_class == "PSR":
                     beam = st_r * 8
                     s.append(
-                        f'<line x1="{mx - beam:.1f}" y1="{my:.1f}" '
-                        f'x2="{mx + beam:.1f}" y2="{my:.1f}" '
+                        f'<line x1="{mx:.1f}" y1="{my - beam:.1f}" '
+                        f'x2="{mx:.1f}" y2="{my + beam:.1f}" '
                         f'stroke="{st_col}" stroke-width="2" opacity="0.55" '
                         f'stroke-linecap="round"/>'
                     )
