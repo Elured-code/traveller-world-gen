@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/traveller_system_schema.json",
+  "title": "Traveller System",
+  "description": "A generated star system record produced by traveller_system_gen.py, following the World Builder's Handbook orbital and stellar generation rules.",
+  "type": "object",
+  "required": [
+    "star_count",
+    "age_gyr",
+    "stars",
+    "orbits",
+    "mainworld",
+    "nhz_atmospheres",
+    "orbital_eccentricity",
+    "orbital_inclination",
+    "runaway_greenhouse",
+    "independent_government",
+    "optional_biomass",
+    "optional_inhospitable",
+    "relic_tech",
+    "settlement_type",
+    "select_mainworld",
+    "social_detail",
+    "unusual_stars",
+    "_app_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "star_count":            { "type": "integer", "minimum": 1 },
+    "age_gyr":               { "type": ["number", "null"], "minimum": 0 },
+    "stars":                 { "type": "array", "items": { "$ref": "#/$defs/Star" }, "minItems": 1 },
+    "orbits":                { "$ref": "#/$defs/SystemOrbits" },
+    "mainworld":             { "oneOf": [{ "$ref": "https://example.com/traveller_world_schema.json" }, { "type": "null" }] },
+    "nhz_atmospheres":       { "type": "boolean" },
+    "orbital_eccentricity":  { "type": "boolean" },
+    "orbital_inclination":   { "type": "boolean" },
+    "runaway_greenhouse":    { "type": "boolean" },
+    "independent_government":{ "type": "boolean" },
+    "optional_biomass":      { "type": "boolean" },
+    "optional_inhospitable": { "type": "boolean" },
+    "relic_tech":            { "type": "boolean" },
+    "settlement_type":       { "type": "string", "enum": ["standard", "long_settled", "well_settled", "backwater", "unsettled"] },
+    "select_mainworld":      { "type": "boolean" },
+    "social_detail":         { "type": "boolean" },
+    "unusual_stars":         { "type": "boolean" },
+    "seed":                  { "type": "integer" },
+    "_app_version":          { "type": "string" }
+  },
+
+  "$defs": {
+
+    "Star": {
+      "type": "object",
+      "required": [
+        "designation", "role", "classification",
+        "spectral_type", "subtype", "luminosity_class",
+        "mass_solar", "temperature_k", "diameter_solar", "luminosity_solar",
+        "orbit_number", "orbit_au", "age_gyr", "ms_lifespan_gyr",
+        "orbit_period_yr", "colour", "name", "special_notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "designation":      { "type": "string" },
+        "role":             { "type": "string", "enum": ["primary", "companion", "close", "near", "far"] },
+        "classification":   { "type": "string" },
+        "spectral_type":    { "type": "string", "enum": ["O", "B", "A", "F", "G", "K", "M", "D", "BD", "NS", "PSR", "BH"] },
+        "subtype":          { "type": ["integer", "null"], "minimum": 0, "maximum": 9 },
+        "luminosity_class": { "type": "string" },
+        "mass_solar":       { "type": "number", "exclusiveMinimum": 0 },
+        "temperature_k":    { "type": "integer", "minimum": 0 },
+        "diameter_solar":   { "type": "number", "minimum": 0 },
+        "luminosity_solar": { "type": "number", "minimum": 0 },
+        "orbit_number":     { "type": ["number", "null"] },
+        "orbit_au":         { "type": ["number", "null"] },
+        "age_gyr":          { "type": ["number", "null"], "minimum": 0 },
+        "ms_lifespan_gyr":  { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "orbit_period_yr":  { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "colour":           { "type": "string" },
+        "name":             { "type": "string" },
+        "special_notes":    { "type": "string" },
+        "orbit_eccentricity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "orbit_au_min":       { "type": "number", "exclusiveMinimum": 0 },
+        "orbit_au_max":       { "type": "number", "exclusiveMinimum": 0 },
+        "orbit_inclination":  { "type": "number" },
+        "bh_schwarzschild_km":{ "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+
+    "StarZone": {
+      "type": "object",
+      "required": ["mao", "hzco", "hz_inner", "hz_outer"],
+      "additionalProperties": false,
+      "properties": {
+        "mao":      { "type": "number" },
+        "hzco":     { "type": "number" },
+        "hz_inner": { "type": "number" },
+        "hz_outer": { "type": "number" }
+      }
+    },
+
+    "SystemOrbits": {
+      "type": "object",
+      "required": [
+        "gas_giant_count", "belt_count", "terrestrial_count",
+        "total_worlds", "empty_orbits", "star_zones", "orbits", "mainworld_orbit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "gas_giant_count":   { "type": "integer", "minimum": 0 },
+        "belt_count":        { "type": "integer", "minimum": 0 },
+        "terrestrial_count": { "type": "integer", "minimum": 0 },
+        "total_worlds":      { "type": "integer", "minimum": 0 },
+        "empty_orbits":      { "type": "integer", "minimum": 0 },
+        "star_zones": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/StarZone" }
+        },
+        "orbits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OrbitSlot" }
+        },
+        "mainworld_orbit": {
+          "oneOf": [{ "$ref": "#/$defs/OrbitSlot" }, { "type": "null" }]
+        }
+      }
+    },
+
+    "OrbitSlot": {
+      "type": "object",
+      "required": [
+        "star", "orbit_number", "orbit_au", "slot_index",
+        "world_type", "is_habitable_zone", "hz_deviation",
+        "temperature_zone", "is_mainworld_candidate", "notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "star":                  { "type": "string" },
+        "orbit_number":          { "type": "number" },
+        "orbit_au":              { "type": "number", "exclusiveMinimum": 0 },
+        "slot_index":            { "type": "integer", "minimum": 0 },
+        "world_type":            { "type": "string", "enum": ["belt", "gas_giant", "terrestrial", "empty", "star"] },
+        "is_habitable_zone":     { "type": "boolean" },
+        "hz_deviation":          { "type": "number" },
+        "temperature_zone":      { "type": "string", "enum": ["boiling", "hot", "temperate", "cold", "frozen"] },
+        "is_mainworld_candidate":{ "type": "boolean" },
+        "notes":                 { "type": "string" },
+        "canonical_profile":     { "type": "string" },
+        "gg_sah":                { "type": "string" },
+        "gg_mass_earth":         { "type": "number", "exclusiveMinimum": 0 },
+        "anomaly_type":          { "type": "string" },
+        "orbit_period_yr":       { "type": "number", "exclusiveMinimum": 0 },
+        "eccentricity":          { "type": "number", "minimum": 0, "maximum": 1 },
+        "orbit_au_min":          { "type": "number", "exclusiveMinimum": 0 },
+        "orbit_au_max":          { "type": "number", "exclusiveMinimum": 0 },
+        "inclination":           { "type": "number" },
+        "name":                  { "type": "string" },
+        "radiation_zone":        { "type": "boolean", "const": true },
+        "detail":                {}
+      }
+    }
+
+  }
+}
