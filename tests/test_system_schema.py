@@ -201,6 +201,24 @@ class TestSystemStructure:
         d = _generate(13387, unusual_stars=True)
         assert d["age_gyr"] < 0.01
 
+    def test_protostar_primary_is_class_v(self):
+        d = _generate(13387, unusual_stars=True)
+        primary = d["stars"][0]
+        assert primary["luminosity_class"] == "V"
+        assert primary["spectral_type"] in ("O", "B", "A", "F", "G", "K", "M")
+
+    def test_protostar_companions_also_protostar(self):
+        # Run a few protostar seeds; any companion stars must also be protostars
+        for seed in (13387, 16308, 17224, 22684):
+            d = _generate(seed, unusual_stars=True)
+            primaries_note = d["stars"][0]["special_notes"]
+            if "Protostar" not in primaries_note:
+                continue
+            for star in d["stars"][1:]:
+                assert "Protostar" in star["special_notes"], (
+                    f"Seed {seed}: companion {star['designation']} is not a protostar"
+                )
+
     def test_radiation_zone_only_present_when_true(self):
         d = _generate(1000, unusual_stars=True, orbital_eccentricity=True)
         for orbit in d["orbits"]["orbits"]:

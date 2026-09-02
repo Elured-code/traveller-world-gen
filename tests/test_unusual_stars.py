@@ -143,15 +143,25 @@ class TestPeculiarNotes:
         assert star.lum_class == expected_type
         assert star.subtype is None
 
-    @pytest.mark.parametrize("env", _ENV_TYPES)
+    @pytest.mark.parametrize("env", ("Nebula", "Star Cluster", "Anomaly"))
     def test_env_type_produces_valid_giants_star(self, env):
-        """Peculiar env star is a valid giant (Ia/Ib/II/III) with normal properties."""
+        """Nebula/Star Cluster/Anomaly fall back to a Giants star (Ia/Ib/II/III)."""
         from traveller_gen.traveller_stellar_gen import _generate_peculiar_star
         env_key = f"_PECULIAR_{env.replace(' ', '_')}"
         star = _generate_peculiar_star("A", env_key, "Giants_env")
         assert star.lum_class in ("Ia", "Ib", "II", "III")
         assert star.mass is not None and star.mass > 0
         assert star.temperature is not None and star.temperature > 0
+
+    def test_protostar_env_produces_class_v(self):
+        """Protostar uses WBH p.219 rules: Class V star with modified diameter."""
+        from traveller_gen.traveller_stellar_gen import _generate_peculiar_star
+        star = _generate_peculiar_star("A", "_PECULIAR_Protostar", "Giants_env")
+        assert star.lum_class == "V"
+        assert star.spectral_type in ("O", "B", "A", "F", "G", "K", "M")
+        assert "Peculiar environment: Protostar" in star.special_notes
+        assert star.mass > 0
+        assert star.temperature > 0
 
 
 # ---------------------------------------------------------------------------

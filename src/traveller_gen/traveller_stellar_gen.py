@@ -20,8 +20,7 @@ Out of scope (Special Circumstances chapter, p.219+):
   • Full post-stellar object generation (white dwarfs, neutron stars,
     black holes, pulsars) — these are detected and labelled but not
     physically characterised
-  • Protostar and primordial system special rules
-  • Star cluster and nebula handling
+  • Star cluster and nebula handling (Giants fallback; WBH p.219)
   • Eccentricity calculation for stellar orbits
   • Habitable zone orbit placement (requires full system generation)
 
@@ -820,6 +819,38 @@ def _generate_primary_star_type(  # pylint: disable=too-many-branches,too-many-r
     return spectral, "V"
 
 
+def _generate_protostar(designation: str, role: str = "primary") -> Star:
+    """
+    Generate a protostar per WBH p.219 Protostar special rules.
+
+    Type: Star Type table with DM+1; treated as Class V.
+    Mass: ±50% variance from the Class V base value.
+    Diameter: Class V × (1 + (2D−2) ÷ 10), giving a 1.0–2.0× range.
+    Luminosity: recomputed from the modified diameter (L ∝ D²T⁴).
+    Age: primary only — 0.001–0.009 Gyr (< 0.01 Gyr protostar era).
+         Companions receive age=None and inherit system age via propagation.
+    """
+    r = roll(2, 1)
+    spectral = STAR_TYPE_TABLE.get(min(r, 11), "M")
+    if spectral in ("Special",) or spectral not in TYPE_HEAT_ORDER:
+        spectral = "M"
+    subtype = _roll_subtype(spectral, use_m_column=spectral == "M")
+    mass_base, temperature, diameter_v, _ = _star_properties(spectral, subtype, "V")
+    mass = round(mass_base * _rng.uniform(0.5, 1.5), 3)
+    diam_mult = 1.0 + roll(2, -2) / 10.0
+    diameter = round(diameter_v * diam_mult, 3)
+    luminosity = _compute_luminosity(diameter, temperature)
+    age = round(_rng.uniform(0.001, 0.009), 3) if role == "primary" else None
+    ms_lifespan = _main_sequence_lifespan(mass_base)
+    return Star(
+        designation=designation, role=role,
+        spectral_type=spectral, subtype=subtype, lum_class="V",
+        mass=mass, temperature=temperature, diameter=diameter,
+        luminosity=luminosity, age_gyr=age, ms_lifespan_gyr=ms_lifespan,
+        special_notes="Peculiar environment: Protostar",
+    )
+
+
 def _generate_peculiar_star(  # pylint: disable=too-many-return-statements,too-many-locals
         designation: str, spectral: str, lum_class: str) -> Star:
     """Generate a star for a Peculiar column result (Phase 3: real post-stellar types)."""
@@ -858,7 +889,11 @@ def _generate_peculiar_star(  # pylint: disable=too-many-return-statements,too-m
         star.bh_schwarzschild_km = schwarzschild_km
         return star
 
-    # Environment types: Nebula, Protostar, Star Cluster, Anomaly → Giants fallback
+    # Protostar: full WBH p.219 characterisation (type roll, mass variance, diameter mod)
+    if env_type == "Protostar":
+        return _generate_protostar(designation)
+
+    # Nebula, Star Cluster, Anomaly → Giants fallback
     notes = f"Peculiar environment: {env_type}"
     r_giants = roll(2)
     gc = GIANTS_COLUMN.get(r_giants, "Ia" if r_giants >= 12 else "III")
@@ -869,10 +904,7 @@ def _generate_peculiar_star(  # pylint: disable=too-many-return-statements,too-m
     subtype = _roll_subtype(gc_spectral, use_m_column=gc_spectral == "M")
     mass, temperature, diameter, luminosity = _star_properties(gc_spectral, subtype, gc)
     ms_lifespan = _main_sequence_lifespan(mass)
-    if env_type == "Protostar":
-        age = round(_rng.uniform(0.001, 0.009), 3)
-    else:
-        age = _generate_system_age(mass, ms_lifespan)
+    age = _generate_system_age(mass, ms_lifespan)
     return Star(
         designation=designation, role="primary",
         spectral_type=gc_spectral, subtype=subtype, lum_class=gc,
@@ -1298,6 +1330,7 @@ def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,
     primary.orbit_number = 0.0
     primary.orbit_au = 0.0
     system.stars.append(primary)
+    is_protostar_env = "Protostar" in primary.special_notes
 
     multi_dm = _multiple_star_dm(primary)
 
@@ -1326,7 +1359,10 @@ def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,
         secondary_letter += 1
 
     for desig, slot in secondary_stars:
-        star = _determine_non_primary_type(primary, slot, desig)
+        if is_protostar_env:
+            star = _generate_protostar(desig, slot)
+        else:
+            star = _determine_non_primary_type(primary, slot, desig)
         orbit_num, orbit_au = _secondary_orbit(slot)
         star.orbit_number = orbit_num
         star.orbit_au = orbit_au
@@ -1340,8 +1376,11 @@ def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,
     for parent_star in all_current:
         if roll(2, multi_dm) >= 10:
             comp_desig = parent_star.designation + chr(companion_suffix)
-            companion = _determine_non_primary_type(parent_star, "companion",
-                                                    comp_desig)
+            if is_protostar_env:
+                companion = _generate_protostar(comp_desig, "companion")
+            else:
+                companion = _determine_non_primary_type(parent_star, "companion",
+                                                        comp_desig)
             orbit_num, orbit_au = _companion_orbit()
             companion.orbit_number = orbit_num
             companion.orbit_au = orbit_au

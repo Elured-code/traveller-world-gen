@@ -279,9 +279,9 @@ class TestPulsarCharacterization:
 
 
 class TestEnvironmentTypesUnchanged:
-    """Peculiar environment types must still produce Giants star + special_notes."""
+    """Nebula/Star Cluster/Anomaly still produce Giants star; Protostar uses WBH rules."""
 
-    @pytest.mark.parametrize("env", ["Nebula", "Protostar", "Star_Cluster", "Anomaly"])
+    @pytest.mark.parametrize("env", ["Nebula", "Star_Cluster", "Anomaly"])
     def test_env_type_giants_star(self, env):
         env_key = f"_PECULIAR_{env}"
         import traveller_gen.traveller_stellar_gen as sg
@@ -291,6 +291,17 @@ class TestEnvironmentTypesUnchanged:
         sg._rng = old_rng  # pylint: disable=protected-access
         assert star.lum_class in ("Ia", "Ib", "II", "III")
         assert "Peculiar environment" in star.special_notes
+
+    def test_protostar_env_is_class_v(self):
+        """Protostar now uses WBH p.219 rules: Class V with DM+1 type roll."""
+        import traveller_gen.traveller_stellar_gen as sg
+        old_rng = sg._rng  # pylint: disable=protected-access
+        sg._rng = random.Random(42)  # pylint: disable=protected-access
+        star = _generate_peculiar_star("A", "_PECULIAR_Protostar", "Giants_env")
+        sg._rng = old_rng  # pylint: disable=protected-access
+        assert star.lum_class == "V"
+        assert star.spectral_type in ("O", "B", "A", "F", "G", "K", "M")
+        assert "Peculiar environment: Protostar" in star.special_notes
 
     @pytest.mark.parametrize("env", ["Nebula", "Protostar", "Star_Cluster", "Anomaly"])
     def test_env_type_not_ns_bh_psr(self, env):
