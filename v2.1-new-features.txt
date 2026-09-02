@@ -97,6 +97,28 @@ next to the Cargo button. Clicking it opens a Freight window — a compact table
 with Tier, Lots, and Total Tons columns. Multiple freight windows can be open
 at once.
 
+SYSTEM MAP — UNUSUAL STAR GLYPHS
+---------------------------------
+Protostars, neutron stars, and pulsars are now rendered with distinctive glyphs
+on the system map.
+
+Protostar primaries and companion stars appear as a solid sphere surrounded by
+a wide diffuse halo — a large semi-transparent radial gradient fading to
+transparent at four times the star radius, representing the contracting gas
+envelope that hasn't yet collapsed into a star.
+
+Neutron stars appear as a small deep blue-white sphere (colour #88AAFF, hotter
+than white dwarfs) surrounded by a tight bright corona glow. The corona fades
+rapidly from 90% opacity at the sphere edge to transparent at three times the
+radius.
+
+Pulsars appear the same as neutron stars, with the addition of a horizontal
+beam line extending eight times the star radius in both directions from the
+glyph centre. The line represents the rotating radiation beam of the pulsar.
+
+All three types now always get their own arc zone on the map, even if no worlds
+orbit them.
+
 PROTOSTAR CHARACTERISATION (WBH p.219)
 --------------------------------------
 When an Unusual Stars result produces a Protostar primary, the star is now

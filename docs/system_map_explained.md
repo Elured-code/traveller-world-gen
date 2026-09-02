@@ -109,6 +109,61 @@ contribution, so the marker sits correctly on the inclined orbit.
 
 ---
 
+## Unusual star glyph rendering
+
+Stars with a `lum_class` of `NS`, `PSR`, or a `special_notes` field containing
+`"Protostar"` get distinct visual treatments in addition to the standard sphere.
+
+### Protostar halo
+
+A protostar is still a contracting cloud rather than a compact object.  Two helper
+functions generate a wide, diffuse outer glow:
+
+```python
+def _protostar_halo_def(color):   # SVG radialGradient, 4 stops fading to 0%
+def _prh(color):                  # returns url(#prh_<HEX>)
+```
+
+The halo circle has radius `star_r × 4` and is drawn *before* the solid sphere so
+the sphere sits on top. The protostar's arc zone also uses a minimum AU scale of
+5.0 AU (instead of the 0.1 AU floor used elsewhere) so the zone has a readable
+axis even when no worlds orbit.
+
+### Neutron star / pulsar corona
+
+Neutron stars and pulsars are extremely compact, so their diameter (≈ 20 km) would
+normally map to 4 pixels — the `_NS_GLYPH_R = 5` constant enforces a minimum.
+They also use a dedicated deep-blue colour `_NS_COLOUR = "#88AAFF"` (hotter than
+white dwarfs) returned by `_star_colour()`.
+
+```python
+def _ns_corona_def(color):   # SVG radialGradient, tight glow 3× radius
+def _nsc(color):             # returns url(#nsc_<HEX>)
+```
+
+The corona circle is drawn at `star_r × 3` before the solid sphere.
+
+### Pulsar beam
+
+Pulsars additionally draw a horizontal `<line>` through the glyph centre extending
+`star_r × 8` in each direction — the canonical "lighthouse" beam indicator:
+
+```svg
+<line x1="..." y1="cy" x2="..." y2="cy"
+      stroke="color" stroke-width="2" opacity="0.55" stroke-linecap="round"/>
+```
+
+The beam is drawn after the solid sphere so it visually crosses the glyph.
+
+### Active star visibility
+
+Stars are included in the arc zone loop (`active_stars`) when they have orbit slots,
+companion children, `"Protostar"` in `special_notes`, **or** `lum_class in ("NS", "PSR")`.
+Without this last condition, a dead star primary with no orbit slots and no companions
+would have no arc zone drawn at all and would be invisible in the map.
+
+---
+
 ## World glyph types
 
 Every filled circle uses a **radial gradient** (`_sphere_gradient_def`) so it

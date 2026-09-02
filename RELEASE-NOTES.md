@@ -2,7 +2,43 @@
 
 **Branch:** `v2.0`
 **Sessions:** 178–
-**Tests:** 3388
+**Tests:** 3463
+
+---
+
+## System Map — Unusual Star Glyph Rendering (Session 198)
+
+Visual rendering for protostar, neutron star, and pulsar primaries and companions
+in `system_map.py`. Previously these stars were either invisible (no arc zone drawn
+when they had no orbit slots) or appeared as a tiny yellow fallback dot.
+
+**`active_stars` filter extended:** stars with `"Protostar"` in `special_notes` or
+`lum_class in ("NS", "PSR")` are now always included in the arc zone loop regardless
+of whether they have orbit slots or companion children.
+
+**New colour + radius constants:**
+- `_NS_COLOUR = "#88AAFF"` — deep blue-white for NS/PSR (hotter than WD `#C8D8FF`)
+- `_NS_GLYPH_R = 5` — minimum pixel radius; prevents NS/PSR (diameter ~0.000028 ☉)
+  from collapsing to the 4px floor
+
+**`_star_colour()` updated:** returns `_NS_COLOUR` for `lum_class in ("NS", "PSR")`
+before the WD/fallback checks.
+
+**New gradient helpers:**
+- `_protostar_halo_def(color) / _prh(color)`: 4-stop radialGradient (opacity 0.55→0.30→0.10→0.00);
+  halo circle drawn at r×4 before the solid sphere glyph.  Protostar zone AU floor raised to
+  5.0 (vs. 0.1) for a readable scale when there are no orbits.
+- `_ns_corona_def(color) / _nsc(color)`: 4-stop radialGradient (opacity 0.90→0.60→0.20→0.00);
+  tight corona circle drawn at r×3 before the solid sphere for all NS and PSR glyphs.
+
+**PSR beam:** a horizontal `<line>` (r×8 each side, `stroke-linecap="round"`, opacity 0.55)
+drawn after the solid sphere to represent the iconic sweeping radiation beam.
+
+Same treatment applied to companion NS/PSR/protostar stars in the marker loop.
+
+**Tests:** 33 new tests across `test_unusual_stars_phases234.py`, `test_system_schema.py`,
+and `test_system_map.py` — including SVG-level assertions (gradient ids in `<defs>`,
+beam presence, beam horizontality, ≥2 circles per glyph, negative tests for wrong glyphs).
 
 ---
 

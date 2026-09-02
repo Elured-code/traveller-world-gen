@@ -1,6 +1,6 @@
 # Traveller World Generator — v2.1.1 Release Notes
 
-**3430 tests pass (5 skipped). Pylint 10.00/10.**
+**3463 tests pass (5 skipped). Pylint 10.00/10.**
 
 Schema maintenance release adding `traveller_system_schema.json` — a
 machine-readable JSON Schema 2020-12 contract for system-level API output.
@@ -95,12 +95,35 @@ surviving planetary system.
 
 ---
 
+## System Map — Unusual Star Glyph Rendering (Session 198)
+
+The system map now renders protostar, neutron star, and pulsar primaries and companions
+with distinctive visual glyphs instead of falling back to a tiny yellow dot or being
+omitted entirely.
+
+- **Protostar:** diffuse radial-gradient halo (4× star radius, opacity fades to transparent)
+  drawn before the solid sphere. Zone AU scale floor raised to 5.0 AU for a readable
+  display when no worlds orbit.
+- **Neutron star (NS):** deep blue-white sphere (#88AAFF) with a tight corona glow
+  (3× star radius, rapid opacity drop) to convey extreme surface temperature.
+- **Pulsar (PSR):** same as NS plus a horizontal beam line (8× star radius each side,
+  rounded caps, 55% opacity) representing the rotating radiation beam.
+
+All three types are now guaranteed an arc zone even when they have no orbit slots
+and no companion stars.
+
+---
+
 ## Tests
 
-3430 tests pass (5 skipped). New tests since v2.1.0:
+3463 tests pass (5 skipped). New tests since v2.1.0:
 
-- `tests/test_system_schema.py` — 42 tests (was 40) covering schema integrity,
-  structural correctness, and jsonschema 2020-12 validation for a broad seed
-  range including normal, multi-star, unusual-stars, and environment-type
-  systems. Added `test_protostar_primary_is_class_v` and
-  `test_protostar_companions_also_protostar`.
+- `tests/test_system_schema.py` — 44 tests (was 40) — added NS seed 38209 and PSR
+  seed 9277 schema validation.
+- `tests/test_unusual_stars_phases234.py` — added `TestProtostarCharacterization`
+  (mass/diameter/luminosity range checks via `_star_properties`, primary age range,
+  companion `age_gyr is None`, roundtrip); NS `subtype_none` and `luminosity_positive`;
+  PSR `temperature_positive`, `subtype_none`, `luminosity_positive`.
+- `tests/test_system_map.py` — three new classes: `TestProtostarMapRendering`,
+  `TestNeutronStarMapRendering`, `TestPulsarMapRendering` — SVG-level assertions
+  (gradient ids, beam line, circle count, cross-contamination negative tests).
