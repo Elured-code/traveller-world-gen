@@ -302,6 +302,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "hz_inner": f"{hz_in_v:.2f}"  if hz_in_v  is not None else "—",
                 "hzco":     f"{hzco_v:.2f}"   if hzco_v   is not None else "—",
                 "hz_outer": f"{hz_out_v:.2f}" if hz_out_v is not None else "—",
+                "special_notes":  star.special_notes,
             })
 
         # ── Orbital rows ──────────────────────────────────────────────────
