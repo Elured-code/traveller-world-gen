@@ -540,6 +540,10 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
     if is_dead_star_primary and not dead_star_system_exists(primary, system):
         return result  # empty system
 
+    # Protostar environments: protoplanetary disk, no formed worlds
+    if "Protostar" in primary.special_notes:
+        return result  # empty system
+
     # World counts (WBH p.36-37)
     if is_dead_star_primary:
         # Dead star: gas giant absent on 6+, belt absent on 6+, terrestrial 1D-2
