@@ -108,15 +108,20 @@ _SPECTRAL_COLOUR: dict[str, str] = {
 }
 _WD_COLOUR  = "#C8D8FF"         # white dwarf (hot, blue-white)
 _NS_COLOUR  = "#88AAFF"         # neutron star / pulsar (very hot, deep blue-white)
+_BH_COLOUR  = "#FF8833"         # black hole accretion disk (warm orange-amber)
+_BH_HORIZON = "#090909"         # event horizon fill (near-black)
 _STAR_FALLBACK = "#FFE066"      # fallback if spectral type unknown
 
 _NS_GLYPH_R = 5                 # fixed pixel radius for NS / PSR glyphs
+_BH_GLYPH_R = 6                 # fixed pixel radius for BH (slightly larger for legibility)
 
 
 def _star_colour(spectral_type: str, lum_class: str) -> str:
     """Return the display colour for a star given its spectral type and luminosity class."""
     if lum_class in ("NS", "PSR"):
         return _NS_COLOUR
+    if lum_class == "BH":
+        return _BH_COLOUR
     if lum_class == "D":
         return _WD_COLOUR
     return _SPECTRAL_COLOUR.get(spectral_type.upper(), _STAR_FALLBACK)
@@ -381,6 +386,32 @@ def _ns_corona_def(color: str) -> str:
 def _nsc(color: str) -> str:
     """SVG fill referencing the neutron star corona gradient for ``color``."""
     return f"url(#nsc_{color[1:].upper()})"
+
+
+def _bh_accretion_def(color: str) -> str:
+    """SVG radialGradient for a black hole accretion disk / photon ring.
+
+    Applied to a circle of radius star_r × 3.  The gradient is transparent at
+    the centre (event horizon sits below on a dark fill), peaks at ~45% radius
+    (photon ring / innermost stable orbit), then fades to transparent at the
+    outer edge (outer accretion disk).
+    """
+    gid = f"bha_{color[1:].upper()}"
+    return (
+        f'<radialGradient id="{gid}" cx="50%" cy="50%" r="50%">'
+        f'<stop offset="0%"   stop-color="{color}" stop-opacity="0.00"/>'
+        f'<stop offset="30%"  stop-color="{color}" stop-opacity="0.00"/>'
+        f'<stop offset="45%"  stop-color="{color}" stop-opacity="0.85"/>'
+        f'<stop offset="62%"  stop-color="{color}" stop-opacity="0.45"/>'
+        f'<stop offset="85%"  stop-color="{color}" stop-opacity="0.12"/>'
+        f'<stop offset="100%" stop-color="{color}" stop-opacity="0.00"/>'
+        f'</radialGradient>'
+    )
+
+
+def _bha(color: str) -> str:
+    """SVG fill referencing the black hole accretion disk gradient for ``color``."""
+    return f"url(#bha_{color[1:].upper()})"
 
 
 # ---------------------------------------------------------------------------
@@ -903,7 +934,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         if star_groups[s.designation]
         or children_by_parent[s.designation]
         or "Protostar" in (s.special_notes or "")
-        or s.lum_class in ("NS", "PSR")
+        or s.lum_class in ("NS", "PSR", "BH")
     ]
 
     # Geometry constants (arc zone is 1.5:1 width:height; available is constant across zones)
@@ -959,9 +990,12 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     proto_cols    = {_star_colour(ss.spectral_type, ss.lum_class)
                      for ss in all_stars if "Protostar" in (ss.special_notes or "")}
     proto_halo_defs = "".join(_protostar_halo_def(c) for c in proto_cols)
-    ns_cols       = {_star_colour(ss.spectral_type, ss.lum_class)
-                     for ss in all_stars if ss.lum_class in ("NS", "PSR")}
+    ns_cols        = {_star_colour(ss.spectral_type, ss.lum_class)
+                      for ss in all_stars if ss.lum_class in ("NS", "PSR")}
     ns_corona_defs = "".join(_ns_corona_def(c) for c in ns_cols)
+    bh_cols        = {_star_colour(ss.spectral_type, ss.lum_class)
+                      for ss in all_stars if ss.lum_class == "BH"}
+    bh_accretion_defs = "".join(_bh_accretion_def(c) for c in bh_cols)
     s.append(
         '<defs>'
         '<filter id="shadow_blur" x="-60%" y="-60%" width="220%" height="220%">'
@@ -973,6 +1007,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         + grad_defs_str
         + proto_halo_defs
         + ns_corona_defs
+        + bh_accretion_defs
         + '</defs>'
     )
 
@@ -1246,6 +1281,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         star_r     = _star_r_px(star.diameter, arc_zone_h)
         if star.lum_class in ("NS", "PSR"):
             star_r = max(star_r, _NS_GLYPH_R)
+        if star.lum_class == "BH":
+            star_r = max(star_r, _BH_GLYPH_R)
         cls_str    = (f'{star.spectral_type}'
                       f'{star.subtype if star.subtype is not None else ""} {star.lum_class}')
         star_label = f'Star {star.designation}  {cls_str}'
@@ -1259,10 +1296,21 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 f'<circle cx="{cx}" cy="{cy}" r="{star_r * 3}" '
                 f'fill="{_nsc(star_color)}"/>'
             )
-        s.append(
-            f'<circle cx="{cx}" cy="{cy}" r="{star_r}" '
-            f'fill="{_sph(star_color)}"/>'
-        )
+        if star.lum_class == "BH":
+            s.append(
+                f'<circle cx="{cx}" cy="{cy}" r="{star_r * 3}" '
+                f'fill="{_bha(star_color)}"/>'
+            )
+        if star.lum_class == "BH":
+            s.append(
+                f'<circle cx="{cx}" cy="{cy}" r="{star_r}" '
+                f'fill="{_BH_HORIZON}"/>'
+            )
+        else:
+            s.append(
+                f'<circle cx="{cx}" cy="{cy}" r="{star_r}" '
+                f'fill="{_sph(star_color)}"/>'
+            )
         if star.lum_class == "PSR":
             beam = star_r * 8
             s.append(
@@ -1288,6 +1336,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                 st_r   = _star_r_px(st.diameter, arc_zone_h)
                 if st.lum_class in ("NS", "PSR"):
                     st_r = max(st_r, _NS_GLYPH_R)
+                if st.lum_class == "BH":
+                    st_r = max(st_r, _BH_GLYPH_R)
                 smy_c  = my  # z=0 shadow y; updated in perspective block below
                 # Shadow on orbital plane (perspective mode) — flattened ellipse
                 if perspective:
@@ -1333,10 +1383,21 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                         f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{st_r * 3}" '
                         f'fill="{_nsc(st_col)}"/>'
                     )
-                s.append(
-                    f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{st_r}" '
-                    f'fill="{_sph(st_col)}"/>'
-                )
+                if st.lum_class == "BH":
+                    s.append(
+                        f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{st_r * 3}" '
+                        f'fill="{_bha(st_col)}"/>'
+                    )
+                if st.lum_class == "BH":
+                    s.append(
+                        f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{st_r}" '
+                        f'fill="{_BH_HORIZON}"/>'
+                    )
+                else:
+                    s.append(
+                        f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{st_r}" '
+                        f'fill="{_sph(st_col)}"/>'
+                    )
                 if st.lum_class == "PSR":
                     beam = st_r * 8
                     s.append(

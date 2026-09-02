@@ -32,9 +32,11 @@ from traveller_gen.traveller_system_gen import generate_full_system
 #   9277  → PSR primary
 #   38209 → NS primary
 #   13387 → Protostar primary
+#   21977 → BH primary (mass 5.1 M☉, Schwarzschild 30.09 km)
 _PSR_SEED      = 9277
 _NS_SEED       = 38209
 _PROTO_SEED    = 13387
+_BH_SEED       = 21977
 
 
 class TestCompanionStarPlacement:
@@ -245,4 +247,42 @@ class TestPulsarMapRendering:
         circles = re.findall(r'<circle\b[^/]*/>', self.svg)
         assert len(circles) >= 2, (
             f"Expected ≥ 2 circles for PSR glyph (corona + sphere), got {len(circles)}"
+        )
+
+
+class TestBlackHoleMapRendering:
+    """System map rendering for black hole primaries (seed 21977)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_BH_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_bh_accretion_gradient_in_defs(self):
+        assert 'id="bha_' in self.svg, "BH accretion disk gradient def missing from SVG <defs>"
+
+    def test_bh_arc_zone_rendered(self):
+        assert re.search(r'Star A\s+BH', self.svg), (
+            "BH primary star label not found in SVG"
+        )
+
+    def test_bh_accretion_and_horizon_circles(self):
+        # Accretion disk (r*3) + event horizon (r*1) = 2 circles minimum
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 2, (
+            f"Expected ≥ 2 circles for BH glyph (accretion disk + horizon), got {len(circles)}"
+        )
+
+    def test_bh_has_no_beam_line(self):
+        assert 'stroke-linecap="round"' not in self.svg, (
+            "BH should not have a pulsar beam line in the SVG"
+        )
+
+    def test_no_protostar_halo_in_bh_svg(self):
+        assert 'id="prh_' not in self.svg, (
+            "Protostar halo gradient should not appear in a BH system SVG"
+        )
+
+    def test_no_ns_corona_in_bh_svg(self):
+        assert 'id="nsc_' not in self.svg, (
+            "NS corona gradient should not appear in a BH system SVG"
         )
