@@ -342,6 +342,24 @@ def _sph(color: str) -> str:
     return f"url(#sph_{color[1:].upper()})"
 
 
+def _protostar_halo_def(color: str) -> str:
+    """SVG radialGradient for a diffuse protostellar envelope glow."""
+    gid = f"prh_{color[1:].upper()}"
+    return (
+        f'<radialGradient id="{gid}" cx="50%" cy="50%" r="50%">'
+        f'<stop offset="0%"   stop-color="{color}" stop-opacity="0.55"/>'
+        f'<stop offset="35%"  stop-color="{color}" stop-opacity="0.30"/>'
+        f'<stop offset="70%"  stop-color="{color}" stop-opacity="0.10"/>'
+        f'<stop offset="100%" stop-color="{color}" stop-opacity="0.00"/>'
+        f'</radialGradient>'
+    )
+
+
+def _prh(color: str) -> str:
+    """SVG fill referencing the protostar halo gradient for ``color``."""
+    return f"url(#prh_{color[1:].upper()})"
+
+
 # ---------------------------------------------------------------------------
 # World archetype textures
 # ---------------------------------------------------------------------------
@@ -859,7 +877,9 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
 
     active_stars = [
         s for s in all_stars
-        if star_groups[s.designation] or children_by_parent[s.designation]
+        if star_groups[s.designation]
+        or children_by_parent[s.designation]
+        or "Protostar" in (s.special_notes or "")
     ]
 
     # Geometry constants (arc zone is 1.5:1 width:height; available is constant across zones)
@@ -912,6 +932,9 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     )
     sph_cols      = {_star_colour(ss.spectral_type, ss.lum_class) for ss in all_stars}
     grad_defs_str = "".join(_sphere_gradient_def(c) for c in sph_cols)
+    proto_cols    = {_star_colour(ss.spectral_type, ss.lum_class)
+                     for ss in all_stars if "Protostar" in (ss.special_notes or "")}
+    proto_halo_defs = "".join(_protostar_halo_def(c) for c in proto_cols)
     s.append(
         '<defs>'
         '<filter id="shadow_blur" x="-60%" y="-60%" width="220%" height="220%">'
@@ -921,6 +944,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         + _gg_stripe_pattern_defs()
         + _SPH_OVERLAY_DEF
         + grad_defs_str
+        + proto_halo_defs
         + '</defs>'
     )
 
@@ -936,7 +960,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         # Per-star scale: cover this star's own orbits plus its own direct
         # companion(s)' orbital radii so their context arcs fit the zone.
         au_vals  = [o.orbit_au for o in group] + [st.orbit_au for st in kids]
-        max_au   = max(au_vals + [0.1])
+        au_floor = 5.0 if "Protostar" in (star.special_notes or "") else 0.1
+        max_au   = max(au_vals + [au_floor])
         target_r  = int(canvas_w * 0.75) - cx
         log_scale = max(30.0, min(canvas_w * 0.75, target_r / math.log1p(max_au)))
         max_r     = math.log1p(max_au) * log_scale
@@ -1194,6 +1219,11 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         cls_str    = (f'{star.spectral_type}'
                       f'{star.subtype if star.subtype is not None else ""} {star.lum_class}')
         star_label = f'Star {star.designation}  {cls_str}'
+        if "Protostar" in (star.special_notes or ""):
+            s.append(
+                f'<circle cx="{cx}" cy="{cy}" r="{star_r * 4}" '
+                f'fill="{_prh(star_color)}"/>'
+            )
         s.append(
             f'<circle cx="{cx}" cy="{cy}" r="{star_r}" '
             f'fill="{_sph(star_color)}"/>'
@@ -1249,6 +1279,11 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                         f' stroke-dasharray="3,3" opacity="0.75"/>'
                     )
                 # Companion star glyph — same circle logic as the primary star
+                if "Protostar" in (st.special_notes or ""):
+                    s.append(
+                        f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{st_r * 4}" '
+                        f'fill="{_prh(st_col)}"/>'
+                    )
                 s.append(
                     f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{st_r}" '
                     f'fill="{_sph(st_col)}"/>'
