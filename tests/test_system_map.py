@@ -37,6 +37,8 @@ _PSR_SEED      = 9277
 _NS_SEED       = 38209
 _PROTO_SEED    = 13387
 _BH_SEED       = 21977
+# 1001 → M primary with BD companion (B) and BD sub-companion (Ba), temp 1500K
+_BD_SEED       = 1001
 
 
 class TestCompanionStarPlacement:
@@ -285,4 +287,27 @@ class TestBlackHoleMapRendering:
     def test_no_ns_corona_in_bh_svg(self):
         assert 'id="nsc_' not in self.svg, (
             "NS corona gradient should not appear in a BH system SVG"
+        )
+
+
+class TestBrownDwarfColour:
+    """Brown dwarfs must render in a temperature-appropriate dark colour, not the yellow fallback."""
+
+    def setup_method(self):
+        # Seed 1001: M V primary with BD companion (B) and BD sub-companion (Ba),
+        # both at 1500 K → L-class colour #CC2200.
+        system = generate_full_system(seed=_BD_SEED)
+        self.svg, _ = build_svg(system)
+
+    def test_bd_l_class_colour_in_defs(self):
+        # 1500 K → L-dwarf range → colour #CC2200 → gradient id sph_CC2200
+        assert 'id="sph_CC2200"' in self.svg, (
+            "BD star (1500 K, L-class colour #CC2200) sphere gradient missing from <defs>"
+        )
+
+    def test_bd_does_not_use_yellow_fallback(self):
+        # #FFE066 is the generic fallback for unknown spectral types — must not appear
+        # as a sphere gradient when the only non-M stars are BDs.
+        assert 'id="sph_FFE066"' not in self.svg, (
+            "BD star is using the yellow fallback colour (#FFE066) instead of a BD-appropriate colour"
         )

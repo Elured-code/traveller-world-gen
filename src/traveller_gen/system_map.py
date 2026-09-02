@@ -116,14 +116,31 @@ _NS_GLYPH_R = 5                 # fixed pixel radius for NS / PSR glyphs
 _BH_GLYPH_R = 6                 # fixed pixel radius for BH (slightly larger for legibility)
 
 
-def _star_colour(spectral_type: str, lum_class: str) -> str:
-    """Return the display colour for a star given its spectral type and luminosity class."""
+def _bd_colour(temperature: int) -> str:
+    """Map a brown dwarf's effective temperature to a display colour.
+
+    Uses L/T/Y sub-class breakpoints:
+      ≥ 1300 K → L-class (deep dark red)
+      ≥  700 K → T-class (dark brown)
+       < 700 K → Y-class (very dark brown)
+    """
+    if temperature >= 1300:
+        return _SPECTRAL_COLOUR["L"]
+    if temperature >= 700:
+        return _SPECTRAL_COLOUR["T"]
+    return _SPECTRAL_COLOUR["Y"]
+
+
+def _star_colour(spectral_type: str, lum_class: str, temperature: int = 0) -> str:
+    """Return the display colour for a star given spectral type, luminosity class, and temperature."""
     if lum_class in ("NS", "PSR"):
         return _NS_COLOUR
     if lum_class == "BH":
         return _BH_COLOUR
     if lum_class == "D":
         return _WD_COLOUR
+    if lum_class == "BD":
+        return _bd_colour(temperature)
     return _SPECTRAL_COLOUR.get(spectral_type.upper(), _STAR_FALLBACK)
 
 
@@ -703,7 +720,7 @@ def _table_zone_svg(  # pylint: disable=too-many-locals,too-many-arguments,too-m
             )
 
         # Column header
-        hdr_col = _star_colour(star.spectral_type, star.lum_class)
+        hdr_col = _star_colour(star.spectral_type, star.lum_class, star.temperature)
         cls     = (f'{star.spectral_type}'
                    f'{star.subtype if star.subtype is not None else ""}'
                    f' {star.lum_class}')
@@ -752,7 +769,7 @@ def _table_zone_svg(  # pylint: disable=too-many-locals,too-many-arguments,too-m
 
             if row_kind == "comp":
                 st      = row_item
-                comp_c  = _star_colour(st.spectral_type, st.lum_class)
+                comp_c  = _star_colour(st.spectral_type, st.lum_class, st.temperature)
                 cls = (f'{st.spectral_type}'
                        f'{st.subtype if st.subtype is not None else ""} {st.lum_class}')
                 frags.append(
@@ -985,15 +1002,16 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     s.append(
         f'<rect x="0" y="0" width="{canvas_w}" height="{canvas_h}" fill="{palette.bg}"/>'
     )
-    sph_cols      = {_star_colour(ss.spectral_type, ss.lum_class) for ss in all_stars}
+    sph_cols      = {_star_colour(ss.spectral_type, ss.lum_class, ss.temperature)
+                     for ss in all_stars}
     grad_defs_str = "".join(_sphere_gradient_def(c) for c in sph_cols)
-    proto_cols    = {_star_colour(ss.spectral_type, ss.lum_class)
+    proto_cols    = {_star_colour(ss.spectral_type, ss.lum_class, ss.temperature)
                      for ss in all_stars if "Protostar" in (ss.special_notes or "")}
     proto_halo_defs = "".join(_protostar_halo_def(c) for c in proto_cols)
-    ns_cols        = {_star_colour(ss.spectral_type, ss.lum_class)
+    ns_cols        = {_star_colour(ss.spectral_type, ss.lum_class, ss.temperature)
                       for ss in all_stars if ss.lum_class in ("NS", "PSR")}
     ns_corona_defs = "".join(_ns_corona_def(c) for c in ns_cols)
-    bh_cols        = {_star_colour(ss.spectral_type, ss.lum_class)
+    bh_cols        = {_star_colour(ss.spectral_type, ss.lum_class, ss.temperature)
                       for ss in all_stars if ss.lum_class == "BH"}
     bh_accretion_defs = "".join(_bh_accretion_def(c) for c in bh_cols)
     s.append(
@@ -1110,7 +1128,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             if item["kind"] == "star":
                 ocx, ocy  = item.get("origin", (cx, cy))
                 comp_col  = _star_colour(item["obj"].spectral_type,
-                                         item["obj"].lum_class)
+                                         item["obj"].lum_class,
+                                         item["obj"].temperature)
                 comp_clip = f'clip-path="url(#{clip_id})"' if perspective else ""
                 if perspective and abs(ir) > 1e-6:
                     shp = _shadow_orbit_arc(ocx, ocy, r, e, 180.0, persp_y, ir, rot_z)
@@ -1277,7 +1296,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             )
 
         # ── Central star glyph + label (left of glyph) ───────────────────────
-        star_color = _star_colour(star.spectral_type, star.lum_class)
+        star_color = _star_colour(star.spectral_type, star.lum_class, star.temperature)
         star_r     = _star_r_px(star.diameter, arc_zone_h)
         if star.lum_class in ("NS", "PSR"):
             star_r = max(star_r, _NS_GLYPH_R)
@@ -1332,7 +1351,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
             if kind == "star":
                 st     = item["obj"]
                 ocx, ocy = item.get("origin", (cx, cy))
-                st_col = _star_colour(st.spectral_type, st.lum_class)
+                st_col = _star_colour(st.spectral_type, st.lum_class, st.temperature)
                 st_r   = _star_r_px(st.diameter, arc_zone_h)
                 if st.lum_class in ("NS", "PSR"):
                     st_r = max(st_r, _NS_GLYPH_R)
