@@ -869,7 +869,10 @@ def _generate_peculiar_star(  # pylint: disable=too-many-return-statements,too-m
     subtype = _roll_subtype(gc_spectral, use_m_column=gc_spectral == "M")
     mass, temperature, diameter, luminosity = _star_properties(gc_spectral, subtype, gc)
     ms_lifespan = _main_sequence_lifespan(mass)
-    age = _generate_system_age(mass, ms_lifespan)
+    if env_type == "Protostar":
+        age = round(_rng.uniform(0.001, 0.009), 3)
+    else:
+        age = _generate_system_age(mass, ms_lifespan)
     return Star(
         designation=designation, role="primary",
         spectral_type=gc_spectral, subtype=subtype, lum_class=gc,
