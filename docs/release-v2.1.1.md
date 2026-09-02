@@ -1,6 +1,6 @@
 # Traveller World Generator — v2.1.1 Release Notes
 
-**3428 tests pass (5 skipped). Pylint 10.00/10.**
+**3430 tests pass (5 skipped). Pylint 10.00/10.**
 
 Schema maintenance release adding `traveller_system_schema.json` — a
 machine-readable JSON Schema 2020-12 contract for system-level API output.
@@ -51,6 +51,24 @@ validating system output.
 
 ---
 
+## Protostar Characterisation — WBH p.219 Full Rules (Session 197)
+
+Replaces the Giants-class fallback for Protostar environment primaries with the
+full WBH p.219 procedure.
+
+- **Type:** Star Type table roll with DM+1; treated as Class V (not a Giant).
+- **Mass:** ±50% variance from the Class V base value.
+- **Diameter:** Class V base × `(1 + (2D−2) ÷ 10)`, giving a 1.0–2.0× range.
+- **Luminosity:** recomputed from the modified diameter via the Stefan-Boltzmann formula.
+- **Companion stars:** all other stars in a Protostar system are also generated as
+  protostars, per WBH: "if the primary star is a protostar, any other stars in the
+  system are also protostars."
+
+Nebula, Star Cluster, and Anomaly environment types continue to use the Giants-class
+fallback. Age cap (< 0.01 Gyr) and empty-world rule are unchanged.
+
+---
+
 ## Bug Fixes (Session 197)
 
 ### Unusual Stars: environment-type primaries now display in Stars table
@@ -79,9 +97,10 @@ surviving planetary system.
 
 ## Tests
 
-3428 tests pass (5 skipped). New tests since v2.1.0:
+3430 tests pass (5 skipped). New tests since v2.1.0:
 
-- `tests/test_system_schema.py` — 40 tests covering schema integrity,
+- `tests/test_system_schema.py` — 42 tests (was 40) covering schema integrity,
   structural correctness, and jsonschema 2020-12 validation for a broad seed
   range including normal, multi-star, unusual-stars, and environment-type
-  systems.
+  systems. Added `test_protostar_primary_is_class_v` and
+  `test_protostar_companions_also_protostar`.

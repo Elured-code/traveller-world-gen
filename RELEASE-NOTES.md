@@ -6,6 +6,33 @@
 
 ---
 
+## Protostar Characterisation — WBH p.219 Full Rules (Session 197)
+
+Replaces the Giants-class fallback for Protostar environment primaries with the
+full WBH p.219 procedure. Nebula, Star Cluster, and Anomaly keep the Giants fallback.
+
+**`traveller_stellar_gen.py` — new `_generate_protostar(designation, role="primary")` helper:**
+- Spectral type: Star Type table roll with DM+1 → Class V treatment (same procedure as
+  Class VI / Class IV re-rolls; pushes distribution toward hotter types).
+- Mass: `mass_base × uniform(0.5, 1.5)` — ±50% variance from the Class V base value.
+- Diameter: `diameter_v × (1 + roll(2, −2) / 10)` — Class V base × 1.0–2.0×.
+- Luminosity: recomputed via Stefan-Boltzmann from the modified diameter (`L ∝ D²T⁴`).
+- Age: `uniform(0.001, 0.009)` Gyr for primary; `None` for companions (inherit from primary
+  via the age propagation loop in `generate_stellar_data()`).
+
+**`_generate_peculiar_star()` updated:** Protostar env_type now routes to `_generate_protostar()`
+before the Giants fallback block. Giants fallback only fires for Nebula, Star Cluster, Anomaly.
+
+**`generate_stellar_data()` updated:** `is_protostar_env` flag; secondary stars and companions
+generated via `_generate_protostar()` instead of `_determine_non_primary_type()` when set.
+Implements WBH rule: "any other stars in the system are also protostars."
+
+**Tests:** 2 new structural tests (`test_protostar_primary_is_class_v`,
+`test_protostar_companions_also_protostar`); 2 existing Giants-assertion tests updated to
+exclude Protostar; 2 Protostar-specific replacement tests added. 3430 tests pass.
+
+---
+
 ## Post-Stellar Remnant Characterization and Dead Star Orbits (Session 196, Issue #21 Phases 2–4)
 
 Completes the WBH p.219 Unusual Stars implementation with dice-rolled physical properties

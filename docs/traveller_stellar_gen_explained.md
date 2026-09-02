@@ -162,8 +162,17 @@ dedicated helper functions replace the standard table lookups:
 
 **Pulsar (PSR):** same dice as neutron star; `spectral_type = "PSR"`, `lum_class = "PSR"`
 
-Environment types (Nebula, Protostar, Star Cluster, Anomaly) fall back to a Giants-class
-star with `special_notes` describing the environment — WBH implies no dedicated host star.
+**Protostar (`_generate_protostar(designation, role)`):**
+- Spectral type: Star Type table with DM+1 → Class V (same re-roll used for Class VI/IV).
+- Mass: `mass_base × uniform(0.5, 1.5)` — ±50% variance.
+- Diameter: `diameter_v × (1 + roll(2, −2) / 10)` — Class V base × 1.0–2.0×.
+- Luminosity: recomputed from the modified diameter via Stefan-Boltzmann (`L ∝ D²T⁴`).
+- Age: `uniform(0.001, 0.009)` Gyr for primary; `None` for companion stars (inherited from
+  primary via the age propagation loop in `generate_stellar_data()`).
+- All other stars in the system are also generated as protostars.
+
+Nebula, Star Cluster, and Anomaly environments fall back to a Giants-class star with
+`special_notes` describing the environment — WBH implies no dedicated host star for these.
 
 ---
 

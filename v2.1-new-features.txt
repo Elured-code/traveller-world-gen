@@ -54,8 +54,10 @@ Possible results include:
   radiation zone.
 - Black Hole (BH) — exploding-die mass roll; Schwarzschild diameter calculated
   from mass; no temperature or luminosity.
-- Nebula, Protostar, Star Cluster, Anomaly — exotic environments with a
-  Giants-class host star and descriptive notes.
+- Nebula, Star Cluster, Anomaly — exotic environments with a Giants-class host
+  star and descriptive notes.
+- Protostar — a pre-main-sequence star with full WBH p.219 physical rules
+  (see Protostar Characterisation below).
 
 When the primary is a dead star, the generator first checks whether a planetary
 system survived the stellar death event. If it did, world counts are adjusted
@@ -94,6 +96,30 @@ The desktop app gains a Freight button in both system mode and world-only mode,
 next to the Cargo button. Clicking it opens a Freight window — a compact table
 with Tier, Lots, and Total Tons columns. Multiple freight windows can be open
 at once.
+
+PROTOSTAR CHARACTERISATION (WBH p.219)
+--------------------------------------
+When an Unusual Stars result produces a Protostar primary, the star is now
+characterised using the full World Builder's Handbook rules rather than a
+placeholder Giants-class star.
+
+The protostar's spectral type and subtype are determined by a roll on the Star
+Type table with DM+1, placing it on the main sequence (Class V). Its mass has
+a ±50% random variance from the standard Class V value. Its diameter is the
+Class V baseline multiplied by a random factor between 1.0 and 2.0, simulating
+the bloated, still-contracting envelope of a young star. Luminosity is
+recomputed from the modified diameter.
+
+Any other stars in the system — close companions, wide companions — are also
+generated as protostars following the same rules (WBH: "if the primary star is
+a protostar, any other stars in the system are also protostars").
+
+The Stars table in the system card now shows the correct spectral type (e.g.
+"K5 V") rather than a Giant classification. The Peculiar environment note
+("Peculiar environment: Protostar") remains visible in the Note column.
+
+The age cap (< 0.01 Gyr) and the rule that no worlds exist in a protostar
+system are unchanged.
 
 BUG FIXES
 ---------
