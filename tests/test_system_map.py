@@ -28,6 +28,14 @@ import re
 from traveller_gen.system_map import build_svg
 from traveller_gen.traveller_system_gen import generate_full_system
 
+# Fixed seeds for unusual-star map tests (verified with unusual_stars=True):
+#   9277  → PSR primary
+#   38209 → NS primary
+#   13387 → Protostar primary
+_PSR_SEED      = 9277
+_NS_SEED       = 38209
+_PROTO_SEED    = 13387
+
 
 class TestCompanionStarPlacement:
     """Regression tests for issue #171."""
@@ -129,4 +137,111 @@ class TestCompanionStarPlacement:
         aa_y = float(m.group(1))
         assert 0 <= aa_y < arc_zone_h, (
             "Aa's marker should stay in the primary's (A's) arc zone"
+        )
+
+
+class TestProtostarMapRendering:
+    """System map rendering for protostar primaries (seed 13387)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_PROTO_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_protostar_halo_gradient_in_defs(self):
+        assert 'id="prh_' in self.svg, "Protostar halo gradient def missing from SVG <defs>"
+
+    def test_protostar_arc_zone_rendered(self):
+        # Primary star label must appear — confirms arc zone was drawn
+        assert re.search(r'Star A\s+\w', self.svg), (
+            "Protostar primary star label not found in SVG"
+        )
+
+    def test_protostar_sphere_present(self):
+        # At least two circles: halo (r*4) + solid sphere (r*1)
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 2, (
+            f"Expected ≥ 2 circles for protostar glyph, got {len(circles)}"
+        )
+
+    def test_no_ns_corona_in_protostar_svg(self):
+        assert 'id="nsc_' not in self.svg, (
+            "NS corona gradient should not appear in a protostar system SVG"
+        )
+
+    def test_no_psr_beam_in_protostar_svg(self):
+        assert 'stroke-linecap="round"' not in self.svg, (
+            "PSR beam line should not appear in a protostar system SVG"
+        )
+
+
+class TestNeutronStarMapRendering:
+    """System map rendering for neutron star primaries (seed 38209)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_NS_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_ns_corona_gradient_in_defs(self):
+        assert 'id="nsc_' in self.svg, "NS corona gradient def missing from SVG <defs>"
+
+    def test_ns_arc_zone_rendered(self):
+        assert re.search(r'Star A\s+NS', self.svg), (
+            "NS primary star label not found in SVG"
+        )
+
+    def test_ns_corona_and_sphere_circles(self):
+        # Corona (r*3) + solid sphere (r*1) = 2 circles minimum
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 2, (
+            f"Expected ≥ 2 circles for NS glyph (corona + sphere), got {len(circles)}"
+        )
+
+    def test_ns_has_no_beam_line(self):
+        assert 'stroke-linecap="round"' not in self.svg, (
+            "NS should not have a pulsar beam line in the SVG"
+        )
+
+    def test_no_protostar_halo_in_ns_svg(self):
+        assert 'id="prh_' not in self.svg, (
+            "Protostar halo gradient should not appear in an NS system SVG"
+        )
+
+
+class TestPulsarMapRendering:
+    """System map rendering for pulsar primaries (seed 9277)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_PSR_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_psr_corona_gradient_in_defs(self):
+        assert 'id="nsc_' in self.svg, "PSR corona gradient def missing from SVG <defs>"
+
+    def test_psr_arc_zone_rendered(self):
+        assert re.search(r'Star A\s+PSR', self.svg), (
+            "PSR primary star label not found in SVG"
+        )
+
+    def test_psr_beam_line_present(self):
+        assert 'stroke-linecap="round"' in self.svg, (
+            "PSR beam line (stroke-linecap=round) not found in SVG"
+        )
+
+    def test_psr_beam_is_horizontal(self):
+        # Beam is a <line y1="..." y2="..."> where y1 == y2 (horizontal)
+        m = re.search(
+            r'<line[^>]*stroke-linecap="round"[^>]*/>', self.svg
+        )
+        assert m is not None, "Beam line element not found"
+        y1 = re.search(r'y1="([\d.]+)"', m.group())
+        y2 = re.search(r'y2="([\d.]+)"', m.group())
+        assert y1 and y2, "Beam line missing y1 or y2"
+        assert abs(float(y1.group(1)) - float(y2.group(1))) < 1.0, (
+            f"Beam line is not horizontal: y1={y1.group(1)}, y2={y2.group(1)}"
+        )
+
+    def test_psr_corona_and_sphere_circles(self):
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 2, (
+            f"Expected ≥ 2 circles for PSR glyph (corona + sphere), got {len(circles)}"
         )

@@ -269,6 +269,12 @@ class TestSystemSchemaValidation:
     def test_unusual_stars_protostar_passes(self):
         self._validate(_generate(13387, unusual_stars=True))
 
+    def test_unusual_stars_ns_passes(self):
+        self._validate(_generate(38209, unusual_stars=True))
+
+    def test_unusual_stars_psr_passes(self):
+        self._validate(_generate(9277, unusual_stars=True))
+
     def test_unusual_stars_nebula_passes(self):
         self._validate(_generate(2689, unusual_stars=True))
 

@@ -903,6 +903,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         if star_groups[s.designation]
         or children_by_parent[s.designation]
         or "Protostar" in (s.special_notes or "")
+        or s.lum_class in ("NS", "PSR")
     ]
 
     # Geometry constants (arc zone is 1.5:1 width:height; available is constant across zones)

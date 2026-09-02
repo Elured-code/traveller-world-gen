@@ -239,6 +239,15 @@ class TestNeutronStarCharacterization:
             star = _make_peculiar(seed, "Neutron Star")
             assert star.temperature > 0
 
+    def test_subtype_none(self):
+        star = _make_peculiar(1, "Neutron Star")
+        assert star.subtype is None
+
+    def test_luminosity_positive(self):
+        for seed in range(20):
+            star = _make_peculiar(seed, "Neutron Star")
+            assert star.luminosity > 0, f"seed {seed}: NS luminosity should be > 0"
+
     def test_roundtrip(self):
         star = _make_peculiar(5, "Neutron Star")
         d = star.to_dict()
@@ -269,6 +278,20 @@ class TestPulsarCharacterization:
         for seed in range(50):
             star = _make_peculiar(seed, "Pulsar")
             assert lo <= star.diameter <= hi
+
+    def test_temperature_positive(self):
+        for seed in range(20):
+            star = _make_peculiar(seed, "Pulsar")
+            assert star.temperature > 0, f"seed {seed}: PSR temperature should be > 0"
+
+    def test_subtype_none(self):
+        star = _make_peculiar(1, "Pulsar")
+        assert star.subtype is None
+
+    def test_luminosity_positive(self):
+        for seed in range(20):
+            star = _make_peculiar(seed, "Pulsar")
+            assert star.luminosity > 0, f"seed {seed}: PSR luminosity should be > 0"
 
     def test_roundtrip(self):
         star = _make_peculiar(7, "Pulsar")
@@ -312,6 +335,113 @@ class TestEnvironmentTypesUnchanged:
         star = _generate_peculiar_star("A", env_key, "Giants_env")
         sg._rng = old_rng  # pylint: disable=protected-access
         assert star.spectral_type not in ("NS", "BH", "PSR")
+
+
+# ---------------------------------------------------------------------------
+# Protostar physical characterisation (WBH p.219)
+# ---------------------------------------------------------------------------
+
+def _make_protostar(seed: int, role: str = "primary") -> Star:
+    """Generate a protostar via _generate_protostar with a seeded RNG."""
+    import traveller_gen.traveller_stellar_gen as sg
+    from traveller_gen.traveller_stellar_gen import _generate_protostar  # pylint: disable=protected-access
+    old_rng = sg._rng  # pylint: disable=protected-access
+    sg._rng = random.Random(seed)  # pylint: disable=protected-access
+    star = _generate_protostar("A", role=role)
+    sg._rng = old_rng  # pylint: disable=protected-access
+    return star
+
+
+class TestProtostarCharacterization:
+    _VALID_SPECTRAL = ("O", "B", "A", "F", "G", "K", "M")
+
+    def test_lum_class_v(self):
+        for seed in range(20):
+            star = _make_protostar(seed)
+            assert star.lum_class == "V", f"seed {seed}: protostar lum_class should be V"
+
+    def test_spectral_type_main_sequence(self):
+        for seed in range(20):
+            star = _make_protostar(seed)
+            assert star.spectral_type in self._VALID_SPECTRAL, (
+                f"seed {seed}: unexpected protostar spectral type {star.spectral_type!r}"
+            )
+
+    def test_special_notes(self):
+        star = _make_protostar(1)
+        assert "Peculiar environment: Protostar" in star.special_notes
+
+    def test_mass_positive(self):
+        for seed in range(20):
+            star = _make_protostar(seed)
+            assert star.mass > 0, f"seed {seed}: protostar mass should be > 0"
+
+    def test_mass_within_50pct_of_class_v_base(self):
+        """Mass should be 0.5–1.5× the Class V base for the rolled spectral type."""
+        import traveller_gen.traveller_stellar_gen as sg
+        from traveller_gen.traveller_stellar_gen import _star_properties  # pylint: disable=protected-access
+        for seed in range(30):
+            star = _make_protostar(seed)
+            mass_base, _, _, _ = _star_properties(star.spectral_type, star.subtype, "V")
+            lo = mass_base * 0.5 - 0.001   # rounding tolerance
+            hi = mass_base * 1.5 + 0.001
+            assert lo <= star.mass <= hi, (
+                f"seed {seed}: protostar mass {star.mass} outside "
+                f"[{lo:.3f}, {hi:.3f}] for {star.spectral_type}{star.subtype} V base {mass_base}"
+            )
+
+    def test_diameter_at_least_class_v_base(self):
+        """Diameter multiplier is 1.0–2.0×, so diameter >= Class V base."""
+        import traveller_gen.traveller_stellar_gen as sg
+        from traveller_gen.traveller_stellar_gen import _star_properties  # pylint: disable=protected-access
+        for seed in range(30):
+            star = _make_protostar(seed)
+            _, _, diam_v, _ = _star_properties(star.spectral_type, star.subtype, "V")
+            assert star.diameter >= diam_v - 0.001, (
+                f"seed {seed}: protostar diameter {star.diameter} < Class V base {diam_v}"
+            )
+
+    def test_diameter_at_most_twice_class_v_base(self):
+        """Diameter multiplier caps at 2.0×."""
+        import traveller_gen.traveller_stellar_gen as sg
+        from traveller_gen.traveller_stellar_gen import _star_properties  # pylint: disable=protected-access
+        for seed in range(30):
+            star = _make_protostar(seed)
+            _, _, diam_v, _ = _star_properties(star.spectral_type, star.subtype, "V")
+            assert star.diameter <= diam_v * 2.0 + 0.001, (
+                f"seed {seed}: protostar diameter {star.diameter} > 2× Class V base {diam_v}"
+            )
+
+    def test_luminosity_positive(self):
+        for seed in range(20):
+            star = _make_protostar(seed)
+            assert star.luminosity > 0, f"seed {seed}: protostar luminosity should be > 0"
+
+    def test_primary_age_in_range(self):
+        """Primary protostar age: 0.001–0.009 Gyr."""
+        for seed in range(20):
+            star = _make_protostar(seed, role="primary")
+            assert star.age_gyr is not None, f"seed {seed}: primary protostar age should not be None"
+            assert 0.001 <= star.age_gyr <= 0.009, (
+                f"seed {seed}: protostar age {star.age_gyr} outside [0.001, 0.009]"
+            )
+
+    def test_companion_age_none(self):
+        """Companion protostar age_gyr is None before propagation from primary."""
+        for seed in range(10):
+            star = _make_protostar(seed, role="companion")
+            assert star.age_gyr is None, (
+                f"seed {seed}: companion protostar age should be None before propagation"
+            )
+
+    def test_roundtrip(self):
+        star = _make_protostar(3)
+        d = star.to_dict()
+        restored = Star.from_dict(d)
+        assert restored.lum_class == "V"
+        assert restored.spectral_type == star.spectral_type
+        assert math.isclose(restored.mass, star.mass, rel_tol=1e-3)
+        assert math.isclose(restored.luminosity, star.luminosity, rel_tol=1e-3)
 
 
 # ---------------------------------------------------------------------------
