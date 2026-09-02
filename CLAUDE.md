@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-09-01 (Session 196)  
+**Last updated:** 2026-09-02 (Session 197)  
 **Branch:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -87,6 +87,8 @@ After any session in which code, APIs, tests, or documented behaviour change:
 | TravellerMap fetch behaviour changed | `context/map-fetch.md` |
 | Pylint suppression pattern added | `context/common.md` |
 | Starport detail tables or formulas changed | `context/starport-detail.md` |
+| `traveller_world_schema.json` changed | Bump patch version in `world_codes.py` + `fastapi/app.py`; create `docs/release-vX.Y.Z.md` |
+| `traveller_system_schema.json` changed | Bump patch version in `world_codes.py` + `fastapi/app.py`; create `docs/release-vX.Y.Z.md` |
 
 4. Update `RELEASE-NOTES.md` with a summary of new features, bug fixes, and test
    count changes. Add a new version section when shipping to `main`; append to the
