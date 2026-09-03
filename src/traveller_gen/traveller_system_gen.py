@@ -545,6 +545,18 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 ordered_rows.extend(_local_items(own_desig))
         orbit_rows = ordered_rows
 
+        sc = self.stellar_system.star_cluster
+        star_cluster_ctx = None
+        if sc is not None:
+            star_cluster_ctx = {
+                "age_gyr": f"{sc.age_gyr:.3f}",
+                "single_hex": sc.single_hex,
+                "hex_diameter": sc.hex_diameter,
+                "system_count": sc.system_count,
+                "merged_star": sc.merged_star,
+                "jump_restriction": sc.jump_restriction,
+            }
+
         return {
             "title": (mw.name if mw else "Unknown") + " system",
             "star_classes": " + ".join(
@@ -555,6 +567,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             "star_rows": star_rows,
             "orbit_rows": orbit_rows,
             "detail_attached": detail_attached,
+            "star_cluster": star_cluster_ctx,
             "json_str": self.to_json(),
         }
 
@@ -1362,7 +1375,8 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
 
     # Step 2: Orbits and mainworld orbit selection
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
-                             orbital_inclination=orbital_inclination, rng=rng)
+                             orbital_inclination=orbital_inclination,
+                             cluster=stellar.star_cluster, rng=rng)
 
     mw_orbit = orbits.mainworld_orbit
     mainworld = None
@@ -1427,7 +1441,8 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
 
     stellar = generate_stellar_data(rng=rng, unusual_stars=unusual_stars)
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
-                             orbital_inclination=orbital_inclination, rng=rng)
+                             orbital_inclination=orbital_inclination,
+                             cluster=stellar.star_cluster, rng=rng)
 
     from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     _twg._rng = rng  # pylint: disable=protected-access

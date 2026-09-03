@@ -45,7 +45,7 @@ import random
 _rng: random.Random = random  # type: ignore[assignment]
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
-from .traveller_stellar_gen import Star, StarSystem, _orbit_to_au, ORBIT_AU
+from .traveller_stellar_gen import Star, StarSystem, StarCluster, _orbit_to_au, ORBIT_AU
 if TYPE_CHECKING:
     from .traveller_world_detail import WorldDetail
 
@@ -524,6 +524,7 @@ class SystemOrbits:  # pylint: disable=too-many-instance-attributes
 def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
                     orbital_eccentricity: bool = False,
                     orbital_inclination: bool = False,
+                    cluster: Optional[StarCluster] = None,
                     rng: Optional[random.Random] = None) -> SystemOrbits:
     """Generate all orbit slots for a star system (WBH pp.36-51)."""
     global _rng  # pylint: disable=global-statement
@@ -548,11 +549,20 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
            for env in ("Protostar", "Nebula", "Anomaly")):
         return result  # empty system
 
+    # Merged-star cluster: primary has left the main sequence, disrupting the system.
+    # Apply reduced world counts (DM-2) and more eccentric orbits (DM+2) (issue #182).
+    merged_cluster = cluster is not None and cluster.merged_star
+
     # World counts (WBH p.36-37)
     if is_dead_star_primary:
         # Dead star: gas giant absent on 6+, belt absent on 6+, terrestrial 1D-2
         gg = 0 if roll(2) >= 6 else 1
         belts = 0 if roll(2) >= 6 else 1
+        tp = max(0, _rng.randint(1, 6) - 2)
+    elif merged_cluster:
+        # Merged-star cluster: reduced world counts (DM-2 applied to all count rolls)
+        gg = 0 if roll(2, -2) >= 6 else 1
+        belts = 0 if roll(2, -2) >= 6 else 1
         tp = max(0, _rng.randint(1, 6) - 2)
     else:
         if roll(2) <= 9:
@@ -983,6 +993,7 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
         age = system.stars[0].age_gyr or 0.0
         primary_desig = system.stars[0].designation
 
+        cluster_ecc_dm = 2 if merged_cluster else 0
         for o in result.orbits:
             if o.world_type == "empty":
                 continue
@@ -997,13 +1008,14 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
                 o.orbit_number, age,
                 extra_stars=extra,
                 is_belt=(o.world_type == "belt"),
-                anomaly_dm=_ANOM_ECC_DM.get(o.anomaly_type, 0),
+                anomaly_dm=_ANOM_ECC_DM.get(o.anomaly_type, 0) + cluster_ecc_dm,
             )
 
         for s in system.stars:
             if s.role in ("close", "near", "far") and s.orbit_number is not None:
                 s.orbit_eccentricity = roll_eccentricity(
-                    s.orbit_number, age, is_star=True
+                    s.orbit_number, age, is_star=True,
+                    anomaly_dm=cluster_ecc_dm,
                 )
 
     # ── Orbital inclination (WBH p.28) — only when flag is set ──────────────

@@ -153,6 +153,21 @@ pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
     </tbody>
   </table></div>
 
+  {% if star_cluster %}
+  <div class="section-title">Star Cluster</div>
+  <div class="table-scroll"><table>
+    <thead><tr><th>Age</th><th>Extent</th><th>Hex Ø</th><th>Systems</th><th>Merged Star</th><th>Jump Restriction</th></tr></thead>
+    <tbody><tr>
+      <td class="mono">{{ star_cluster.age_gyr }} Gyr</td>
+      <td class="mono">{{ "Single-hex" if star_cluster.single_hex else "Multi-hex" }}</td>
+      <td class="mono">{{ star_cluster.hex_diameter }}</td>
+      <td class="mono">{{ star_cluster.system_count }}</td>
+      <td class="mono">{{ "Yes" if star_cluster.merged_star else "No" }}</td>
+      <td class="mono">{{ star_cluster.jump_restriction or "None" }}</td>
+    </tr></tbody>
+  </table></div>
+  {% endif %}
+
   <details>
     <summary>Raw JSON</summary>
     <pre>{{ json_str }}</pre>

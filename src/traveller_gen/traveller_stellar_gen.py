@@ -17,7 +17,6 @@ World Builder's Handbook (WBH), covering:
   • Non-primary star type determination (p.29) — Random, Lesser, Sibling, Twin
 
 Out of scope (Special Circumstances chapter, p.219+):
-  • Full Star Cluster multi-system generation (issue #182)
   • Eccentricity calculation for stellar orbits
   • Habitable zone orbit placement (requires full system generation)
 
@@ -54,6 +53,7 @@ import json
 import math
 import random
 _rng: random.Random = random  # type: ignore[assignment]
+_pending_star_cluster: Optional["StarCluster"] = None  # pylint: disable=invalid-name
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -539,6 +539,7 @@ class StarSystem:
     """Holds all generated stellar data for one system."""
 
     stars: List[Star] = field(default_factory=list)
+    star_cluster: Optional[StarCluster] = field(default=None)
 
     @property
     def primary(self) -> Star:
@@ -552,11 +553,14 @@ class StarSystem:
 
     def to_dict(self) -> dict:
         """Serialise this star system to a JSON-compatible dict."""
-        return {
+        d: dict = {
             "star_count": len(self.stars),
             "age_gyr": round(self.age_gyr, 3) if self.age_gyr is not None else None,
             "stars": [s.to_dict() for s in self.stars],
         }
+        if self.star_cluster is not None:
+            d["star_cluster"] = self.star_cluster.to_dict()
+        return d
 
     def to_json(self, indent: int = 2) -> str:
         """Serialise this star system to a JSON string."""
@@ -565,7 +569,11 @@ class StarSystem:
     @classmethod
     def from_dict(cls, d: dict) -> "StarSystem":
         """Reconstruct a StarSystem from a dict produced by to_dict()."""
-        return cls(stars=[Star.from_dict(s) for s in d.get("stars", [])])
+        system = cls(stars=[Star.from_dict(s) for s in d.get("stars", [])])
+        sc_d = d.get("star_cluster")
+        if sc_d:
+            system.star_cluster = StarCluster.from_dict(sc_d)
+        return system
 
     def summary(self) -> str:
         """Return a human-readable summary of this star system."""
@@ -600,6 +608,45 @@ class StarSystem:
                 lines.append(f"       Note: {star.special_notes}")
         lines.append("=" * 60)
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# StarCluster dataclass (issue #182)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class StarCluster:
+    """Star Cluster metadata for a Peculiar environment: Star Cluster system (WBH p.219)."""
+
+    age_gyr: float
+    single_hex: bool
+    hex_diameter: int       # 1 if single_hex, else 1D+1 (2-7)
+    system_count: int       # 2D+5 for centre hex
+    merged_star: bool       # primary ms_lifespan_gyr < age_gyr
+    jump_restriction: str   # "Jump-2 minimum" for multi-hex clusters, "" otherwise
+
+    def to_dict(self) -> dict:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "age_gyr": round(self.age_gyr, 3),
+            "single_hex": self.single_hex,
+            "hex_diameter": self.hex_diameter,
+            "system_count": self.system_count,
+            "merged_star": self.merged_star,
+            "jump_restriction": self.jump_restriction,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StarCluster":
+        """Reconstruct from a dict produced by to_dict()."""
+        return cls(
+            age_gyr=float(d["age_gyr"]),
+            single_hex=bool(d["single_hex"]),
+            hex_diameter=int(d["hex_diameter"]),
+            system_count=int(d["system_count"]),
+            merged_star=bool(d["merged_star"]),
+            jump_restriction=str(d.get("jump_restriction", "")),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -853,6 +900,30 @@ def _generate_cluster_age() -> float:
     return round(_rng.randint(1, 6) * _rng.randint(1, 6) * 0.05, 3)
 
 
+def _roll_star_cluster_meta(age_gyr: float, primary: Star) -> StarCluster:
+    """Roll Star Cluster hex and population metadata (WBH p.219, issue #182)."""
+    single_hex = _rng.randint(1, 6) < 4   # 1-3 → single-hex; 4-6 → multi-hex
+    if single_hex:
+        hex_diameter = 1
+        jump_restriction = ""
+    else:
+        hex_diameter = _rng.randint(1, 6) + 1
+        jump_restriction = "Jump-2 minimum"
+    system_count = roll(2) + 5
+    merged = (
+        primary.ms_lifespan_gyr is not None
+        and primary.ms_lifespan_gyr < age_gyr
+    )
+    return StarCluster(
+        age_gyr=age_gyr,
+        single_hex=single_hex,
+        hex_diameter=hex_diameter,
+        system_count=system_count,
+        merged_star=merged,
+        jump_restriction=jump_restriction,
+    )
+
+
 def _generate_young_star_env(designation: str, notes: str) -> Star:
     """
     Generate a young Class V star for Nebula and Star Cluster environments.
@@ -927,7 +998,10 @@ def _generate_peculiar_star(  # pylint: disable=too-many-return-statements,too-m
 
     # Star Cluster: one representative system within a cluster; worlds form normally.
     if env_type == "Star Cluster":
-        return _generate_young_star_env(designation, "Peculiar environment: Star Cluster")
+        global _pending_star_cluster  # pylint: disable=global-statement
+        star = _generate_young_star_env(designation, "Peculiar environment: Star Cluster")
+        _pending_star_cluster = _roll_star_cluster_meta(star.age_gyr or 0.0, star)
+        return star
 
     # Anomaly: referee-defined; keep Giants fallback as a background illumination object.
     notes = "Peculiar environment: Anomaly"
@@ -1356,7 +1430,7 @@ def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,
 
     Returns a StarSystem with all stars populated.
     """
-    global _rng  # pylint: disable=global-statement
+    global _rng, _pending_star_cluster  # pylint: disable=global-statement
     if rng is not None:
         _rng = rng
     system = StarSystem()
@@ -1366,6 +1440,10 @@ def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,
     primary.orbit_number = 0.0
     primary.orbit_au = 0.0
     system.stars.append(primary)
+    # Collect Star Cluster metadata set by _generate_peculiar_star() (issue #182)
+    if _pending_star_cluster is not None:
+        system.star_cluster = _pending_star_cluster
+        _pending_star_cluster = None
     is_protostar_env = "Protostar" in primary.special_notes
 
     multi_dm = _multiple_star_dm(primary)
