@@ -1,8 +1,37 @@
-# Release Notes — v2.0.0 (draft)
+# Release Notes — v2.1.x (draft)
 
-**Branch:** `v2.0`
+**Branch:** `v2.1`
 **Sessions:** 178–
-**Tests:** 3463
+**Tests:** 3476
+
+---
+
+## System Schema — Full Implementation (Session 199)
+
+`traveller_system_schema.json` was a minimal skeleton from Session 197 (correct
+structure but properties defined as bare `{type}` only, no descriptions, no
+constraints). This session fully populated every `$def`:
+
+- **`Star`**: all 18 always-present fields with types, descriptions, and
+  constraints (e.g. `temperature_k ≥ 0` to allow BH temperature=0;
+  `spectral_type` enum covers O/B/A/F/G/K/M/D/BD/NS/PSR/BH; `luminosity_class`
+  enum matches); 5 optional fields (`orbit_eccentricity`, `orbit_au_min/max`,
+  `orbit_inclination`, `bh_schwarzschild_km`) with conditionality notes.
+- **`StarZone`**: 4 fields (`mao`, `hzco`, `hz_inner`, `hz_outer`) with
+  descriptions matching WBH terminology.
+- **`OrbitSlot`**: 10 always-present fields + 11 optional fields. Bug found and
+  fixed: `slot_index` minimum must be 0 (not 1) — anomalous orbit slots receive
+  `slot_index = 0` from `generate_orbits()`. `radiation_zone` uses `const: true`
+  (only emitted when True). `gg_sah` uses pattern `^G[SML][0-9A-J]$`. `detail`
+  and `mainworld_orbit` both `$ref` to `traveller_world_schema.json`.
+- **Top-level**: all 18 required fields plus optional `seed`; descriptions
+  include the query-parameter names needed to reproduce output.
+
+All 44 schema tests pass (including full jsonschema Draft202012 validation against
+BH, NS, PSR, Protostar, Nebula, Star Cluster, Anomaly, and 30 normal seeds).
+Version bumped to 2.1.2. GitHub issue #184 opened for Nebula/Star Cluster/Anomaly
+proper characterisation. `context/common.md` updated: branch v1.5.0→v2.1, test
+count 2734→3476, full test-file inventory added.
 
 ---
 
