@@ -183,6 +183,20 @@ inside the Roche limit (see `traveller_moon_gen_explained.md`).
 
 ---
 
+## Empty-system environments (WBH p.219)
+
+Beyond dead stars, three peculiar environment types also cause `generate_orbits()` to
+return an empty `SystemOrbits` immediately:
+
+- **Protostar** — protoplanetary disk only; no formed worlds yet
+- **Nebula** — star-forming cloud; planetary accretion not yet complete
+- **Anomaly** — referee-defined; no standard world generation applies
+
+Detection: `any(env in primary.special_notes for env in ("Protostar", "Nebula", "Anomaly"))`.
+Star Cluster does **not** return early — its young Class V primary has a normal planetary system.
+
+---
+
 ## Dead star system rules (WBH p.219)
 
 When `generate_orbits()` detects that the primary is a dead star (NS, BH, PSR,

@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03  
 **Branch:** v2.1 → main  
-**Tests:** 3,476 (all pass)
+**Tests:** 3,485 (all pass)
 
 ## New features
 
@@ -25,6 +25,18 @@ Full validation test suite already present prior to this release; confirms schem
 - Unusual-star seeds covering BH, NS, PSR, Protostar, Nebula, Star Cluster, Anomaly
 - Systems with eccentricity, inclination, and radiation zones enabled
 - Negative tests: missing required fields and invalid enum values produce schema errors
+
+### Nebula and Star Cluster proper characterisation (issue #184)
+
+Replaces the Giants-class fallback for Nebula and Star Cluster peculiar environments
+with dedicated young Class V star generation (WBH p.219). Anomaly retains Giants fallback.
+
+- `_generate_cluster_age()` rolls 1D×1D×50 Myr → Gyr (max 1.80 Gyr)
+- `_generate_young_star_env()` produces a Class V primary with cluster age and a
+  DM+1 bias toward hotter spectral types for very young clusters (age < 0.2 Gyr)
+- Nebula systems return empty orbit lists (no formed worlds)
+- Star Cluster systems generate worlds normally
+- Anomaly systems return empty orbit lists (existing behaviour, now made explicit)
 
 ## Bug fixes
 

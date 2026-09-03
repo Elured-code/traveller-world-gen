@@ -20,8 +20,12 @@ system: StarSystem = generate_stellar_data(rng=None, unusual_stars=False)
 When `unusual_stars=True`, the Unusual column (WBH p.219) is used instead of
 the Special column for primary type determination on a roll ≤ 2. This can
 produce NS, PSR, BH, or environment types (Nebula, Protostar, Star Cluster,
-Anomaly). Protostar uses full WBH p.219 characterisation via `_generate_protostar()`;
-Nebula, Star Cluster, and Anomaly fall back to a Giants star with `special_notes`.
+Anomaly). Routing (Issue #184, Session 200):
+
+- **Protostar** → `_generate_protostar()` (full WBH p.219 rules; Class V, age 0.001–0.009 Gyr)
+- **Nebula** → `_generate_young_star_env()` (Class V, cluster age ≤ 1.80 Gyr, no worlds)
+- **Star Cluster** → `_generate_young_star_env()` (Class V, cluster age ≤ 1.80 Gyr, worlds normal)
+- **Anomaly** → Giants fallback (referee-defined; Class Ia/Ib/II/III, no worlds)
 
 Post-stellar remnant helpers (all module-private):
 
@@ -38,8 +42,12 @@ Post-stellar remnant helpers (all module-private):
   in a protostar system also call this function (WBH: all stars are protostars).
 - `_generate_peculiar_star(designation, spectral, lum_class)` — dispatcher
   called by `generate_primary_star()` for `_PECULIAR_*` sentinel spectral values.
-  Routes Protostar to `_generate_protostar()`; Nebula/Star Cluster/Anomaly use Giants
-  fallback.
+  Routes Protostar → `_generate_protostar()`; Nebula/Star Cluster →
+  `_generate_young_star_env()`; Anomaly → Giants fallback.
+- `_generate_cluster_age()` — rolls 1D×1D×50 Myr → Gyr (max 1.80 Gyr); shared by
+  Nebula and Star Cluster generators.
+- `_generate_young_star_env(designation, notes)` — young Class V star for Nebula/
+  Star Cluster; uses cluster age + DM+1 to Star Type table when age < 0.2 Gyr.
 
 **NS/PSR/BH spectral types** use `lum_class` matching `spectral_type`:
 `Star(spectral_type="NS", lum_class="NS")` etc.
@@ -86,6 +94,12 @@ hzco: float = get_hzco(star: Star, combined_lum: Optional[float])
 n: int = count_stars_orbited(orbit: OrbitSlot, stellar_system: StarSystem)
 exists: bool = dead_star_system_exists(primary: Star, star_system: StarSystem, rng=None)
 ```
+
+**Empty-system environment guard (Session 200, Issue #184):**
+Before the dead-star existence check, `generate_orbits()` tests
+`any(env in primary.special_notes for env in ("Protostar", "Nebula", "Anomaly"))`.
+If True, it returns an empty `SystemOrbits` immediately — no world count rolls fire.
+Star Cluster does **not** trigger this guard; its planetary system generates normally.
 
 **`dead_star_system_exists(primary, star_system, rng=None) → bool` (Session 196, WBH p.219):**
 Called by `generate_orbits()` before world count rolls whenever the primary is in

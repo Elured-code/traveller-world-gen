@@ -2,7 +2,38 @@
 
 **Branch:** `v2.1`
 **Sessions:** 178–
-**Tests:** 3476
+**Tests:** 3485
+
+---
+
+## Nebula / Star Cluster / Anomaly Proper Characterisation (Session 200, Issue #184)
+
+Replaced the Giants-class fallback for Nebula and Star Cluster environments with
+dedicated young-star generation (WBH p.219). Anomaly retains Giants fallback
+(referee-defined; Giants as background illumination object).
+
+**New helpers in `traveller_stellar_gen.py`:**
+- `_generate_cluster_age()` — rolls 1D×1D×50 Myr → Gyr; max 1.80 Gyr per WBH
+- `_generate_young_star_env(designation, notes)` — Class V primary using cluster
+  age + DM+1 to Star Type table when age < 0.2 Gyr (hot young cluster); standard
+  `_star_properties(spectral, subtype, "V")` for physical properties
+
+**Routing in `_generate_peculiar_star()`:**
+| Environment | Old behaviour | New behaviour |
+|---|---|---|
+| Nebula | Giants fallback (Ia/Ib/II/III) | Class V young star; no worlds |
+| Star Cluster | Giants fallback | Class V young star; worlds normal |
+| Anomaly | Giants fallback | Giants fallback (unchanged); no worlds |
+
+**`generate_orbits()` guard extended:**
+Protostar-only guard (`"Protostar" in special_notes`) extended to also match
+`"Nebula"` and `"Anomaly"` — these return an empty `SystemOrbits` immediately
+(no world count rolls). Star Cluster is not included — worlds form normally.
+
+**Tests:** 14 new tests in `TestEnvironmentTypes` (seeds 2689/3487/5936 for
+Nebula/Anomaly/Star Cluster); existing tests for these environments updated
+from lum_class `in (Ia/Ib/II/III)` to `== "V"` for Nebula and Star Cluster.
+3485 tests pass; pylint 10.00/10 on source files.
 
 ---
 

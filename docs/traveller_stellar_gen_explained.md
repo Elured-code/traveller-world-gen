@@ -171,8 +171,15 @@ dedicated helper functions replace the standard table lookups:
   primary via the age propagation loop in `generate_stellar_data()`).
 - All other stars in the system are also generated as protostars.
 
-Nebula, Star Cluster, and Anomaly environments fall back to a Giants-class star with
-`special_notes` describing the environment — WBH implies no dedicated host star for these.
+**Nebula and Star Cluster (`_generate_young_star_env(designation, notes)`):**
+- Age: `_generate_cluster_age()` — rolls `1D × 1D × 50 Myr` → Gyr (max 1.80 Gyr)
+- Spectral type: Star Type table with DM+1 when age < 0.2 Gyr; result capped at row 11 → main sequence
+- Physical properties: standard `_star_properties(spectral, subtype, "V")` — `lum_class = "V"`
+- Luminosity: Stefan-Boltzmann; system age set from cluster age formula
+- **Nebula:** orbit generation returns an empty `SystemOrbits` — planetary accretion not yet complete
+- **Star Cluster:** orbit generation proceeds normally — worlds can form
+
+**Anomaly:** remains a Giants-class fallback (referee-defined; Giants as background illumination object). `special_notes` carries `"Peculiar environment: Anomaly"`. Orbit generation returns an empty `SystemOrbits`.
 
 ---
 
@@ -192,6 +199,8 @@ Nebula, Star Cluster, and Anomaly environments fall back to a Giants-class star 
 | `_characterize_neutron_star(age_gyr)` | module | Rolls NS physical properties |
 | `_characterize_black_hole()` | module | Rolls BH mass and Schwarzschild diameter |
 | `_generate_peculiar_star(designation, spectral, lum_class)` | module | Dispatcher for Peculiar column results |
+| `_generate_cluster_age()` | module | Rolls cluster age: 1D×1D×50 Myr → Gyr (max 1.80 Gyr) |
+| `_generate_young_star_env(designation, notes)` | module | Generates a young Class V star for Nebula/Star Cluster environments |
 
 ---
 
