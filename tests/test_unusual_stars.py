@@ -143,13 +143,22 @@ class TestPeculiarNotes:
         assert star.lum_class == expected_type
         assert star.subtype is None
 
-    @pytest.mark.parametrize("env", ("Nebula", "Star Cluster", "Anomaly"))
-    def test_env_type_produces_valid_giants_star(self, env):
-        """Nebula/Star Cluster/Anomaly fall back to a Giants star (Ia/Ib/II/III)."""
+    def test_anomaly_produces_valid_giants_star(self):
+        """Anomaly falls back to a Giants star (Ia/Ib/II/III) per WBH p.219."""
+        from traveller_gen.traveller_stellar_gen import _generate_peculiar_star
+        star = _generate_peculiar_star("A", "_PECULIAR_Anomaly", "Giants_env")
+        assert star.lum_class in ("Ia", "Ib", "II", "III")
+        assert star.mass is not None and star.mass > 0
+        assert star.temperature is not None and star.temperature > 0
+
+    @pytest.mark.parametrize("env", ("Nebula", "Star Cluster"))
+    def test_young_env_produces_class_v_star(self, env):
+        """Nebula/Star Cluster produce a young Class V star (Issue #184)."""
         from traveller_gen.traveller_stellar_gen import _generate_peculiar_star
         env_key = f"_PECULIAR_{env.replace(' ', '_')}"
         star = _generate_peculiar_star("A", env_key, "Giants_env")
-        assert star.lum_class in ("Ia", "Ib", "II", "III")
+        assert star.lum_class == "V"
+        assert star.spectral_type in ("O", "B", "A", "F", "G", "K", "M")
         assert star.mass is not None and star.mass > 0
         assert star.temperature is not None and star.temperature > 0
 

@@ -540,8 +540,12 @@ def generate_orbits(system: StarSystem,  # pylint: disable=too-many-locals,too-m
     if is_dead_star_primary and not dead_star_system_exists(primary, system):
         return result  # empty system
 
-    # Protostar environments: protoplanetary disk, no formed worlds
-    if "Protostar" in primary.special_notes:
+    # Environment types with no formed worlds (WBH p.219)
+    # Protostar: protoplanetary disk only.
+    # Nebula: star-forming cloud; planetary accretion not yet complete.
+    # Anomaly: referee-defined; no standard world generation.
+    if any(env in primary.special_notes
+           for env in ("Protostar", "Nebula", "Anomaly")):
         return result  # empty system
 
     # World counts (WBH p.36-37)

@@ -17,10 +17,7 @@ World Builder's Handbook (WBH), covering:
   • Non-primary star type determination (p.29) — Random, Lesser, Sibling, Twin
 
 Out of scope (Special Circumstances chapter, p.219+):
-  • Full post-stellar object generation (white dwarfs, neutron stars,
-    black holes, pulsars) — these are detected and labelled but not
-    physically characterised
-  • Star cluster and nebula handling (Giants fallback; WBH p.219)
+  • Full Star Cluster multi-system generation (issue #182)
   • Eccentricity calculation for stellar orbits
   • Habitable zone orbit placement (requires full system generation)
 
@@ -851,6 +848,37 @@ def _generate_protostar(designation: str, role: str = "primary") -> Star:
     )
 
 
+def _generate_cluster_age() -> float:
+    """Roll cluster age per WBH p.219: 1D × 1D × 50 million years → Gyr."""
+    return round(_rng.randint(1, 6) * _rng.randint(1, 6) * 0.05, 3)
+
+
+def _generate_young_star_env(designation: str, notes: str) -> Star:
+    """
+    Generate a young Class V star for Nebula and Star Cluster environments.
+
+    Uses _generate_cluster_age() for the system age and applies DM+1 to the
+    Star Type table (young environments favour hotter, more massive stars).
+    """
+    age = _generate_cluster_age()
+    dm = 1 if age < 0.2 else 0
+    r = roll(2, dm)
+    spectral = STAR_TYPE_TABLE.get(min(r, 11), "M")
+    if spectral in ("Special",) or spectral not in TYPE_HEAT_ORDER:
+        spectral = "M"
+    subtype = _roll_subtype(spectral, use_m_column=spectral == "M")
+    mass, temperature, diameter, _ = _star_properties(spectral, subtype, "V")
+    luminosity = _compute_luminosity(diameter, temperature)
+    ms_lifespan = _main_sequence_lifespan(mass)
+    return Star(
+        designation=designation, role="primary",
+        spectral_type=spectral, subtype=subtype, lum_class="V",
+        mass=mass, temperature=temperature, diameter=diameter,
+        luminosity=luminosity, age_gyr=age, ms_lifespan_gyr=ms_lifespan,
+        special_notes=notes,
+    )
+
+
 def _generate_peculiar_star(  # pylint: disable=too-many-return-statements,too-many-locals
         designation: str, spectral: str, lum_class: str) -> Star:
     """Generate a star for a Peculiar column result (Phase 3: real post-stellar types)."""
@@ -893,8 +921,16 @@ def _generate_peculiar_star(  # pylint: disable=too-many-return-statements,too-m
     if env_type == "Protostar":
         return _generate_protostar(designation)
 
-    # Nebula, Star Cluster, Anomaly → Giants fallback
-    notes = f"Peculiar environment: {env_type}"
+    # Nebula: young Class V star embedded in a star-forming cloud; no worlds yet formed.
+    if env_type == "Nebula":
+        return _generate_young_star_env(designation, "Peculiar environment: Nebula")
+
+    # Star Cluster: one representative system within a cluster; worlds form normally.
+    if env_type == "Star Cluster":
+        return _generate_young_star_env(designation, "Peculiar environment: Star Cluster")
+
+    # Anomaly: referee-defined; keep Giants fallback as a background illumination object.
+    notes = "Peculiar environment: Anomaly"
     r_giants = roll(2)
     gc = GIANTS_COLUMN.get(r_giants, "Ia" if r_giants >= 12 else "III")
     r_type = roll(2, 1)

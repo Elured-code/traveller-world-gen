@@ -14,7 +14,6 @@ from traveller_gen.traveller_stellar_gen import (
     _wd_temperature,
     _characterize_white_dwarf,
     _characterize_neutron_star,
-    _characterize_black_hole,
     _generate_peculiar_star,
     Star,
     StarSystem,
@@ -302,17 +301,29 @@ class TestPulsarCharacterization:
 
 
 class TestEnvironmentTypesUnchanged:
-    """Nebula/Star Cluster/Anomaly still produce Giants star; Protostar uses WBH rules."""
+    """Anomaly still produces Giants star; Nebula/Star Cluster produce Class V (Issue #184)."""
 
-    @pytest.mark.parametrize("env", ["Nebula", "Star_Cluster", "Anomaly"])
-    def test_env_type_giants_star(self, env):
+    def test_env_type_giants_star(self):
+        """Anomaly retains Giants-class fallback per WBH p.219."""
+        import traveller_gen.traveller_stellar_gen as sg
+        old_rng = sg._rng  # pylint: disable=protected-access
+        sg._rng = random.Random(42)  # pylint: disable=protected-access
+        star = _generate_peculiar_star("A", "_PECULIAR_Anomaly", "Giants_env")
+        sg._rng = old_rng  # pylint: disable=protected-access
+        assert star.lum_class in ("Ia", "Ib", "II", "III")
+        assert "Peculiar environment" in star.special_notes
+
+    @pytest.mark.parametrize("env", ["Nebula", "Star_Cluster"])
+    def test_young_env_type_is_class_v(self, env):
+        """Nebula and Star Cluster now produce young Class V stars (Issue #184)."""
         env_key = f"_PECULIAR_{env}"
         import traveller_gen.traveller_stellar_gen as sg
         old_rng = sg._rng  # pylint: disable=protected-access
         sg._rng = random.Random(42)  # pylint: disable=protected-access
         star = _generate_peculiar_star("A", env_key, "Giants_env")
         sg._rng = old_rng  # pylint: disable=protected-access
-        assert star.lum_class in ("Ia", "Ib", "II", "III")
+        assert star.lum_class == "V"
+        assert star.spectral_type in ("O", "B", "A", "F", "G", "K", "M")
         assert "Peculiar environment" in star.special_notes
 
     def test_protostar_env_is_class_v(self):
@@ -670,3 +681,97 @@ class TestDeadStarOrbitIntegration:
             # All orbits should have orbit_au > 0
             for o in orbits.orbits:
                 assert o.orbit_au > 0, f"seed {seed}: orbit_au {o.orbit_au} not positive"
+
+
+# ---------------------------------------------------------------------------
+# Issue #184 — Nebula, Star Cluster, and Anomaly environment types
+# ---------------------------------------------------------------------------
+
+class TestEnvironmentTypes:
+    """Tests for Nebula, Star Cluster, and Anomaly (Issue #184).
+
+    Seeds producing each type (unusual_stars=True):
+      Nebula:       2689
+      Anomaly:      3587
+      Star Cluster: 5936
+    """
+
+    def _gen(self, seed: int) -> dict:
+        rng = random.Random(seed)
+        return generate_full_system("T", seed=seed, rng=rng,
+                                    unusual_stars=True).to_dict()
+
+    # --- Nebula ---
+
+    def test_nebula_special_notes(self):
+        d = self._gen(2689)
+        assert "Nebula" in d["stars"][0]["special_notes"]
+
+    def test_nebula_has_zero_worlds(self):
+        d = self._gen(2689)
+        assert d["orbits"]["total_worlds"] == 0
+
+    def test_nebula_primary_is_class_v(self):
+        d = self._gen(2689)
+        assert d["stars"][0]["luminosity_class"] == "V"
+
+    def test_nebula_age_within_cluster_range(self):
+        """Cluster-age formula max is 6×6×0.05 = 1.80 Gyr."""
+        d = self._gen(2689)
+        assert 0 < d["age_gyr"] <= 1.80
+
+    def test_nebula_mainworld_is_null(self):
+        d = self._gen(2689)
+        assert d["mainworld"] is None
+
+    # --- Anomaly ---
+
+    def test_anomaly_special_notes(self):
+        d = self._gen(3587)
+        assert "Anomaly" in d["stars"][0]["special_notes"]
+
+    def test_anomaly_has_zero_worlds(self):
+        d = self._gen(3587)
+        assert d["orbits"]["total_worlds"] == 0
+
+    def test_anomaly_mainworld_is_null(self):
+        d = self._gen(3587)
+        assert d["mainworld"] is None
+
+    # --- Star Cluster ---
+
+    def test_star_cluster_special_notes(self):
+        d = self._gen(5936)
+        assert "Star Cluster" in d["stars"][0]["special_notes"]
+
+    def test_star_cluster_primary_is_class_v(self):
+        d = self._gen(5936)
+        assert d["stars"][0]["luminosity_class"] == "V"
+
+    def test_star_cluster_age_within_cluster_range(self):
+        d = self._gen(5936)
+        assert 0 < d["age_gyr"] <= 1.80
+
+    def test_star_cluster_generates_worlds(self):
+        """Unlike Nebula/Anomaly, a Star Cluster system has a real planetary system."""
+        d = self._gen(5936)
+        assert d["orbits"]["total_worlds"] > 0
+
+    def test_star_cluster_has_mainworld(self):
+        d = self._gen(5936)
+        assert d["mainworld"] is not None
+
+    # --- _generate_cluster_age helper ---
+
+    def test_cluster_age_range(self):
+        """Cluster age must be in (0, 1.80] Gyr for any RNG state."""
+        from traveller_gen.traveller_stellar_gen import _generate_cluster_age  # noqa: PLC0415
+        import traveller_gen.traveller_stellar_gen as sg  # noqa: PLC0415
+        orig_rng = sg._rng
+        try:
+            for seed in range(200):
+                sg._rng = random.Random(seed)
+                age = _generate_cluster_age()
+                assert 0 < age <= 1.80, f"seed {seed}: age {age} out of range"
+        finally:
+            sg._rng = orig_rng
