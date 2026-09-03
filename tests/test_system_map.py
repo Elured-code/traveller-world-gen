@@ -39,6 +39,8 @@ _PROTO_SEED    = 13387
 _BH_SEED       = 21977
 # 1001 → M primary with BD companion (B) and BD sub-companion (Ba), temp 1500K
 _BD_SEED       = 1001
+# 2689 → Nebula environment (unusual_stars=True): Class V star, no worlds
+_NEBULA_SEED   = 2689
 
 
 class TestCompanionStarPlacement:
@@ -287,6 +289,58 @@ class TestBlackHoleMapRendering:
     def test_no_ns_corona_in_bh_svg(self):
         assert 'id="nsc_' not in self.svg, (
             "NS corona gradient should not appear in a BH system SVG"
+        )
+
+
+class TestNebulaMapRendering:
+    """System map rendering for nebula-embedded primaries (seed 2689)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_NEBULA_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_nebula_cloud_gradient_in_defs(self):
+        """nebula_cloud radialGradient must be present in <defs>."""
+        assert 'id="nebula_cloud"' in self.svg, (
+            "Nebula cloud gradient def missing from SVG <defs>"
+        )
+
+    def test_nebula_cloud_ellipses_present(self):
+        """Three rotated ellipses must be drawn for the nebula cloud."""
+        ellipses = re.findall(r'<ellipse\b[^/]*/>', self.svg)
+        assert len(ellipses) >= 3, (
+            f"Expected ≥ 3 ellipses for nebula cloud lobes, got {len(ellipses)}"
+        )
+
+    def test_nebula_cloud_uses_gradient_fill(self):
+        """At least one ellipse must reference the nebula_cloud gradient."""
+        assert 'fill="url(#nebula_cloud)"' in self.svg, (
+            "No ellipse references the nebula_cloud gradient fill"
+        )
+
+    def test_nebula_arc_zone_rendered(self):
+        """Primary star label must appear in the SVG arc zone."""
+        assert re.search(r'Star A\s+\w', self.svg), (
+            "Nebula primary star label not found in SVG"
+        )
+
+    def test_nebula_star_sphere_present(self):
+        """A solid sphere circle must be drawn for the embedded star."""
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 1, (
+            f"Expected ≥ 1 circle for the nebula-embedded star sphere, got {len(circles)}"
+        )
+
+    def test_no_protostar_halo_in_nebula_svg(self):
+        """Protostar halo gradient must not appear in a nebula system SVG."""
+        assert 'id="prh_' not in self.svg, (
+            "Protostar halo gradient should not appear in a nebula system SVG"
+        )
+
+    def test_no_ns_corona_in_nebula_svg(self):
+        """NS corona gradient must not appear in a nebula system SVG."""
+        assert 'id="nsc_' not in self.svg, (
+            "NS corona gradient should not appear in a nebula system SVG"
         )
 
 

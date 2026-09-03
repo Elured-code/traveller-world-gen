@@ -30,10 +30,8 @@ Default: random seed, name "Unnamed", /tmp/traveller_system_map.svg, dark backgr
 from __future__ import annotations
 import argparse
 import math
-import os
 import secrets
 import subprocess
-import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -114,6 +112,7 @@ _STAR_FALLBACK = "#FFE066"      # fallback if spectral type unknown
 
 _NS_GLYPH_R = 5                 # fixed pixel radius for NS / PSR glyphs
 _BH_GLYPH_R = 6                 # fixed pixel radius for BH (slightly larger for legibility)
+_NEBULA_GLYPH_R = 5            # minimum pixel radius for a nebula-embedded star
 
 
 def _bd_colour(temperature: int) -> str:
@@ -132,7 +131,7 @@ def _bd_colour(temperature: int) -> str:
 
 
 def _star_colour(spectral_type: str, lum_class: str, temperature: int = 0) -> str:
-    """Return the display colour for a star given spectral type, luminosity class, and temperature."""
+    """Return the display colour for a star given spectral type, luminosity class, temperature."""
     if lum_class in ("NS", "PSR"):
         return _NS_COLOUR
     if lum_class == "BH":
@@ -385,6 +384,37 @@ def _protostar_halo_def(color: str) -> str:
 def _prh(color: str) -> str:
     """SVG fill referencing the protostar halo gradient for ``color``."""
     return f"url(#prh_{color[1:].upper()})"
+
+
+def _nebula_cloud_def() -> str:
+    """Fixed SVG radialGradient for emission nebula cloud lobes (H-alpha magenta/pink)."""
+    return (
+        '<radialGradient id="nebula_cloud" cx="50%" cy="50%" r="50%">'
+        '<stop offset="0%"   stop-color="#C040A0" stop-opacity="0.50"/>'
+        '<stop offset="35%"  stop-color="#C040A0" stop-opacity="0.28"/>'
+        '<stop offset="70%"  stop-color="#D06080" stop-opacity="0.10"/>'
+        '<stop offset="100%" stop-color="#C040A0" stop-opacity="0.00"/>'
+        '</radialGradient>'
+    )
+
+
+def _nebula_cloud_svg(cx: float, cy: float, arc_zone_h: int) -> str:
+    """Three rotated overlapping ellipses forming an irregular emission nebula cloud.
+
+    The lobes are 17% × 12% of arc zone height so the cloud reads as vast even at
+    default canvas width. Rotated 0°/60°/120° to break circular symmetry and suggest
+    turbulent nebula structure. Distinct from the protostar halo (circular, warm-toned).
+    """
+    rx = int(arc_zone_h * 0.17)
+    ry = int(arc_zone_h * 0.12)
+    parts = []
+    for angle in (0, 60, 120):
+        parts.append(
+            f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{rx}" ry="{ry}" '
+            f'fill="url(#nebula_cloud)" '
+            f'transform="rotate({angle},{cx:.1f},{cy:.1f})"/>'
+        )
+    return "".join(parts)
 
 
 def _ns_corona_def(color: str) -> str:
@@ -951,6 +981,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         if star_groups[s.designation]
         or children_by_parent[s.designation]
         or "Protostar" in (s.special_notes or "")
+        or "Nebula" in (s.special_notes or "")
         or s.lum_class in ("NS", "PSR", "BH")
     ]
 
@@ -1014,6 +1045,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
     bh_cols        = {_star_colour(ss.spectral_type, ss.lum_class, ss.temperature)
                       for ss in all_stars if ss.lum_class == "BH"}
     bh_accretion_defs = "".join(_bh_accretion_def(c) for c in bh_cols)
+    has_nebula = any("Nebula" in (ss.special_notes or "") for ss in all_stars)
+    nebula_def = _nebula_cloud_def() if has_nebula else ""
     s.append(
         '<defs>'
         '<filter id="shadow_blur" x="-60%" y="-60%" width="220%" height="220%">'
@@ -1026,6 +1059,7 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         + proto_halo_defs
         + ns_corona_defs
         + bh_accretion_defs
+        + nebula_def
         + '</defs>'
     )
 
@@ -1041,7 +1075,8 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         # Per-star scale: cover this star's own orbits plus its own direct
         # companion(s)' orbital radii so their context arcs fit the zone.
         au_vals  = [o.orbit_au for o in group] + [st.orbit_au for st in kids]
-        au_floor = 5.0 if "Protostar" in (star.special_notes or "") else 0.1
+        notes_str = star.special_notes or ""
+        au_floor = 5.0 if ("Protostar" in notes_str or "Nebula" in notes_str) else 0.1
         max_au   = max(au_vals + [au_floor])
         target_r  = int(canvas_w * 0.75) - cx
         log_scale = max(30.0, min(canvas_w * 0.75, target_r / math.log1p(max_au)))
@@ -1305,6 +1340,9 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
         cls_str    = (f'{star.spectral_type}'
                       f'{star.subtype if star.subtype is not None else ""} {star.lum_class}')
         star_label = f'Star {star.designation}  {cls_str}'
+        if "Nebula" in (star.special_notes or ""):
+            star_r = max(star_r, _NEBULA_GLYPH_R)
+            s.append(_nebula_cloud_svg(cx, cy, arc_zone_h))
         if "Protostar" in (star.special_notes or ""):
             s.append(
                 f'<circle cx="{cx}" cy="{cy}" r="{star_r * 4}" '
@@ -1392,6 +1430,9 @@ def build_svg(  # pylint: disable=too-many-locals,too-many-statements,too-many-b
                         f' stroke-dasharray="3,3" opacity="0.75"/>'
                     )
                 # Companion star glyph — same circle logic as the primary star
+                if "Nebula" in (st.special_notes or ""):
+                    st_r = max(st_r, _NEBULA_GLYPH_R)
+                    s.append(_nebula_cloud_svg(mx, my, arc_zone_h))
                 if "Protostar" in (st.special_notes or ""):
                     s.append(
                         f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="{st_r * 4}" '
