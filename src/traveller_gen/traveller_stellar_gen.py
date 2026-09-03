@@ -624,6 +624,7 @@ class StarCluster:
     system_count: int       # 2D+5 for centre hex
     merged_star: bool       # primary ms_lifespan_gyr < age_gyr
     jump_restriction: str   # "Jump-2 minimum" for multi-hex clusters, "" otherwise
+    member_stars: List[str] # spectral classes of the other systems (system_count - 1 entries)
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-compatible dict."""
@@ -634,6 +635,7 @@ class StarCluster:
             "system_count": self.system_count,
             "merged_star": self.merged_star,
             "jump_restriction": self.jump_restriction,
+            "member_stars": list(self.member_stars),
         }
 
     @classmethod
@@ -646,6 +648,7 @@ class StarCluster:
             system_count=int(d["system_count"]),
             merged_star=bool(d["merged_star"]),
             jump_restriction=str(d.get("jump_restriction", "")),
+            member_stars=list(d.get("member_stars", [])),
         )
 
 
@@ -900,6 +903,17 @@ def _generate_cluster_age() -> float:
     return round(_rng.randint(1, 6) * _rng.randint(1, 6) * 0.05, 3)
 
 
+def _roll_cluster_member(age_gyr: float) -> str:
+    """Roll spectral class for one cluster member star (young Class V, WBH p.219)."""
+    dm = 1 if age_gyr < 0.2 else 0
+    r = roll(2, dm)
+    spectral = STAR_TYPE_TABLE.get(min(r, 11), "M")
+    if spectral in ("Special",) or spectral not in TYPE_HEAT_ORDER:
+        spectral = "M"
+    subtype = _roll_subtype(spectral, use_m_column=spectral == "M")
+    return f"{spectral}{subtype} V"
+
+
 def _roll_star_cluster_meta(age_gyr: float, primary: Star) -> StarCluster:
     """Roll Star Cluster hex and population metadata (WBH p.219, issue #182)."""
     single_hex = _rng.randint(1, 6) < 4   # 1-3 → single-hex; 4-6 → multi-hex
@@ -914,6 +928,7 @@ def _roll_star_cluster_meta(age_gyr: float, primary: Star) -> StarCluster:
         primary.ms_lifespan_gyr is not None
         and primary.ms_lifespan_gyr < age_gyr
     )
+    member_stars = [_roll_cluster_member(age_gyr) for _ in range(system_count - 1)]
     return StarCluster(
         age_gyr=age_gyr,
         single_hex=single_hex,
@@ -921,6 +936,7 @@ def _roll_star_cluster_meta(age_gyr: float, primary: Star) -> StarCluster:
         system_count=system_count,
         merged_star=merged,
         jump_restriction=jump_restriction,
+        member_stars=member_stars,
     )
 
 

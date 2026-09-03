@@ -164,7 +164,11 @@ pre{font-family:ui-monospace,monospace;font-size:12px;color:var(--txt2);
       <td class="mono">{{ star_cluster.system_count }}</td>
       <td class="mono">{{ "Yes" if star_cluster.merged_star else "No" }}</td>
       <td class="mono">{{ star_cluster.jump_restriction or "None" }}</td>
-    </tr></tbody>
+    </tr>
+    {% if star_cluster.member_stars %}
+    <tr><td colspan="6" class="mono" style="white-space:normal"><strong>Members:</strong> {{ star_cluster.member_stars | join(", ") }}</td></tr>
+    {% endif %}
+    </tbody>
   </table></div>
   {% endif %}
 

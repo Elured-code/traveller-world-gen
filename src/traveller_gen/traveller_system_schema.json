@@ -177,7 +177,7 @@
       "title": "StarCluster",
       "description": "Star Cluster metadata for a Peculiar environment: Star Cluster system (WBH p.219). Generated when the primary star is a young Class V star embedded in a star cluster.",
       "type": "object",
-      "required": ["age_gyr", "single_hex", "hex_diameter", "system_count", "merged_star", "jump_restriction"],
+      "required": ["age_gyr", "single_hex", "hex_diameter", "system_count", "merged_star", "jump_restriction", "member_stars"],
       "additionalProperties": false,
       "properties": {
         "age_gyr": {
@@ -206,6 +206,11 @@
         "jump_restriction": {
           "type": "string",
           "description": "Jump navigation restriction for the cluster. 'Jump-2 minimum' for multi-hex clusters; empty string for single-hex clusters."
+        },
+        "member_stars": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Spectral classifications of the other star systems in the cluster's centre hex (system_count − 1 entries). Each entry is a string such as \"G3 V\" or \"M5 V\"."
         }
       }
     },

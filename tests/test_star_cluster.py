@@ -181,6 +181,7 @@ class TestStarClusterRoundTrip:
         assert set(sc_d.keys()) == {
             "age_gyr", "single_hex", "hex_diameter",
             "system_count", "merged_star", "jump_restriction",
+            "member_stars",
         }
 
     def test_from_dict_reconstructs_star_cluster(self):
@@ -196,6 +197,7 @@ class TestStarClusterRoundTrip:
         assert sc_rest.system_count == sc_orig.system_count
         assert sc_rest.merged_star == sc_orig.merged_star
         assert sc_rest.jump_restriction == sc_orig.jump_restriction
+        assert sc_rest.member_stars == sc_orig.member_stars
 
     def test_no_star_cluster_key_for_normal_star(self):
         """Normal star systems do not emit 'star_cluster' in to_dict()."""
@@ -229,6 +231,7 @@ class TestMergedStarOrbitDMs:
             system_count=10,
             merged_star=True,
             jump_restriction="",
+            member_stars=[],
         )
 
     def test_merged_star_flag_via_meta(self):
@@ -312,3 +315,46 @@ class TestGenerateFullSystemWiring:
         sc_d = d["star_cluster"]
         assert sc_d["age_gyr"] > 0.0
         assert isinstance(sc_d["merged_star"], bool)
+
+
+# ---------------------------------------------------------------------------
+# StarCluster member_stars
+# ---------------------------------------------------------------------------
+
+class TestMemberStars:
+    """member_stars: spectral classes for the other systems in the cluster."""
+
+    def test_member_stars_count(self):
+        """member_stars has exactly system_count - 1 entries."""
+        sc = _make_cluster_stellar().star_cluster
+        assert len(sc.member_stars) == sc.system_count - 1
+
+    def test_member_stars_format(self):
+        """Each member star entry is a valid 'X# V' classification string."""
+        import re
+        sc = _make_cluster_stellar().star_cluster
+        pattern = re.compile(r"^[OBAFGKM]\d V$")
+        for entry in sc.member_stars:
+            assert pattern.match(entry), f"Unexpected member_stars entry: {entry!r}"
+
+    def test_member_stars_in_to_dict(self):
+        """StarCluster.to_dict() includes 'member_stars' as a list."""
+        sc = _make_cluster_stellar().star_cluster
+        d = sc.to_dict()
+        assert "member_stars" in d
+        assert isinstance(d["member_stars"], list)
+        assert len(d["member_stars"]) == sc.system_count - 1
+
+    def test_member_stars_round_trip(self):
+        """member_stars survives to_dict() / from_dict() round-trip."""
+        import traveller_gen.traveller_stellar_gen as sg
+        sc = _make_cluster_stellar().star_cluster
+        d = sc.to_dict()
+        restored = sg.StarCluster.from_dict(d)
+        assert restored.member_stars == sc.member_stars
+
+    def test_member_stars_deterministic(self):
+        """Same seed always produces the same member_stars list."""
+        sc1 = _make_cluster_stellar(_CLUSTER_SEED).star_cluster
+        sc2 = _make_cluster_stellar(_CLUSTER_SEED).star_cluster
+        assert sc1.member_stars == sc2.member_stars

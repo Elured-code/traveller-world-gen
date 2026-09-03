@@ -555,6 +555,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "system_count": sc.system_count,
                 "merged_star": sc.merged_star,
                 "jump_restriction": sc.jump_restriction,
+                "member_stars": sc.member_stars,
             }
 
         return {
