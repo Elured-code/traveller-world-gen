@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-03  
 **Branch:** v2.1 → main  
-**Tests:** 3,485 (all pass)
+**Tests:** 3,492 (all pass)
 
 ## New features
 

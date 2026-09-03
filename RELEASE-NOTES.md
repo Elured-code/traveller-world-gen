@@ -2,7 +2,19 @@
 
 **Branch:** `v2.1`
 **Sessions:** 178–
-**Tests:** 3485
+**Tests:** 3492
+
+---
+
+## Nebula System Map Glyph (Session 200)
+
+`system_map.py`: new emission nebula cloud drawn around Nebula-environment primary stars.
+Three overlapping ellipses rotated 0°/60°/120°, filled with a fixed H-alpha magenta/pink
+gradient (`#C040A0 → #D06080`), each `arc_zone_h × 0.17 × 0.12` px — drawn before the
+embedded Class V star sphere. Visually distinct from the protostar's single circular halo
+(irregular multi-lobe vs. circular; cool pink vs. warm star tone). `active_stars` filter
+extended to include Nebula-noted stars; 5.0 AU floor applied. `_NEBULA_GLYPH_R = 5`.
+Unused `os`/`sys` imports removed; `system_map.py` pylint 9.96→10.00. 7 new SVG tests.
 
 ---
 

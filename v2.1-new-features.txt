@@ -119,6 +119,42 @@ glyph centre. The line represents the rotating radiation beam of the pulsar.
 All three types now always get their own arc zone on the map, even if no worlds
 orbit them.
 
+NEBULA AND STAR CLUSTER ENVIRONMENTS (WBH p.219)
+------------------------------------------------
+When an Unusual Stars result produces a Nebula or Star Cluster primary, the star
+is now characterised as a young Class V main-sequence star rather than a
+placeholder Giants-class object.
+
+The star's age is rolled using the cluster age formula (1D × 1D × 50 million
+years, maximum 1.80 billion years). Very young clusters (age < 200 million years)
+apply a DM+1 to the spectral type roll, favouring hotter, more massive stars.
+
+Nebula systems have no worlds — planetary accretion is not yet complete inside
+a star-forming cloud. Star Cluster systems generate a full planetary system
+normally. Both display the correct spectral classification in the Stars table
+(e.g. "K5 V") with "Peculiar environment: Nebula" or "Peculiar environment:
+Star Cluster" in the Note column.
+
+Anomaly systems retain the existing Giants-class placeholder (referee-defined)
+and continue to return no worlds.
+
+SYSTEM MAP — NEBULA CLOUD GLYPH
+--------------------------------
+Nebula-environment stars are now rendered on the system map with a distinctive
+emission nebula cloud, distinguishable from all other star types at a glance.
+
+Three overlapping ellipses are drawn at 0°, 60°, and 120° rotations around the
+star centre, creating an irregular multi-lobe shape that suggests turbulent
+gas cloud structure. Each lobe fades from 50% opacity at the centre to
+transparent at the edge. The colour palette is H-alpha magenta/pink
+(#C040A0 deepening to #D06080 at the outer edges) — immediately distinct from
+the protostar's warm circular halo, the neutron star's tight blue-white corona,
+and the black hole's orange accretion disk.
+
+The embedded Class V star itself is drawn as a normal sphere glyph on top of
+the cloud. Like protostar and neutron star systems, a Nebula primary always
+receives its own arc zone even though no worlds orbit it.
+
 PROTOSTAR CHARACTERISATION (WBH p.219)
 --------------------------------------
 When an Unusual Stars result produces a Protostar primary, the star is now

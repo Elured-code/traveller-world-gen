@@ -155,12 +155,31 @@ Pulsars additionally draw a horizontal `<line>` through the glyph centre extendi
 
 The beam is drawn after the solid sphere so it visually crosses the glyph.
 
+### Nebula cloud
+
+A star embedded in a Nebula peculiar environment (`"Nebula" in special_notes`) gets a
+multi-lobe emission nebula cloud drawn *before* the solid star sphere. The cloud uses
+three overlapping ellipses rotated 0°, 60°, and 120° around the star centre, giving an
+irregular turbulent appearance that is visually distinct from the protostar's single
+circular halo. A fixed H-alpha magenta/pink palette (`#C040A0 → #D06080`) makes the
+nebula type immediately recognisable by colour.
+
+```python
+def _nebula_cloud_def():              # single fixed radialGradient id="nebula_cloud"
+def _nebula_cloud_svg(cx, cy, arc_zone_h):  # three rotated ellipses, 17%×12% of zone height
+```
+
+Ellipse radii are `arc_zone_h × 0.17` (rx) and `arc_zone_h × 0.12` (ry) — sized to
+suggest a vast gas cloud even at default canvas width. The minimum star glyph radius
+`_NEBULA_GLYPH_R = 5` prevents the embedded star from being invisible. The arc zone
+also uses a 5.0 AU floor (same as Protostar) since no worlds orbit a Nebula star.
+
 ### Active star visibility
 
 Stars are included in the arc zone loop (`active_stars`) when they have orbit slots,
-companion children, `"Protostar"` in `special_notes`, **or** `lum_class in ("NS", "PSR")`.
-Without this last condition, a dead star primary with no orbit slots and no companions
-would have no arc zone drawn at all and would be invisible in the map.
+companion children, `"Protostar"` in `special_notes`, `"Nebula"` in `special_notes`,
+**or** `lum_class in ("NS", "PSR", "BH")`. Without this last condition, a dead star or
+peculiar-environment primary with no orbit slots and no companions would be invisible.
 
 ---
 

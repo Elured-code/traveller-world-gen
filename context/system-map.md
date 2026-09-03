@@ -132,6 +132,15 @@ Wide diffuse radialGradient (4-stop, opacity 0.55→0.30→0.10→0.00) for the 
 envelope. Halo circle drawn at `star_r × 4` before the solid sphere. Protostar zone
 uses AU floor of 5.0 (not 0.1).
 
+### `_nebula_cloud_def() -> str` · `_nebula_cloud_svg(cx, cy, arc_zone_h) -> str` (Session 200)
+
+Fixed radialGradient (`id="nebula_cloud"`) in H-alpha magenta/pink (`#C040A0 → #D06080`).
+Three rotated overlapping ellipses (0°/60°/120°), each `arc_zone_h × 0.17` rx by
+`arc_zone_h × 0.12` ry — drawn before the solid sphere. Visually distinct from the
+protostar halo (irregular multi-lobe shape; cool pink vs warm star colour). Nebula zone
+also uses 5.0 AU floor. `_NEBULA_GLYPH_R = 5` minimum pixel radius for the embedded star.
+`active_stars` filter extended to include `"Nebula" in special_notes`.
+
 ### `_ns_corona_def(color) -> str` · `_nsc(color) -> str` (Session 198)
 
 Tight hot-corona radialGradient (4-stop, opacity 0.90→0.60→0.20→0.00) for NS and PSR
