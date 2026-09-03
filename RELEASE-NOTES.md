@@ -2,7 +2,31 @@
 
 **Branch:** `v2.1`
 **Sessions:** 178–
-**Tests:** 3492
+**Tests:** 3517
+
+---
+
+## Star Cluster Metadata Generation (Session 201, Issue #182)
+
+Full Star Cluster metadata for Peculiar environment: Star Cluster systems (WBH p.219).
+
+**New `StarCluster` dataclass** in `traveller_stellar_gen.py`:
+- `age_gyr` — cluster age (same formula as Nebula: 1D×1D×50 Myr)
+- `single_hex` — True when 1D < 4 (cluster fits in one hex)
+- `hex_diameter` — 1 for single-hex; 1D+1 (2–7) for multi-hex
+- `system_count` — 2D+5 (7–17 systems in the centre hex)
+- `merged_star` — True when `primary.ms_lifespan_gyr < age_gyr` (star evolved away from MS)
+- `jump_restriction` — "Jump-2 minimum" for multi-hex; "" for single-hex
+
+**Module sentinel `_pending_star_cluster`** (mirrors `_rng` pattern): set by `_generate_peculiar_star()` Star Cluster branch, cleared and transferred to `StarSystem.star_cluster` at the end of `generate_stellar_data()`. Avoids changing function signatures.
+
+**`generate_orbits()` `cluster` parameter:** when `cluster.merged_star` is True, applies reduced world counts (GG/belt absent on roll(2,−2)≥6; terrestrials max(0,1D−2)) and DM+2 to all eccentricity rolls. Both `generate_full_system()` and `generate_system_from_world()` pass `cluster=stellar.star_cluster`.
+
+**`system_card.html`** gains a Star Cluster table section (Age, Extent, Hex Ø, Systems, Merged Star, Jump Restriction) rendered when `star_cluster` context key is present.
+
+**Schema:** `traveller_system_schema.json` updated with `StarCluster` `$def` and `star_cluster` optional property on the root `StarSystem` object; version bumped 2.1.2 → 2.1.3.
+
+**Tests:** 25 new tests in `tests/test_star_cluster.py`; 3517 tests pass.
 
 ---
 

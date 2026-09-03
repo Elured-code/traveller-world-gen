@@ -25,6 +25,8 @@ Anomaly). Routing (Issue #184, Session 200):
 - **Protostar** → `_generate_protostar()` (full WBH p.219 rules; Class V, age 0.001–0.009 Gyr)
 - **Nebula** → `_generate_young_star_env()` (Class V, cluster age ≤ 1.80 Gyr, no worlds)
 - **Star Cluster** → `_generate_young_star_env()` (Class V, cluster age ≤ 1.80 Gyr, worlds normal)
+  then `_roll_star_cluster_meta(age_gyr, star)` → stored in `_pending_star_cluster` (module sentinel),
+  transferred to `StarSystem.star_cluster` inside `generate_stellar_data()`
 - **Anomaly** → Giants fallback (referee-defined; Class Ia/Ib/II/III, no worlds)
 
 Post-stellar remnant helpers (all module-private):
@@ -48,6 +50,13 @@ Post-stellar remnant helpers (all module-private):
   Nebula and Star Cluster generators.
 - `_generate_young_star_env(designation, notes)` — young Class V star for Nebula/
   Star Cluster; uses cluster age + DM+1 to Star Type table when age < 0.2 Gyr.
+- `_roll_star_cluster_meta(age_gyr, primary) → StarCluster` — rolls Star Cluster
+  metadata (WBH p.219, issue #182): single-hex (1D<4) vs multi-hex; hex_diameter (1D+1
+  for multi-hex); system_count (2D+5, range 7–17); merged_star flag
+  (`primary.ms_lifespan_gyr < age_gyr`); jump_restriction ("Jump-2 minimum" for multi-hex).
+  Called inside the Star Cluster branch of `_generate_peculiar_star()`; result stored in
+  module sentinel `_pending_star_cluster` and transferred to `StarSystem.star_cluster`
+  at the end of `generate_stellar_data()`.
 
 **NS/PSR/BH spectral types** use `lum_class` matching `spectral_type`:
 `Star(spectral_type="NS", lum_class="NS")` etc.
@@ -88,12 +97,18 @@ secondary stars have `role` set to their separation type and a separate
 ### Public API
 
 ```python
-orbits: SystemOrbits = generate_orbits(system: StarSystem)
+orbits: SystemOrbits = generate_orbits(system: StarSystem,
+                                       cluster: Optional[StarCluster] = None, ...)
 mao: float = get_mao(star: Star)
 hzco: float = get_hzco(star: Star, combined_lum: Optional[float])
 n: int = count_stars_orbited(orbit: OrbitSlot, stellar_system: StarSystem)
 exists: bool = dead_star_system_exists(primary: Star, star_system: StarSystem, rng=None)
 ```
+
+**`cluster` parameter (issue #182, Session 201):** When `cluster.merged_star` is True,
+reduced world counts apply (GG/belt absent on roll(2,−2)≥6; terrestrials max(0,1D−2))
+and eccentricity DM+2 is added to all eccentricity rolls. Passed through from
+`generate_full_system()` / `generate_system_from_world()` as `cluster=stellar.star_cluster`.
 
 **Empty-system environment guard (Session 200, Issue #184):**
 Before the dead-star existence check, `generate_orbits()` tests

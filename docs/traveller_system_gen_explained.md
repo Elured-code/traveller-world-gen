@@ -419,6 +419,11 @@ two main data structures:
   per-star group; that was replaced with the hierarchical splice above after
   it didn't match what was wanted.)
 
+When `stellar_system.star_cluster` is not None (Star Cluster primary), `_system_card_context()`
+also builds a `star_cluster_ctx` dict (age, extent, hex diameter, system count, merged star,
+jump restriction) and passes it to the template as `star_cluster`. The template renders a
+**Star Cluster** table section above the Raw JSON block when this key is present (issue #182).
+
 The system card shows **stellar data and orbital survey only**. Mainworld detail
 (UWP stats, atmosphere, hydrographic, biological, habitability) appears exclusively
 on the Mainworld tab via `World.to_html()` — the `mw_data` construction block and

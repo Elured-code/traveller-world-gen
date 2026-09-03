@@ -1,6 +1,23 @@
 Traveller World & System Generator — What's New in v2.1
 =========================================================
 
+STAR CLUSTER METADATA
+----------------------
+When the Unusual Stars option is enabled and the primary star is a Star Cluster
+environment type (WBH p.219), the system card now shows a Star Cluster table with
+six fields:
+
+- Age — how old the cluster is in Gyr (same formula as a Nebula; maximum 1.80 Gyr).
+- Extent — whether the cluster fits in a single hex or spans multiple hexes.
+- Hex Ø — diameter of a multi-hex cluster in hexes (1D+1; 2–7 hexes across);
+  always 1 for single-hex clusters.
+- Systems — number of star systems in the cluster's centre hex (2D+5; typically 7–17).
+- Merged Star — whether the cluster's primary star has already evolved off the main
+  sequence. When Yes, the planetary system was disrupted by the stellar evolution event
+  and world counts are reduced.
+- Jump Restriction — "Jump-2 minimum" for multi-hex clusters (crossing between hexes
+  requires a Jump-2 drive); blank for single-hex clusters.
+
 SPECULATIVE TRADE CARGO GENERATION
 ------------------------------------
 The generator can now produce a cargo manifest of available speculative trade

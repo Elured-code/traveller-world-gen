@@ -197,6 +197,26 @@ Star Cluster does **not** return early — its young Class V primary has a norma
 
 ---
 
+## Star Cluster merged-star orbit DMs (WBH p.219, issue #182)
+
+When `generate_orbits()` receives a `cluster` argument with `merged_star=True`, the
+primary star has already evolved off the main sequence — its original planetary system
+was disrupted by the stellar evolution event. A separate world-count branch applies:
+
+| Count type | Normal rule | Merged-star cluster rule |
+|---|---|---|
+| Gas giants | 2D result tables | Absent on roll(2, −2) ≥ 6 |
+| Asteroid belts | Standard DMs | Absent on roll(2, −2) ≥ 6 |
+| Terrestrials | max(1, 2D − 2) | max(0, 1D − 2) |
+
+Additionally, eccentricity DM+2 is applied to **all** orbit eccentricity rolls in a
+merged-star cluster system (orbits were perturbed by the mass-loss event).
+
+Non-merged Star Cluster systems (primary still on main sequence) use the standard
+world count procedure — no DMs apply.
+
+---
+
 ## Dead star system rules (WBH p.219)
 
 When `generate_orbits()` detects that the primary is a dead star (NS, BH, PSR,
@@ -240,7 +260,7 @@ set; `from_dict()` restores it.
 | `.to_dict()` | `SystemOrbits` | Serialises all slots and zone data |
 | `.from_dict(d)` | `OrbitSlot` | Reconstructs from a dict (detail sub-key optional) |
 | `.from_dict(d, star_system)` | `SystemOrbits` | Reconstructs from a dict |
-| `generate_orbits(star_system, ...)` | module | Entry point; accepts optional `rng`; runs dead star existence check when primary is NS/BH/PSR/D |
+| `generate_orbits(star_system, ..., cluster=None)` | module | Entry point; accepts optional `rng` and `cluster: Optional[StarCluster]`; runs dead star existence check when primary is NS/BH/PSR/D; applies merged-star DMs when cluster.merged_star is True |
 | `roll_eccentricity(rng=None)` | module | Rolls one eccentricity value; accepts optional `rng` |
 | `roll_inclination(rng=None)` | module | Rolls one inclination value; accepts optional `rng` |
 | `count_stars_orbited(orbit, stellar_system) → int` | module | Returns how many stars a given orbit slot orbits (1 for circumsecondary; 1 + inner secondaries for primary orbits). Used for multi-star tidal DM (Session 193, Issue #179). |
