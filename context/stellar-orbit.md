@@ -50,10 +50,16 @@ Post-stellar remnant helpers (all module-private):
   Nebula and Star Cluster generators.
 - `_generate_young_star_env(designation, notes)` — young Class V star for Nebula/
   Star Cluster; uses cluster age + DM+1 to Star Type table when age < 0.2 Gyr.
+- `_roll_cluster_member(age_gyr) → str` — rolls spectral class for one cluster member
+  system. Uses the same Star Type table + DM+1 (when age < 0.2 Gyr) as the primary.
+  Returns `"BD"` when the table roll hits the Special row (nested Unusual result within
+  a cluster is not re-entered into the Unusual column — WBH p.219 compliance). Otherwise
+  returns `"X# V"` (e.g. `"G3 V"`).
 - `_roll_star_cluster_meta(age_gyr, primary) → StarCluster` — rolls Star Cluster
   metadata (WBH p.219, issue #182): single-hex (1D<4) vs multi-hex; hex_diameter (1D+1
   for multi-hex); system_count (2D+5, range 7–17); merged_star flag
-  (`primary.ms_lifespan_gyr < age_gyr`); jump_restriction ("Jump-2 minimum" for multi-hex).
+  (`primary.ms_lifespan_gyr < age_gyr`); jump_restriction ("Jump-2 minimum" for multi-hex);
+  member_stars (calls `_roll_cluster_member()` for each of the other system_count−1 systems).
   Called inside the Star Cluster branch of `_generate_peculiar_star()`; result stored in
   module sentinel `_pending_star_cluster` and transferred to `StarSystem.star_cluster`
   at the end of `generate_stellar_data()`.

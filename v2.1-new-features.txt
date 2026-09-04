@@ -1,6 +1,19 @@
 Traveller World & System Generator — What's New in v2.1
 =========================================================
 
+STAR CLUSTER — MEMBER STAR SPECTRAL CLASSES
+--------------------------------------------
+The Star Cluster section of the system card now lists the spectral class of every
+other star system sharing the cluster's centre hex.
+
+For a cluster of 11 systems, 10 member spectral classes are generated — one per
+other system — and shown in a Members row below the cluster summary table. Each
+entry is a young main-sequence star type (e.g. "G3 V", "M5 V") rolled with the
+same young-cluster rules as the primary. Rarely, an entry shows "BD" (brown dwarf),
+which occurs when the random roll for that system falls in the Special region of
+the Star Type table — the rules treat this as a brown dwarf rather than re-entering
+the Unusual column.
+
 STAR CLUSTER METADATA
 ----------------------
 When the Unusual Stars option is enabled and the primary star is a Star Cluster

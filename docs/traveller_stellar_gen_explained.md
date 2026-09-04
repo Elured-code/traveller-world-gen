@@ -93,6 +93,8 @@ class StarCluster:
     system_count: int      # 2D+5 — number of systems in the centre hex (range 7–17)
     merged_star: bool      # True when primary.ms_lifespan_gyr < age_gyr
     jump_restriction: str  # "Jump-2 minimum" for multi-hex; "" for single-hex
+    member_stars: List[str]  # spectral class of each other system (system_count − 1 entries)
+                             # e.g. ["G9 V", "M5 V", "BD", ...]; "BD" when Star Type roll = 2
 ```
 
 `StarSystem` wraps a list of `Star` objects. The primary is always `stars[0]`.
@@ -215,7 +217,8 @@ dedicated helper functions replace the standard table lookups:
 | `_generate_peculiar_star(designation, spectral, lum_class)` | module | Dispatcher for Peculiar column results |
 | `_generate_cluster_age()` | module | Rolls cluster age: 1D×1D×50 Myr → Gyr (max 1.80 Gyr) |
 | `_generate_young_star_env(designation, notes)` | module | Generates a young Class V star for Nebula/Star Cluster environments |
-| `_roll_star_cluster_meta(age_gyr, primary)` | module | Rolls Star Cluster hex/population metadata (WBH p.219, issue #182): single/multi-hex, hex_diameter, system_count, merged_star flag |
+| `_roll_star_cluster_meta(age_gyr, primary)` | module | Rolls Star Cluster hex/population metadata (WBH p.219, issue #182): single/multi-hex, hex_diameter, system_count, merged_star flag; calls `_roll_cluster_member()` for each of the other systems |
+| `_roll_cluster_member(age_gyr)` | module | Rolls spectral class for one cluster member system (young Class V or "BD" when the Star Type table roll hits the Special row — WBH p.219 nested-Unusual rule) |
 
 ---
 
