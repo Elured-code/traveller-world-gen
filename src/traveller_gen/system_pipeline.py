@@ -24,6 +24,7 @@ from .traveller_world_physical import (
 from .traveller_world_atmosphere_detail import (
     generate_advanced_mean_temperature, check_runaway_greenhouse,
 )
+from .traveller_world_atmosphere_gen import apply_gas_retention_filter
 from .traveller_hydro_detail import generate_hydrographic_detail
 from .traveller_world_detail import (
     attach_detail, apply_secondary_social, reattach_mainworld_orbit,
@@ -38,6 +39,7 @@ from .traveller_world_importance import attach_importance_detail
 from .traveller_world_starport_detail import attach_starport_detail
 from .traveller_world_military_detail import attach_military_detail
 from .traveller_system_gen import select_mainworld, attach_body_names
+from .traveller_orbit_gen import count_stars_orbited
 
 
 @dataclass
@@ -76,6 +78,16 @@ def _sync_orbit_sah(mw, mw_orbit) -> None:
                 sat_det.sah = mw.uwp()[1:4]
     elif mw_orbit.detail is not None:
         mw_orbit.detail.sah = mw.uwp()[1:4]
+
+
+def _maybe_apply_gas_retention(mw) -> None:
+    """Apply gas retention filter when temperature and escape velocity are available."""
+    if mw.atmosphere_detail is None or mw.size_detail is None:
+        return
+    adv_temp = getattr(mw.size_detail, "advanced_mean_temperature_k", None)
+    v_e = getattr(mw.size_detail, "escape_velocity", None)
+    if adv_temp is not None and v_e is not None and adv_temp > 0:
+        apply_gas_retention_filter(mw.atmosphere_detail, v_e, adv_temp)
 
 
 def _attach_physical(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
@@ -133,6 +145,7 @@ def _attach_physical(  # pylint: disable=too-many-locals,too-many-branches,too-m
     )
 
     if not runaway_greenhouse or mw.size_detail.advanced_mean_temperature_k is None:
+        _maybe_apply_gas_retention(mw)
         _sync_orbit_sah(mw, mw_orbit)
         return
 
@@ -143,6 +156,7 @@ def _attach_physical(  # pylint: disable=too-many-locals,too-many-branches,too-m
         size=mw.size,
     )
     if rg is None:
+        _maybe_apply_gas_retention(mw)
         _sync_orbit_sah(mw, mw_orbit)
         return
 
@@ -171,6 +185,7 @@ def _attach_physical(  # pylint: disable=too-many-locals,too-many-branches,too-m
         orbit_eccentricity=orbit_ecc,
         star_mass=stars[0].mass if stars else 1.0,
     )
+    _maybe_apply_gas_retention(mw)
     _sync_orbit_sah(mw, mw_orbit)
 
 
@@ -221,6 +236,7 @@ def _apply_moon_tidal(system) -> None:
         orbit_au=mw_orbit.orbit_au,
         star_mass=system.stellar_system.primary.mass,
         orbit_eccentricity=mw_orbit.eccentricity,
+        num_stars_orbited=count_stars_orbited(mw_orbit, system.stellar_system),
         is_moon=is_moon,
         gg_mass_earth=gg_mass_earth,
         gg_satellite_moon=gg_sat_moon,

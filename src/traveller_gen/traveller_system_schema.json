@@ -1,0 +1,512 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/traveller_system_schema.json",
+  "title": "Traveller Star System",
+  "description": "A generated star system produced by traveller_system_gen.py, following the World Builder's Handbook stellar and orbit generation rules. Covers stars, orbits, and a mainworld record.",
+  "type": "object",
+  "required": [
+    "star_count",
+    "age_gyr",
+    "stars",
+    "orbits",
+    "mainworld",
+    "nhz_atmospheres",
+    "orbital_eccentricity",
+    "orbital_inclination",
+    "runaway_greenhouse",
+    "independent_government",
+    "optional_biomass",
+    "optional_inhospitable",
+    "relic_tech",
+    "settlement_type",
+    "select_mainworld",
+    "social_detail",
+    "unusual_stars",
+    "_app_version"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "star_count": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Total number of stars in the system (primary + all companions and secondaries)."
+    },
+    "age_gyr": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "System age in gigayears, taken from the primary star. Null when the primary has no defined age (e.g. certain unusual star types)."
+    },
+    "stars": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Star" },
+      "description": "All stars in the system. The primary star is always first (index 0)."
+    },
+    "orbits": {
+      "type": "object",
+      "description": "Orbit placement data for the entire system.",
+      "required": [
+        "gas_giant_count",
+        "belt_count",
+        "terrestrial_count",
+        "total_worlds",
+        "empty_orbits",
+        "star_zones",
+        "orbits",
+        "mainworld_orbit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "gas_giant_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of gas giant orbit slots placed."
+        },
+        "belt_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of planetoid belt orbit slots placed."
+        },
+        "terrestrial_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of terrestrial world orbit slots placed."
+        },
+        "total_worlds": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total non-empty orbit slots (gas_giant_count + belt_count + terrestrial_count)."
+        },
+        "empty_orbits": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of empty orbit slots placed (rolled but unoccupied positions)."
+        },
+        "star_zones": {
+          "type": "object",
+          "description": "Per-star zone boundaries. Keys are star designations (e.g. 'A', 'B', 'Aa').",
+          "additionalProperties": { "$ref": "#/$defs/StarZone" }
+        },
+        "orbits": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/OrbitSlot" },
+          "description": "All orbit slots placed in the system, in ascending orbit-number order per star."
+        },
+        "mainworld_orbit": {
+          "oneOf": [
+            { "$ref": "#/$defs/OrbitSlot" },
+            { "type": "null" }
+          ],
+          "description": "The orbit slot that contains the mainworld. Null when the system has no mainworld (e.g. dead-star systems with no surviving worlds)."
+        }
+      }
+    },
+    "mainworld": {
+      "oneOf": [
+        { "$ref": "https://example.com/traveller_world_schema.json" },
+        { "type": "null" }
+      ],
+      "description": "The mainworld UWP record. Null when the system has no mainworld."
+    },
+    "nhz_atmospheres": {
+      "type": "boolean",
+      "description": "When true, worlds outside the habitable zone use WBH Non-Habitable Zone atmosphere tables. Pass ?nhz_atmospheres=true to reproduce. Default false."
+    },
+    "orbital_eccentricity": {
+      "type": "boolean",
+      "description": "When true, orbital eccentricity was rolled for all orbiting bodies (WBH p.27). Pass ?orbital_eccentricity=true to reproduce. Default false."
+    },
+    "orbital_inclination": {
+      "type": "boolean",
+      "description": "When true, orbital inclination was rolled for all orbiting bodies (WBH p.28). Pass ?orbital_inclination=true to reproduce. Default false."
+    },
+    "runaway_greenhouse": {
+      "type": "boolean",
+      "description": "When true, the optional runaway greenhouse check (WBH p.79) was applied. Pass ?runaway_greenhouse=true to reproduce. Default false."
+    },
+    "independent_government": {
+      "type": "boolean",
+      "description": "When true, secondary worlds may roll an independent government instead of a captive one (WBH p.162). Default false."
+    },
+    "optional_biomass": {
+      "type": "boolean",
+      "description": "House rule: raises biomass rating from 0 to 1 for oxygenated atmospheres. Pass ?optional_biomass_rule=true to reproduce. Default false."
+    },
+    "optional_inhospitable": {
+      "type": "boolean",
+      "description": "House rule: group biomass roll that can zero out biomass for worlds outside the habitable zone. Default false."
+    },
+    "relic_tech": {
+      "type": "boolean",
+      "description": "House rule: 2D=12 chance of previous-culture relic technology raising a world's Novelty TL. Default false."
+    },
+    "settlement_type": {
+      "type": "string",
+      "enum": ["standard", "long_settled", "well_settled", "backwater", "unsettled"],
+      "description": "Settlement-type population DM applied when this system's mainworld population was generated. Default 'standard'."
+    },
+    "select_mainworld": {
+      "type": "boolean",
+      "description": "When true, all terrestrial candidates were scored and the winner may have been promoted to mainworld (WBH pp.155-156). Default false."
+    },
+    "social_detail": {
+      "type": "boolean",
+      "description": "When true, population/government/law/tech detail was attached to every inhabited world. Default false."
+    },
+    "unusual_stars": {
+      "type": "boolean",
+      "description": "When true, the Unusual column (WBH p.219) was used for primary-type determination, allowing neutron stars, black holes, protostars, and environment types. Default false."
+    },
+    "_app_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version string of the traveller-gen package that produced this output. Informational only — do not use as a const constraint."
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The RNG seed used to generate this system. Present only when a seed was provided. Pass this value together with the generation flags to reproduce identical output."
+    },
+    "star_cluster": {
+      "$ref": "#/$defs/StarCluster",
+      "description": "Star Cluster metadata. Present only when the primary star is a Peculiar environment: Star Cluster type (WBH p.219, issue #182)."
+    }
+  },
+  "$defs": {
+    "StarCluster": {
+      "title": "StarCluster",
+      "description": "Star Cluster metadata for a Peculiar environment: Star Cluster system (WBH p.219). Generated when the primary star is a young Class V star embedded in a star cluster.",
+      "type": "object",
+      "required": ["age_gyr", "single_hex", "hex_diameter", "system_count", "merged_star", "jump_restriction", "member_stars"],
+      "additionalProperties": false,
+      "properties": {
+        "age_gyr": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Cluster age in gigayears (1D × 1D × 50 Myr, max 1.80 Gyr)."
+        },
+        "single_hex": {
+          "type": "boolean",
+          "description": "True when the cluster fits within a single subsector hex (1D roll 1-3). False for multi-hex clusters."
+        },
+        "hex_diameter": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Diameter of the cluster in subsector hexes. 1 for single-hex clusters; 1D+1 (2-7) for multi-hex clusters."
+        },
+        "system_count": {
+          "type": "integer",
+          "minimum": 7,
+          "description": "Number of star systems in the centre hex of the cluster (2D+5). Outer hexes contain fewer systems (DM-2)."
+        },
+        "merged_star": {
+          "type": "boolean",
+          "description": "True when the primary star's main-sequence lifespan is shorter than the cluster age, indicating the star has evolved off the main sequence."
+        },
+        "jump_restriction": {
+          "type": "string",
+          "description": "Jump navigation restriction for the cluster. 'Jump-2 minimum' for multi-hex clusters; empty string for single-hex clusters."
+        },
+        "member_stars": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Spectral classifications of the other star systems in the cluster's centre hex (system_count − 1 entries). Each entry is a string such as \"G3 V\" or \"M5 V\"."
+        }
+      }
+    },
+    "Star": {
+      "title": "Star",
+      "description": "One star in the system, including physical properties, orbital parameters, and designation.",
+      "type": "object",
+      "required": [
+        "designation",
+        "role",
+        "classification",
+        "spectral_type",
+        "subtype",
+        "luminosity_class",
+        "mass_solar",
+        "temperature_k",
+        "diameter_solar",
+        "luminosity_solar",
+        "orbit_number",
+        "orbit_au",
+        "age_gyr",
+        "ms_lifespan_gyr",
+        "orbit_period_yr",
+        "colour",
+        "name",
+        "special_notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "designation": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Star designation: 'A' for the primary; 'Aa'/'Ab' for companions; 'B', 'C' for secondaries."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["primary", "companion", "close", "near", "far"],
+          "description": "Stellar role. 'primary' = the most massive star; 'companion' = co-orbital with parent; 'close'/'near'/'far' = secondary stars at those WBH separation bands."
+        },
+        "classification": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Full spectral classification string (e.g. 'G2 V', 'M5 VI', 'NS', 'BH'). For compact remnants the spectral_type is returned directly."
+        },
+        "spectral_type": {
+          "type": "string",
+          "enum": ["O", "B", "A", "F", "G", "K", "M", "D", "BD", "NS", "PSR", "BH"],
+          "description": "Spectral letter. Standard main-sequence/giant types (O–M); D = white dwarf; BD = brown dwarf; NS = neutron star; PSR = pulsar; BH = black hole."
+        },
+        "subtype": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 9,
+          "description": "Decimal subtype (0–9). Null for compact remnants (NS, PSR, BH, D, BD) which have no subtype."
+        },
+        "luminosity_class": {
+          "type": "string",
+          "enum": ["Ia", "Ib", "II", "III", "IV", "V", "VI", "BD", "D", "NS", "PSR", "BH"],
+          "description": "Luminosity class. Standard MK classes (Ia–VI); BD/D/NS/PSR/BH match spectral_type for compact objects."
+        },
+        "mass_solar": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Stellar mass in solar masses."
+        },
+        "temperature_k": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Effective surface temperature in Kelvin. 0 for black holes (no surface emission)."
+        },
+        "diameter_solar": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Stellar diameter in solar diameters."
+        },
+        "luminosity_solar": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Stellar luminosity in solar luminosities."
+        },
+        "orbit_number": {
+          "type": ["number", "null"],
+          "description": "WBH Orbit# of this star around the primary (or its parent, for companions). Null for the primary star itself."
+        },
+        "orbit_au": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Mean orbital distance in AU. Null for the primary star."
+        },
+        "age_gyr": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Star age in gigayears. All stars in a system share the primary's age. Null for protostar or certain environment types."
+        },
+        "ms_lifespan_gyr": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Main-sequence lifespan in Gyr. Null for compact remnants with no defined MS lifespan."
+        },
+        "orbit_period_yr": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Orbital period in years (Kepler's third law). Null for the primary and for companion stars (period = parent's period)."
+        },
+        "colour": {
+          "type": "string",
+          "description": "Display colour name for this star's spectral type (e.g. 'Yellow-White', 'Red', 'Blue-White')."
+        },
+        "name": {
+          "type": "string",
+          "description": "Optional star name assigned by attach_body_names(). Empty string when no name has been assigned."
+        },
+        "special_notes": {
+          "type": "string",
+          "description": "Free-text notes added during generation, e.g. 'Protostar', 'Peculiar environment: Nebula'. Empty string for ordinary stars."
+        },
+        "orbit_eccentricity": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1,
+          "description": "Orbital eccentricity (0 = circular). Only present when orbital_eccentricity=true was requested and the value is > 0."
+        },
+        "orbit_au_min": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Periapsis distance in AU: orbit_au × (1 − orbit_eccentricity). Present only when orbit_eccentricity is present."
+        },
+        "orbit_au_max": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Apoapsis distance in AU: orbit_au × (1 + orbit_eccentricity). Present only when orbit_eccentricity is present."
+        },
+        "orbit_inclination": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 180,
+          "description": "Orbital inclination in degrees. Only present when orbital_inclination=true was requested and the value is > 0. Values above 90° indicate retrograde motion."
+        },
+        "bh_schwarzschild_km": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Schwarzschild radius in km. Only present when spectral_type is 'BH'."
+        }
+      }
+    },
+    "StarZone": {
+      "title": "StarZone",
+      "description": "Orbital zone boundaries for one star in the system.",
+      "type": "object",
+      "required": ["mao", "hzco", "hz_inner", "hz_outer"],
+      "additionalProperties": false,
+      "properties": {
+        "mao": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Minimum Allowable Orbit number (Orbit#) for this star (WBH p.37)."
+        },
+        "hzco": {
+          "type": "number",
+          "description": "Habitable Zone Centre Orbit number (WBH p.38). The orbit# of the ideal habitable zone."
+        },
+        "hz_inner": {
+          "type": "number",
+          "description": "Inner habitable zone boundary (Orbit#). hz_deviation < 0 here is 'cold' territory."
+        },
+        "hz_outer": {
+          "type": "number",
+          "description": "Outer habitable zone boundary (Orbit#). hz_deviation > 0 here is 'hot' territory."
+        }
+      }
+    },
+    "OrbitSlot": {
+      "title": "OrbitSlot",
+      "description": "One orbit slot placed by generate_orbits(). May be empty, a belt, a gas giant, a terrestrial world, or a stellar body.",
+      "type": "object",
+      "required": [
+        "star",
+        "orbit_number",
+        "orbit_au",
+        "slot_index",
+        "world_type",
+        "is_habitable_zone",
+        "hz_deviation",
+        "temperature_zone",
+        "is_mainworld_candidate",
+        "notes"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "star": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Designation of the star this orbit belongs to (e.g. 'A', 'B', 'Aa')."
+        },
+        "orbit_number": {
+          "type": "number",
+          "description": "WBH Orbit# coordinate for this slot."
+        },
+        "orbit_au": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Mean orbital distance in AU, derived from orbit_number."
+        },
+        "slot_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Sequential index of this slot within the star's orbit sequence (continuous across inner and outer zones). Anomalous orbit slots may receive index 0."
+        },
+        "world_type": {
+          "type": "string",
+          "enum": ["belt", "gas_giant", "terrestrial", "empty", "star"],
+          "description": "Type of body occupying this orbit slot. 'star' is used for secondary-star orbit placeholders."
+        },
+        "is_habitable_zone": {
+          "type": "boolean",
+          "description": "True when this orbit falls within the star's habitable zone (inner ≤ orbit# ≤ outer)."
+        },
+        "hz_deviation": {
+          "type": "number",
+          "description": "Signed deviation from the habitable zone centre (Orbit# units). Negative = closer to star than HZ centre; positive = farther."
+        },
+        "temperature_zone": {
+          "type": "string",
+          "enum": ["boiling", "hot", "temperate", "cold", "frozen"],
+          "description": "Temperature zone derived from hz_deviation using the WBH HZ Regions table."
+        },
+        "is_mainworld_candidate": {
+          "type": "boolean",
+          "description": "True when this terrestrial slot was considered as a mainworld candidate during select_mainworld scoring."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Human-readable notes for this orbit slot (e.g. anomaly type, orbital parameters). Empty string when no notes apply."
+        },
+        "canonical_profile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "When set, the canonical UWP profile from TravellerMap data. Present only for TravellerMap-sourced worlds."
+        },
+        "gg_sah": {
+          "type": "string",
+          "pattern": "^G[SML][0-9A-J]$",
+          "description": "Gas giant SAH code rolled at orbit-generation time (e.g. 'GM9', 'GL3'). Category: GS = Small, GM = Medium, GL = Large; final character is an extended-hex diameter digit. Present only for gas_giant slots."
+        },
+        "gg_mass_earth": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Gas giant mass in Earth masses. Rolled at orbit-generation time. Present only for gas_giant slots that have been fully processed."
+        },
+        "anomaly_type": {
+          "type": "string",
+          "enum": ["random", "eccentric", "inclined", "retrograde", "trojan_leading", "trojan_trailing"],
+          "description": "Anomalous orbit type (WBH pp.49-50). Present only for anomalous orbit slots."
+        },
+        "orbit_period_yr": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Orbital period in years (Kepler's third law). Present when orbital data is sufficient to compute it."
+        },
+        "eccentricity": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1,
+          "description": "Orbital eccentricity. Present only when orbital_eccentricity=true was requested and the value is > 0."
+        },
+        "orbit_au_min": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Periapsis distance in AU: orbit_au × (1 − eccentricity). Present only when eccentricity is present."
+        },
+        "orbit_au_max": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Apoapsis distance in AU: orbit_au × (1 + eccentricity). Present only when eccentricity is present."
+        },
+        "inclination": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 180,
+          "description": "Orbital inclination in degrees. Present only when orbital_inclination=true was requested and the value is > 0."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Body name assigned by attach_body_names(). Present only when a name has been assigned."
+        },
+        "radiation_zone": {
+          "type": "boolean",
+          "const": true,
+          "description": "True when this orbit is within a pulsar's lethal radiation zone (PSR/magnetar systems). Absent when false."
+        },
+        "detail": {
+          "$ref": "https://example.com/traveller_world_schema.json",
+          "description": "Secondary world or satellite detail record. Present only after attach_detail() has been called and the slot holds a non-gas-giant world."
+        }
+      }
+    }
+  }
+}

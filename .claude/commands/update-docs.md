@@ -30,11 +30,11 @@ Then read the full diff of every modified **source** file (`.py`, `.html`,
 ## Step 2 — Version policy
 
 `APP_VERSION` (in `world_codes.py`) is bumped **only** when
-`traveller_world_schema.json` actually changes — a schema change is a contract
-change for API consumers and is what triggers a maintenance release. Sessions
-that don't touch the schema do **not** bump the version, even if source files
-changed. The bump mechanics live in Step 6, conditional on the schema check —
-do not bump the version here.
+`traveller_world_schema.json` **or** `traveller_system_schema.json` actually
+changes — a schema change is a contract change for API consumers and is what
+triggers a maintenance release. Sessions that don't touch either schema do
+**not** bump the version, even if source files changed. The bump mechanics live
+in Step 6, conditional on the schema check — do not bump the version here.
 
 **Build number note:** The build number (the `+build.N` suffix in the full
 version string) is assigned automatically by `scripts/compute_version.sh`
@@ -66,6 +66,7 @@ Use this routing table (mirrors the CLAUDE.md routing table):
 | `shared/helpers.py` | `context/api-layer.md` |
 | `gen-ui/app.py` | `context/gen-ui.md` |
 | `traveller_world_schema.json` | `docs/release-v{APP_VERSION}.md` (JSON schema table — derive filename from `world_codes.py`) |
+| `traveller_system_schema.json` | `docs/release-v{APP_VERSION}.md` (same schema table) |
 | Any data-structure change | `context/data-structures.md` |
 
 Always update regardless of what changed:
@@ -130,14 +131,19 @@ the correct filename from `APP_VERSION` in `world_codes.py` as described above.
 
 ---
 
-## Step 6 — Check and update traveller_world_schema.json
+## Step 6 — Check and update JSON schemas
 
-Read `traveller_world_schema.json` and compare it against the current source
-code. Update it if any of the following changed:
+Two schema files exist (or may exist in future):
 
-- A field was **added** to `World`, `WorldDetail`, `WorldPhysical`,
-  `BeltPhysical`, `Moon`, `OrbitSlot`, `Star`, or `SystemOrbits` and is emitted
-  by `to_dict()` but not yet in the schema.
+- `traveller_world_schema.json` — covers `World` and its nested types
+  (`WorldDetail`, `WorldPhysical`, `BeltPhysical`, `Moon`).
+- `traveller_system_schema.json` — covers `TravellerSystem`, `StarSystem`,
+  `Star`, `SystemOrbits`, and `OrbitSlot`.
+
+For each schema file that exists, read it and compare against the current source
+code. Update it if any of the following changed for the types it covers:
+
+- A field was **added** and is emitted by `to_dict()` but not yet in the schema.
 - A field was **removed** from `to_dict()` — remove it from the schema too.
 - A field's **type or constraints** changed (e.g. an `int` became `Optional[int]`,
   a minimum value changed).
@@ -145,10 +151,11 @@ code. Update it if any of the following changed:
 **Do not add** fields that are only used internally and never appear in JSON
 output. Only properties emitted by `to_dict()` / `to_json()` belong in the schema.
 
-### If the schema changed — bump the version and create a maintenance release
+### If either schema changed — bump the version and create a maintenance release
 
-When `traveller_world_schema.json` is modified, a maintenance release is
-required (schema changes are a contract change for API consumers).
+When `traveller_world_schema.json` or `traveller_system_schema.json` is
+modified, a maintenance release is required (schema changes are a contract
+change for API consumers).
 
 **6a0. Bump the patch version.**
 
@@ -182,6 +189,8 @@ Copy the structure from the previous maintenance release file (e.g.
 ```bash
 git add src/traveller_gen/world_codes.py fastapi/app.py \
         traveller_world_schema.json docs/release-vX.Y.Z.md
+# If traveller_system_schema.json also changed:
+git add traveller_system_schema.json
 git commit -m "chore: schema update for vX.Y.Z"
 ```
 

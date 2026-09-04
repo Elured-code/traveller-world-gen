@@ -54,6 +54,7 @@ from PySide6.QtWidgets import (  # noqa: E402
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -63,6 +64,8 @@ from PySide6.QtWidgets import (  # noqa: E402
     QScrollArea,
     QSizePolicy,
     QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -84,6 +87,10 @@ from traveller_gen import traveller_world_atmosphere_gen as _twag  # noqa: E402
 from traveller_gen.tables import ZONE_CSS_CLASS  # noqa: E402
 from traveller_gen.traveller_hydro_detail import generate_hydrographic_detail  # noqa: E402
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline  # noqa: E402
+from traveller_gen.traveller_world_cargo_gen import (  # noqa: E402
+    generate_cargo_manifest,
+    generate_freight_lots,
+)
 from traveller_gen.world_codes import APP_VERSION  # noqa: E402
 
 try:
@@ -134,6 +141,17 @@ QLabel#table-moon   { font-size: 9pt; color: #888888; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 QFrame#onboard-card { border: 1px solid #cccccc; border-radius: 8px; }
 QLabel#version-label { font-size: 9pt; color: #888888; }
+QTableWidget, QTableView {
+    gridline-color: #d0d0d0;
+    selection-background-color: #3584e4;
+    selection-color: #ffffff;
+}
+QHeaderView::section {
+    background-color: #f0f0f0;
+    color: #333333;
+    border: 1px solid #d0d0d0;
+    padding: 4px 6px;
+}
 """
 
 _CSS_DARK = """
@@ -165,6 +183,21 @@ QLabel#table-dim    { font-size: 10pt; color: #6b7280; }
 QLabel#table-moon   { font-size: 9pt; color: #aaaaaa; }
 QPushButton#suggested-action { background-color: #3584e4; color: white; }
 QFrame#onboard-card { border: 1px solid #444444; border-radius: 8px; }
+QTableWidget, QTableView {
+    background-color: #252526;
+    alternate-background-color: #2a2a2a;
+    color: #e0e0e0;
+    gridline-color: #3d3d3d;
+    selection-background-color: #264f78;
+    selection-color: #e0e0e0;
+    border: none;
+}
+QHeaderView::section {
+    background-color: #2d2d2d;
+    color: #c0c0c0;
+    border: 1px solid #3d3d3d;
+    padding: 4px 6px;
+}
 """
 
 # ---------------------------------------------------------------------------
@@ -500,6 +533,119 @@ class SurveyFormWindow(QMainWindow):  # pylint: disable=too-few-public-methods
         self._view.setHtml(html)
 
 
+class CargoWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many-locals
+    """Non-modal window that displays a speculative trade cargo manifest."""
+
+    _HEADERS = ("D66", "Trade Good", "Tons", "Base Cr", "DM", "Purchase Cr")
+
+    def __init__(  # pylint: disable=too-many-locals
+        self, world_name: str, manifest: object
+    ) -> None:
+        super().__init__()
+        self.setWindowTitle(f"Cargo — {world_name}")
+        self.resize(700, 440)
+
+        lots = manifest.lots  # type: ignore[attr-defined]
+        table = QTableWidget(len(lots), len(self._HEADERS))
+        table.setHorizontalHeaderLabels(list(self._HEADERS))
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setAlternatingRowColors(True)
+        hdr = table.horizontalHeader()
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for col in (0, 2, 3, 4, 5):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        for row, lot in enumerate(lots):
+            dm_str = f"+{lot.purchase_dm}" if lot.purchase_dm >= 0 else str(lot.purchase_dm)
+            values = (
+                str(lot.d66),
+                lot.trade_good,
+                str(lot.tons),
+                f"{lot.base_price_cr:,}",
+                dm_str,
+                f"{lot.purchase_price_cr:,}",
+            )
+            for col, val in enumerate(values):
+                item = QTableWidgetItem(val)
+                if col not in (1,):
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                table.setItem(row, col, item)
+
+        summary = QLabel(
+            f"{world_name} — {manifest.total_tons:,} tons available"  # type: ignore[attr-defined]
+        )
+        summary.setObjectName("dim-label")
+
+        central = QWidget()
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        layout.addWidget(summary)
+        layout.addWidget(table, stretch=1)
+        self.setCentralWidget(central)
+
+
+class FreightWindow(QMainWindow):  # pylint: disable=too-few-public-methods
+    """Non-modal window that displays a freight lot manifest (CRB p.239)."""
+
+    _HEADERS = ("Tier", "Lots", "Total Tons")
+
+    def __init__(self, world_name: str, manifest: object) -> None:  # pylint: disable=too-many-locals
+        super().__init__()
+        self.setWindowTitle(f"Freight — {world_name}")
+        self.resize(420, 200)
+
+        lots = manifest.lots  # type: ignore[attr-defined]
+        inc_t = manifest.total_incidental_tons  # type: ignore[attr-defined]
+        min_t = manifest.total_minor_tons       # type: ignore[attr-defined]
+        maj_t = manifest.total_major_tons       # type: ignore[attr-defined]
+        rows_data = [
+            ("Incidental (1D t)", lots.incidental, inc_t),
+            ("Minor (1D×5 t)",    lots.minor,      min_t),
+            ("Major (1D×10 t)",   lots.major,      maj_t),
+        ]
+        mail = manifest.mail_containers  # type: ignore[attr-defined]
+        if mail > 0:
+            rows_data.append(("Mail (5 t ea.)", mail, mail * 5))
+
+        table = QTableWidget(len(rows_data), len(self._HEADERS))
+        table.setHorizontalHeaderLabels(list(self._HEADERS))
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setAlternatingRowColors(True)
+        hdr = table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for col in (1, 2):
+            hdr.setSectionResizeMode(col, QHeaderView.ResizeMode.ResizeToContents)
+
+        for row, (tier, count, tons) in enumerate(rows_data):
+            for col, val in enumerate((tier, str(count), f"{tons:,}")):
+                item = QTableWidgetItem(val)
+                if col != 0:
+                    item.setTextAlignment(
+                        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                    )
+                table.setItem(row, col, item)
+
+        summary = QLabel(
+            f"{world_name} — {manifest.total_tons:,} tons total"  # type: ignore[attr-defined]
+        )
+        summary.setObjectName("dim-label")
+
+        central = QWidget()
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
+        layout.addWidget(summary)
+        layout.addWidget(table, stretch=1)
+        self.setCentralWidget(central)
+
+
 class UserGuideWindow(QMainWindow):  # pylint: disable=too-few-public-methods
     """Non-modal window that displays the rendered User Guide."""
 
@@ -537,6 +683,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
         seed: int,
         orbital_eccentricity: bool = True,
         orbital_inclination: bool = True,
+        unusual_stars: bool = False,
         compute_novelty_tl: bool = False,
     ) -> None:
         super().__init__()
@@ -546,6 +693,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
         self._seed = seed
         self._orbital_eccentricity = orbital_eccentricity
         self._orbital_inclination = orbital_inclination
+        self._unusual_stars = unusual_stars
         self._compute_novelty_tl = compute_novelty_tl
 
     def run(self) -> None:
@@ -558,6 +706,7 @@ class _TravMapWorker(QThread):  # pylint: disable=too-few-public-methods
                 seed=self._seed,
                 orbital_eccentricity=self._orbital_eccentricity,
                 orbital_inclination=self._orbital_inclination,
+                unusual_stars=self._unusual_stars,
                 compute_novelty_tl=self._compute_novelty_tl,
             )
             self.result.emit(system)
@@ -591,6 +740,7 @@ class _OptionsDialog(QDialog):
         settlement_type: str,
         eccentricity: bool = True,
         inclination: bool = True,
+        unusual_stars: bool = False,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("Generation Options")
@@ -617,6 +767,13 @@ class _OptionsDialog(QDialog):
         self._check_eccentricity.setChecked(eccentricity)
         self._check_inclination = QCheckBox("Orbital inclination")
         self._check_inclination.setChecked(inclination)
+        self._check_unusual_stars = QCheckBox("Unusual Stars column (WBH p.219)")
+        self._check_unusual_stars.setChecked(unusual_stars)
+        self._check_unusual_stars.setToolTip(
+            "Uses the Unusual Stars column instead of the Special column when the "
+            "primary type roll is ≤ 2, enabling brown dwarfs, white dwarfs, and "
+            "peculiar environments (Nebula, Protostar, Star Cluster, Anomaly)."
+        )
         self._check_independent_gov = QCheckBox("Independent Secondary\nWorld Government")
         self._check_independent_gov.setChecked(independent_government)
         self._check_select_mw = QCheckBox("Select mainworld")
@@ -626,6 +783,7 @@ class _OptionsDialog(QDialog):
         checks_layout.addWidget(self._check_runaway_greenhouse)
         checks_layout.addWidget(self._check_eccentricity)
         checks_layout.addWidget(self._check_inclination)
+        checks_layout.addWidget(self._check_unusual_stars)
         checks_layout.addWidget(self._check_independent_gov)
         checks_layout.addWidget(self._check_select_mw)
         layout.addWidget(self._sub_widget)
@@ -680,6 +838,7 @@ class _OptionsDialog(QDialog):
                 self._check_nhz, self._check_oxygen_biomass,
                 self._check_runaway_greenhouse,
                 self._check_eccentricity, self._check_inclination,
+                self._check_unusual_stars,
                 self._check_independent_gov, self._check_select_mw,
             ):
                 cb.setChecked(False)
@@ -707,6 +866,10 @@ class _OptionsDialog(QDialog):
     @property
     def inclination(self) -> bool:
         return self._check_inclination.isChecked()
+
+    @property
+    def unusual_stars(self) -> bool:
+        return self._check_unusual_stars.isChecked()
 
     @property
     def independent_government(self) -> bool:
@@ -872,10 +1035,14 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._seed_auto: bool = False
         self._map_windows: list[object] = []
         self._survey_windows: list[object] = []
+        self._cargo_windows: list[object] = []
+        self._freight_windows: list[object] = []
         self._poster_pdf_exports: list[object] = []
         self._user_guide_windows: list[object] = []
         self._map_btn: QPushButton | None = None
         self._survey_btn: QPushButton | None = None
+        self._cargo_btn: QPushButton | None = None
+        self._freight_btn: QPushButton | None = None
         self._survey_combo: QComboBox | None = None
         self._mw_name_edit: QLineEdit | None = None
         self._edit_names_btn: QPushButton | None = None
@@ -916,6 +1083,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         )
         self._opt_inclination: bool = (
             str(_s.value("opt_inclination", True)).lower() != "false"
+        )
+        self._opt_unusual_stars: bool = (
+            str(_s.value("opt_unusual_stars", False)).lower() == "true"
         )
         self._opt_settlement_type: str = str(_s.value("opt_settlement_type", "standard"))
         self._apply_theme()
@@ -1151,6 +1321,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             settlement_type=self._opt_settlement_type,
             eccentricity=self._opt_eccentricity,
             inclination=self._opt_inclination,
+            unusual_stars=self._opt_unusual_stars,
         )
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -1165,6 +1336,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_settlement_type = dialog.settlement_type
         self._opt_eccentricity = dialog.eccentricity
         self._opt_inclination = dialog.inclination
+        self._opt_unusual_stars = dialog.unusual_stars
         _s = QSettings("traveller-world-gen", "AppWindow")
         _s.setValue("opt_full_system", self._opt_full_system)
         _s.setValue("opt_nhz", self._opt_nhz)
@@ -1177,6 +1349,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         _s.setValue("opt_settlement_type", self._opt_settlement_type)
         _s.setValue("opt_eccentricity", self._opt_eccentricity)
         _s.setValue("opt_inclination", self._opt_inclination)
+        _s.setValue("opt_unusual_stars", self._opt_unusual_stars)
         self._on_detail_toggled(self._opt_full_system)
 
     def _on_menu_new(self) -> None:
@@ -1250,6 +1423,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                 sector, search_name, hex_pos, seed,
                 orbital_eccentricity=self._opt_eccentricity,
                 orbital_inclination=self._opt_inclination,
+                unusual_stars=self._opt_unusual_stars,
             )
         else:
             if full_system:
@@ -1259,6 +1433,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     nhz_atmospheres=self._opt_nhz,
                     orbital_eccentricity=self._opt_eccentricity,
                     orbital_inclination=self._opt_inclination,
+                    unusual_stars=self._opt_unusual_stars,
                 )
                 self._finish_system_generation(system, attach_detail_flag, rng=rng)
             else:
@@ -1392,6 +1567,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._opt_nhz = system.nhz_atmospheres  # type: ignore[attr-defined]
         self._opt_eccentricity = system.orbital_eccentricity  # type: ignore[attr-defined]
         self._opt_inclination = system.orbital_inclination  # type: ignore[attr-defined]
+        self._opt_unusual_stars = system.unusual_stars  # type: ignore[attr-defined]
         self._opt_runaway_greenhouse = system.runaway_greenhouse  # type: ignore[attr-defined]
         self._opt_independent_gov = system.independent_government  # type: ignore[attr-defined]
         self._opt_oxygen_biomass = system.optional_biomass  # type: ignore[attr-defined]
@@ -1463,6 +1639,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
                     error.sector, None, selected, seed,
                     orbital_eccentricity=self._opt_eccentricity,
                     orbital_inclination=self._opt_inclination,
+                    unusual_stars=self._opt_unusual_stars,
                 )
 
     def _on_map_clicked(self) -> None:
@@ -1471,6 +1648,36 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         win = SystemMapWindow(self._current_system)
         self._map_windows.append(win)
         win.show()
+
+    def _on_cargo_clicked(self) -> None:
+        world = (
+            self._current_system.mainworld  # type: ignore[attr-defined]
+            if self._current_system is not None and
+               self._current_system.mainworld is not None  # type: ignore[attr-defined]
+            else self._current_world
+        )
+        if world is None:
+            return
+        rng = random.Random(self._pending_seed) if self._pending_seed else random.Random()
+        manifest = generate_cargo_manifest(world, rng=rng)  # type: ignore[arg-type]
+        win = CargoWindow(world.name, manifest)  # type: ignore[attr-defined]
+        win.show()
+        self._cargo_windows.append(win)
+
+    def _on_freight_clicked(self) -> None:
+        world = (
+            self._current_system.mainworld  # type: ignore[attr-defined]
+            if self._current_system is not None and
+               self._current_system.mainworld is not None  # type: ignore[attr-defined]
+            else self._current_world
+        )
+        if world is None:
+            return
+        rng = random.Random(self._pending_seed) if self._pending_seed else random.Random()
+        manifest = generate_freight_lots(world, rng=rng)  # type: ignore[arg-type]
+        win = FreightWindow(world.name, manifest)  # type: ignore[attr-defined]
+        win.show()
+        self._freight_windows.append(win)
 
     def _on_survey_clicked(self) -> None:
         if self._current_system is None:
@@ -1787,6 +1994,8 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
     def _clear_status(self) -> None:
         self._map_btn = None
         self._survey_btn = None
+        self._cargo_btn = None
+        self._freight_btn = None
         self._survey_combo = None
         self._mw_name_edit = None
         self._edit_names_btn = None
@@ -1877,6 +2086,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         seed: int,
         orbital_eccentricity: bool = True,
         orbital_inclination: bool = True,
+        unusual_stars: bool = False,
     ) -> None:
         display = search_name or hex_pos or "world"
         self._show_loading(f"Looking up {display} in {sector}…")
@@ -1884,6 +2094,7 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         worker = _TravMapWorker(sector, search_name, hex_pos, seed,
                                 orbital_eccentricity=orbital_eccentricity,
                                 orbital_inclination=orbital_inclination,
+                                unusual_stars=unusual_stars,
                                 compute_novelty_tl=self._opt_social_detail)
         worker.result.connect(self._on_worker_result)
         worker.failed.connect(self._on_worker_error)
@@ -1984,7 +2195,9 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
 
         self._status_layout.addWidget(tabs, stretch=1)
 
-    def _build_system_summary_header(self, system: object) -> QWidget:
+    def _build_system_summary_header(  # pylint: disable=too-many-locals,too-many-statements
+        self, system: object
+    ) -> QWidget:
         mw = system.mainworld  # type: ignore[attr-defined]
         header = QWidget()
         layout = QHBoxLayout(header)
@@ -2044,6 +2257,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
         self._map_btn = map_btn
         layout.addWidget(map_btn)
 
+        cargo_btn = QPushButton("Cargo")
+        cargo_btn.clicked.connect(self._on_cargo_clicked)
+        self._cargo_btn = cargo_btn
+        layout.addWidget(cargo_btn)
+
+        freight_btn = QPushButton("Freight")
+        freight_btn.clicked.connect(self._on_freight_clicked)
+        self._freight_btn = freight_btn
+        layout.addWidget(freight_btn)
+
         return header
 
     def _build_summary_header(self, world: object) -> QWidget:
@@ -2075,6 +2298,16 @@ class AppWindow(QMainWindow):  # pylint: disable=too-few-public-methods,too-many
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
         )
         layout.addWidget(spacer)
+
+        cargo_btn = QPushButton("Cargo")
+        cargo_btn.clicked.connect(self._on_cargo_clicked)
+        self._cargo_btn = cargo_btn
+        layout.addWidget(cargo_btn)
+
+        freight_btn = QPushButton("Freight")
+        freight_btn.clicked.connect(self._on_freight_clicked)
+        self._freight_btn = freight_btn
+        layout.addWidget(freight_btn)
 
         return header
 

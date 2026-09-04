@@ -66,16 +66,29 @@ readability convention — they are ignored by the interpreter (the same as writ
 ```python
 @dataclass
 class WorldPhysical:
-    # Set by generate_world_physical():
-    composition: str
-    diameter_km: int
-    density_g_cm3: float
-    mass_earth: float
-    gravity_g: float
-    escape_velocity_km_s: float
-    axial_tilt_deg: float
-    day_length_hours: float
-    tidal_status: str
+    # Constructor fields — set by generate_world_physical():
+    composition: str       # Terrestrial Composition Table result
+    diameter_km: int       # Actual diameter in km
+    density: float         # g/cm³ (JSON key: "density_g_cm3")
+    mass: float            # Relative to Earth (JSON key: "mass_earth")
+    gravity: float         # Surface gravity in G (JSON key: "gravity_g")
+    escape_velocity: float # km/s (JSON key: "escape_velocity_km_s")
+    axial_tilt: float      # Degrees (JSON key: "axial_tilt_deg")
+    day_length: float      # Rotation period in hours (post-tidal; JSON key: "day_length_hours")
+    tidal_status: str      # "none"|"braking"|"prograde"|"retrograde"|"3:2_lock"|"1:1_lock"
+
+    # Set by generate_world_physical() after tidal resolution:
+    basic_day_length: float = field(default=0.0, init=False)  # pre-tidal rate (JSON key: "basic_day_length_hours")
+    eccentricity_adjusted: Optional[float] = field(default=None, init=False)
+
+    # Set by _apply_seismic_stress() (optional):
+    mean_temperature_k: Optional[int] = field(default=None, init=False)
+    residual_seismic_stress: Optional[int] = field(default=None, init=False)
+    tidal_seismic_stress: Optional[int] = field(default=None, init=False)
+    tidal_stress_factor: Optional[int] = field(default=None, init=False)
+    total_seismic_stress: Optional[int] = field(default=None, init=False)
+    seismic_temperature_k: Optional[int] = field(default=None, init=False)
+    tidal_amplitude_m: Optional[float] = field(default=None, init=False)
 
     # Set by generate_advanced_mean_temperature() (optional):
     albedo: Optional[float] = field(default=None, init=False)
@@ -87,13 +100,22 @@ class WorldPhysical:
     # Set after moon orbital data is known:
     stellar_day_hours: Optional[float] = field(default=None, init=False)
 
+    # Set by generate_world_physical() or apply_gas_retention_filter():
+    runaway_greenhouse: Optional[bool] = field(default=None, init=False)
+
     # Set at end of generate_world_physical():
     resource_rating: Optional[int] = field(default=None, init=False)
     # Terrestrial resource rating (WBH p.131): 2D-7 + Size + density_DM,
-    # clamped [2, 12]. Density DM: +2 if density > 1.12 g/cm³; -2 if < 0.50.
-    # Always set for Size 1+ worlds. Biological DMs (biomass, biodiversity,
-    # compatibility) are applied deterministically by attach_detail().
+    # clamped [2, 12]. Biological DMs applied by attach_detail().
+    resource_factor: Optional[int] = field(default=None, init=False)
 ```
+
+> **Note on JSON keys vs Python attributes:** several attributes use shorter names
+> internally (`density`, `gravity`, `mass`) but are serialised under longer descriptive
+> keys (`density_g_cm3`, `gravity_g`, `mass_earth`). The JSON keys include units;
+> the Python attributes omit them for brevity. `to_dict()` maps each attribute to its
+> JSON key; `from_dict()` reads by JSON key and passes the value to the matching
+> constructor argument.
 
 The constructor fields are set first. The `init=False` fields are filled in by
 separate function calls if the caller wants that level of detail.

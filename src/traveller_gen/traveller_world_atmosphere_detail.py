@@ -215,6 +215,33 @@ def _compute_mean_temperature(hz_deviation: float, atmosphere: int) -> int:
     return max(3, 388 + (modified_roll - 12) * 50)
 
 
+def compute_basic_temperature_k(
+    hz_deviation: Optional[float],
+    atmosphere: int,
+) -> Optional[int]:
+    """Return Basic Mean Temperature in K without rolling dice (issue #44).
+
+    Returns ``None`` when ``hz_deviation`` is unknown or when the modified
+    roll would enter the sub-10 K branch (modified_roll < −33) where
+    ``_compute_mean_temperature`` rolls 1D+5.  Callers that receive ``None``
+    should fall back to their existing temperature-category heuristics so that
+    no new dice roll is introduced into the RNG stream.
+    """
+    if hz_deviation is None:
+        return None
+    orbit_dm = _orbit_dm_for_mean_temp(hz_deviation)
+    atm_dm = _MEAN_TEMP_ATM_DM.get(atmosphere, 0)
+    modified_roll = 7 + orbit_dm + atm_dm
+    if modified_roll in _MEAN_TEMP_TABLE_K:
+        return max(3, _MEAN_TEMP_TABLE_K[modified_roll])
+    if modified_roll < 0:
+        t = 178 + modified_roll * 5
+        if t < 10:
+            return None  # dice territory — caller falls back to category heuristic
+        return max(3, t)
+    return max(3, 388 + (modified_roll - 12) * 50)
+
+
 # ---------------------------------------------------------------------------
 # High/Low temperature variance factors (WBH pp.48-50)
 # ---------------------------------------------------------------------------

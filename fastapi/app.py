@@ -133,7 +133,7 @@ from helpers import (
     apply_seed, error, ok,
     parse_count, parse_detail, parse_format, parse_hex_pos, parse_name,
     parse_nhz_atmospheres, parse_orbital_eccentricity, parse_orbital_inclination,
-    parse_runaway_greenhouse, parse_independent_government,
+    parse_runaway_greenhouse, parse_independent_government, parse_unusual_stars,
     parse_optional_biomass, parse_optional_inhospitable, parse_relic_tech,
     parse_social_detail, parse_settlement_type, parse_include_mw_card,
     parse_seed, parse_sector, parse_world_json,
@@ -145,7 +145,7 @@ try:
     from traveller_gen import _version as _ver  # type: ignore[import]
     _APP_VERSION = _ver.__version__
 except ImportError:
-    _APP_VERSION = "2.0.2"
+    _APP_VERSION = "2.1.4"
 
 # FastAPI light-mode background matches the page (#f4f0e4), not pure white.
 _PALETTE_LIGHT = dataclasses.replace(PALETTE_LIGHT, bg="#f4f0e4")
@@ -155,6 +155,7 @@ from traveller_gen.traveller_world_gen import (
 )
 from traveller_gen.traveller_world_atmosphere_gen import (
     generate_atmosphere_detail, generate_gas_mix, generate_unusual_subtype,
+    apply_gas_retention_filter,
 )
 from traveller_gen import traveller_world_atmosphere_gen as _twag
 from traveller_gen.traveller_belt_physical import BeltPhysical
@@ -179,6 +180,8 @@ from traveller_gen.traveller_world_culture_detail import attach_culture_detail
 from traveller_gen.traveller_world_importance import attach_importance_detail
 from traveller_gen.traveller_map_fetch import generate_system_from_map
 from traveller_gen.system_pipeline import PipelineOptions, run_detail_pipeline
+from traveller_gen.traveller_orbit_gen import count_stars_orbited
+from traveller_gen.traveller_world_cargo_gen import generate_cargo_manifest, generate_freight_lots
 
 logger = logging.getLogger(__name__)
 
@@ -772,6 +775,11 @@ def _attach_mainworld_physical(  # pylint: disable=too-many-branches
     )
 
     if not runaway_greenhouse:
+        adv_temp = mw.size_detail.advanced_mean_temperature_k
+        if mw.atmosphere_detail is not None and adv_temp is not None and adv_temp > 0:
+            apply_gas_retention_filter(
+                mw.atmosphere_detail, mw.size_detail.escape_velocity, adv_temp
+            )
         return
     if mw.size_detail.advanced_mean_temperature_k is None:
         return
@@ -784,6 +792,11 @@ def _attach_mainworld_physical(  # pylint: disable=too-many-branches
         size=mw.size,
     )
     if rg is None:
+        adv_temp = mw.size_detail.advanced_mean_temperature_k
+        if mw.atmosphere_detail is not None and adv_temp is not None and adv_temp > 0:
+            apply_gas_retention_filter(
+                mw.atmosphere_detail, mw.size_detail.escape_velocity, adv_temp
+            )
         return
     mw.size_detail.runaway_greenhouse = True
     if rg.new_atmosphere is not None:
@@ -810,6 +823,11 @@ def _attach_mainworld_physical(  # pylint: disable=too-many-branches
         orbit_eccentricity=orbit_ecc,
         star_mass=stars[0].mass if stars else 1.0,
     )
+    adv_temp = mw.size_detail.advanced_mean_temperature_k
+    if mw.atmosphere_detail is not None and adv_temp is not None and adv_temp > 0:
+        apply_gas_retention_filter(
+            mw.atmosphere_detail, mw.size_detail.escape_velocity, adv_temp
+        )
     # Sync the orbit slot WorldDetail SAH with any atmosphere/hydro mutations
     # (e.g. runaway greenhouse).  No-op when attach_detail() hasn't run yet.
     if mw_orbit.world_type == "gas_giant":
@@ -867,6 +885,7 @@ def _apply_mainworld_moon_tidal(system) -> None:
         orbit_au=mw_orbit.orbit_au,
         star_mass=system.stellar_system.primary.mass,
         orbit_eccentricity=mw_orbit.eccentricity,
+        num_stars_orbited=count_stars_orbited(mw_orbit, system.stellar_system),
         is_moon=is_moon,
         gg_mass_earth=gg_mass_earth,
         gg_satellite_moon=gg_sat_moon,
@@ -1073,6 +1092,104 @@ async def generate_named_world(request: Request) -> Response:
 
 
 # ===========================================================================
+# Endpoint 4b:  POST /api/cargo
+# ===========================================================================
+
+@app.post("/api/cargo")
+@limiter.limit(_RATE_LIMIT)
+async def generate_cargo(request: Request) -> Response:
+    """Generate a cargo manifest (available lots + purchase prices) for a mainworld.
+
+    Request body: a World object in the shape produced by World.to_dict() or
+    /api/world.  The world's trade codes, law level, and starport class
+    determine which goods are available and at what price.  An optional
+    integer ``seed`` key controls the purchase-roll RNG.
+
+    Returns: CargoManifest with lots sorted by D66, total tonnage, and
+    per-lot purchase price after 3D+DM roll (CRB pp.244-247).
+    """
+    logger.info("generate_cargo called")
+    body_raw = await request.body()
+    body: dict = {}
+    if body_raw:
+        try:
+            parsed = await request.json()
+            if not isinstance(parsed, dict):
+                return error("Request body must be a JSON object.", ERR_INVALID_BODY)
+            body = parsed
+        except (ValueError, TypeError):
+            return error("Request body is not valid JSON.", ERR_INVALID_BODY)
+
+    world_dict, err = parse_world_json(body_raw, body)
+    if err or world_dict is None:
+        return err or error("Missing world data.", ERR_INVALID_BODY)
+
+    seed_val, seed_err = parse_seed(request, body)
+    if seed_err:
+        return seed_err
+    _, rng = apply_seed(seed_val)
+
+    try:
+        world = World.from_dict(world_dict)
+        manifest = generate_cargo_manifest(world, rng=rng)
+    except Exception as exc:
+        logger.exception("Error generating cargo manifest: %s", exc)
+        return error("An unexpected error occurred while generating cargo.",
+                     ERR_INTERNAL, status_code=500)
+
+    return ok(manifest.to_dict())
+
+
+# ===========================================================================
+# Endpoint 4c:  POST /api/freight
+# ===========================================================================
+
+@app.post("/api/freight")
+@limiter.limit(_RATE_LIMIT)
+async def generate_freight(request: Request) -> Response:
+    """Generate available freight lots (fixed-rate cargo) for a mainworld.
+
+    Request body: a World object in the shape produced by World.to_dict() or
+    /api/world.  The world's population, starport, tech level, and travel zone
+    determine lot counts.  An optional integer ``seed`` key controls the RNG.
+
+    Returns: FreightManifest with incidental/minor/major lot counts, per-tier
+    total tonnage, mail containers, and overall total tons (CRB p.239).
+    Destination-world DM (per parsec) is deferred; only source-world DMs apply.
+    """
+    logger.info("generate_freight called")
+    body_raw = await request.body()
+    body: dict = {}
+    if body_raw:
+        try:
+            parsed = await request.json()
+            if not isinstance(parsed, dict):
+                return error("Request body must be a JSON object.", ERR_INVALID_BODY)
+            body = parsed
+        except (ValueError, TypeError):
+            return error("Request body is not valid JSON.", ERR_INVALID_BODY)
+
+    world_dict, err = parse_world_json(body_raw, body)
+    if err or world_dict is None:
+        return err or error("Missing world data.", ERR_INVALID_BODY)
+
+    seed_val, seed_err = parse_seed(request, body)
+    if seed_err:
+        return seed_err
+    _, rng = apply_seed(seed_val)
+
+    try:
+        world = World.from_dict(world_dict)
+        manifest = generate_freight_lots(world, rng=rng)
+    except Exception as exc:
+        logger.exception("Error generating freight manifest: %s", exc)
+        return error("An unexpected error occurred while generating freight.",
+                     ERR_INTERNAL, status_code=500)
+
+    return ok(manifest.to_dict())
+
+
+# ===========================================================================
 # Endpoint 5:  GET/POST /api/system/full
 # (registered before /api/system/{name} to avoid shadowing)
 # ===========================================================================
@@ -1108,13 +1225,15 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
     want_settlement = parse_settlement_type(request, body)
     want_social_detail = parse_social_detail(request, body)
     want_mw_card = parse_include_mw_card(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
                                       seed=seed, rng=rng,
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=True,
             want_select_mw=True,
@@ -1142,6 +1261,7 @@ async def generate_full_system_complete(request: Request) -> Response:  # pylint
             return JSONResponse({
                 "sys_html": sys_html,
                 "mw_html": mw.to_html(),
+                "mw_json": mw.to_dict(),
                 "survey_class0i_html": system.to_survey_form_html(),
                 "survey_class2iii_html": system.to_survey_form_html_class2(),
                 "survey_class4_html": system.to_survey_form_html_class4(),
@@ -1197,13 +1317,15 @@ async def generate_system_from_existing_world(request: Request) -> Response:  # 
     want_indep = parse_independent_government(request, body)
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         world = World.from_dict(world_dict)
         system = generate_system_from_world(world, seed=seed, rng=rng,
                                             nhz_atmospheres=want_nhz,
                                             orbital_eccentricity=want_ecc,
-                                            orbital_inclination=want_incl)
+                                            orbital_inclination=want_incl,
+                                            unusual_stars=want_unusual)
         _attach_mainworld_physical(system, runaway_greenhouse=want_rg, rng=rng)
         if want_detail:
             attach_detail(system, rng=rng,
@@ -1267,13 +1389,15 @@ async def generate_single_system(request: Request) -> Response:  # pylint: disab
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_social_detail = parse_social_detail(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
                                       seed=seed, rng=rng,
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=want_detail,
             want_select_mw=True,
@@ -1334,11 +1458,13 @@ async def generate_system_svg(request: Request) -> Response:  # pylint: disable=
     white_bg      = _parse_bool_flag(params.get("white_bg", False))
     want_ecc      = _parse_bool_flag(params.get("orbital_eccentricity", False))
     want_incl     = _parse_bool_flag(params.get("orbital_inclination",  False))
+    want_unusual  = _parse_bool_flag(params.get("unusual_stars", False))
 
     try:
         system = generate_full_system(name, seed=seed_val, rng=rng,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         if system.mainworld is None:
             return error("No mainworld in generated system.", ERR_INTERNAL, 500)
         apply_mainworld_social(system.mainworld, rng=rng)
@@ -1388,13 +1514,15 @@ async def generate_system_card(request: Request) -> Response:  # pylint: disable
     want_inhospitable = parse_optional_inhospitable(request, body)
     want_settlement = parse_settlement_type(request, body)
     want_social_detail = parse_social_detail(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
                                       seed=seed, rng=rng,
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=want_detail,
             want_select_mw=True,
@@ -1446,13 +1574,15 @@ async def generate_named_system(request: Request) -> Response:  # pylint: disabl
     want_indep = parse_independent_government(request, body)
     want_bio = parse_optional_biomass(request, body)
     want_inhospitable = parse_optional_inhospitable(request, body)
+    want_unusual = parse_unusual_stars(request, body)
     try:
         seed, rng = apply_seed(seed_val)
         system = generate_full_system(name=name or "World-1",
                                       seed=seed, rng=rng,
                                       nhz_atmospheres=want_nhz,
                                       orbital_eccentricity=want_ecc,
-                                      orbital_inclination=want_incl)
+                                      orbital_inclination=want_incl,
+                                      unusual_stars=want_unusual)
         run_detail_pipeline(system, rng, PipelineOptions(
             want_detail=want_detail,
             want_select_mw=False,
@@ -1719,6 +1849,7 @@ async def generate_map_system_full(request: Request) -> Response:  # pylint: dis
             return JSONResponse({
                 "sys_html": sys_html,
                 "mw_html": mw.to_html(),
+                "mw_json": mw.to_dict(),
                 "survey_class0i_html": system.to_survey_form_html(),
                 "survey_class2iii_html": system.to_survey_form_html_class2(),
                 "survey_class4_html": system.to_survey_form_html_class4(),

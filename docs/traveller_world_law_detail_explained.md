@@ -174,23 +174,6 @@ criminal at 7, private at 5 (more relaxed), personal rights at 5.
 
 ---
 
-## The low-floor clamping note
-
-When the atmosphere code requires a very high minimum tech level and the world's
-actual TL is below that threshold, the computed `low_floor` could exceed `tl_high`.
-If that happened, the clamp `_clamp(value, lo, hi)` would receive a range where
-`lo > hi`, which would return `lo` — a value above `tl_high`. The fix used in the
-tech detail module (which shares the same logic) is:
-
-```python
-low_floor = min(tl_high, max(min_tech, tl_high // 2))
-```
-
-Law detail does not compute its own floor, but the subcategory formula is protected
-by `max(0, min(18, raw))` at both ends.
-
----
-
 ## Key methods
 
 | Method / function | What it does |

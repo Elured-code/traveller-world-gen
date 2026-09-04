@@ -81,6 +81,7 @@ from .traveller_world_atmosphere_gen import (
     generate_unusual_subtype,
 )
 from . import traveller_world_atmosphere_gen as _twag
+from .traveller_world_atmosphere_detail import compute_basic_temperature_k
 
 
 # ---------------------------------------------------------------------------
@@ -163,6 +164,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
     settlement_type: str = "standard"
     select_mainworld: bool = False
     social_detail: bool = False
+    unusual_stars: bool = False
     seed: Optional[int] = None
 
     def to_dict(self) -> dict:
@@ -181,6 +183,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
         d["settlement_type"] = self.settlement_type
         d["select_mainworld"] = self.select_mainworld
         d["social_detail"] = self.social_detail
+        d["unusual_stars"] = self.unusual_stars
         if self.seed is not None:
             d["seed"] = self.seed
         d["_app_version"] = APP_VERSION
@@ -217,6 +220,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             settlement_type=str(d.get("settlement_type", "standard")),
             select_mainworld=bool(d.get("select_mainworld", False)),
             social_detail=bool(d.get("social_detail", False)),
+            unusual_stars=bool(d.get("unusual_stars", False)),
             seed=int(d["seed"]) if "seed" in d else None,
         )
 
@@ -298,6 +302,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 "hz_inner": f"{hz_in_v:.2f}"  if hz_in_v  is not None else "—",
                 "hzco":     f"{hzco_v:.2f}"   if hzco_v   is not None else "—",
                 "hz_outer": f"{hz_out_v:.2f}" if hz_out_v is not None else "—",
+                "special_notes":  star.special_notes,
             })
 
         # ── Orbital rows ──────────────────────────────────────────────────
@@ -540,6 +545,19 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
                 ordered_rows.extend(_local_items(own_desig))
         orbit_rows = ordered_rows
 
+        sc = self.stellar_system.star_cluster
+        star_cluster_ctx = None
+        if sc is not None:
+            star_cluster_ctx = {
+                "age_gyr": f"{sc.age_gyr:.3f}",
+                "single_hex": sc.single_hex,
+                "hex_diameter": sc.hex_diameter,
+                "system_count": sc.system_count,
+                "merged_star": sc.merged_star,
+                "jump_restriction": sc.jump_restriction,
+                "member_stars": sc.member_stars,
+            }
+
         return {
             "title": (mw.name if mw else "Unknown") + " system",
             "star_classes": " + ".join(
@@ -550,6 +568,7 @@ class TravellerSystem:  # pylint: disable=too-many-instance-attributes
             "star_rows": star_rows,
             "orbit_rows": orbit_rows,
             "detail_attached": detail_attached,
+            "star_cluster": star_cluster_ctx,
             "json_str": self.to_json(),
         }
 
@@ -1238,6 +1257,9 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
             generate_gas_mix(
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, orbit.hz_deviation, world.hydrographics,
+                temperature_k=compute_basic_temperature_k(
+                    orbit.hz_deviation, world.atmosphere
+                ),
             )
             generate_unusual_subtype(
                 world.atmosphere_detail, world.atmosphere,
@@ -1282,6 +1304,9 @@ def generate_mainworld_at_orbit(  # pylint: disable=too-many-arguments,too-many-
             generate_gas_mix(
                 world.atmosphere_detail, world.atmosphere, world.size,
                 world.temperature, orbit.hz_deviation, world.hydrographics,
+                temperature_k=compute_basic_temperature_k(
+                    orbit.hz_deviation, world.atmosphere
+                ),
             )
             generate_unusual_subtype(
                 world.atmosphere_detail, world.atmosphere,
@@ -1319,6 +1344,7 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
     nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
+    unusual_stars: bool = False,
     rng: Optional[random.Random] = None,
 ) -> TravellerSystem:
     """
@@ -1346,11 +1372,12 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
         rng = random.Random(seed)
 
     # Step 1: Stars
-    stellar = generate_stellar_data(rng=rng)
+    stellar = generate_stellar_data(rng=rng, unusual_stars=unusual_stars)
 
     # Step 2: Orbits and mainworld orbit selection
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
-                             orbital_inclination=orbital_inclination, rng=rng)
+                             orbital_inclination=orbital_inclination,
+                             cluster=stellar.star_cluster, rng=rng)
 
     mw_orbit = orbits.mainworld_orbit
     mainworld = None
@@ -1374,6 +1401,7 @@ def generate_full_system(  # pylint: disable=too-many-arguments,too-many-positio
         nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
+        unusual_stars=unusual_stars,
         seed=seed,
     )
 
@@ -1384,6 +1412,7 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
     nhz_atmospheres: bool = False,
     orbital_eccentricity: bool = False,
     orbital_inclination: bool = False,
+    unusual_stars: bool = False,
     rng: Optional[random.Random] = None,
 ) -> TravellerSystem:
     """
@@ -1411,9 +1440,10 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
             seed = secrets.randbelow(2 ** 31)
         rng = random.Random(seed)
 
-    stellar = generate_stellar_data(rng=rng)
+    stellar = generate_stellar_data(rng=rng, unusual_stars=unusual_stars)
     orbits = generate_orbits(stellar, orbital_eccentricity=orbital_eccentricity,
-                             orbital_inclination=orbital_inclination, rng=rng)
+                             orbital_inclination=orbital_inclination,
+                             cluster=stellar.star_cluster, rng=rng)
 
     from . import traveller_world_gen as _twg  # pylint: disable=import-outside-toplevel
     _twg._rng = rng  # pylint: disable=protected-access
@@ -1452,11 +1482,11 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
         hz_deviation=mw_orbit.hz_deviation if mw_orbit is not None else None,
     )
     if world.atmosphere_detail is not None:
+        _mw_hz_dev = mw_orbit.hz_deviation if mw_orbit is not None else None
         generate_gas_mix(
             world.atmosphere_detail, world.atmosphere, world.size,
-            world.temperature,
-            mw_orbit.hz_deviation if mw_orbit is not None else None,
-            world.hydrographics,
+            world.temperature, _mw_hz_dev, world.hydrographics,
+            temperature_k=compute_basic_temperature_k(_mw_hz_dev, world.atmosphere),
         )
         generate_unusual_subtype(
             world.atmosphere_detail, world.atmosphere,
@@ -1471,6 +1501,7 @@ def generate_system_from_world(  # pylint: disable=too-many-arguments,too-many-p
         nhz_atmospheres=nhz_atmospheres,
         orbital_eccentricity=orbital_eccentricity,
         orbital_inclination=orbital_inclination,
+        unusual_stars=unusual_stars,
         seed=seed,
     )
 

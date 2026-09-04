@@ -59,6 +59,8 @@ class OrbitSlot:
     orbit_period_yr: Optional[float]
     eccentricity: float
     inclination: float
+    radiation_zone: bool    # field(default=False); True for all occupied orbits
+                             # around a PSR primary (WBH p.219)
     detail: Optional[WorldDetail]  # set by attach_detail()
 ```
 
@@ -181,17 +183,89 @@ inside the Roche limit (see `traveller_moon_gen_explained.md`).
 
 ---
 
+## Empty-system environments (WBH p.219)
+
+Beyond dead stars, three peculiar environment types also cause `generate_orbits()` to
+return an empty `SystemOrbits` immediately:
+
+- **Protostar** — protoplanetary disk only; no formed worlds yet
+- **Nebula** — star-forming cloud; planetary accretion not yet complete
+- **Anomaly** — referee-defined; no standard world generation applies
+
+Detection: `any(env in primary.special_notes for env in ("Protostar", "Nebula", "Anomaly"))`.
+Star Cluster does **not** return early — its young Class V primary has a normal planetary system.
+
+---
+
+## Star Cluster merged-star orbit DMs (WBH p.219, issue #182)
+
+When `generate_orbits()` receives a `cluster` argument with `merged_star=True`, the
+primary star has already evolved off the main sequence — its original planetary system
+was disrupted by the stellar evolution event. A separate world-count branch applies:
+
+| Count type | Normal rule | Merged-star cluster rule |
+|---|---|---|
+| Gas giants | 2D result tables | Absent on roll(2, −2) ≥ 6 |
+| Asteroid belts | Standard DMs | Absent on roll(2, −2) ≥ 6 |
+| Terrestrials | max(1, 2D − 2) | max(0, 1D − 2) |
+
+Additionally, eccentricity DM+2 is applied to **all** orbit eccentricity rolls in a
+merged-star cluster system (orbits were perturbed by the mass-loss event).
+
+Non-merged Star Cluster systems (primary still on main sequence) use the standard
+world count procedure — no DMs apply.
+
+---
+
+## Dead star system rules (WBH p.219)
+
+When `generate_orbits()` detects that the primary is a dead star (NS, BH, PSR,
+or white dwarf D), a planetary system existence check runs first:
+
+**`dead_star_system_exists(primary, star_system, rng=None) → bool`**
+
+Rolls 2D + DMs; target ≥ 8 (natural 12 always succeeds):
+
+| Condition | DM |
+|-----------|-----|
+| > 1 dead star in the system | −2 |
+| Primary is NS or PSR | −2 |
+| Primary is BH | −4 |
+
+If the check fails, `generate_orbits()` returns an empty `SystemOrbits` with no
+orbit slots. If it passes, world counts are modified:
+
+| Count type | Normal rule | Dead star rule |
+|---|---|---|
+| Gas giants | Present on 9-, absent 10+ | Absent on 6+ |
+| Asteroid belts | Present on 8+ with DMs | Absent on 6+ |
+| Terrestrials | max(1, 2D − 2) | max(0, 1D − 2) |
+
+**Radiation zones:** For PSR primary systems (pulsars and magnetars), every
+occupied orbit slot has `radiation_zone = True` set after placement.
+`OrbitSlot.to_dict()` emits `"radiation_zone": true` only when this flag is
+set; `from_dict()` restores it.
+
+**`get_mao(star)` for dead stars:**
+- NS, BH, PSR: returns 0.001 (flat WBH rule; all three use the same MAO)
+- D (white dwarf): returns 0.01 (unchanged from earlier sessions)
+
+---
+
 ## Key methods
 
 | Method | On class | What it does |
 |--------|----------|-------------|
-| `.to_dict()` | `OrbitSlot` | Serialises the slot to a plain dict |
+| `.to_dict()` | `OrbitSlot` | Serialises the slot to a plain dict (includes `radiation_zone` when True) |
 | `.to_dict()` | `SystemOrbits` | Serialises all slots and zone data |
 | `.from_dict(d)` | `OrbitSlot` | Reconstructs from a dict (detail sub-key optional) |
 | `.from_dict(d, star_system)` | `SystemOrbits` | Reconstructs from a dict |
-| `generate_orbits(star_system, ...)` | module | Entry point; accepts optional `rng` |
+| `generate_orbits(star_system, ..., cluster=None)` | module | Entry point; accepts optional `rng` and `cluster: Optional[StarCluster]`; runs dead star existence check when primary is NS/BH/PSR/D; applies merged-star DMs when cluster.merged_star is True |
 | `roll_eccentricity(rng=None)` | module | Rolls one eccentricity value; accepts optional `rng` |
 | `roll_inclination(rng=None)` | module | Rolls one inclination value; accepts optional `rng` |
+| `count_stars_orbited(orbit, stellar_system) → int` | module | Returns how many stars a given orbit slot orbits (1 for circumsecondary; 1 + inner secondaries for primary orbits). Used for multi-star tidal DM (Session 193, Issue #179). |
+| `dead_star_system_exists(primary, star_system, rng=None) → bool` | module | 2D+DM planetary system existence check for dead star primaries (WBH p.219) |
+| `get_mao(star) → float` | module | Returns MAO for the given star; 0.001 for NS/BH/PSR |
 
 ---
 

@@ -12,8 +12,8 @@ organised, what strategies they use, and how to run and extend them.
 ```
 
 The `-q` flag gives compact output: one dot per passing test, one letter per
-failing test, then a summary line. As of session 116, the suite has **2044 tests**
-(2044 passed, 1 skipped). All must pass before merging.
+failing test, then a summary line. As of session 195, the suite has **3271 tests**
+(3271 passed, 5 skipped). All must pass before merging.
 
 To run a single file or class:
 
@@ -80,6 +80,7 @@ See [rng_explained.md](rng_explained.md) for the full RNG design.
 | `test_fastapi_app.py` | FastAPI server: all 11 endpoints, error handling, rate limiting | ~80 |
 | `test_function_app.py` | Azure Functions: all endpoints using azure-functions stubs | ~80 |
 | `test_tech_detail.py` | Technology level detail (TL sub-components) | ~30 |
+| `test_cargo_gen.py` | Speculative cargo and freight lot generation: availability rules, price mechanics, starport-X empty manifest, trade code matching, DM accumulation (max not sum), freight tier DMs, mail mechanics, determinism, `POST /api/cargo` and `POST /api/freight` endpoint integration | ~85 |
 
 ---
 
@@ -272,3 +273,5 @@ with patch("app.generate_system_from_map", return_value=mock_system):
 | 109 | 1884 | Belt physical + moon gen |
 | 114 | 2013 | Secondary world SAH + social |
 | 116 | 2044 | RNG threading + hzco removal; test updates to match refactored private helper signatures |
+| 193 | 3229 | Speculative cargo generation (43 tests) + orbit gen count_stars_orbited (97 tests) |
+| 195 | 3271 | Freight lot generation (42 new tests) |

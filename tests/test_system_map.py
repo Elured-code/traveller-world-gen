@@ -28,6 +28,20 @@ import re
 from traveller_gen.system_map import build_svg
 from traveller_gen.traveller_system_gen import generate_full_system
 
+# Fixed seeds for unusual-star map tests (verified with unusual_stars=True):
+#   9277  → PSR primary
+#   38209 → NS primary
+#   13387 → Protostar primary
+#   21977 → BH primary (mass 5.1 M☉, Schwarzschild 30.09 km)
+_PSR_SEED      = 9277
+_NS_SEED       = 38209
+_PROTO_SEED    = 13387
+_BH_SEED       = 21977
+# 1001 → M primary with BD companion (B) and BD sub-companion (Ba), temp 1500K
+_BD_SEED       = 1001
+# 2689 → Nebula environment (unusual_stars=True): Class V star, no worlds
+_NEBULA_SEED   = 2689
+
 
 class TestCompanionStarPlacement:
     """Regression tests for issue #171."""
@@ -129,4 +143,225 @@ class TestCompanionStarPlacement:
         aa_y = float(m.group(1))
         assert 0 <= aa_y < arc_zone_h, (
             "Aa's marker should stay in the primary's (A's) arc zone"
+        )
+
+
+class TestProtostarMapRendering:
+    """System map rendering for protostar primaries (seed 13387)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_PROTO_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_protostar_halo_gradient_in_defs(self):
+        assert 'id="prh_' in self.svg, "Protostar halo gradient def missing from SVG <defs>"
+
+    def test_protostar_arc_zone_rendered(self):
+        # Primary star label must appear — confirms arc zone was drawn
+        assert re.search(r'Star A\s+\w', self.svg), (
+            "Protostar primary star label not found in SVG"
+        )
+
+    def test_protostar_sphere_present(self):
+        # At least two circles: halo (r*4) + solid sphere (r*1)
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 2, (
+            f"Expected ≥ 2 circles for protostar glyph, got {len(circles)}"
+        )
+
+    def test_no_ns_corona_in_protostar_svg(self):
+        assert 'id="nsc_' not in self.svg, (
+            "NS corona gradient should not appear in a protostar system SVG"
+        )
+
+    def test_no_psr_beam_in_protostar_svg(self):
+        assert 'stroke-linecap="round"' not in self.svg, (
+            "PSR beam line should not appear in a protostar system SVG"
+        )
+
+
+class TestNeutronStarMapRendering:
+    """System map rendering for neutron star primaries (seed 38209)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_NS_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_ns_corona_gradient_in_defs(self):
+        assert 'id="nsc_' in self.svg, "NS corona gradient def missing from SVG <defs>"
+
+    def test_ns_arc_zone_rendered(self):
+        assert re.search(r'Star A\s+NS', self.svg), (
+            "NS primary star label not found in SVG"
+        )
+
+    def test_ns_corona_and_sphere_circles(self):
+        # Corona (r*3) + solid sphere (r*1) = 2 circles minimum
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 2, (
+            f"Expected ≥ 2 circles for NS glyph (corona + sphere), got {len(circles)}"
+        )
+
+    def test_ns_has_no_beam_line(self):
+        assert 'stroke-linecap="round"' not in self.svg, (
+            "NS should not have a pulsar beam line in the SVG"
+        )
+
+    def test_no_protostar_halo_in_ns_svg(self):
+        assert 'id="prh_' not in self.svg, (
+            "Protostar halo gradient should not appear in an NS system SVG"
+        )
+
+
+class TestPulsarMapRendering:
+    """System map rendering for pulsar primaries (seed 9277)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_PSR_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_psr_corona_gradient_in_defs(self):
+        assert 'id="nsc_' in self.svg, "PSR corona gradient def missing from SVG <defs>"
+
+    def test_psr_arc_zone_rendered(self):
+        assert re.search(r'Star A\s+PSR', self.svg), (
+            "PSR primary star label not found in SVG"
+        )
+
+    def test_psr_beam_line_present(self):
+        assert 'stroke-linecap="round"' in self.svg, (
+            "PSR beam line (stroke-linecap=round) not found in SVG"
+        )
+
+    def test_psr_beam_is_vertical(self):
+        # Jets are perpendicular to the orbital plane — vertical in the SVG
+        # (x1 == x2, y varies)
+        m = re.search(
+            r'<line[^>]*stroke-linecap="round"[^>]*/>', self.svg
+        )
+        assert m is not None, "Beam line element not found"
+        x1 = re.search(r'x1="([\d.]+)"', m.group())
+        x2 = re.search(r'x2="([\d.]+)"', m.group())
+        assert x1 and x2, "Beam line missing x1 or x2"
+        assert abs(float(x1.group(1)) - float(x2.group(1))) < 1.0, (
+            f"Beam line is not vertical: x1={x1.group(1)}, x2={x2.group(1)}"
+        )
+
+    def test_psr_corona_and_sphere_circles(self):
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 2, (
+            f"Expected ≥ 2 circles for PSR glyph (corona + sphere), got {len(circles)}"
+        )
+
+
+class TestBlackHoleMapRendering:
+    """System map rendering for black hole primaries (seed 21977)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_BH_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_bh_accretion_gradient_in_defs(self):
+        assert 'id="bha_' in self.svg, "BH accretion disk gradient def missing from SVG <defs>"
+
+    def test_bh_arc_zone_rendered(self):
+        assert re.search(r'Star A\s+BH', self.svg), (
+            "BH primary star label not found in SVG"
+        )
+
+    def test_bh_accretion_and_horizon_circles(self):
+        # Accretion disk (r*3) + event horizon (r*1) = 2 circles minimum
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 2, (
+            f"Expected ≥ 2 circles for BH glyph (accretion disk + horizon), got {len(circles)}"
+        )
+
+    def test_bh_has_no_beam_line(self):
+        assert 'stroke-linecap="round"' not in self.svg, (
+            "BH should not have a pulsar beam line in the SVG"
+        )
+
+    def test_no_protostar_halo_in_bh_svg(self):
+        assert 'id="prh_' not in self.svg, (
+            "Protostar halo gradient should not appear in a BH system SVG"
+        )
+
+    def test_no_ns_corona_in_bh_svg(self):
+        assert 'id="nsc_' not in self.svg, (
+            "NS corona gradient should not appear in a BH system SVG"
+        )
+
+
+class TestNebulaMapRendering:
+    """System map rendering for nebula-embedded primaries (seed 2689)."""
+
+    def setup_method(self):
+        system = generate_full_system(seed=_NEBULA_SEED, unusual_stars=True)
+        self.svg, _ = build_svg(system)
+
+    def test_nebula_cloud_gradient_in_defs(self):
+        """nebula_cloud radialGradient must be present in <defs>."""
+        assert 'id="nebula_cloud"' in self.svg, (
+            "Nebula cloud gradient def missing from SVG <defs>"
+        )
+
+    def test_nebula_cloud_ellipses_present(self):
+        """Three rotated ellipses must be drawn for the nebula cloud."""
+        ellipses = re.findall(r'<ellipse\b[^/]*/>', self.svg)
+        assert len(ellipses) >= 3, (
+            f"Expected ≥ 3 ellipses for nebula cloud lobes, got {len(ellipses)}"
+        )
+
+    def test_nebula_cloud_uses_gradient_fill(self):
+        """At least one ellipse must reference the nebula_cloud gradient."""
+        assert 'fill="url(#nebula_cloud)"' in self.svg, (
+            "No ellipse references the nebula_cloud gradient fill"
+        )
+
+    def test_nebula_arc_zone_rendered(self):
+        """Primary star label must appear in the SVG arc zone."""
+        assert re.search(r'Star A\s+\w', self.svg), (
+            "Nebula primary star label not found in SVG"
+        )
+
+    def test_nebula_star_sphere_present(self):
+        """A solid sphere circle must be drawn for the embedded star."""
+        circles = re.findall(r'<circle\b[^/]*/>', self.svg)
+        assert len(circles) >= 1, (
+            f"Expected ≥ 1 circle for the nebula-embedded star sphere, got {len(circles)}"
+        )
+
+    def test_no_protostar_halo_in_nebula_svg(self):
+        """Protostar halo gradient must not appear in a nebula system SVG."""
+        assert 'id="prh_' not in self.svg, (
+            "Protostar halo gradient should not appear in a nebula system SVG"
+        )
+
+    def test_no_ns_corona_in_nebula_svg(self):
+        """NS corona gradient must not appear in a nebula system SVG."""
+        assert 'id="nsc_' not in self.svg, (
+            "NS corona gradient should not appear in a nebula system SVG"
+        )
+
+
+class TestBrownDwarfColour:
+    """Brown dwarfs must render in a temperature-appropriate dark colour, not the yellow fallback."""
+
+    def setup_method(self):
+        # Seed 1001: M V primary with BD companion (B) and BD sub-companion (Ba),
+        # both at 1500 K → L-class colour #CC2200.
+        system = generate_full_system(seed=_BD_SEED)
+        self.svg, _ = build_svg(system)
+
+    def test_bd_l_class_colour_in_defs(self):
+        # 1500 K → L-dwarf range → colour #CC2200 → gradient id sph_CC2200
+        assert 'id="sph_CC2200"' in self.svg, (
+            "BD star (1500 K, L-class colour #CC2200) sphere gradient missing from <defs>"
+        )
+
+    def test_bd_does_not_use_yellow_fallback(self):
+        # #FFE066 is the generic fallback for unknown spectral types — must not appear
+        # as a sphere gradient when the only non-M stars are BDs.
+        assert 'id="sph_FFE066"' not in self.svg, (
+            "BD star is using the yellow fallback colour (#FFE066) instead of a BD-appropriate colour"
         )

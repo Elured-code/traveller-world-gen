@@ -365,6 +365,73 @@ _GAS_CODES: dict = {
     "Sulphuric Acid":     "H₂SO₄",
 }
 
+# WBH p.87 gas escape values (km/s)²/K — derived from molar mass via
+# gas_escape_value = 40 / M_g where M_g is molar mass in g/mol.
+# Retention condition: gas_escape_value ≤ v_e² × 8 / T_K.
+# Silicates and Metal Vapours are not in the WBH p.87 table; they are
+# assigned conservatively small values so they are always retained.
+_GAS_ESCAPE_VALUES: dict[str, float] = {
+    "Silicates":          0.40,   # SiO₂-family particulates; very heavy
+    "Metal Vapours":      0.35,   # Mixed metals; very heavy
+    "Hydrogen":           20.0,   # H₂,  M=2
+    "Helium":             10.0,   # He,  M=4
+    "Methane":             2.50,  # CH₄, M=16
+    "Ammonia":             2.35,  # NH₃, M=17
+    "Water Vapour":        2.22,  # H₂O, M=18
+    "Hydrofluoric Acid":   2.00,  # HF,  M=20
+    "Neon":                1.98,  # Ne,  M≈20.2
+    "Sodium":              1.74,  # Na,  M=23
+    "Hydrogen Cyanide":    1.48,  # HCN, M=27
+    "Nitrogen":            1.43,  # N₂,  M=28
+    "Carbon Monoxide":     1.43,  # CO,  M=28
+    "Ethane":              1.33,  # C₂H₆, M=30
+    "Hydrochloric Acid":   1.10,  # HCl, M=36.5
+    "Fluorine":            1.05,  # F₂,  M=38
+    "Argon":               1.00,  # Ar,  M=40
+    "Carbon Dioxide":      0.91,  # CO₂, M=44
+    "Formamide":           0.89,  # CH₃NO, M=45
+    "Formic Acid":         0.87,  # CH₂O₂, M=46
+    "Sulphur Dioxide":     0.63,  # SO₂, M=64
+    "Chlorine":            0.56,  # Cl₂, M=71
+    "Krypton":             0.48,  # Kr,  M=84
+    "Sulphuric Acid":      0.41,  # H₂SO₄, M=98
+}
+
+
+def _world_escape_value(escape_velocity_km_s: float, temperature_k: int) -> float:
+    """Return WBH p.87 world escape value: v_e² × 8 / T_K."""
+    return escape_velocity_km_s ** 2 * 8.0 / temperature_k
+
+
+def apply_gas_retention_filter(
+    detail: "AtmosphereDetail",
+    escape_velocity_km_s: float,
+    temperature_k: int,
+) -> None:
+    """Remove gas-mix components that cannot be retained at the given conditions.
+
+    WBH p.87: a gas component is retained when its escape value ≤ v_e² × 8 / T_K.
+    Components whose gas_name is absent from ``_GAS_ESCAPE_VALUES`` are kept
+    (unknown/heavy gases are conservatively assumed retained).
+    Sets ``detail.gas_retention_applied = True`` when at least one component
+    is removed.  No-op when gas_mix is empty or temperature_k ≤ 0.
+    """
+    if not detail.gas_mix or temperature_k <= 0:
+        return
+    wev = _world_escape_value(escape_velocity_km_s, temperature_k)
+    retained = []
+    removed_any = False
+    for component in detail.gas_mix:
+        gev = _GAS_ESCAPE_VALUES.get(component.gas_name)
+        if gev is None or gev <= wev:
+            retained.append(component)
+        else:
+            removed_any = True
+    if removed_any:
+        detail.gas_mix = retained
+        detail.gas_retention_applied = True
+
+
 # Each table maps a 2D+DM result to {A: gas_name, B: gas_name, C: gas_name}
 # where A=Exotic, B=Corrosive, C=Insidious.  Carbon Monoxide entries
 # (CO*) are replaced by _roll_single_gas() per the CO* footnote.
@@ -881,6 +948,7 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
     min_safe_altitude_km:    Optional[float] = None
     no_safe_altitude:        bool = field(default=False)
     unusual_subtypes:        list = field(default_factory=list)
+    gas_retention_applied:   bool = field(default=False)
 
     def to_dict(self) -> dict:
         """Return the detail as a JSON-friendly dict.
@@ -912,6 +980,8 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
             out["no_safe_altitude"] = True
         if self.unusual_subtypes:
             out["unusual_subtypes"] = [s.to_dict() for s in self.unusual_subtypes]
+        if self.gas_retention_applied:
+            out["gas_retention_applied"] = True
         return out
 
     @classmethod
@@ -931,27 +1001,38 @@ class AtmosphereDetail:  # pylint: disable=too-many-instance-attributes
             min_safe_altitude_km=_f("min_safe_altitude_km"),
             no_safe_altitude=bool(d.get("no_safe_altitude", False)),
             unusual_subtypes=[UnusualSubtype.from_dict(s) for s in d.get("unusual_subtypes", [])],
+            gas_retention_applied=bool(d.get("gas_retention_applied", False)),
         )
 
 
 def _select_gas_mix_table(  # pylint: disable=too-many-return-statements
     temperature: str,
     hz_deviation: Optional[float],
+    temperature_k: Optional[int] = None,
 ) -> tuple:
     """Select the gas mix table and generation parameters for an atmosphere.
 
     Returns ``(table, min_result, max_result, size_lo_dm, extra_dm, co_sub)``
     where ``size_lo_dm`` is the DM for size 1–7 (always DM+1 for size A+),
-    ``extra_dm`` is a fixed additional DM (e.g. estimated temperature
-    sub-range), and ``co_sub`` is the CO* substitute gas name when the
-    world has water hydrographics.
+    ``extra_dm`` is a fixed additional DM (e.g. temperature sub-range DM),
+    and ``co_sub`` is the CO* substitute gas name when the world has water
+    hydrographics.
 
-    Boiling very-hot (~600 K estimated) falls below the 700 K threshold so
-    no extra temperature DM is applied.  Frozen deep (~80 K estimated) is
-    in the 70–100 K band so DM+3 is applied as a fixed estimate.  A GitHub
-    issue tracks refining these DMs once mean temperature in K is available.
+    When ``temperature_k`` is provided (issue #44) it is used to apply the
+    correct WBH sub-range DM instead of the category heuristic:
+
+    - Boiling very-hot (hz_deviation ≤ −2.01): the 700 K boundary is checked
+      precisely; below 700 K no extra DM applies.  The DM for ≥ 700 K is not
+      yet known from WBH tables and is left at 0 pending verification.
+    - Frozen deep (hz_deviation ≥ 3.01): DM +3 applies only in the 70–100 K
+      band (WBH p.95); outside that band the extra DM is 0.
+
+    When ``temperature_k`` is ``None`` the previous category-and-hz-deviation
+    heuristic is used unchanged.
     """
     if temperature == "Boiling" and hz_deviation is not None and hz_deviation <= -2.01:
+        # Boiling very-hot table.  Below 700 K: no sub-range DM.  At ≥ 700 K
+        # a sub-range DM applies; value TBD from WBH tables (issue #44).
         return (_GAS_MIX_BOILING_VH, -2, 13, -1, 0, "Carbon Dioxide")
     if temperature == "Boiling":
         return (_GAS_MIX_BOILING_H, 1, 13, -1, 0, "Carbon Dioxide")
@@ -960,7 +1041,14 @@ def _select_gas_mix_table(  # pylint: disable=too-many-return-statements
     if temperature == "Cold":
         return (_GAS_MIX_COLD, 1, 13, -1, 0, "Carbon Dioxide")
     if temperature == "Frozen" and hz_deviation is not None and hz_deviation >= 3.01:
-        return (_GAS_MIX_FROZEN_D, 1, 13, -3, 3, "Nitrogen")
+        # Frozen deep table.  DM +3 applies in the 70–100 K sub-range (WBH p.95).
+        # When temperature_k is known, apply the DM only within that band;
+        # outside the band the sub-range DM is 0 (no estimate substituted).
+        if temperature_k is not None:
+            frozen_deep_dm = 3 if 70 <= temperature_k <= 100 else 0
+        else:
+            frozen_deep_dm = 3  # legacy heuristic: ~80 K estimate
+        return (_GAS_MIX_FROZEN_D, 1, 13, -3, frozen_deep_dm, "Nitrogen")
     if temperature == "Frozen":
         return (_GAS_MIX_FROZEN_M, 1, 13, -1, 0, "Nitrogen")
     return (_GAS_MIX_TEMPERATE, 1, 13, -1, 0, "Carbon Dioxide")
@@ -996,12 +1084,13 @@ def _roll_single_gas(  # pylint: disable=too-many-arguments,too-many-positional-
     return gas_name, _GAS_CODES.get(gas_name, gas_name)
 
 
-def _roll_gas_mix(  # pylint: disable=too-many-locals
+def _roll_gas_mix(  # pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments
     atm_code: int,
     size: int,
     temperature: str,
     hz_deviation: Optional[float],
     hydro: int,
+    temperature_k: Optional[int] = None,
 ) -> list:
     """Roll primary and secondary gas components for an A/B/C atmosphere.
 
@@ -1012,7 +1101,7 @@ def _roll_gas_mix(  # pylint: disable=too-many-locals
     """
     col = {10: "A", 11: "B", 12: "C"}[atm_code]
     table, min_r, max_r, size_lo_dm, extra_dm, co_sub = _select_gas_mix_table(
-        temperature, hz_deviation
+        temperature, hz_deviation, temperature_k
     )
     prim_name, prim_code = _roll_single_gas(
         table, col, min_r, max_r, size, size_lo_dm, extra_dm, hydro, co_sub
@@ -1168,16 +1257,24 @@ def generate_gas_mix(  # pylint: disable=too-many-arguments,too-many-positional-
     temperature: str,
     hz_deviation: Optional[float],
     hydro: int,
+    temperature_k: Optional[int] = None,
 ) -> None:
     """Populate ``detail.gas_mix`` for Exotic/Corrosive/Insidious atmospheres.
 
     No-op for codes outside {10, 11, 12}.  Call this after
     ``generate_hydrographics()`` so the CO* substitution rule can check
     whether the world has water hydrographics.
+
+    ``temperature_k`` (issue #44): when provided, used to select the correct
+    WBH temperature sub-range DM rather than the category-and-hz-deviation
+    heuristic.  Pass the result of ``compute_basic_temperature_k()`` from
+    ``traveller_world_atmosphere_detail`` at each call site.
     """
     if atm_code not in _EXOTIC_CODES | _CI_CODES:
         return
-    detail.gas_mix = _roll_gas_mix(atm_code, size, temperature, hz_deviation, hydro)
+    detail.gas_mix = _roll_gas_mix(
+        atm_code, size, temperature, hz_deviation, hydro, temperature_k
+    )
 
 
 def generate_unusual_subtype(

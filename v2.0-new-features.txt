@@ -112,6 +112,30 @@ version is displayed: the window title, the status bar, and the About dialog.
 On a CI-built release this reads as "2.0.0 (build 42)". On a local dev build
 it shows the bare version string ("2.0.0") as before.
 
+EXOTIC ATMOSPHERE GAS MIX FILTERED BY ESCAPE VELOCITY AND TEMPERATURE
+
+For worlds with Exotic (A), Corrosive (B), or Insidious (C) atmospheres, the
+rolled gas-mix components are now checked against the world's gravitational
+escape velocity and mean temperature. Gases that the world cannot retain are
+removed from the displayed mix.
+
+Light gases — hydrogen and helium — are removed from small or warm worlds.
+Heavy gases — carbon dioxide, sulphur dioxide, krypton, sulphuric acid — are
+retained even on smaller bodies. The formula used is the WBH p.87-88 retention
+check: a gas is kept when its escape value (derived from molecular weight) is
+at or below v_e² × 8 / T_K.
+
+When at least one gas is removed the JSON output includes
+"gas_retention_applied": true in the atmosphere detail block.
+
+GAS MIX TABLE TEMPERATURE BANDS NOW USE PRECISE KELVIN VALUES
+
+Previously, the sub-range dice modifiers in the gas mix tables (for example the
+Frozen Deep DM+3 at 70-100 K) were applied using fixed heuristic estimates of
+the world temperature. The generator now computes the actual mean temperature in
+Kelvin and applies the table DM only when the temperature falls within the
+correct WBH band.
+
 BUG FIXES
 ---------
 

@@ -279,6 +279,11 @@ def parse_relic_tech(request: Request, body: dict) -> bool:
     return _parse_bool_param(request, body, "relic_tech_rule")
 
 
+def parse_unusual_stars(request: Request, body: dict) -> bool:
+    """Extract the 'unusual_stars' flag — Unusual column for primary star type (issue #21)."""
+    return _parse_bool_param(request, body, "unusual_stars")
+
+
 _VALID_SETTLEMENT_TYPES = frozenset(
     {"standard", "long_settled", "well_settled", "backwater", "unsettled"}
 )

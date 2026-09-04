@@ -17,11 +17,6 @@ World Builder's Handbook (WBH), covering:
   • Non-primary star type determination (p.29) — Random, Lesser, Sibling, Twin
 
 Out of scope (Special Circumstances chapter, p.219+):
-  • Full post-stellar object generation (white dwarfs, neutron stars,
-    black holes, pulsars) — these are detected and labelled but not
-    physically characterised
-  • Protostar and primordial system special rules
-  • Star cluster and nebula handling
   • Eccentricity calculation for stellar orbits
   • Habitable zone orbit placement (requires full system generation)
 
@@ -58,6 +53,7 @@ import json
 import math
 import random
 _rng: random.Random = random  # type: ignore[assignment]
+_pending_star_cluster: Optional["StarCluster"] = None  # pylint: disable=invalid-name
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -79,6 +75,80 @@ def d3() -> int:
 def d10() -> int:
     """Roll a d10 (1-10)."""
     return _rng.randint(1, 10)
+
+
+# ---------------------------------------------------------------------------
+# White-dwarf / dead-star aging table (WBH p.219) — base mass 0.6 ☉
+# ---------------------------------------------------------------------------
+
+_WD_AGING_TABLE: List[Tuple[float, int]] = [
+    (0.0,   100000),
+    (0.1,    25000),
+    (0.5,    10000),
+    (1.0,     8000),
+    (1.5,     7000),
+    (2.5,     5500),
+    (5.0,     5000),
+    (10.0,    4000),
+    (13.0,    3800),
+]
+
+
+def _wd_temperature(age_gyr: float, mass: float) -> int:
+    """Interpolate WD surface temperature, scaled by mass/0.6."""
+    if age_gyr <= _WD_AGING_TABLE[0][0]:
+        base = _WD_AGING_TABLE[0][1]
+    elif age_gyr >= _WD_AGING_TABLE[-1][0]:
+        base = _WD_AGING_TABLE[-1][1]
+    else:
+        base = _WD_AGING_TABLE[-1][1]
+        for i in range(len(_WD_AGING_TABLE) - 1):
+            lo_a, lo_t = _WD_AGING_TABLE[i]
+            hi_a, hi_t = _WD_AGING_TABLE[i + 1]
+            if lo_a <= age_gyr <= hi_a:
+                frac = (age_gyr - lo_a) / (hi_a - lo_a)
+                base = round(lo_t + (hi_t - lo_t) * frac)
+                break
+    scaled = base * (mass / 0.6)
+    return max(3800, min(100000, round(scaled)))
+
+
+def _characterize_white_dwarf(age_gyr: float) -> Tuple[float, int, float, float]:
+    """Roll WD physical properties per WBH p.219. Returns (mass, temp, diam, lum)."""
+    mass = (roll(2) - 1) / 10.0 + d10() / 100.0
+    mass = min(1.44, max(0.01, mass))
+    diameter = 0.01 / mass
+    temperature = _wd_temperature(age_gyr, mass)
+    luminosity = _compute_luminosity(diameter, temperature)
+    return (mass, temperature, diameter, luminosity)
+
+
+def _characterize_neutron_star(age_gyr: float) -> Tuple[float, int, float, float]:
+    """Roll NS physical properties per WBH. Returns (mass, temp, diam, lum)."""
+    r1 = _rng.randint(1, 6)
+    mass = 1.0 + r1 / 10.0
+    if r1 == 6:
+        r2 = _rng.randint(1, 6)
+        mass += (r2 - 1) / 10.0
+    diameter_km = 19.0 + _rng.randint(1, 6)
+    diameter = diameter_km / 695700.0
+    temperature = _wd_temperature(age_gyr, mass)
+    luminosity = _compute_luminosity(diameter, temperature)
+    return (mass, temperature, diameter, luminosity)
+
+
+def _characterize_black_hole() -> Tuple[float, int, float, float, float]:
+    """Roll BH physical properties per WBH. Returns (mass, 0, diam, 0.0, schwarz_km)."""
+    total = 0
+    while True:
+        r = _rng.randint(1, 6)
+        total += r
+        if r < 6:
+            break
+    mass = 2.1 + total - 1 + d10() / 10.0
+    schwarzschild_km = 5.9 * mass
+    diameter = schwarzschild_km / 695700.0
+    return (mass, 0, diameter, 0.0, schwarzschild_km)
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +186,36 @@ HOT_COLUMN = {
     10: "B",
     11: "B",
     # 12+ → O
+}
+
+# Unusual column — alternative to Special column when unusual_stars=True (WBH p.219)
+UNUSUAL_COLUMN = {
+    2:  "Peculiar",
+    3:  "Class VI",
+    4:  "Class IV",
+    5:  "BD",
+    6:  "BD",
+    7:  "BD",
+    8:  "D",
+    9:  "D",
+    10: "D",
+    11: "Class III",
+    # 12+ → Giants
+}
+
+# Peculiar column — sub-roll when Unusual column result is "Peculiar" (WBH p.219)
+PECULIAR_COLUMN = {
+    2:  "Black Hole",
+    3:  "Pulsar",
+    4:  "Neutron Star",
+    5:  "Nebula",
+    6:  "Nebula",
+    7:  "Protostar",
+    8:  "Protostar",
+    9:  "Star Cluster",
+    10: "Star Cluster",
+    11: "Anomaly",
+    # 12+ → Anomaly
 }
 
 # Special column — consulted on primary roll of 2 (WBH p.14-15)
@@ -245,6 +345,9 @@ SPECTRAL_COLOUR = {
     "M": "Orange-Red",
     "D": "White (degenerate)",
     "BD": "Brown",
+    "NS": "Blue-White (neutron star)",
+    "PSR": "Blue-White (pulsar)",
+    "BH": "Black (singularity)",
 }
 
 # Type order hottest→coolest (for 'hotter than primary' check in Random)
@@ -346,13 +449,12 @@ class Star:  # pylint: disable=too-many-instance-attributes
     orbit_inclination: float = 0.0           # 0.0 until generate_orbits() populates it
     name: str = ""              # placeholder; set by attach_body_names()
     special_notes: str = ""     # e.g. "protostar", "post-stellar"
+    bh_schwarzschild_km: Optional[float] = field(default=None, init=False)
 
     def classification(self) -> str:
         """Return the standard Traveller star classification string."""
-        if self.spectral_type == "D":
-            return "D"
-        if self.spectral_type == "BD":
-            return "BD"
+        if self.spectral_type in ("D", "BD", "NS", "BH", "PSR"):
+            return self.spectral_type
         sub = str(self.subtype) if self.subtype is not None else ""
         return f"{self.spectral_type}{sub} {self.lum_class}"
 
@@ -391,12 +493,14 @@ class Star:  # pylint: disable=too-many-instance-attributes
                 d["orbit_au_max"] = round(self.orbit_au * (1 + self.orbit_eccentricity), 3)
         if self.orbit_inclination > 0:
             d["orbit_inclination"] = round(self.orbit_inclination, 2)
+        if self.bh_schwarzschild_km is not None:
+            d["bh_schwarzschild_km"] = round(self.bh_schwarzschild_km, 3)
         return d
 
     @classmethod
     def from_dict(cls, d: dict) -> "Star":
         """Reconstruct a Star from a dict produced by to_dict()."""
-        return cls(
+        star = cls(
             designation=str(d["designation"]),
             role=str(d.get("role", "primary")),
             spectral_type=str(d["spectral_type"]),
@@ -421,6 +525,9 @@ class Star:  # pylint: disable=too-many-instance-attributes
             name=str(d.get("name", "")),
             special_notes=str(d.get("special_notes", "")),
         )
+        if "bh_schwarzschild_km" in d:
+            star.bh_schwarzschild_km = float(d["bh_schwarzschild_km"])
+        return star
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +539,7 @@ class StarSystem:
     """Holds all generated stellar data for one system."""
 
     stars: List[Star] = field(default_factory=list)
+    star_cluster: Optional[StarCluster] = field(default=None)
 
     @property
     def primary(self) -> Star:
@@ -445,11 +553,14 @@ class StarSystem:
 
     def to_dict(self) -> dict:
         """Serialise this star system to a JSON-compatible dict."""
-        return {
+        d: dict = {
             "star_count": len(self.stars),
             "age_gyr": round(self.age_gyr, 3) if self.age_gyr is not None else None,
             "stars": [s.to_dict() for s in self.stars],
         }
+        if self.star_cluster is not None:
+            d["star_cluster"] = self.star_cluster.to_dict()
+        return d
 
     def to_json(self, indent: int = 2) -> str:
         """Serialise this star system to a JSON string."""
@@ -458,7 +569,11 @@ class StarSystem:
     @classmethod
     def from_dict(cls, d: dict) -> "StarSystem":
         """Reconstruct a StarSystem from a dict produced by to_dict()."""
-        return cls(stars=[Star.from_dict(s) for s in d.get("stars", [])])
+        system = cls(stars=[Star.from_dict(s) for s in d.get("stars", [])])
+        sc_d = d.get("star_cluster")
+        if sc_d:
+            system.star_cluster = StarCluster.from_dict(sc_d)
+        return system
 
     def summary(self) -> str:
         """Return a human-readable summary of this star system."""
@@ -493,6 +608,48 @@ class StarSystem:
                 lines.append(f"       Note: {star.special_notes}")
         lines.append("=" * 60)
         return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# StarCluster dataclass (issue #182)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class StarCluster:
+    """Star Cluster metadata for a Peculiar environment: Star Cluster system (WBH p.219)."""
+
+    age_gyr: float
+    single_hex: bool
+    hex_diameter: int       # 1 if single_hex, else 1D+1 (2-7)
+    system_count: int       # 2D+5 for centre hex
+    merged_star: bool       # primary ms_lifespan_gyr < age_gyr
+    jump_restriction: str   # "Jump-2 minimum" for multi-hex clusters, "" otherwise
+    member_stars: List[str] # spectral classes of the other systems (system_count - 1 entries)
+
+    def to_dict(self) -> dict:
+        """Serialise to a JSON-compatible dict."""
+        return {
+            "age_gyr": round(self.age_gyr, 3),
+            "single_hex": self.single_hex,
+            "hex_diameter": self.hex_diameter,
+            "system_count": self.system_count,
+            "merged_star": self.merged_star,
+            "jump_restriction": self.jump_restriction,
+            "member_stars": list(self.member_stars),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "StarCluster":
+        """Reconstruct from a dict produced by to_dict()."""
+        return cls(
+            age_gyr=float(d["age_gyr"]),
+            single_hex=bool(d["single_hex"]),
+            hex_diameter=int(d["hex_diameter"]),
+            system_count=int(d["system_count"]),
+            merged_star=bool(d["merged_star"]),
+            jump_restriction=str(d.get("jump_restriction", "")),
+            member_stars=list(d.get("member_stars", [])),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -622,19 +779,40 @@ def _orbit_to_au(orbit_num: float) -> float:
 # Primary star generation (WBH p.14-16)
 # ---------------------------------------------------------------------------
 
-def _generate_primary_star_type() -> Tuple[str, str]:  # pylint: disable=too-many-branches
+def _generate_primary_star_type(  # pylint: disable=too-many-branches,too-many-return-statements
+        unusual_stars: bool = False,
+) -> Tuple[str, str]:
     """
     Roll on the Star Type Determination table (WBH p.14-15).
     Returns (spectral_type, lum_class).
     lum_class will be "V" for all standard results unless special/hot columns
     indicate otherwise.
+
+    When unusual_stars=True and the main roll is ≤ 2, the Unusual column
+    (WBH p.219) is used instead of the Special column.  NS/BH/PSR results
+    fall back to a Giants-class star with a descriptive special_notes value
+    until Phase 2 implements their full physical characterisation.
     """
     r = roll(2)
 
     if r <= 2:
-        # Special column
         r2 = roll(2)
-        result = SPECIAL_COLUMN.get(r2, "Giants" if r2 >= 12 else "Class III")
+        if unusual_stars:
+            result = UNUSUAL_COLUMN.get(r2, "Giants" if r2 >= 12 else "Class III")
+            if result == "D":
+                return "D", "D"
+            if result == "BD":
+                return "BD", "BD"
+            if result == "Peculiar":
+                r3 = roll(2)
+                pec = PECULIAR_COLUMN.get(r3, "Anomaly" if r3 >= 12 else "Anomaly")
+                if pec in ("Black Hole", "Pulsar", "Neutron Star"):
+                    return (f"_PECULIAR_{pec.replace(' ', '_')}", "Giants_placeholder")
+                # Environment types: Nebula, Protostar, Star Cluster, Anomaly
+                return (f"_PECULIAR_{pec.replace(' ', '_')}", "Giants_env")
+        else:
+            result = SPECIAL_COLUMN.get(r2, "Giants" if r2 >= 12 else "Class III")
+
         if result.startswith("Class"):
             cls_num = result.split()[-1]
             lum_map = {"VI": "VI", "IV": "IV", "III": "III"}
@@ -688,17 +866,203 @@ def _generate_primary_star_type() -> Tuple[str, str]:  # pylint: disable=too-man
     return spectral, "V"
 
 
-def generate_primary_star(designation: str = "A") -> Star:
+def _generate_protostar(designation: str, role: str = "primary") -> Star:
+    """
+    Generate a protostar per WBH p.219 Protostar special rules.
+
+    Type: Star Type table with DM+1; treated as Class V.
+    Mass: ±50% variance from the Class V base value.
+    Diameter: Class V × (1 + (2D−2) ÷ 10), giving a 1.0–2.0× range.
+    Luminosity: recomputed from the modified diameter (L ∝ D²T⁴).
+    Age: primary only — 0.001–0.009 Gyr (< 0.01 Gyr protostar era).
+         Companions receive age=None and inherit system age via propagation.
+    """
+    r = roll(2, 1)
+    spectral = STAR_TYPE_TABLE.get(min(r, 11), "M")
+    if spectral in ("Special",) or spectral not in TYPE_HEAT_ORDER:
+        spectral = "M"
+    subtype = _roll_subtype(spectral, use_m_column=spectral == "M")
+    mass_base, temperature, diameter_v, _ = _star_properties(spectral, subtype, "V")
+    mass = round(mass_base * _rng.uniform(0.5, 1.5), 3)
+    diam_mult = 1.0 + roll(2, -2) / 10.0
+    diameter = round(diameter_v * diam_mult, 3)
+    luminosity = _compute_luminosity(diameter, temperature)
+    age = round(_rng.uniform(0.001, 0.009), 3) if role == "primary" else None
+    ms_lifespan = _main_sequence_lifespan(mass_base)
+    return Star(
+        designation=designation, role=role,
+        spectral_type=spectral, subtype=subtype, lum_class="V",
+        mass=mass, temperature=temperature, diameter=diameter,
+        luminosity=luminosity, age_gyr=age, ms_lifespan_gyr=ms_lifespan,
+        special_notes="Peculiar environment: Protostar",
+    )
+
+
+def _generate_cluster_age() -> float:
+    """Roll cluster age per WBH p.219: 1D × 1D × 50 million years → Gyr."""
+    return round(_rng.randint(1, 6) * _rng.randint(1, 6) * 0.05, 3)
+
+
+def _roll_cluster_member(age_gyr: float) -> str:
+    """Roll spectral class for one cluster member star (young Class V, WBH p.219).
+
+    A roll of 2 (Special/Unusual column) is treated as BD per WBH p.219 — a nested
+    Unusual result within a cluster is not re-rolled into the Unusual column.
+    Anomaly results are also treated as BD.
+    """
+    dm = 1 if age_gyr < 0.2 else 0
+    r = roll(2, dm)
+    spectral = STAR_TYPE_TABLE.get(min(r, 11), "M")
+    if spectral not in TYPE_HEAT_ORDER:
+        # Special / Unusual / Anomaly → brown dwarf (WBH p.219)
+        return "BD"
+    subtype = _roll_subtype(spectral, use_m_column=spectral == "M")
+    return f"{spectral}{subtype} V"
+
+
+def _roll_star_cluster_meta(age_gyr: float, primary: Star) -> StarCluster:
+    """Roll Star Cluster hex and population metadata (WBH p.219, issue #182)."""
+    single_hex = _rng.randint(1, 6) < 4   # 1-3 → single-hex; 4-6 → multi-hex
+    if single_hex:
+        hex_diameter = 1
+        jump_restriction = ""
+    else:
+        hex_diameter = _rng.randint(1, 6) + 1
+        jump_restriction = "Jump-2 minimum"
+    system_count = roll(2) + 5
+    merged = (
+        primary.ms_lifespan_gyr is not None
+        and primary.ms_lifespan_gyr < age_gyr
+    )
+    member_stars = [_roll_cluster_member(age_gyr) for _ in range(system_count - 1)]
+    return StarCluster(
+        age_gyr=age_gyr,
+        single_hex=single_hex,
+        hex_diameter=hex_diameter,
+        system_count=system_count,
+        merged_star=merged,
+        jump_restriction=jump_restriction,
+        member_stars=member_stars,
+    )
+
+
+def _generate_young_star_env(designation: str, notes: str) -> Star:
+    """
+    Generate a young Class V star for Nebula and Star Cluster environments.
+
+    Uses _generate_cluster_age() for the system age and applies DM+1 to the
+    Star Type table (young environments favour hotter, more massive stars).
+    """
+    age = _generate_cluster_age()
+    dm = 1 if age < 0.2 else 0
+    r = roll(2, dm)
+    spectral = STAR_TYPE_TABLE.get(min(r, 11), "M")
+    if spectral in ("Special",) or spectral not in TYPE_HEAT_ORDER:
+        spectral = "M"
+    subtype = _roll_subtype(spectral, use_m_column=spectral == "M")
+    mass, temperature, diameter, _ = _star_properties(spectral, subtype, "V")
+    luminosity = _compute_luminosity(diameter, temperature)
+    ms_lifespan = _main_sequence_lifespan(mass)
+    return Star(
+        designation=designation, role="primary",
+        spectral_type=spectral, subtype=subtype, lum_class="V",
+        mass=mass, temperature=temperature, diameter=diameter,
+        luminosity=luminosity, age_gyr=age, ms_lifespan_gyr=ms_lifespan,
+        special_notes=notes,
+    )
+
+
+def _generate_peculiar_star(  # pylint: disable=too-many-return-statements,too-many-locals
+        designation: str, spectral: str, lum_class: str) -> Star:
+    """Generate a star for a Peculiar column result (Phase 3: real post-stellar types)."""
+    env_type = spectral[len("_PECULIAR_"):].replace("_", " ")
+
+    if lum_class == "Giants_placeholder":
+        # Phase 3: real characterization for post-stellar remnants
+        age = _small_star_age()
+        if env_type == "Neutron Star":
+            mass, temperature, diameter, luminosity = _characterize_neutron_star(age)
+            return Star(
+                designation=designation, role="primary",
+                spectral_type="NS", subtype=None, lum_class="NS",
+                mass=mass, temperature=temperature, diameter=diameter,
+                luminosity=luminosity, age_gyr=age, ms_lifespan_gyr=None,
+                special_notes="",
+            )
+        if env_type == "Pulsar":
+            mass, temperature, diameter, luminosity = _characterize_neutron_star(age)
+            return Star(
+                designation=designation, role="primary",
+                spectral_type="PSR", subtype=None, lum_class="PSR",
+                mass=mass, temperature=temperature, diameter=diameter,
+                luminosity=luminosity, age_gyr=age, ms_lifespan_gyr=None,
+                special_notes="",
+            )
+        # Black Hole
+        mass, temperature, diameter, luminosity, schwarzschild_km = _characterize_black_hole()
+        star = Star(
+            designation=designation, role="primary",
+            spectral_type="BH", subtype=None, lum_class="BH",
+            mass=mass, temperature=temperature, diameter=diameter,
+            luminosity=luminosity, age_gyr=age, ms_lifespan_gyr=None,
+            special_notes="",
+        )
+        star.bh_schwarzschild_km = schwarzschild_km
+        return star
+
+    # Protostar: full WBH p.219 characterisation (type roll, mass variance, diameter mod)
+    if env_type == "Protostar":
+        return _generate_protostar(designation)
+
+    # Nebula: young Class V star embedded in a star-forming cloud; no worlds yet formed.
+    if env_type == "Nebula":
+        return _generate_young_star_env(designation, "Peculiar environment: Nebula")
+
+    # Star Cluster: one representative system within a cluster; worlds form normally.
+    if env_type == "Star Cluster":
+        global _pending_star_cluster  # pylint: disable=global-statement
+        star = _generate_young_star_env(designation, "Peculiar environment: Star Cluster")
+        _pending_star_cluster = _roll_star_cluster_meta(star.age_gyr or 0.0, star)
+        return star
+
+    # Anomaly: referee-defined; keep Giants fallback as a background illumination object.
+    notes = "Peculiar environment: Anomaly"
+    r_giants = roll(2)
+    gc = GIANTS_COLUMN.get(r_giants, "Ia" if r_giants >= 12 else "III")
+    r_type = roll(2, 1)
+    gc_spectral = STAR_TYPE_TABLE.get(min(r_type, 11), "G")
+    if gc_spectral == "Special":
+        gc_spectral = "G"
+    subtype = _roll_subtype(gc_spectral, use_m_column=gc_spectral == "M")
+    mass, temperature, diameter, luminosity = _star_properties(gc_spectral, subtype, gc)
+    ms_lifespan = _main_sequence_lifespan(mass)
+    age = _generate_system_age(mass, ms_lifespan)
+    return Star(
+        designation=designation, role="primary",
+        spectral_type=gc_spectral, subtype=subtype, lum_class=gc,
+        mass=mass, temperature=temperature, diameter=diameter, luminosity=luminosity,
+        age_gyr=age, ms_lifespan_gyr=ms_lifespan, special_notes=notes,
+    )
+
+
+def generate_primary_star(  # pylint: disable=too-many-locals
+        designation: str = "A",
+        unusual_stars: bool = False,
+) -> Star:
     """
     Generate the primary star of a system (WBH pp.14-20).
     Includes type, subtype, physical properties, and system age.
     """
-    spectral, lum_class = _generate_primary_star_type()
+    spectral, lum_class = _generate_primary_star_type(unusual_stars=unusual_stars)
+
+    # Peculiar column: environment types and post-stellar placeholders → Giants fallback.
+    if spectral.startswith("_PECULIAR_"):
+        return _generate_peculiar_star(designation, spectral, lum_class)
 
     # Handle special/post-stellar types
     if spectral in ("D",):
-        mass, temperature, diameter, luminosity = _star_properties("D", None, "D")
         age = _small_star_age()
+        mass, temperature, diameter, luminosity = _characterize_white_dwarf(age)
         return Star(
             designation=designation, role="primary",
             spectral_type="D", subtype=None, lum_class="D",
@@ -719,9 +1083,7 @@ def generate_primary_star(designation: str = "A") -> Star:
             special_notes="Brown dwarf (sub-stellar)",
         )
 
-    # Subtype
-    use_m_col = spectral == "M"
-    subtype = _roll_subtype(spectral, use_m_column=use_m_col)
+    subtype = _roll_subtype(spectral, use_m_column=spectral == "M")
 
     # Class IV special limits
     if lum_class == "IV":
@@ -830,7 +1192,7 @@ def _multiple_star_dm(primary: Star) -> int:
         return +1
     if lc in ("V", "VI") and sp == "M":
         return -1
-    if sp in ("D", "BD"):
+    if sp in ("D", "BD", "NS", "BH", "PSR"):
         return -1
     return 0
 
@@ -990,7 +1352,7 @@ def _build_star(
 ) -> Star:
     """Construct a Star object from type/class, rolling subtype if needed."""
     if spectral in ("D",):
-        mass, temp, diam, lum = _star_properties("D", None, "D")
+        mass, temp, diam, lum = _characterize_white_dwarf(5.0)  # default age for non-primary WDs
         return Star(
             designation=designation, role=role,
             spectral_type="D", subtype=None, lum_class="D",
@@ -1074,6 +1436,7 @@ def _secondary_orbit(
 
 def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         rng: Optional[random.Random] = None,
+        unusual_stars: bool = False,
 ) -> StarSystem:
     """
     Generate complete stellar data for a star system.
@@ -1084,18 +1447,26 @@ def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,
       3. For each secondary that exists, determine type via Non-Primary table
       4. For each of the above (including primary), check for a companion
 
+    When unusual_stars=True the Unusual column (WBH p.219) is used instead of
+    the Special column for primary star type determination.
+
     Returns a StarSystem with all stars populated.
     """
-    global _rng  # pylint: disable=global-statement
+    global _rng, _pending_star_cluster  # pylint: disable=global-statement
     if rng is not None:
         _rng = rng
     system = StarSystem()
 
     # Step 1: Primary star
-    primary = generate_primary_star("A")
+    primary = generate_primary_star("A", unusual_stars=unusual_stars)
     primary.orbit_number = 0.0
     primary.orbit_au = 0.0
     system.stars.append(primary)
+    # Collect Star Cluster metadata set by _generate_peculiar_star() (issue #182)
+    if _pending_star_cluster is not None:
+        system.star_cluster = _pending_star_cluster
+        _pending_star_cluster = None
+    is_protostar_env = "Protostar" in primary.special_notes
 
     multi_dm = _multiple_star_dm(primary)
 
@@ -1124,7 +1495,10 @@ def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,
         secondary_letter += 1
 
     for desig, slot in secondary_stars:
-        star = _determine_non_primary_type(primary, slot, desig)
+        if is_protostar_env:
+            star = _generate_protostar(desig, slot)
+        else:
+            star = _determine_non_primary_type(primary, slot, desig)
         orbit_num, orbit_au = _secondary_orbit(slot)
         star.orbit_number = orbit_num
         star.orbit_au = orbit_au
@@ -1138,8 +1512,11 @@ def generate_stellar_data(  # pylint: disable=too-many-locals,too-many-branches,
     for parent_star in all_current:
         if roll(2, multi_dm) >= 10:
             comp_desig = parent_star.designation + chr(companion_suffix)
-            companion = _determine_non_primary_type(parent_star, "companion",
-                                                    comp_desig)
+            if is_protostar_env:
+                companion = _generate_protostar(comp_desig, "companion")
+            else:
+                companion = _determine_non_primary_type(parent_star, "companion",
+                                                        comp_desig)
             orbit_num, orbit_au = _companion_orbit()
             companion.orbit_number = orbit_num
             companion.orbit_au = orbit_au

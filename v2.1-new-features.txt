@@ -1,0 +1,221 @@
+Traveller World & System Generator — What's New in v2.1
+=========================================================
+
+STAR CLUSTER — MEMBER STAR SPECTRAL CLASSES
+--------------------------------------------
+The Star Cluster section of the system card now lists the spectral class of every
+other star system sharing the cluster's centre hex.
+
+For a cluster of 11 systems, 10 member spectral classes are generated — one per
+other system — and shown in a Members row below the cluster summary table. Each
+entry is a young main-sequence star type (e.g. "G3 V", "M5 V") rolled with the
+same young-cluster rules as the primary. Rarely, an entry shows "BD" (brown dwarf),
+which occurs when the random roll for that system falls in the Special region of
+the Star Type table — the rules treat this as a brown dwarf rather than re-entering
+the Unusual column.
+
+STAR CLUSTER METADATA
+----------------------
+When the Unusual Stars option is enabled and the primary star is a Star Cluster
+environment type (WBH p.219), the system card now shows a Star Cluster table with
+six fields:
+
+- Age — how old the cluster is in Gyr (same formula as a Nebula; maximum 1.80 Gyr).
+- Extent — whether the cluster fits in a single hex or spans multiple hexes.
+- Hex Ø — diameter of a multi-hex cluster in hexes (1D+1; 2–7 hexes across);
+  always 1 for single-hex clusters.
+- Systems — number of star systems in the cluster's centre hex (2D+5; typically 7–17).
+- Merged Star — whether the cluster's primary star has already evolved off the main
+  sequence. When Yes, the planetary system was disrupted by the stellar evolution event
+  and world counts are reduced.
+- Jump Restriction — "Jump-2 minimum" for multi-hex clusters (crossing between hexes
+  requires a Jump-2 drive); blank for single-hex clusters.
+
+SPECULATIVE TRADE CARGO GENERATION
+------------------------------------
+The generator can now produce a cargo manifest of available speculative trade
+lots for any mainworld, following the Mongoose Traveller 2e Core Rulebook
+pp.244-245.
+
+Common goods (D66 11-16) — electronics, industrial goods, manufactured goods,
+raw materials, consumables, and ore — are always listed at worlds with a
+functioning starport. Trade goods (D66 21-56) appear only when the world has
+a matching trade code. Worlds with Starport X have no cargo infrastructure
+and return an empty manifest.
+
+For each available lot the generator rolls:
+- 1D (or more) for tonnage, multiplied by the lot's unit factor.
+- 3D + the best purchase DM matching the world's trade codes, minus the best
+  sale DM for those codes, minus Broker 2 (assumed supplier skill). The
+  combined roll determines the purchase price as a percentage of the base
+  price, ranging from 300% (on a very low roll) down to 15% (on a very high
+  roll).
+
+WEB APP — CARGO TAB
+--------------------
+After generating a Full system in the web interface, a Cargo button appears
+in the seed/save bar. Clicking it calls the cargo endpoint with the current
+seed and the mainworld's data, then displays the results in a new Cargo tab.
+The tab lists every available lot with six columns: D66, Trade Good, Tons,
+Base Cr, DM (purchase modifier), and Purchase Cr (actual price at this world
+with this seed).
+
+Results are deterministic — the same seed always produces the same manifest
+for the same world. The Cargo button is disabled for basic (non-Full) system
+generations, since no world JSON is available in that mode.
+
+GEN-UI — CARGO WINDOW
+-----------------------
+The desktop app gains a Cargo button in both system mode and world-only mode.
+Clicking it opens a Cargo window — a native table with D66, Trade Good, Tons,
+Base Cr, DM, and Purchase Cr columns. Multiple cargo windows can be open at
+once. Results are seeded from the current seed for reproducibility.
+
+UNUSUAL STARS COLUMN AND POST-STELLAR REMNANTS
+-----------------------------------------------
+The generator now supports the Unusual Stars option from the Worlds Beyond the
+Horizon supplement (WBH p.219). When this option is enabled, the primary star
+can be a post-stellar remnant or exotic environment instead of a normal star.
+
+Possible results include:
+- White Dwarf (D) — dice-rolled mass, diameter, temperature, and luminosity.
+- Neutron Star (NS) — dice-rolled mass and diameter; very hot and tiny.
+- Pulsar (PSR) — a fast-rotating neutron star; all orbiting worlds are in a
+  radiation zone.
+- Black Hole (BH) — exploding-die mass roll; Schwarzschild diameter calculated
+  from mass; no temperature or luminosity.
+- Nebula, Star Cluster, Anomaly — exotic environments with a Giants-class host
+  star and descriptive notes.
+- Protostar — a pre-main-sequence star with full WBH p.219 physical rules
+  (see Protostar Characterisation below).
+
+When the primary is a dead star, the generator first checks whether a planetary
+system survived the stellar death event. If it did, world counts are adjusted
+downward — fewer gas giants, belts, and terrestrials than around a living star.
+
+The Unusual Stars option appears as a checkbox in the web app (Orbital options
+row) and in the gen-ui Options dialog. The setting is remembered across sessions.
+
+FREIGHT LOT GENERATION
+-----------------------
+The generator can now calculate how much freight is available to ship at any
+mainworld, following the Mongoose Traveller 2e Core Rulebook p.239.
+
+Freight is divided into three tiers:
+- Incidental lots (small: 1D tons each).
+- Minor lots (medium: 1D×5 tons each).
+- Major lots (large: 1D×10 tons each).
+
+The number of lots in each tier is determined by a 2D roll modified by the
+world's population, starport rating, tech level, and travel zone. Mail
+(5 tons per container) may also appear on a high roll.
+
+WEB APP — FREIGHT TAB
+----------------------
+After generating a Full system in the web interface, a Freight button appears
+in the seed/save bar alongside the Cargo button. Clicking it calls the freight
+endpoint with the current seed and the mainworld's data, then displays a
+summary table in a new Freight tab. The table shows each tier (Incidental,
+Minor, Major, and Mail if present) with the number of lots and total tonnage.
+
+The button is disabled for basic (non-Full) system generations.
+
+GEN-UI — FREIGHT WINDOW
+-------------------------
+The desktop app gains a Freight button in both system mode and world-only mode,
+next to the Cargo button. Clicking it opens a Freight window — a compact table
+with Tier, Lots, and Total Tons columns. Multiple freight windows can be open
+at once.
+
+SYSTEM MAP — UNUSUAL STAR GLYPHS
+---------------------------------
+Protostars, neutron stars, and pulsars are now rendered with distinctive glyphs
+on the system map.
+
+Protostar primaries and companion stars appear as a solid sphere surrounded by
+a wide diffuse halo — a large semi-transparent radial gradient fading to
+transparent at four times the star radius, representing the contracting gas
+envelope that hasn't yet collapsed into a star.
+
+Neutron stars appear as a small deep blue-white sphere (colour #88AAFF, hotter
+than white dwarfs) surrounded by a tight bright corona glow. The corona fades
+rapidly from 90% opacity at the sphere edge to transparent at three times the
+radius.
+
+Pulsars appear the same as neutron stars, with the addition of a horizontal
+beam line extending eight times the star radius in both directions from the
+glyph centre. The line represents the rotating radiation beam of the pulsar.
+
+All three types now always get their own arc zone on the map, even if no worlds
+orbit them.
+
+NEBULA AND STAR CLUSTER ENVIRONMENTS (WBH p.219)
+------------------------------------------------
+When an Unusual Stars result produces a Nebula or Star Cluster primary, the star
+is now characterised as a young Class V main-sequence star rather than a
+placeholder Giants-class object.
+
+The star's age is rolled using the cluster age formula (1D × 1D × 50 million
+years, maximum 1.80 billion years). Very young clusters (age < 200 million years)
+apply a DM+1 to the spectral type roll, favouring hotter, more massive stars.
+
+Nebula systems have no worlds — planetary accretion is not yet complete inside
+a star-forming cloud. Star Cluster systems generate a full planetary system
+normally. Both display the correct spectral classification in the Stars table
+(e.g. "K5 V") with "Peculiar environment: Nebula" or "Peculiar environment:
+Star Cluster" in the Note column.
+
+Anomaly systems retain the existing Giants-class placeholder (referee-defined)
+and continue to return no worlds.
+
+SYSTEM MAP — NEBULA CLOUD GLYPH
+--------------------------------
+Nebula-environment stars are now rendered on the system map with a distinctive
+emission nebula cloud, distinguishable from all other star types at a glance.
+
+Three overlapping ellipses are drawn at 0°, 60°, and 120° rotations around the
+star centre, creating an irregular multi-lobe shape that suggests turbulent
+gas cloud structure. Each lobe fades from 50% opacity at the centre to
+transparent at the edge. The colour palette is H-alpha magenta/pink
+(#C040A0 deepening to #D06080 at the outer edges) — immediately distinct from
+the protostar's warm circular halo, the neutron star's tight blue-white corona,
+and the black hole's orange accretion disk.
+
+The embedded Class V star itself is drawn as a normal sphere glyph on top of
+the cloud. Like protostar and neutron star systems, a Nebula primary always
+receives its own arc zone even though no worlds orbit it.
+
+PROTOSTAR CHARACTERISATION (WBH p.219)
+--------------------------------------
+When an Unusual Stars result produces a Protostar primary, the star is now
+characterised using the full World Builder's Handbook rules rather than a
+placeholder Giants-class star.
+
+The protostar's spectral type and subtype are determined by a roll on the Star
+Type table with DM+1, placing it on the main sequence (Class V). Its mass has
+a ±50% random variance from the standard Class V value. Its diameter is the
+Class V baseline multiplied by a random factor between 1.0 and 2.0, simulating
+the bloated, still-contracting envelope of a young star. Luminosity is
+recomputed from the modified diameter.
+
+Any other stars in the system — close companions, wide companions — are also
+generated as protostars following the same rules (WBH: "if the primary star is
+a protostar, any other stars in the system are also protostars").
+
+The Stars table in the system card now shows the correct spectral type (e.g.
+"K5 V") rather than a Giant classification. The Peculiar environment note
+("Peculiar environment: Protostar") remains visible in the Note column.
+
+The age cap (< 0.01 Gyr) and the rule that no worlds exist in a protostar
+system are unchanged.
+
+BUG FIXES
+---------
+
+MULTI-STAR TIDAL STRESS DM NOW APPLIED CORRECTLY
+
+Worlds in systems with multiple stars now receive the correct tidal stress
+floor reduction. The World Builder's Handbook (pp.105-106) specifies that the
+tidal stress floor for a world orbiting N stars should be reduced by N-1. This
+DM was previously not applied. A world orbiting both a primary and one close
+secondary star, for example, now receives a -1 floor reduction.

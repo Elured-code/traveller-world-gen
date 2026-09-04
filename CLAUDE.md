@@ -1,6 +1,6 @@
 # CLAUDE.md — Traveller World & System Generator
 
-**Last updated:** 2026-08-19 (Session 191)  
+**Last updated:** 2026-09-04 (Session 202)  
 **Branch:** `main`  
 **Virtual environment:** `.venv` (Python 3.11, includes PySide6)
 
@@ -47,7 +47,7 @@ read only the context files listed below for the specific task at hand.
 ## Always-needed facts (no file read required)
 
 - **Pylint:** `.venv/bin/pylint <file>` — target **10.00/10 per file**
-- **Tests:** `.venv/bin/pytest tests/ -q` — **3131 tests**, all must pass
+- **Tests:** `.venv/bin/pytest tests/ -q` — **3476 tests**, all must pass
 - **RNG:** Injectable `random.Random` instance; each generation module has a
   module-level `_rng` sentinel (initially `random` the module). Public
   entry-point functions accept `rng: Optional[random.Random] = None`; when
@@ -87,6 +87,8 @@ After any session in which code, APIs, tests, or documented behaviour change:
 | TravellerMap fetch behaviour changed | `context/map-fetch.md` |
 | Pylint suppression pattern added | `context/common.md` |
 | Starport detail tables or formulas changed | `context/starport-detail.md` |
+| `traveller_world_schema.json` changed | Bump patch version in `world_codes.py` + `fastapi/app.py`; create `docs/release-vX.Y.Z.md` |
+| `traveller_system_schema.json` changed | Bump patch version in `world_codes.py` + `fastapi/app.py`; create `docs/release-vX.Y.Z.md` |
 
 4. Update `RELEASE-NOTES.md` with a summary of new features, bug fixes, and test
    count changes. Add a new version section when shipping to `main`; append to the
