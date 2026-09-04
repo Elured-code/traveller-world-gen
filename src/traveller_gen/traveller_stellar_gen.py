@@ -904,12 +904,18 @@ def _generate_cluster_age() -> float:
 
 
 def _roll_cluster_member(age_gyr: float) -> str:
-    """Roll spectral class for one cluster member star (young Class V, WBH p.219)."""
+    """Roll spectral class for one cluster member star (young Class V, WBH p.219).
+
+    A roll of 2 (Special/Unusual column) is treated as BD per WBH p.219 — a nested
+    Unusual result within a cluster is not re-rolled into the Unusual column.
+    Anomaly results are also treated as BD.
+    """
     dm = 1 if age_gyr < 0.2 else 0
     r = roll(2, dm)
     spectral = STAR_TYPE_TABLE.get(min(r, 11), "M")
-    if spectral in ("Special",) or spectral not in TYPE_HEAT_ORDER:
-        spectral = "M"
+    if spectral not in TYPE_HEAT_ORDER:
+        # Special / Unusual / Anomaly → brown dwarf (WBH p.219)
+        return "BD"
     subtype = _roll_subtype(spectral, use_m_column=spectral == "M")
     return f"{spectral}{subtype} V"
 

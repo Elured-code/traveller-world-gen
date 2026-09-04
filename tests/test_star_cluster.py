@@ -330,12 +330,15 @@ class TestMemberStars:
         assert len(sc.member_stars) == sc.system_count - 1
 
     def test_member_stars_format(self):
-        """Each member star entry is a valid 'X# V' classification string."""
+        """Each member star entry is 'X# V' or 'BD' (brown dwarf fallback, WBH p.219)."""
         import re
-        sc = _make_cluster_stellar().star_cluster
-        pattern = re.compile(r"^[OBAFGKM]\d V$")
-        for entry in sc.member_stars:
-            assert pattern.match(entry), f"Unexpected member_stars entry: {entry!r}"
+        pattern = re.compile(r"^(?:[OBAFGKM]\d V|BD)$")
+        for seed in range(50):
+            sc = _make_cluster_stellar(seed * 100 + _CLUSTER_SEED).star_cluster
+            if sc is None:
+                continue
+            for entry in sc.member_stars:
+                assert pattern.match(entry), f"Unexpected member_stars entry: {entry!r}"
 
     def test_member_stars_in_to_dict(self):
         """StarCluster.to_dict() includes 'member_stars' as a list."""
