@@ -4,6 +4,18 @@
 **Sessions:** 178–
 **Tests:** 3522
 
+## Bug fix: System map not displayed in web app (Session 203)
+
+The system map tab was permanently blank in both the local FastAPI server and Azure.
+Root cause: the `unusual_stars` feature (Issue #21) wired the `unusual` checkbox into
+`buildMapUrl` and `buildSysUrl` but did not store it in `_lastGen`. Both functions are
+strict-mode JavaScript (`"use strict"`) and threw a `ReferenceError` on the undeclared
+`unusual` identifier every time they ran, aborting `loadMap` silently. The map never
+fetched, and the loading indicator never appeared.
+
+Fix: `unusual` is now stored in all five `_lastGen` assignment sites and properly
+destructured in `buildMapUrl` and `buildSysUrl`.
+
 ---
 
 ## Star Cluster Member Star Spectral Classes + BD Fix (Session 202)
