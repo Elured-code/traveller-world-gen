@@ -804,7 +804,7 @@
 
   function buildMapUrl(seed) {
     if (!_lastGen) return null;
-    const { name, detail, full, isMap, sector, hex, ecc, incl } = _lastGen;
+    const { name, detail, full, isMap, sector, hex, unusual, ecc, incl } = _lastGen;
     const persp    = document.getElementById("map-perspective").checked;
     const lightBg  = (document.documentElement.getAttribute("data-theme") || "dark") === "light";
     if (isMap) {
@@ -965,7 +965,7 @@
   function buildSysUrl(seed, fmt) {
     if (!_lastGen) return null;
     const { name, isMap, sector, hex,
-            full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement } = _lastGen;
+            full, detail, selectMw, unusual, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement } = _lastGen;
 
     if (isMap) {
       // TravellerMap save path
@@ -1414,7 +1414,7 @@
 
         const resolvedName = name || hex || "World-1";
         _lastGen = { name: resolvedName, seed, isMap: true, sector, hex,
-                     full: isFullDetail, detail, ecc, incl, nhz, bio, rg, indep, socialDetail };
+                     full: isFullDetail, detail, unusual, ecc, incl, nhz, bio, rg, indep, socialDetail };
 
         if (format === "html") {
           if (isFullDetail) {
@@ -1508,7 +1508,7 @@
             }
             const data = await sysResp.json();
             _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
-                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
+                         full, detail, selectMw, unusual, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
             showTabs(data.mw_html, data.sys_html, seed,
               Object.assign(
                 data.survey_class0i_html ? { class0i: data.survey_class0i_html } : {},
@@ -1539,7 +1539,7 @@
 
             const [sysHtml, mwHtml] = await Promise.all([sysResp.text(), mwResp.text()]);
             _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
-                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
+                         full, detail, selectMw, unusual, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
             showTabs(mwHtml, sysHtml, seed, {}, null);
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
@@ -1570,14 +1570,14 @@
           const contentType = resp.headers.get("content-type") || "";
           if (contentType.includes("text/plain")) {
             _lastGen = { name: name || "World-1", seed, isMap: false, sector: "", hex: "",
-                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
+                         full, detail, selectMw, unusual, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
             showText(await resp.text());
             showSeed(seed);
             if (!seedIn) document.getElementById("s-seed").value = seed;
           } else {
             const data = await resp.json();
             _lastGen = { name: name || "World-1", seed: data.seed ?? seed, isMap: false, sector: "", hex: "",
-                         full, detail, selectMw, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
+                         full, detail, selectMw, unusual, ecc, incl, nhz, bio, rg, indep, socialDetail, settlement };
             showJson(data);
             showSeed(data.seed ?? seed);
             if (!seedIn) document.getElementById("s-seed").value = data.seed ?? seed;
